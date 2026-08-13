@@ -1,0 +1,22 @@
+[package]
+name = "orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+router = { workspace = true }
+protocol = { workspace = true }
+provider = { workspace = true }
+upstream = { workspace = true }
+stream = { workspace = true }
+usage = { workspace = true }
+observe = { workspace = true }
+config = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }

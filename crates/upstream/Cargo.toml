@@ -1,0 +1,18 @@
+[package]
+name = "upstream"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+protocol = { workspace = true }
+provider = { workspace = true }
+config = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }

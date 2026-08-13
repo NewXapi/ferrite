@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+members = ["apps/cli", "crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# 版本在此统一，各 crate 用 { workspace = true } 引用
+tokio      = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs"] }
+axum       = "0.8"
+reqwest    = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "socks"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml       = "0.9"
+tracing    = "0.1"
+thiserror  = "2"
+bytes      = "1"
+arc-swap   = "1"        # 配置快照 RCU，见 docs/08-mvp.md §4.3
+rustc-hash = "2"        # 快哈希；键来自可信配置，不需抗 HashDoS，见 §4.2
+wiremock   = "0.6"      # 假上游；各 crate 在自己的 [dev-dependencies] 里引用
+
+# 内部 crate
+config       = { path = "crates/config" }
+protocol     = { path = "crates/protocol" }
+provider     = { path = "crates/provider" }
+upstream     = { path = "crates/upstream" }
+router       = { path = "crates/router" }
+orchestrator = { path = "crates/orchestrator" }
+stream       = { path = "crates/stream" }
+usage        = { path = "crates/usage" }
+observe      = { path = "crates/observe" }
+
+[profile.release]
+lto           = "fat"
+codegen-units = 1
+strip         = true
+
+[profile.dev.package."*"]
+opt-level = 1
