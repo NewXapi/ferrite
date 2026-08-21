@@ -88,6 +88,11 @@ impl RouteIndex {
             .cloned()
             .ok_or_else(|| DispatchError::UnknownModel(model.to_string()))
     }
+
+    /// 列出所有可用模型 alias
+    pub fn list_models(&self) -> Vec<String> {
+        self.inner.load().keys().cloned().collect()
+    }
 }
 
 impl Default for RouteIndex {
