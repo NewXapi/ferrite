@@ -35,7 +35,9 @@ impl OpenAIAdapter {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(300))
+                // 不设整体 timeout（会截断长 SSE 流）：connect 限建连，read 限单次读空闲
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .read_timeout(std::time::Duration::from_secs(120))
                 .build()
                 .expect("failed to build reqwest client"),
         }

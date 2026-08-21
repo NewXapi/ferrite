@@ -89,14 +89,45 @@ impl RouteIndex {
             .ok_or_else(|| DispatchError::UnknownModel(model.to_string()))
     }
 
-    /// 列出所有可用模型 alias
+    /// 列出所有可用模型 alias（字典序，输出稳定）
     pub fn list_models(&self) -> Vec<String> {
-        self.inner.load().keys().cloned().collect()
+        let mut models: Vec<String> = self.inner.load().keys().cloned().collect();
+        models.sort();
+        models
     }
 }
 
 impl Default for RouteIndex {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn channel(name: &str, aliases: &[&str]) -> ChannelConfig {
+        ChannelConfig {
+            id: 1,
+            name: name.into(),
+            base_url: "http://up/v1".into(),
+            channel_type: "openai".into(),
+            keys: vec!["k".into()],
+            models: aliases
+                .iter()
+                .map(|a| ModelRoute {
+                    alias: (*a).into(),
+                    upstream: (*a).into(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn list_models_sorted_and_complete() {
+        let idx = RouteIndex::new();
+        idx.build_from_channels(&[channel("c1", &["zeta", "alpha"]), channel("c2", &["mid"])]);
+        assert_eq!(idx.list_models(), vec!["alpha", "mid", "zeta"]);
     }
 }
