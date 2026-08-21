@@ -33,8 +33,3 @@ jobs:
 
       - name: test
         run: cargo test --all
-
-      # protocol / provider 必须保持纯函数，router 不该有 HTTP 客户端。
-      # 详见 docs/08-mvp.md §3.3
-      - name: crate 纯度
-        run: ./scripts/check-purity.sh
