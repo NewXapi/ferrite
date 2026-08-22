@@ -81,3 +81,64 @@ fn create_token_req_deny_unknown_fields() {
     .is_err());
     assert!(serde_json::from_str::<api::gateway::CreateTokenReq>(r#"{"username":"x"}"#).is_ok());
 }
+
+fn valid_channel_cfg() -> api::dispatch::ChannelConfig {
+    api::dispatch::ChannelConfig {
+        id: 1,
+        name: "openai-main".into(),
+        base_url: "https://api.openai.com".into(),
+        channel_type: "openai".into(),
+        keys: vec!["sk-key1".into()],
+        models: vec![api::dispatch::ModelRoute { alias: "gpt-4o".into(), upstream: "gpt-4o".into() }],
+    }
+}
+
+/// mask_key：≥9 字符显示前 8+...，短 key 不 panic
+#[test]
+fn mask_key_behaviour() {
+    assert_eq!(api::gateway::mask_key("sk-abcdefgh123"), "sk-abcde...");
+    assert_eq!(api::gateway::mask_key("short"), "short...");
+}
+
+/// mask_channel_keys：每个 key 都掩码
+#[test]
+fn mask_channel_keys_all_masked() {
+    let keys = vec!["sk-abcdefghij".to_string(), "sk-xyz".to_string()];
+    let masked = api::gateway::mask_channel_keys(&keys);
+    assert_eq!(masked.len(), 2);
+    assert!(masked[0].ends_with("..."));
+    assert!(!masked[0].contains("abcdefghij"));
+}
+
+/// merge_channel_config：None 字段不变，Some 字段覆写；changed 旗标准确
+#[test]
+fn merge_channel_config_partial_update() {
+    use api::gateway::{merge_channel_config, UpdateChannelReq};
+    let base = valid_channel_cfg();
+
+    // 空更新：全部不变
+    let req = serde_json::from_str::<UpdateChannelReq>("{}").unwrap();
+    let (merged, changed) = merge_channel_config(&base, &req);
+    assert!(!changed);
+    assert_eq!(merged.name, base.name);
+
+    // 只改 name
+    let req = serde_json::from_str::<UpdateChannelReq>(r#"{"name":"renamed"}"#).unwrap();
+    let (merged, changed) = merge_channel_config(&base, &req);
+    assert!(changed);
+    assert_eq!(merged.name, "renamed");
+    assert_eq!(merged.base_url, base.base_url);
+    assert_eq!(merged.keys, base.keys);
+
+    // 同值不标 changed
+    let req = serde_json::from_str::<UpdateChannelReq>(&format!(r#"{{"name":"{}"}}"#, base.name)).unwrap();
+    let (merged, changed) = merge_channel_config(&base, &req);
+    assert!(!changed);
+    assert_eq!(merged.name, base.name);
+}
+
+/// UpdateChannelReq：多余字段 400（deny_unknown_fields）
+#[test]
+fn update_channel_req_deny_unknown_fields() {
+    assert!(serde_json::from_str::<api::gateway::UpdateChannelReq>(r#"{"name":"x","typo":1}"#).is_err());
+}

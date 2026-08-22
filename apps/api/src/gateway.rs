@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use futures_util::StreamExt;
 
 use crate::adapter::{OpenAIAdapter, StreamResponse};
@@ -47,8 +47,10 @@ impl Gateway {
             .route("/v1/chat/completions", post(chat_completions))
             .route("/admin/logs", get(list_logs))
             .route("/admin/reload", post(reload_channels))
-            .route("/admin/tokens", post(create_token))
-            .route("/admin/channels", post(create_channel))
+            .route("/admin/tokens", get(list_tokens).post(create_token))
+            .route("/admin/tokens/{key}", delete(delete_token))
+            .route("/admin/channels", get(list_channels).post(create_channel))
+            .route("/admin/channels/{id}", put(update_channel).delete(delete_channel))
             .layer(
                 // 统一请求日志：span 声明业务字段，handler 内 record 填充，
                 // TraceLayer 的 on_response 事件自动携带全部字段写入 JSON 日志文件
@@ -386,6 +388,305 @@ async fn create_channel(
         body.to_string(),
     )
         .into_response())
+}
+// ─── F6.2 + F6.3: Token 管理 ──────────────────────────────────────────────
+
+/// F6.2 — GET /admin/tokens（列表）
+#[derive(serde::Deserialize)]
+pub struct TokenListQuery {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub user_id: Option<i64>,
+    pub enabled: Option<bool>,
+}
+
+/// key 掩码：前 8 位 + ...
+pub fn mask_key(key: &str) -> String {
+    if key.len() <= 8 {
+        format!("{}...", key)
+    } else {
+        format!("{}...", &key[..8])
+    }
+}
+
+/// GET /admin/tokens — 列出 token (仅 admin)
+async fn list_tokens(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<TokenListQuery>,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let limit = q.limit.unwrap_or(50).clamp(1, 500) as i64;
+    let offset = q.offset.unwrap_or(0) as i64;
+
+    // 用「超集 → 内存过滤 → 切页」代替动态 SQL，简化参数绑定。token 表 <1000 行，内存过滤完全够用
+    let rows: Vec<(String, i64, String, i64, i64, String, bool, chrono::DateTime<chrono::Utc>, bool)> = sqlx::query_as(
+        "SELECT key, user_id, username, quota, used_quota, \"group\", enabled, created_at, is_admin FROM tokens ORDER BY created_at DESC",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error"))?;
+
+    let filtered: Vec<_> = rows
+        .into_iter()
+        .filter(|r| q.user_id.map_or(true, |u| r.1 == u))
+        .filter(|r| q.enabled.map_or(true, |e| r.6 == e))
+        .collect();
+
+    let total = filtered.len();
+    let data: Vec<serde_json::Value> = filtered
+        .into_iter()
+        .skip(offset as usize)
+        .take(limit as usize)
+        .map(|(key, user_id, username, quota, used_quota, group, enabled, created_at, is_admin)| {
+            serde_json::json!({
+                "key": mask_key(&key),
+                "user_id": user_id,
+                "username": username,
+                "quota": quota,
+                "used_quota": used_quota,
+                "group": group,
+                "enabled": enabled,
+                "created_at": created_at,
+                "is_admin": is_admin,
+            })
+        })
+        .collect();
+
+    let body = serde_json::json!({ "object": "list", "total": total, "data": data });
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response())
+}
+
+/// F6.3 — DELETE /admin/tokens/:key（软删除）
+async fn delete_token(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let result = sqlx::query("UPDATE tokens SET enabled = false WHERE key = $1")
+        .bind(&key)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(error_response(StatusCode::NOT_FOUND, "token not found", "invalid_request_error"));
+    }
+
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+
+
+// ─── F7.2 + F7.3: Channel 管理 ─────────────────────────────────────────────
+
+/// F7.2 — GET /admin/channels（列表）
+#[derive(serde::Deserialize)]
+pub struct ChannelListQuery {
+    pub channel_type: Option<String>,
+}
+
+/// 渠道 key 掩码（每个 key 都掩码）
+pub fn mask_channel_keys(keys: &[String]) -> Vec<String> {
+    keys.iter().map(|k| mask_key(k)).collect()
+}
+
+/// GET /admin/channels — 列出所有渠道 (仅 admin)
+async fn list_channels(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<ChannelListQuery>,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let rows = load_channels(&state.pool).await.map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+    })?;
+
+    let filtered: Vec<&crate::dispatch::ChannelConfig> = rows
+        .iter()
+        .filter(|c| q.channel_type.as_deref().map_or(true, |t| c.channel_type == t))
+        .collect();
+
+    let data: Vec<serde_json::Value> = filtered
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "name": c.name,
+                "base_url": c.base_url,
+                "channel_type": c.channel_type,
+                "keys": mask_channel_keys(&c.keys),
+                "models": c.models,
+            })
+        })
+        .collect();
+
+    let body = serde_json::json!({ "object": "list", "total": filtered.len(), "data": data });
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response())
+}
+
+/// F7.3 — PUT /admin/channels/:id 更新请求（字段全 Option，传什么改什么）
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateChannelReq {
+    pub name: Option<String>,
+    pub base_url: Option<String>,
+    pub channel_type: Option<String>,
+    pub keys: Option<Vec<String>>,
+    pub models: Option<Vec<crate::dispatch::ModelRoute>>,
+}
+
+/// 纯函数：将部分更新合并进现有 config，返回新版本 + 是否变化
+pub fn merge_channel_config(
+    existing: &crate::dispatch::ChannelConfig,
+    req: &UpdateChannelReq,
+) -> (crate::dispatch::ChannelConfig, bool) {
+    let mut cfg = existing.clone();
+    let mut changed = false;
+    if let Some(v) = &req.name && *v != cfg.name { cfg.name = v.clone(); changed = true; }
+    if let Some(v) = &req.base_url && *v != cfg.base_url { cfg.base_url = v.clone(); changed = true; }
+    if let Some(v) = &req.channel_type && *v != cfg.channel_type { cfg.channel_type = v.clone(); changed = true; }
+    if let Some(v) = &req.keys && *v != cfg.keys { cfg.keys = v.clone(); changed = true; }
+    if let Some(v) = &req.models && *v != cfg.models { cfg.models = v.clone(); changed = true; }
+    (cfg, changed)
+}
+
+/// 把 ChannelConfig 合成 CreateChannelReq 以便复用 validate_channel
+fn channel_as_create_req(cfg: &crate::dispatch::ChannelConfig) -> CreateChannelReq {
+    CreateChannelReq {
+        name: cfg.name.clone(),
+        base_url: cfg.base_url.clone(),
+        channel_type: cfg.channel_type.clone(),
+        keys: cfg.keys.clone(),
+        models: cfg.models.clone(),
+    }
+}
+
+/// F7.3 — PUT /admin/channels/:id（更新）
+async fn update_channel(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let req: UpdateChannelReq = serde_json::from_slice(&body).map_err(|e| {
+        error_response(StatusCode::BAD_REQUEST, &format!("invalid JSON: {e}"), "invalid_request_error")
+    })?;
+
+    let kv_key = format!("channel:{id}");
+    let row: Option<(serde_json::Value,)> = sqlx::query_as(
+        "SELECT value FROM kv_store WHERE key = $1",
+    )
+    .bind(&kv_key)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error"))?;
+
+    let value = row.ok_or_else(|| {
+        error_response(StatusCode::NOT_FOUND, "channel not found", "invalid_request_error")
+    })?.0;
+
+    let existing: crate::dispatch::ChannelConfig = serde_json::from_value(value).map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("corrupt channel config: {e}"), "server_error")
+    })?;
+
+    let (merged, _changed) = merge_channel_config(&existing, &req);
+
+    // 更新后 name 可能变了，需要重新查重（排除自己）
+    if merged.name != existing.name {
+        let all = load_channels(&state.pool).await.map_err(|e| {
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        })?;
+        if all.iter().any(|c| c.id != id && c.name == merged.name) {
+            return Err(error_response(
+                StatusCode::CONFLICT,
+                &format!("channel name {:?} already exists", merged.name),
+                "invalid_request_error",
+            ));
+        }
+    }
+
+    // 重新校验合并后的整体（哪怕 only name 改了也要验证 base_url/models 一致性）
+    validate_channel(&channel_as_create_req(&merged))
+        .map_err(|m| error_response(StatusCode::BAD_REQUEST, &m, "invalid_request_error"))?;
+
+    let new_value = serde_json::to_value(&merged).map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("serialize error: {e}"), "server_error")
+    })?;
+
+    sqlx::query("UPDATE kv_store SET value = $2 WHERE key = $1")
+        .bind(&kv_key)
+        .bind(new_value)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        })?;
+
+    let body = serde_json::json!({
+        "status": "ok",
+        "id": id,
+        "name": merged.name,
+        "hint": "POST /admin/reload to apply",
+    });
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response())
+}
+
+/// F7.3 — DELETE /admin/channels/:id（删除）
+async fn delete_channel(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let kv_key = format!("channel:{id}");
+    let result = sqlx::query("DELETE FROM kv_store WHERE key = $1")
+        .bind(&kv_key)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(error_response(StatusCode::NOT_FOUND, "channel not found", "invalid_request_error"));
+    }
+
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// POST /v1/chat/completions

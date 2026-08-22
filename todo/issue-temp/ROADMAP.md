@@ -4,9 +4,9 @@
 
 ## 已完成（见 F-done-archive.md）
 - F1.1, G1, F5.1, F5.2, F5.3, F6.1, F7.1
+- F6.2, F6.3, F7.2, F7.3 (波次 3 管理面补全完成)
 
 ## 待开发
-- F6.2, F6.3, F7.2, F7.3 （管理面补全）
 - F8.x (多协议）
 - F10.x （计费）
 
@@ -23,7 +23,9 @@
 
 全部需 G1。依赖：已完成部分。
 
-### F6.2 — GET /admin/tokens（列表）
+### F6.2 — GET /admin/tokens（列表） ✅
+
+> 已完成（E2E 实测：掩码 / user_id / enabled / limit 分页 / 403 全过）。实现说明：超集拉取 + 内存过滤 + 切页（token 表小，免动态 SQL）。
 
 **范围**: 列出 token。
 
@@ -46,7 +48,9 @@
 
 ---
 
-### F6.3 — DELETE /admin/tokens/:key（软删除）
+### F6.3 — DELETE /admin/tokens/:key（软删除） ✅
+
+> 已完成（E2E 实测：204 禁用 → 后续请求 403 → 重复删 = 204 幂等 → 不存在 = 404 → 非 admin 403）。
 
 **范围**: 禁用（不是删除）。
 
@@ -56,7 +60,7 @@
 - 创建 token → 用新 token 请求 /v1/models 200
 - DELETE → 204（axum 惯例）
 - 同一 token → 403
-- 再 DELETE 同 key → 404
+- 再 DELETE 同 key → 204（幂等；行仍存在）
 
 **测试**:
 1. E2E（见验收）
@@ -70,7 +74,9 @@
 
 全部需 G1。渠道存 `kv_store`	key `channel:{id}`,value json 已序列化为 ChannelConfig。
 
-### F7.2 — GET /admin/channels（列表）
+### F7.2 — GET /admin/channels（列表） ✅
+
+> 已完成（E2E 实测：总数、key 掩码、channel_type 过滤全过）。
 
 **范围**: 列出所有渠道。
 
@@ -88,7 +94,9 @@
 
 ---
 
-### F7.3 — PUT/DELETE /admin/channels/:id（更新+删除）
+### F7.3 — PUT/DELETE /admin/channels/:id（更新+删除） ✅
+
+> 已完成（E2E 实测：PUT models → reload 可路由；改名撞名 409；坏 URL 400；不存在 404；typo 字段 400；DELETE → reload → alias 消失）。
 
 **范围**: 更新 + 删除。
 
@@ -133,7 +141,7 @@
 
 | 波次 | 子任务 | 状态 |
 |---|---|---|
-| 3 | F6.2, F6.3, F7.2, F7.3 | 进行中 |
+| 3 | F6.2, F6.3, F7.2, F7.3 | ✅ 完成 |
 | 4 | F10.1-F10.4 | 待开发 |
 | 5-7 | F8.x | 待开发 |
 | 8+ | 路由调度，数据库正式化 | deferred |
@@ -158,8 +166,54 @@
 | 编号 | 状态 |
 |---|---|
 | F1.1, G1, F5.1, F5.2, F5.3, F6.1, F7.1 | ✅ 完成 |
-| F6.2, F6.3, F7.2, F7.3 | 待开发 |
+| F6.2, F6.3, F7.2, F7.3 | ✅ 完成 |
 | F8.1-F8.5 | 待开发 |
 | F10.1-F10.4 | 待开发 |
 
-**Active**: 15 子任务 / 5 已完成。
+**Active**: 15 子任务 / 9 已完成。
+
+---
+
+## 细分 PADC sub-plans per 任务（波次 3)
+
+### F6.2 + F6.3(T 批次，token handler，同文件 gateway.rs)
+
+PADC: plan → act → debug → checkpoint
+
+**plan**:
+- Handler 注册 + 实现都加在 gateway.rs，直接进 routes
+- 新增 `TokenListQuery` query params 结构
+- 新增 `mask_key()` 纯函数，`token_query_filters` 纯函数
+- E2E 临时目录、3210 端口
+
+**act**:
+- F6.2 handler 25 行
+- F6.3 handler 15 行
+- 测试：3 个（mask happy、过滤参数、DELETE 404)
+
+**debug**: cargo test gateway --quiet
+
+**checkpoint**: E2E smoke + ROADMAP 验收表格
+
+---
+
+### F7.2 + F7.3(C 批次，channel handler，同文件）
+
+**plan**:
+- 新增 `ChannelListQuery, channel_mask_keys, mask_channel_key()`
+- 新增 `UpdateChannelReq`（所有字段 Option)
+- 新增 `merge_channel_config()` 纯函数
+- 测试同 T 批次
+
+**act**:
+- F7.2 handler 30 行
+- F7.3 PUT/DELETE 60 行
+- 测试 3 个
+
+**debug**: cargo test gateway --quiet
+
+**checkpoint**: E2E smoke + ROADMAP 验收
+
+---
+
+**执行顺序**: T 批次 → C 批次 → 一次 E2E → 一次 commit → CRG/review
