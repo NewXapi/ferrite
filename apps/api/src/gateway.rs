@@ -51,6 +51,7 @@ impl Gateway {
             .route("/admin/tokens/{key}", delete(delete_token))
             .route("/admin/channels", get(list_channels).post(create_channel))
             .route("/admin/channels/{id}", put(update_channel).delete(delete_channel))
+            .route("/admin/recharge", post(recharge))
             .layer(
                 // 统一请求日志：span 声明业务字段，handler 内 record 填充，
                 // TraceLayer 的 on_response 事件自动携带全部字段写入 JSON 日志文件
@@ -68,7 +69,8 @@ impl Gateway {
                             stream = tracing::field::Empty,
                             prompt_tokens = tracing::field::Empty,
                             completion_tokens = tracing::field::Empty,
-                            total_tokens = tracing::field::Empty,
+                           reserved_quota = tracing::field::Empty,
+                           actual_quota = tracing::field::Empty,
                         )
                     })
                     .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
@@ -491,6 +493,69 @@ async fn delete_token(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+/// F10.4 — POST /admin/recharge（充电，仅 admin）
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RechargeReq {
+    pub token_key: String,
+    pub amount: i64,
+}
+
+async fn recharge(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let req: RechargeReq = serde_json::from_slice(&body).map_err(|e| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid JSON: {e}"),
+            "invalid_request_error",
+        )
+    })?;
+
+    if req.amount <= 0 {
+        return Err(error_response(
+            StatusCode::BAD_REQUEST,
+            "amount must be positive",
+            "invalid_request_error",
+        ));
+    }
+
+    let row: Option<(i64, i64, String)> = sqlx::query_as(
+        "UPDATE tokens SET quota = quota + $1 WHERE key = $2 RETURNING quota, user_id, username",
+    )
+    .bind(req.amount)
+    .bind(&req.token_key)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+    })?;
+
+    let (new_quota, user_id, username) = row.ok_or_else(|| {
+        error_response(StatusCode::NOT_FOUND, "token not found", "invalid_request_error")
+    })?;
+
+    let body = serde_json::json!({
+        "status": "ok",
+        "token_key": mask_key(&req.token_key),
+        "new_quota": new_quota,
+        "user_id": user_id,
+        "username": username,
+    });
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response())
+}
+
 
 
 // ─── F7.2 + F7.3: Channel 管理 ─────────────────────────────────────────────
@@ -740,13 +805,40 @@ async fn chat_completions(
         .await
         .map_err(|(s, m)| error_response(s, &m, "rate_limit_reached"))?;
 
+    // 4b. F10.2 预扣配额
+    let pricing = crate::billing::read_pricing(&state.pool, model)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, model, "read_pricing failed, using 1:1");
+            None
+        });
+    let reserve = crate::billing::RESERVE_QUOTA;
+    match crate::billing::reserve_quota(&state.pool, &pass.token_key, reserve).await {
+        Ok(Some(used)) => {
+            span.record("reserved_quota", reserve);
+            tracing::debug!(used_quota = used, "quota reserved");
+        }
+        Ok(None) => {
+            return Err(error_response(
+                StatusCode::PAYMENT_REQUIRED,
+                "insufficient quota",
+                "insufficient_quota",
+            ));
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "reserve_quota failed, letting request through");
+        }
+    }
+
     // 5. 转发到上游
     if is_stream {
+        // ponytail: 流式无 usage，结算随 F8 单独处理
         let stream_resp = state
             .adapter
             .forward_stream(body, &route.base_url, &route.api_key, &route.upstream_model)
             .await
             .map_err(|e| {
+                tracing::warn!(event = "billing_reserve_consumed", reserve, error = %e, "upstream error, reserve not rolled back");
                 error_response(StatusCode::BAD_GATEWAY, &e.to_string(), "server_error")
             })?;
 
@@ -757,25 +849,36 @@ async fn chat_completions(
             .forward(body, &route.base_url, &route.api_key, &route.upstream_model)
             .await
             .map_err(|e| {
+                tracing::warn!(event = "billing_reserve_consumed", reserve, error = %e, "upstream error, reserve not rolled back");
                 error_response(StatusCode::BAD_GATEWAY, &e.to_string(), "server_error")
             })?;
 
         let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::BAD_GATEWAY);
 
-        // 解析 usage 记入请求 span（JSON 日志文件可见 token 数；流式为空）
+        // F10.3 结算：解析 usage → actual quota → settle_delta
         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
             && let Some(u) = v.get("usage")
         {
-            if let Some(n) = u.get("prompt_tokens").and_then(|x| x.as_i64()) {
-                span.record("prompt_tokens", n);
-            }
-            if let Some(n) = u.get("completion_tokens").and_then(|x| x.as_i64()) {
-                span.record("completion_tokens", n);
-            }
+            let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+            let completion_tokens = u.get("completion_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+            span.record("prompt_tokens", prompt_tokens as i64);
+            span.record("completion_tokens", completion_tokens as i64);
             if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
                 span.record("total_tokens", n);
             }
+
+            let actual = crate::billing::tokens_to_quota(prompt_tokens, completion_tokens, pricing.as_ref());
+            span.record("actual_quota", actual);
+            if let Err(e) = crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual).await {
+                tracing::warn!(event = "billing_settle_failed", error = %e, actual, reserve, "settle_quota failed");
+            }
         }
+
+        // 上游非 2xx → 预扣消耗，不回滚（决策 C）
+        if !status.is_success() {
+            tracing::warn!(event = "billing_reserve_consumed", reserve, status = status.as_u16(), "upstream non-2xx, reserve not rolled back");
+        }
+
         let mut response_headers = HeaderMap::new();
         if let Some(ct) = resp.content_type
             && let Ok(v) = ct.parse()

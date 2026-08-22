@@ -166,3 +166,16 @@ fn merge_channel_config_empty_vec_is_change() {
     assert!(changed);
     assert_eq!(merged.models[0].alias, "m8");
 }
+
+/// RechargeReq：多余 typo 字段必须报错（deny_unknown_fields）
+#[test]
+fn recharge_req_deny_typo() {
+    assert!(serde_json::from_str::<api::gateway::RechargeReq>(
+        r#"{"token_key":"sk-abc","amount":100,"typo":1}"#
+    )
+    .is_err());
+    assert!(serde_json::from_str::<api::gateway::RechargeReq>(
+        r#"{"token_key":"sk-abc","amount":100}"#
+    )
+    .is_ok());
+}
