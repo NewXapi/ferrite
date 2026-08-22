@@ -403,7 +403,8 @@ pub struct TokenListQuery {
 /// key 掩码：前 8 位 + ...
 pub fn mask_key(key: &str) -> String {
     if key.len() <= 8 {
-        format!("{}...", key)
+        // 短 key 不完整显示，防泄露上游短密钥
+        "***".into()
     } else {
         format!("{}...", &key[..8])
     }

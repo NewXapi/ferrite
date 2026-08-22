@@ -5,7 +5,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 /// 渠道配置 (从 PG kv_store 加载)
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChannelConfig {
     pub id: i64,
     pub name: String,

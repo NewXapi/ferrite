@@ -97,7 +97,7 @@ fn valid_channel_cfg() -> api::dispatch::ChannelConfig {
 #[test]
 fn mask_key_behaviour() {
     assert_eq!(api::gateway::mask_key("sk-abcdefgh123"), "sk-abcde...");
-    assert_eq!(api::gateway::mask_key("short"), "short...");
+    assert_eq!(api::gateway::mask_key("short"), "***");
 }
 
 /// mask_channel_keys：每个 key 都掩码
@@ -141,4 +141,28 @@ fn merge_channel_config_partial_update() {
 #[test]
 fn update_channel_req_deny_unknown_fields() {
     assert!(serde_json::from_str::<api::gateway::UpdateChannelReq>(r#"{"name":"x","typo":1}"#).is_err());
+}
+
+/// merge 边界：keys=[] （非 None) 算 change，随后 validate 会拒绝（三层校验证实）
+#[test]
+fn merge_channel_config_empty_vec_is_change() {
+    use api::gateway::{merge_channel_config, UpdateChannelReq};
+    let base = valid_channel_cfg();
+    let req = serde_json::from_str::<UpdateChannelReq>(r#"{"keys":[]}"#).unwrap();
+    let (merged, changed) = merge_channel_config(&base, &req);
+    assert!(changed);
+    assert!(merged.keys.is_empty());
+    // validate 链路禁止空 keys，PUT handler 会 400
+    let create_req = api::gateway::CreateChannelReq {
+        name: merged.name, base_url: merged.base_url, channel_type: merged.channel_type,
+        keys: merged.keys, models: merged.models,
+    };
+    assert!(api::gateway::validate_channel(&create_req).is_err());
+
+    // models 字段 merge
+    let req = serde_json::from_str::<UpdateChannelReq>(
+        r#"{"models":[{"alias":"m8","upstream":"m8"}]}"#).unwrap();
+    let (merged, changed) = merge_channel_config(&base, &req);
+    assert!(changed);
+    assert_eq!(merged.models[0].alias, "m8");
 }
