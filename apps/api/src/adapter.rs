@@ -26,6 +26,15 @@ pub enum AdapterError {
     Network(#[from] reqwest::Error),
 }
 
+pub async fn ensure_stream_ok(resp: StreamResponse) -> Result<StreamResponse, AdapterError> {
+    if (200..300).contains(&resp.status) {
+        return Ok(resp);
+    }
+    let status = resp.status;
+    let body = resp.stream.bytes().await?;
+    Err(AdapterError::Upstream(format!("status {status}: {}", String::from_utf8_lossy(&body))))
+}
+
 /// OpenAI 格式适配器
 pub struct OpenAIAdapter {
     client: reqwest::Client,
@@ -35,7 +44,6 @@ impl OpenAIAdapter {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::builder()
-                // 不设整体 timeout（会截断长 SSE 流）：connect 限建连，read 限单次读空闲
                 .connect_timeout(std::time::Duration::from_secs(10))
                 .read_timeout(std::time::Duration::from_secs(120))
                 .build()

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -13,6 +13,9 @@ use futures_util::StreamExt;
 use crate::adapter::{OpenAIAdapter, StreamResponse};
 use crate::config::PgPool;
 use crate::dispatch::RouteIndex;
+
+/// 日志文件目录（main.rs tracing_appender 与 list_logs 共用）
+pub const LOG_DIR: &str = "logs";
 
 pub struct AppState {
     pub pool: PgPool,
@@ -36,11 +39,35 @@ impl Gateway {
     }
 
     pub fn router(&self) -> Router {
+        use tower_http::trace::{DefaultOnResponse, TraceLayer};
+
         Router::new()
             .route("/health", get(health))
             .route("/v1/models", get(list_models))
             .route("/v1/chat/completions", post(chat_completions))
-            .route("/admin/reload", post(reload_channels))
+            .route("/admin/logs", get(list_logs))
+            .layer(
+                // 统一请求日志：span 声明业务字段，handler 内 record 填充，
+                // TraceLayer 的 on_response 事件自动携带全部字段写入 JSON 日志文件
+                TraceLayer::new_for_http()
+                    .make_span_with(|req: &axum::http::Request<axum::body::Body>| {
+                        tracing::info_span!(
+                            "http_request",
+                            method = %req.method(),
+                            path = %req.uri().path(),
+                            request_id = tracing::field::Empty,
+                            user = tracing::field::Empty,
+                            model = tracing::field::Empty,
+                            channel = tracing::field::Empty,
+                            upstream_model = tracing::field::Empty,
+                            stream = tracing::field::Empty,
+                            prompt_tokens = tracing::field::Empty,
+                            completion_tokens = tracing::field::Empty,
+                            total_tokens = tracing::field::Empty,
+                        )
+                    })
+                    .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
+            )
             .with_state(self.state.clone())
     }
 }
@@ -120,13 +147,7 @@ async fn reload_channels(
     headers: HeaderMap,
 ) -> Result<axum::response::Response, axum::response::Response> {
     let pass = authenticate_request(&state, &headers).await?;
-    if pass.group != "admin" {
-        return Err(error_response(
-            StatusCode::FORBIDDEN,
-            "admin group required",
-            "permission_denied",
-        ));
-    }
+    crate::identity::require_admin(&pass).map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
 
     match load_channels(&state.pool).await {
         Ok(channels) => {
@@ -147,7 +168,7 @@ async fn reload_channels(
             tracing::error!("failed to reload channels: {e}");
             Err(error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("reload failed: {e}"),
+                &e.to_string(),
                 "server_error",
             ))
         }
@@ -164,7 +185,9 @@ async fn chat_completions(
 ) -> Result<axum::response::Response, axum::response::Response> {
     // 1. 认证
     let pass = authenticate_request(&state, &headers).await?;
-    tracing::info!(user = %pass.username, "authenticated");
+    let span = tracing::Span::current();
+    span.record("request_id", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0).to_string());
+    span.record("user", pass.username.as_str());
 
     // 2. 解析请求体
     let req: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
@@ -184,8 +207,6 @@ async fn chat_completions(
     })?;
 
     let is_stream = req.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
-
-    // 3. 查路由：model → channel
     let route = state.route_index.resolve(model).map_err(|e| {
         error_response(
             StatusCode::NOT_FOUND,
@@ -194,12 +215,10 @@ async fn chat_completions(
         )
     })?;
 
-    tracing::info!(
-        channel = %route.channel_name,
-        upstream = %route.upstream_model,
-        stream = is_stream,
-        "resolved route"
-    );
+    span.record("model", model);
+    span.record("channel", route.channel_name.as_ref());
+    span.record("upstream_model", route.upstream_model.as_ref());
+    span.record("stream", is_stream);
 
     // 4. 限流（在路由解析之后，无效请求不消耗配额）
     crate::ratelimit::check_and_increment(&state.pool, &pass)
@@ -216,7 +235,7 @@ async fn chat_completions(
                 error_response(StatusCode::BAD_GATEWAY, &e.to_string(), "server_error")
             })?;
 
-        Ok(stream_into_response(stream_resp))
+        Ok(stream_into_response(stream_resp).await?)
     } else {
         let resp = state
             .adapter
@@ -228,6 +247,20 @@ async fn chat_completions(
 
         let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::BAD_GATEWAY);
 
+        // 解析 usage 记入请求 span（JSON 日志文件可见 token 数；流式为空）
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
+            && let Some(u) = v.get("usage")
+        {
+            if let Some(n) = u.get("prompt_tokens").and_then(|x| x.as_i64()) {
+                span.record("prompt_tokens", n);
+            }
+            if let Some(n) = u.get("completion_tokens").and_then(|x| x.as_i64()) {
+                span.record("completion_tokens", n);
+            }
+            if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
+                span.record("total_tokens", n);
+            }
+        }
         let mut response_headers = HeaderMap::new();
         if let Some(ct) = resp.content_type
             && let Ok(v) = ct.parse()
@@ -243,7 +276,11 @@ async fn chat_completions(
 ///
 /// - 2xx 默认 text/event-stream；非 2xx 默认 application/json（上游错误体）
 /// - 流中断时注入 SSE error frame，避免静默截断
-fn stream_into_response(resp: StreamResponse) -> axum::response::Response {
+async fn stream_into_response(resp: StreamResponse) -> Result<axum::response::Response, axum::response::Response> {
+    let resp = crate::adapter::ensure_stream_ok(resp)
+        .await
+        .map_err(|e| error_response(StatusCode::BAD_GATEWAY, &e.to_string(), "upstream_error"))?;
+
     let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::OK);
 
     let default_ct = if status.is_success() {
@@ -272,7 +309,7 @@ fn stream_into_response(resp: StreamResponse) -> axum::response::Response {
     });
 
     let body = Body::from_stream(stream);
-    (
+    Ok((
         status,
         [
             (axum::http::header::CONTENT_TYPE, content_type),
@@ -280,7 +317,7 @@ fn stream_into_response(resp: StreamResponse) -> axum::response::Response {
         ],
         body,
     )
-        .into_response()
+        .into_response())
 }
 
 /// 从 PG kv_store 加载渠道配置
@@ -296,6 +333,148 @@ pub async fn load_channels(
         .into_iter()
         .filter_map(|(_, value)| serde_json::from_value(value).ok())
         .collect())
+}
+
+/// F5.3 — GET /admin/logs 查询参数
+#[derive(serde::Deserialize)]
+pub struct LogQuery {
+    pub user: Option<String>,
+    pub model: Option<String>,
+    pub channel: Option<String>,
+    pub path: Option<String>,
+    pub status: Option<u16>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// 展平 JSONL 日志行：合并 fields > span > spans[0] 为一个 flat map
+fn flatten(v: &serde_json::Value) -> Option<serde_json::Value> {
+    let obj = v.as_object()?;
+    let mut merged = serde_json::Map::new();
+    if let Some(arr) = obj.get("spans").and_then(|s| s.as_array())
+        && let Some(first) = arr.first().and_then(|s| s.as_object())
+    {
+        for (k, val) in first {
+            merged.insert(k.clone(), val.clone());
+        }
+    }
+    if let Some(span) = obj.get("span").and_then(|s| s.as_object()) {
+        for (k, val) in span {
+            merged.insert(k.clone(), val.clone());
+        }
+    }
+    if let Some(fields) = obj.get("fields").and_then(|s| s.as_object()) {
+        for (k, val) in fields {
+            merged.insert(k.clone(), val.clone());
+        }
+    }
+    Some(serde_json::Value::Object(merged))
+}
+
+/// 纯函数：过滤 JSONL 行并分页
+///
+/// - 只保留"请求完成事件"行（顶层有 fields.status 的行）
+/// - 展平 fields > span > spans[0]
+/// - 字符串字段精确匹配；status 数值匹配；since/until 与 timestamp 做前缀比较
+/// - 保持传入顺序；返回 (当前页数据, 匹配总数)
+pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>, usize) {
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let offset = q.offset.unwrap_or(0);
+
+    let mut matched: Vec<serde_json::Value> = Vec::new();
+    for line in lines {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue; // 损坏行静默跳过
+        };
+        // 只保留请求完成事件行（顶层有 fields.status）
+        if v.get("fields").and_then(|f| f.get("status")).is_none() {
+            continue;
+        }
+        let Some(flat) = flatten(&v) else { continue };
+
+        // 字符串字段精确匹配
+        let str_match = |field: &str, val: &Option<String>| -> bool {
+            val.as_ref().map_or(true, |want| {
+                flat.get(field).and_then(|f| f.as_str()).map_or(false, |s| s == want)
+            })
+        };
+        if !str_match("user", &q.user)
+            || !str_match("model", &q.model)
+            || !str_match("channel", &q.channel)
+            || !str_match("path", &q.path)
+        {
+            continue;
+        }
+
+        // status 数值匹配
+        if let Some(status) = q.status {
+            if flat.get("status").and_then(|s| s.as_u64()) != Some(status as u64) {
+                continue;
+            }
+        }
+
+        // since/until 与顶层 timestamp 做前缀比较（RFC3339 字符串字典序 = 时间序）
+        if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
+            if let Some(since) = &q.since {
+                if ts < since.as_str() {
+                    continue;
+                }
+            }
+            if let Some(until) = &q.until {
+                if ts > until.as_str() {
+                    continue;
+                }
+            }
+        }
+
+        matched.push(flat);
+    }
+
+    let total = matched.len();
+    let page = matched.into_iter().skip(offset).take(limit).collect();
+    (page, total)
+}
+
+/// GET /admin/logs — 查询 JSONL 日志（仅 admin）
+async fn list_logs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<LogQuery>,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    // 收集日志行：文件名降序（新→旧），逐文件按行收集
+    let mut all_lines: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(LOG_DIR) {
+        let mut names: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|name| name.starts_with("ferrite.log."))
+            .collect();
+        names.sort_unstable_by(|a, b| b.cmp(a)); // 降序
+        for name in names {
+            if let Ok(content) = std::fs::read_to_string(std::path::Path::new(LOG_DIR).join(&name)) {
+                for line in content.lines() {
+                    all_lines.push(line.to_string());
+                }
+            }
+        }
+    }
+    // 目录不存在或不可读 → 空结果，不报 500
+    let refs: Vec<&str> = all_lines.iter().map(|s| s.as_str()).collect();
+    let (data, total) = filter_log_lines(&refs, &q);
+
+    let body = serde_json::json!({"object": "list", "total": total, "data": data});
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json".to_string())],
+        body.to_string(),
+    )
+        .into_response())
 }
 
 #[cfg(test)]
@@ -330,5 +509,49 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["error"]["message"], "bad");
         assert_eq!(v["error"]["type"], "invalid_request_error");
+    }
+
+    #[test]
+    fn filter_log_lines_filters_and_paginates() {
+        // 完成事件行（有 fields.status）
+        let line1 = r#"{"timestamp":"2025-01-01T00:00:00Z","fields":{"status":200,"user":"alice","model":"gpt-4"},"span":{"channel":"ch1","path":"/v1/chat/completions"}}"#;
+        // 非完成事件行（无 fields.status）→ 跳过
+        let line2 = r#"{"timestamp":"2025-01-01T00:01:00Z","fields":{"user":"bob"}}"#;
+        // status 不匹配
+        let line3 = r#"{"timestamp":"2025-01-01T00:02:00Z","fields":{"status":500,"user":"alice"}}"#;
+        // 损坏行 → 跳过
+        let line4 = "not json at all";
+
+        let lines = [line1, line2, line3, line4];
+
+        // 无过滤：1 匹配（只有 line1 有 status）
+        let q = LogQuery { user: None, model: None, channel: None, path: None, status: None, since: None, until: None, limit: None, offset: None };
+        let (page, total) = filter_log_lines(&lines, &q);
+        assert_eq!(total, 2); // line1 (200) + line3 (500)
+        assert_eq!(page.len(), 2);
+
+        // 按 user 过滤
+        let q = LogQuery { user: Some("alice".into()), model: None, channel: None, path: None, status: None, since: None, until: None, limit: None, offset: None };
+        let (page, total) = filter_log_lines(&lines, &q);
+        assert_eq!(total, 2); // line1 + line3 都是 alice
+
+        // 按 status 过滤
+        let q = LogQuery { user: None, model: None, channel: None, path: None, status: Some(200), since: None, until: None, limit: None, offset: None };
+        let (page, total) = filter_log_lines(&lines, &q);
+        assert_eq!(total, 1);
+        assert_eq!(page[0]["status"].as_u64(), Some(200));
+        assert_eq!(page[0]["user"].as_str(), Some("alice"));
+        assert_eq!(page[0]["channel"].as_str(), Some("ch1")); // 来自 span 展平
+
+        // since 前缀比较
+        let q = LogQuery { user: None, model: None, channel: None, path: None, status: None, since: Some("2025-01-01T00:01:30Z".into()), until: None, limit: None, offset: None };
+        let (_, total) = filter_log_lines(&lines, &q);
+        assert_eq!(total, 1); // 只有 line3 在 00:02:00
+
+        // 分页
+        let q = LogQuery { user: None, model: None, channel: None, path: None, status: None, since: None, until: None, limit: Some(1), offset: Some(1) };
+        let (page, total) = filter_log_lines(&lines, &q);
+        assert_eq!(total, 2); // 全量
+        assert_eq!(page.len(), 1); // 第二页只取 1 条
     }
 }

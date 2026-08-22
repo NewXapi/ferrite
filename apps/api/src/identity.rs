@@ -13,6 +13,15 @@ pub struct Pass {
     pub quota: i64,
     pub used_quota: i64,
     pub group: String,
+    pub is_admin: bool,
+}
+
+pub fn require_admin(pass: &Pass) -> Result<(), (StatusCode, String)> {
+    if pass.is_admin {
+        Ok(())
+    } else {
+        Err((StatusCode::FORBIDDEN, "admin required".into()))
+    }
 }
 
 /// 从 Authorization header 提取 Bearer token
@@ -35,8 +44,8 @@ pub fn extract_token(headers: &HeaderMap) -> Result<String, (StatusCode, String)
 
 /// 从 PG 查 token，返回 Pass
 pub async fn authenticate(pool: &PgPool, token: &str) -> Result<Pass, (StatusCode, String)> {
-    let row: Option<(i64, String, i64, i64, String, bool)> = sqlx::query_as(
-        r#"SELECT user_id, username, quota, used_quota, "group", enabled FROM tokens WHERE key = $1"#,
+    let row: Option<(i64, String, i64, i64, String, bool, bool)> = sqlx::query_as(
+        r#"SELECT user_id, username, quota, used_quota, "group", enabled, is_admin FROM tokens WHERE key = $1"#,
     )
     .bind(token)
     .fetch_optional(pool)
@@ -53,7 +62,6 @@ pub async fn authenticate(pool: &PgPool, token: &str) -> Result<Pass, (StatusCod
     if remaining <= 0 {
         return Err((StatusCode::PAYMENT_REQUIRED, "insufficient quota".into()));
     }
-
     Ok(Pass {
         token_key: token.to_string(),
         user_id: row.0,
@@ -61,5 +69,6 @@ pub async fn authenticate(pool: &PgPool, token: &str) -> Result<Pass, (StatusCod
         quota: row.2,
         used_quota: row.3,
         group: row.4,
+        is_admin: row.6,
     })
 }

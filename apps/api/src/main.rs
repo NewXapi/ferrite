@@ -1,12 +1,8 @@
 //! Ferrite — 进程入口，只做组装和启动
 
-mod adapter;
-mod config;
-mod dispatch;
-mod gateway;
-mod identity;
-mod ratelimit;
-
+use api::config;
+use api::dispatch;
+use api::gateway;
 use std::process::ExitCode;
 
 #[tokio::main]
@@ -19,20 +15,39 @@ async fn main() -> ExitCode {
         }
     };
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&config.log_level)),
-        )
-        .init();
-
     let pool = match config::init_pool(&config.database_url).await {
         Ok(p) => p,
         Err(e) => {
-            tracing::error!("failed to connect to database: {e}");
+            eprintln!("failed to connect to database: {e}");
             return ExitCode::FAILURE;
         }
     };
+
+    // 统一遥测（纯现成 crate，零自研）：
+    //   stdout 人类可读层 + 滚动 JSON 文件层（tracing-appender，非阻塞）
+    //   两层各自挂 per-layer EnvFilter，RUST_LOG / config.log_level 统一控制
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer as _};
+    let file_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&config.log_level));
+    let stdout_filter = file_filter.clone();
+    let (file_writer, log_guard) = tracing_appender::non_blocking(
+        tracing_appender::rolling::daily(gateway::LOG_DIR, "ferrite.log"),
+    );
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_filter(stdout_filter))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_writer(file_writer)
+                .with_filter(file_filter),
+        )
+        .init();
+    // flush 线程须存活到进程结束
+    std::mem::forget(log_guard);
+
+    // 桥接：依赖 crate（reqwest/hyper 等）经 log 门面输出的日志统一进 tracing subscriber
+    let _ = tracing_log::LogTracer::init();
+
     tracing::info!("database connected");
 
     let route_index = dispatch::RouteIndex::new();
