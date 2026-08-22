@@ -46,6 +46,7 @@ impl Gateway {
             .route("/v1/models", get(list_models))
             .route("/v1/chat/completions", post(chat_completions))
             .route("/admin/logs", get(list_logs))
+            .route("/admin/reload", post(reload_channels))
             .layer(
                 // 统一请求日志：span 声明业务字段，handler 内 record 填充，
                 // TraceLayer 的 on_response 事件自动携带全部字段写入 JSON 日志文件
@@ -165,10 +166,9 @@ async fn reload_channels(
                 .into_response())
         }
         Err(e) => {
-            tracing::error!("failed to reload channels: {e}");
             Err(error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                &e.to_string(),
+                &format!("reload failed: {e}"),
                 "server_error",
             ))
         }
@@ -349,7 +349,8 @@ pub struct LogQuery {
     pub offset: Option<usize>,
 }
 
-/// 展平 JSONL 日志行：合并 fields > span > spans[0] 为一个 flat map
+/// 展平 JSONL 日志行：合并 fields > span > spans[0] 为一个 flat map。
+/// 实现按优先级从低到高依次插入（spans[0] → span → fields），后者覆盖前者。
 fn flatten(v: &serde_json::Value) -> Option<serde_json::Value> {
     let obj = v.as_object()?;
     let mut merged = serde_json::Map::new();
@@ -415,7 +416,8 @@ pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>
             }
         }
 
-        // since/until 与顶层 timestamp 做前缀比较（RFC3339 字符串字典序 = 时间序）
+        // since/until 与顶层 timestamp 比较（RFC3339 字典序 = 时间序，要求同精度格式）。
+        // until 用"相等或前缀包含"语义：until="2025-01-01" 表示含当天全天。
         if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
             if let Some(since) = &q.since {
                 if ts < since.as_str() {
@@ -423,7 +425,7 @@ pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>
                 }
             }
             if let Some(until) = &q.until {
-                if ts > until.as_str() {
+                if ts > until.as_str() && !ts.starts_with(until.as_str()) {
                     continue;
                 }
             }
@@ -447,7 +449,13 @@ async fn list_logs(
     crate::identity::require_admin(&pass)
         .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
 
-    // 收集日志行：文件名降序（新→旧），逐文件按行收集
+    // 收集日志行：文件名降序（新→旧），逐文件按行收集。
+    // 内存上限：最多读 MAX_SCAN_LINES 行（新文件优先），防止长期运行后 OOM。
+    // since/until 可解析出日期前缀时，跳过窗口外的旧文件（文件名含 YYYY-MM-DD）。
+    const MAX_SCAN_LINES: usize = 100_000;
+    let since_date = q.since.as_deref().map(|s| s.get(..10).unwrap_or(s));
+    let until_date = q.until.as_deref().map(|s| s.get(..10).unwrap_or(s));
+
     let mut all_lines: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(LOG_DIR) {
         let mut names: Vec<String> = entries
@@ -456,10 +464,28 @@ async fn list_logs(
             .filter(|name| name.starts_with("ferrite.log."))
             .collect();
         names.sort_unstable_by(|a, b| b.cmp(a)); // 降序
-        for name in names {
-            if let Ok(content) = std::fs::read_to_string(std::path::Path::new(LOG_DIR).join(&name)) {
-                for line in content.lines() {
-                    all_lines.push(line.to_string());
+        'files: for name in names {
+            // 文件名日期在 since 窗口之前 → 后面只会更旧，直接停
+            if let Some(d) = name.get(12..22) {
+                if let Some(sd) = since_date
+                    && d < sd
+                {
+                    break;
+                }
+                if let Some(ud) = until_date
+                    && d > ud
+                {
+                    continue;
+                }
+            }
+            let Ok(content) = std::fs::read_to_string(std::path::Path::new(LOG_DIR).join(&name))
+            else {
+                continue;
+            };
+            for line in content.lines() {
+                all_lines.push(line.to_string());
+                if all_lines.len() >= MAX_SCAN_LINES {
+                    break 'files;
                 }
             }
         }
@@ -532,7 +558,7 @@ mod tests {
 
         // 按 user 过滤
         let q = LogQuery { user: Some("alice".into()), model: None, channel: None, path: None, status: None, since: None, until: None, limit: None, offset: None };
-        let (page, total) = filter_log_lines(&lines, &q);
+        let (_, total) = filter_log_lines(&lines, &q);
         assert_eq!(total, 2); // line1 + line3 都是 alice
 
         // 按 status 过滤

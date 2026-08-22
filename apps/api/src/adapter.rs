@@ -30,9 +30,19 @@ pub async fn ensure_stream_ok(resp: StreamResponse) -> Result<StreamResponse, Ad
     if (200..300).contains(&resp.status) {
         return Ok(resp);
     }
+    // 错误 body 截断到 256 KiB，防止异常上游返回超大 body 打爆内存
+    const MAX_ERR_BODY: usize = 256 * 1024;
     let status = resp.status;
-    let body = resp.stream.bytes().await?;
-    Err(AdapterError::Upstream(format!("status {status}: {}", String::from_utf8_lossy(&body))))
+    let mut buf: Vec<u8> = Vec::new();
+    let mut stream = resp.stream;
+    while let Some(chunk) = stream.chunk().await.map_err(AdapterError::Network)? {
+        if buf.len() + chunk.len() > MAX_ERR_BODY {
+            buf.extend_from_slice(&chunk[..MAX_ERR_BODY - buf.len()]);
+            break;
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Err(AdapterError::Upstream(format!("status {status}: {}", String::from_utf8_lossy(&buf))))
 }
 
 /// OpenAI 格式适配器

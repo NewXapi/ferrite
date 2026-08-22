@@ -42,8 +42,8 @@ async fn main() -> ExitCode {
                 .with_filter(file_filter),
         )
         .init();
-    // flush 线程须存活到进程结束
-    std::mem::forget(log_guard);
+    // guard 存活到 main 结束；drop 时阻塞排空非阻塞写线程，所有退出路径都不丢日志
+    let _log_guard = log_guard;
 
     // 桥接：依赖 crate（reqwest/hyper 等）经 log 门面输出的日志统一进 tracing subscriber
     let _ = tracing_log::LogTracer::init();
