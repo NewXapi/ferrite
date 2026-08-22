@@ -47,6 +47,8 @@ impl Gateway {
             .route("/v1/chat/completions", post(chat_completions))
             .route("/admin/logs", get(list_logs))
             .route("/admin/reload", post(reload_channels))
+            .route("/admin/tokens", post(create_token))
+            .route("/admin/channels", post(create_channel))
             .layer(
                 // 统一请求日志：span 声明业务字段，handler 内 record 填充，
                 // TraceLayer 的 on_response 事件自动携带全部字段写入 JSON 日志文件
@@ -173,6 +175,215 @@ async fn reload_channels(
             ))
         }
     }
+}
+
+/// F6.1 — POST /admin/tokens 创建请求
+#[derive(serde::Deserialize)]
+pub struct CreateTokenReq {
+    pub user_id: Option<i64>,
+    pub username: String,
+    pub quota: Option<i64>,
+    pub group: Option<String>,
+    pub is_admin: Option<bool>,
+}
+
+/// 生成随机 token key：`sk-` + 32 hex 字符
+pub fn gen_token_key() -> String {
+    let bytes: [u8; 16] = rand::random();
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("sk-{hex}")
+}
+
+/// POST /admin/tokens — 创建 token (仅 admin)
+async fn create_token(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let req: CreateTokenReq = serde_json::from_slice(&body).map_err(|e| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid JSON: {e}"),
+            "invalid_request_error",
+        )
+    })?;
+    if req.username.trim().is_empty() {
+        return Err(error_response(
+            StatusCode::BAD_REQUEST,
+            "username must not be empty",
+            "invalid_request_error",
+        ));
+    }
+
+    // user_id 缺省时取 max+1（admin 低频操作，不做并发防护）
+    // ponytail: max+1 有竞态，token 创建频率低到可忽略；真要并发就换 sequence
+    let user_id = match req.user_id {
+        Some(id) => id,
+        None => {
+            let (next,): (i64,) =
+                sqlx::query_as("SELECT COALESCE(MAX(user_id), 0) + 1 FROM tokens")
+                    .fetch_one(&state.pool)
+                    .await
+                    .map_err(|e| {
+                        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+                    })?;
+            next
+        }
+    };
+
+    let key = gen_token_key();
+    let quota = req.quota.unwrap_or(500_000);
+    let group = req.group.unwrap_or_else(|| "default".into());
+    let is_admin = req.is_admin.unwrap_or(false);
+
+    let row: (i64, String, bool) = sqlx::query_as(
+        r#"INSERT INTO tokens (key, user_id, username, quota, "group", enabled, is_admin)
+           VALUES ($1, $2, $3, $4, $5, true, $6)
+           RETURNING user_id, "group", is_admin"#,
+    )
+    .bind(&key)
+    .bind(user_id)
+    .bind(req.username.trim())
+    .bind(quota)
+    .bind(&group)
+    .bind(is_admin)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+    })?;
+
+    let body = serde_json::json!({
+        "object": "token",
+        "key": key,
+        "user_id": row.0,
+        "username": req.username.trim(),
+        "quota": quota,
+        "used_quota": 0,
+        "group": row.1,
+        "enabled": true,
+        "is_admin": row.2,
+    });
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response())
+}
+
+/// F7.1 — POST /admin/channels 创建请求
+#[derive(serde::Deserialize)]
+pub struct CreateChannelReq {
+    pub name: String,
+    pub base_url: String,
+    pub channel_type: String,
+    pub keys: Vec<String>,
+    pub models: Vec<crate::dispatch::ModelRoute>,
+}
+
+/// 允许的 channel_type 取值
+pub const CHANNEL_TYPES: &[&str] = &["openai", "openai-compat", "claude", "gemini"];
+
+/// 纯校验（可单测）：字段非空 + channel_type 合法 + base_url 可解析
+pub fn validate_channel(req: &CreateChannelReq) -> Result<(), String> {
+    if req.name.trim().is_empty() {
+        return Err("name must not be empty".into());
+    }
+    if !CHANNEL_TYPES.contains(&req.channel_type.as_str()) {
+        return Err(format!(
+            "invalid channel_type {:?}; allowed one of {:?}",
+            req.channel_type, CHANNEL_TYPES
+        ));
+    }
+    if reqwest::Url::parse(&req.base_url).is_err() {
+        return Err(format!("invalid base_url: {}", req.base_url));
+    }
+    if req.keys.is_empty() || req.keys.iter().any(|k| k.trim().is_empty()) {
+        return Err("keys must be a non-empty array of non-empty strings".into());
+    }
+    if req.models.is_empty() {
+        return Err("models must not be empty".into());
+    }
+    for m in &req.models {
+        if m.alias.trim().is_empty() || m.upstream.trim().is_empty() {
+            return Err("models[].alias/upstream must not be empty".into());
+        }
+    }
+    Ok(())
+}
+
+/// POST /admin/channels — 创建渠道 (仅 admin)，存 kv_store `channel:{id}`
+async fn create_channel(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, axum::response::Response> {
+    let pass = authenticate_request(&state, &headers).await?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+
+    let req: CreateChannelReq = serde_json::from_slice(&body).map_err(|e| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid JSON: {e}"),
+            "invalid_request_error",
+        )
+    })?;
+    validate_channel(&req).map_err(|m| {
+        error_response(StatusCode::BAD_REQUEST, &m, "invalid_request_error")
+    })?;
+
+    // name 唯一性：与现有渠道比对
+    let existing = load_channels(&state.pool).await.map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+    })?;
+    if existing.iter().any(|c| c.name == req.name) {
+        return Err(error_response(
+            StatusCode::CONFLICT,
+            &format!("channel name {:?} already exists", req.name),
+            "invalid_request_error",
+        ));
+    }
+
+    // id 用毫秒时间戳（kv_store key 是 text，无自增序列）
+    let id = chrono::Utc::now().timestamp_millis();
+    let cfg = crate::dispatch::ChannelConfig {
+        id,
+        name: req.name.clone(),
+        base_url: req.base_url.clone(),
+        channel_type: req.channel_type.clone(),
+        keys: req.keys.clone(),
+        models: req.models.clone(),
+    };
+    let value = serde_json::to_value(&cfg).map_err(|e| {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("serialize error: {e}"), "server_error")
+    })?;
+    sqlx::query("INSERT INTO kv_store (key, value) VALUES ($1, $2)")
+        .bind(format!("channel:{id}"))
+        .bind(value)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        })?;
+
+    let body = serde_json::json!({
+        "status": "ok",
+        "id": id,
+        "name": req.name,
+        "hint": "POST /admin/reload to apply",
+    });
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response())
 }
 
 /// POST /v1/chat/completions
