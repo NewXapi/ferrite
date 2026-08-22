@@ -47,3 +47,37 @@ fn validate_channel_rejects_bad_input() {
     bad_url.base_url = "not a url".into();
     assert!(validate_channel(&bad_url).unwrap_err().contains("base_url"));
 }
+
+/// 空/空格 name、空 keys、含空字符串 keys、空 alias/upstream 均拒绝
+#[test]
+fn validate_channel_rejects_empty_fields() {
+    let mut bad = valid_req();
+    bad.name = "   ".into();
+    assert!(validate_channel(&bad).unwrap_err().contains("name"));
+
+    let mut bad = valid_req();
+    bad.keys.clear();
+    assert!(validate_channel(&bad).unwrap_err().contains("keys"));
+
+    let mut bad = valid_req();
+    bad.keys = vec!["".into()];
+    assert!(validate_channel(&bad).unwrap_err().contains("keys"));
+
+    let mut bad = valid_req();
+    bad.models[0].alias = "".into();
+    assert!(validate_channel(&bad).unwrap_err().contains("alias"));
+
+    let mut bad = valid_req();
+    bad.models[0].upstream = "  ".into();
+    assert!(validate_channel(&bad).unwrap_err().contains("upstream"));
+}
+
+/// deny_unknown_fields：多余 typo 字段必须报错，不能静默吞掉
+#[test]
+fn create_token_req_deny_unknown_fields() {
+    assert!(serde_json::from_str::<api::gateway::CreateTokenReq>(
+        r#"{"username":"x","quota_usd":5}"#
+    )
+    .is_err());
+    assert!(serde_json::from_str::<api::gateway::CreateTokenReq>(r#"{"username":"x"}"#).is_ok());
+}

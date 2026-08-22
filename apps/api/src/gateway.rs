@@ -179,6 +179,7 @@ async fn reload_channels(
 
 /// F6.1 — POST /admin/tokens 创建请求
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateTokenReq {
     pub user_id: Option<i64>,
     pub username: String,
@@ -278,6 +279,7 @@ async fn create_token(
 
 /// F7.1 — POST /admin/channels 创建请求
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateChannelReq {
     pub name: String,
     pub base_url: String,
