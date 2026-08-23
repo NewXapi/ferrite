@@ -2,238 +2,64 @@
 
 生成日期: 2026-08-22 / 更新: 2026-08-23
 
-## 已完成（见 F-done-archive.md）
-- F1.1, G1, F5.1, F5.2, F5.3, F6.1, F7.1
-- F6.2, F6.3, F7.2, F7.3 (波次 3 管理面补全完成)
+## 已完成（细节见 F-done-archive.md）
 
-## 待开发
-- F8.x (多协议）
-- F10.x （计费）
+| 波次 | 任务 | 完成提交 |
+|---|---|---|
+| 基线 | F1-F4 (SSE/错误格式/models/热重载) | d04846a |
+| 1 | F1.1 stream 检查, G1 admin 认证 | 6dcafcd |
+| 2 | F5.1-F5.3 日志, F6.1 token 创建, F7.1 渠道创建 | 0a17ec9 前各 commit |
+| 3 | F6.2/F6.3 token 列表禁用, F7.2/F7.3 渠道列表更新删除 | a44ddf2 |
+| 4 | F10.1-F10.4 计费（倍率/预扣/结算/充值） | 84abbab |
+
+**进度**: 20 子任务中 17 已完成。测试 38 全绿零警告。
 
 ---
 
 ## 测试策略
 
-每个 feature 实现后补测试代码，放在 `apps/api/tests/` 目录下，按源文件分文件。
-每个文件一个 happy path + 一个错误路径。
+每个 feature 补测试放 `apps/api/tests/`，按源文件分文件，一个 happy path + 一个错误路径。
 
 ---
 
-## 1. F6 — Token 管理 API（剩余）
+## 待开发
 
-全部需 G1。依赖：已完成部分。
+## F8 — 多协议适配（波次 5-7, 最后一个大重构）
 
-### F6.2 — GET /admin/tokens（列表） ✅
+拆 5 个子任务：
 
-> 已完成（E2E 实测：掩码 / user_id / enabled / limit 分页 / 403 全过）。实现说明：超集拉取 + 内存过滤 + 切页（token 表小，免动态 SQL）。
+### F8.1 — 协议适配 trait
+- `ProtocolAdapter` trait: build_url/build_headers/build_body/classify_error
+- OpenAI 迁移进 trait；channel_type 决定 adapter；dispatch 记录 channel_type
+- 验收：现有 OpenAI 透传行为不变（回归测试保护）
 
-**范围**: 列出 token。
+### F8.2 — Claude Messages API 适配
+- URL `{base}/v1/messages`, x-api-key + anthropic-version, system 独立字段
+- SSE 事件流转换 (`content_block_delta`)
+- 错误分类：400 不重试, 429/5xx 重试, 401/403 熔断
 
-**实现**: `SELECT key, user_id, username, quota, used_quota, "group", enabled, created_at, is_admin FROM tokens LIMIT $1 OFFSET $2`；key 显示掩码 `sk-xxx…`; `user_id`, `enabled` query 过滤。
+### F8.3 — Gemini generateContent 适配
+- `{base}/v1beta/models/{model}:generateContent?key=`, contents 数组, candidates 结构
+- 流式 streamGenerateContent + SSE
 
-**返回**: `{"object":"list","total":N,"data":[...]}`（与 /admin/logs 风格一致）。
+### F8.4 — OpenAI ↔ Claude 协议互转
+- 请求/响应体互转 (messages 映射, max_tokens 补默认, usage 字段映射)
+- 流式逐 chunk 转换
 
-**验收**:
-- 创建 3 个 token → list 应含它们
-- `?enabled=false` → 只有禁用
-- `?user_id=X` → 过滤正确
-- key 显示掩码（前 8 位 + `...`)
-- 分页：`limit=1`→total 正确；`limit=999`→clamp 500
+### F8.5 — 协议路由
+- dispatch 按 channel_type 选 adapter; 客户端格式按 body 结构判定
+- 格式不匹配触发转换；同格式透传
 
-**测试**:
-1. 纯函数 `token_query_filters()` 生成 SQL 注入参数（user_id/enabled/bind 顺序）
-2. E2E（见验收）
+依赖链：F8.1 → {F8.2, F8.3}; F8.2 → F8.4 → F8.5
 
-**依赖**: G1
-
----
-
-### F6.3 — DELETE /admin/tokens/:key（软删除） ✅
-
-> 已完成（E2E 实测：204 禁用 → 后续请求 403 → 重复删 = 204 幂等 → 不存在 = 404 → 非 admin 403）。
-
-**范围**: 禁用（不是删除）。
-
-**实现**: `UPDATE tokens SET enabled = false WHERE key = $1 RETURNING id` → 200 / 404 NotFound。identity.rs authenticate 已检查 enabled=false → 403，无需改。
-
-**验收**:
-- 创建 token → 用新 token 请求 /v1/models 200
-- DELETE → 204（axum 惯例）
-- 同一 token → 403
-- 再 DELETE 同 key → 204（幂等；行仍存在）
-
-**测试**:
-1. E2E（见验收）
-2. DELETE 异常：不存在的 key → 404；非 admin → 403
-
-**依赖**: F6.1, G1
+注：F10.3 流式 settle 目前跳过（SSE 无 usage），F8 落地后接入。
 
 ---
 
-## 2. F7 — 渠道管理 API（剩余）
+## Deferred
 
-全部需 G1。渠道存 `kv_store`	key `channel:{id}`,value json 已序列化为 ChannelConfig。
+### 路由调度（G3 failover + F9 健康状态机）
+new-api 试点验证后再迁入 ferrite。触发条件：单 model 多 channel 需求出现。
 
-### F7.2 — GET /admin/channels（列表） ✅
-
-> 已完成（E2E 实测：总数、key 掩码、channel_type 过滤全过）。
-
-**范围**: 列出所有渠道。
-
-**实现**: `SELECT key, value FROM kv_store WHERE key LIKE 'channel:%'` → filter_map 反序列化为 `ChannelConfig` → 数组返回。`channel_type` query 过滤。
-
-**返回**: `{"object":"list","total":N,"data":[{ id, name, base_url, channel_type, keys: ["sk-…"], models: [...] }]}`（`keys` 掩码）
-
-**验收**:
-- 创建 2 渠道 → list 应含
-- `?channel_type=openai` → 只有 openai
-- key 掩码验证
-- 空 kv_store → total=0
-
-**依赖**: G1
-
----
-
-### F7.3 — PUT/DELETE /admin/channels/:id（更新+删除） ✅
-
-> 已完成（E2E 实测：PUT models → reload 可路由；改名撞名 409；坏 URL 400；不存在 404；typo 字段 400；DELETE → reload → alias 消失）。
-
-**范围**: 更新 + 删除。
-
-**PUT 实现**:
-- `SELECT value FROM kv_store WHERE key = 'channel:{id}'` → 反序列化 ChannelConfig
-- 应用 merge: 传什么改什么（None=保持不变）。重新 validate_channel（用合并后的结果）
-- PUT 与 F7.1 字段结构共用（避免重复定义）：`CreateChannelReq` 字段全 Option
-- kv_store UPDATE
-
-**DELETE 实现**:
-- `DELETE FROM kv_store WHERE key = 'channel:{id}'` → 204 / 404
-
-**验收**:
-- POST 创建 → PUT 修改 models → reload → 新 alias 出现在 /v1/models
-- PUT 错误字段 → 400
-- DELETE → reload → alias 消失
-- DELETE 不存在 → 404
-
-**安全**:
-- 从 input JSON 到上游调用没有 shell（只进 PG jsonb)
-- deny_unknown_fields 均有
-
-**测试**:
-1. `merge_channel_config()` 纯函数：传入 ChannelConfig + 部分 JSON → 验证结果
-2. E2E
-
-**依赖**: F7.1, G1
-
----
-
-## 3. F8 — 多协议适配（下一个波次）
-
-见 F-done-archive 已完成的 F1-F7.1。待开发主体在 §4。
-
-## 4. F10 — 计费系统 ✅
-
-已完成 (a44ddf2 → 84abbab):
-
-### F10.1 倍率配置 (billing.rs)
-- ModelPricing {input_per_1k: f64, output_per_1k: f64, multiplier: f64}
-- kv_store `pricing:{model}`: read_pricing / write_pricing (校验 + UPSERT)
-- tokens_to_quota: 未配置 1:1；已配置 ceil((p*in + c*out) * mult / 1000)，f64 饱和护栏
-- validate_pricing：负单价/负倍率拒绝，0 倍率合法 (免费 model)
-
-### F10.2 预扣 + F10.3 结算 (chat_completions)
-- reserve_quota: 原子 UPDATE...RETURNING，剩余 ≥ reserve 才成功，None → 402
-- settle_quota: delta = actual - reserve，GREATEST 防负数；无行 → info 静默
-- 仅在上游 2xx 且预扣成功时结算（防上行 5xx 误退款/伪退款）
-- 决策 C：上游失败预扣消耗、不回滚，tracing::warn billing_reserve_consumed
-
-### F10.4 充值 (gateway.rs)
-- POST /admin/recharge {token_key, amount}: amount<=0→400, 不存在→404
-- 返回 200 {new_quota, user_id, username, masked_key}
-
-### E2E 通过记录
-mock upstream + 真实计费：预扣 1000 → 非流式 200 usage(100,50) → 结算 999 退 = 1
-quota=500 时第二请求 → 402；充值 1000 → quota 1500；再请求 → 200
-
----
-
-## 5. 计划顺序（推荐执行波次）
-
-| 波次 | 子任务 | 状态 |
-|---|---|---|
-| 3 | F6.2, F6.3, F7.2, F7.3 | ✅ 完成 |
-| 4 | F10.1-F10.4 | ✅ 完成 |
-| 5-7 | F8.x | 待开发 |
-| 8+ | 路由调度，数据库正式化 | deferred |
-
-**依赖关系**:
-- F6.2/F6.3 独立
-- F7.2/F7.3 依赖 F7.1（已完成）
-- F10.2 依赖 F5.2(token 使用日志）
-- F10.3 依赖 F10.2
-- F8.5 依赖所有协议
-
----
-
-## 6. Deferred — 路由调度与数据库正式化（不变）
-
-见 §7（同上打包）。触发条件保持。
-
----
-
-## 7. 子任务总表
-
-| 编号 | 状态 |
-|---|---|
-| F1.1, G1, F5.1, F5.2, F5.3, F6.1, F7.1 | ✅ 完成 |
-| F6.2, F6.3, F7.2, F7.3 | ✅ 完成 |
-| F8.1-F8.5 | 待开发 |
-| F10.1-F10.4 | ✅ 完成 |
-
-**Active**: 15 子任务 / 13 已完成。
-
----
-
-## 细分 PADC sub-plans per 任务（波次 3)
-
-### F6.2 + F6.3(T 批次，token handler，同文件 gateway.rs)
-
-PADC: plan → act → debug → checkpoint
-
-**plan**:
-- Handler 注册 + 实现都加在 gateway.rs，直接进 routes
-- 新增 `TokenListQuery` query params 结构
-- 新增 `mask_key()` 纯函数，`token_query_filters` 纯函数
-- E2E 临时目录、3210 端口
-
-**act**:
-- F6.2 handler 25 行
-- F6.3 handler 15 行
-- 测试：3 个（mask happy、过滤参数、DELETE 404)
-
-**debug**: cargo test gateway --quiet
-
-**checkpoint**: E2E smoke + ROADMAP 验收表格
-
----
-
-### F7.2 + F7.3(C 批次，channel handler，同文件）
-
-**plan**:
-- 新增 `ChannelListQuery, channel_mask_keys, mask_channel_key()`
-- 新增 `UpdateChannelReq`（所有字段 Option)
-- 新增 `merge_channel_config()` 纯函数
-- 测试同 T 批次
-
-**act**:
-- F7.2 handler 30 行
-- F7.3 PUT/DELETE 60 行
-- 测试 3 个
-
-**debug**: cargo test gateway --quiet
-
-**checkpoint**: E2E smoke + ROADMAP 验收
-
----
-
-**执行顺序**: T 批次 → C 批次 → 一次 E2E → 一次 commit → CRG/review
+### 数据库正式化（sqlx migrate + UNLOGGED 表）
+触发条件：kv_store 扫描成瓶颈 / 多副本部署需求 / 事务一致性需求。
