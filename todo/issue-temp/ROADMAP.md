@@ -131,9 +131,29 @@
 
 见 F-done-archive 已完成的 F1-F7.1。待开发主体在 §4。
 
-## 4. F10 — 计费系统（下一波次之后）
+## 4. F10 — 计费系统 ✅
 
-见 ROADMAP-deferred。
+已完成 (a44ddf2 → 84abbab):
+
+### F10.1 倍率配置 (billing.rs)
+- ModelPricing {input_per_1k: f64, output_per_1k: f64, multiplier: f64}
+- kv_store `pricing:{model}`: read_pricing / write_pricing (校验 + UPSERT)
+- tokens_to_quota: 未配置 1:1；已配置 ceil((p*in + c*out) * mult / 1000)，f64 饱和护栏
+- validate_pricing：负单价/负倍率拒绝，0 倍率合法 (免费 model)
+
+### F10.2 预扣 + F10.3 结算 (chat_completions)
+- reserve_quota: 原子 UPDATE...RETURNING，剩余 ≥ reserve 才成功，None → 402
+- settle_quota: delta = actual - reserve，GREATEST 防负数；无行 → info 静默
+- 仅在上游 2xx 且预扣成功时结算（防上行 5xx 误退款/伪退款）
+- 决策 C：上游失败预扣消耗、不回滚，tracing::warn billing_reserve_consumed
+
+### F10.4 充值 (gateway.rs)
+- POST /admin/recharge {token_key, amount}: amount<=0→400, 不存在→404
+- 返回 200 {new_quota, user_id, username, masked_key}
+
+### E2E 通过记录
+mock upstream + 真实计费：预扣 1000 → 非流式 200 usage(100,50) → 结算 999 退 = 1
+quota=500 时第二请求 → 402；充值 1000 → quota 1500；再请求 → 200
 
 ---
 
@@ -142,7 +162,7 @@
 | 波次 | 子任务 | 状态 |
 |---|---|---|
 | 3 | F6.2, F6.3, F7.2, F7.3 | ✅ 完成 |
-| 4 | F10.1-F10.4 | 待开发 |
+| 4 | F10.1-F10.4 | ✅ 完成 |
 | 5-7 | F8.x | 待开发 |
 | 8+ | 路由调度，数据库正式化 | deferred |
 
@@ -168,9 +188,9 @@
 | F1.1, G1, F5.1, F5.2, F5.3, F6.1, F7.1 | ✅ 完成 |
 | F6.2, F6.3, F7.2, F7.3 | ✅ 完成 |
 | F8.1-F8.5 | 待开发 |
-| F10.1-F10.4 | 待开发 |
+| F10.1-F10.4 | ✅ 完成 |
 
-**Active**: 15 子任务 / 9 已完成。
+**Active**: 15 子任务 / 13 已完成。
 
 ---
 
