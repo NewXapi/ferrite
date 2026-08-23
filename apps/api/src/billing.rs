@@ -22,6 +22,17 @@ impl Default for ModelPricing {
     }
 }
 
+/// 防滥倍率校验：不允许负数单价/负倍率 (0 = 免费 model 合法)
+pub fn validate_pricing(p: &ModelPricing) -> Result<(), String> {
+    if p.input_per_1k < 0.0 || p.output_per_1k < 0.0 {
+        return Err("input_per_1k/output_per_1k must be >= 0".into());
+    }
+    if p.multiplier < 0.0 {
+        return Err("multiplier must be >= 0 (0 = free model)".into());
+    }
+    Ok(())
+}
+
 /// 从 kv_store 读 `pricing:{model}` 的 value jsonb 反序列化
 pub async fn read_pricing(
     pool: &crate::config::PgPool,
@@ -45,6 +56,7 @@ pub async fn write_pricing(
     model: &str,
     pricing: &ModelPricing,
 ) -> Result<(), sqlx::Error> {
+    validate_pricing(pricing).map_err(|m| sqlx::Error::Protocol(m))?;
     let value = serde_json::to_value(pricing).expect("ModelPricing is always serializable");
     sqlx::query("INSERT INTO kv_store (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2")
         .bind(format!("pricing:{model}"))
@@ -52,6 +64,21 @@ pub async fn write_pricing(
         .execute(pool)
         .await?;
     Ok(())
+}
+
+// ─── F10.2 预扣 + F10.3 结算 ──────────────────────────────────────────────
+
+/// 预扣估算额度（固定值，覆盖大多数请求的实际消耗）
+pub const RESERVE_QUOTA: i64 = 1000;
+
+/// 预扣估算函数 — 纯函数，便于单测
+pub fn estimate_reserve() -> u64 {
+    RESERVE_QUOTA as u64
+}
+
+/// 结算 delta：actual - reserve（正数=补扣，负数=退还）
+pub fn settle_delta(actual: u64, reserve: u64) -> i64 {
+    actual as i64 - reserve as i64
 }
 
 /// token → quota 换算：
@@ -69,33 +96,12 @@ pub fn tokens_to_quota(
         + completion_tokens as f64 * p.output_per_1k)
         * p.multiplier
         / 1000.0;
+    // 浮点上限护栏：f64 最大 ~1.8e19；超过视作饱和，防 panick/overflow
+    // ponytail: 1e15 已够用, 不换 u128
+    if !cost.is_finite() || cost >= 1e15 {
+        return u64::MAX;
+    }
     cost.ceil() as u64
-}
-
-/// 防滥倍率校验：不允许负数单价/非正倍率
-pub fn validate_pricing(p: &ModelPricing) -> Result<(), String> {
-    if p.input_per_1k < 0.0 || p.output_per_1k < 0.0 {
-        return Err("input_per_1k/output_per_1k must be >= 0".into());
-    }
-    if p.multiplier <= 0.0 {
-        return Err("multiplier must be > 0".into());
-    }
-    Ok(())
-}
-
-// ─── F10.2 预扣 + F10.3 结算 ──────────────────────────────────────────────
-
-/// 预扣估算额度（固定值，覆盖大多数请求的实际消耗）
-pub const RESERVE_QUOTA: i64 = 1000;
-
-/// 预扣估算函数 — 纯函数，便于单测
-pub fn estimate_reserve() -> u64 {
-    RESERVE_QUOTA as u64
-}
-
-/// 结算 delta：actual - reserve（正数=补扣，负数=退还）
-pub fn settle_delta(actual: u64, reserve: u64) -> i64 {
-    actual as i64 - reserve as i64
 }
 
 /// 预扣：原子增 used_quota，仅当剩余额度 ≥ reserve 时成功
@@ -119,6 +125,7 @@ pub async fn reserve_quota(
 
 /// 结算：将 used_quota 从 reserve 调整为 actual
 /// delta = actual - reserve；正数补扣，负数退还
+/// 负 delta 时 GREATEST clamp 到 0，防 used_quota 被减成负数
 pub async fn settle_quota(
     pool: &crate::config::PgPool,
     token_key: &str,
@@ -126,11 +133,18 @@ pub async fn settle_quota(
     actual: u64,
 ) -> Result<(), sqlx::Error> {
     let delta = settle_delta(actual, reserve as u64);
-    sqlx::query("UPDATE tokens SET used_quota = used_quota + $1 WHERE key = $2")
-        .bind(delta)
-        .bind(token_key)
-        .execute(pool)
-        .await?;
+    let applied = sqlx::query_scalar::<_, i64>(
+        r#"UPDATE tokens SET used_quota = GREATEST(used_quota + $1, 0)
+           WHERE key = $2 RETURNING used_quota"#,
+    )
+    .bind(delta)
+    .bind(token_key)
+    .fetch_optional(pool)
+    .await?;
+    // None = token 被删；admin 行为，不是错误
+    if applied.is_none() {
+        tracing::info!(token = %token_key, "settle_quota: token row missing, skip");
+    }
     Ok(())
 }
 
@@ -146,25 +160,20 @@ mod tests {
 
     #[test]
     fn configured_half_multiplier() {
-        // 每 1k token 单价 1.0，倍率 0.5
-        let p = ModelPricing {
-            input_per_1k: 1.0,
-            output_per_1k: 1.0,
-            multiplier: 0.5,
-        };
-        // (1000*1.0 + 1000*1.0) * 0.5 / 1000 = 1.0 → ceil = 1
+        let p = ModelPricing { input_per_1k: 1.0, output_per_1k: 1.0, multiplier: 0.5 };
         assert_eq!(tokens_to_quota(1000, 1000, Some(&p)), 1);
-        // (500*1.0 + 500*1.0) * 0.5 / 1000 = 0.5 → ceil = 1
         assert_eq!(tokens_to_quota(500, 500, Some(&p)), 1);
     }
 
     #[test]
+    fn tokens_to_quota_overflow_saturates() {
+        let p = ModelPricing { input_per_1k: 1e12, output_per_1k: 0.0, multiplier: 1.0 };
+        assert_eq!(tokens_to_quota(u64::MAX, 0, Some(&p)), u64::MAX);
+    }
+
+    #[test]
     fn zero_tokens_is_zero() {
-        let p = ModelPricing {
-            input_per_1k: 2.0,
-            output_per_1k: 3.0,
-            multiplier: 1.0,
-        };
+        let p = ModelPricing { input_per_1k: 2.0, output_per_1k: 3.0, multiplier: 1.0 };
         assert_eq!(tokens_to_quota(0, 0, Some(&p)), 0);
     }
 
@@ -174,16 +183,15 @@ mod tests {
         assert!(validate_pricing(&p).is_err());
         p.input_per_1k = 1.0;
         p.multiplier = 0.0;
-        assert!(validate_pricing(&p).is_err());
+        assert!(validate_pricing(&p).is_ok()); // 0 = free model, valid
         p.multiplier = -0.5;
-        assert!(validate_pricing(&p).is_err());
+        assert!(validate_pricing(&p).is_err()); // negative = invalid
         p.multiplier = 1.0;
         assert!(validate_pricing(&p).is_ok());
     }
 
     #[test]
     fn deny_unknown_fields() {
-        // 多余字段应被拒绝
         let json = r#"{"input_per_1k":1.0,"output_per_1k":1.0,"multiplier":1.0,"extra":1}"#;
         assert!(serde_json::from_str::<ModelPricing>(json).is_err());
     }
@@ -203,13 +211,11 @@ mod tests {
 
     #[test]
     fn settle_delta_positive_when_actual_exceeds_reserve() {
-        // 实际 1500，预扣 1000 → 补扣 500
         assert_eq!(settle_delta(1500, 1000), 500);
     }
 
     #[test]
     fn settle_delta_negative_when_actual_below_reserve() {
-        // 实际 300，预扣 1000 → 退还 -700
         assert_eq!(settle_delta(300, 1000), -700);
     }
 
@@ -220,7 +226,6 @@ mod tests {
 
     #[test]
     fn settle_delta_zero_actual() {
-        // usage 为空（流式无 usage）→ 全额退还
         assert_eq!(settle_delta(0, 1000), -1000);
     }
 }

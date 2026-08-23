@@ -813,8 +813,10 @@ async fn chat_completions(
             None
         });
     let reserve = crate::billing::RESERVE_QUOTA;
+    let mut reserved = false;
     match crate::billing::reserve_quota(&state.pool, &pass.token_key, reserve).await {
         Ok(Some(used)) => {
+            reserved = true;
             span.record("reserved_quota", reserve);
             tracing::debug!(used_quota = used, "quota reserved");
         }
@@ -855,22 +857,24 @@ async fn chat_completions(
 
         let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::BAD_GATEWAY);
 
-        // F10.3 结算：解析 usage → actual quota → settle_delta
-        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
-            && let Some(u) = v.get("usage")
-        {
-            let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
-            let completion_tokens = u.get("completion_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
-            span.record("prompt_tokens", prompt_tokens as i64);
-            span.record("completion_tokens", completion_tokens as i64);
-            if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
-                span.record("total_tokens", n);
-            }
+        // F10.3 结算：仅在上游 2xx 且预扣成功时执行；非 2xx / reserve 失败都不退款（决策 C）
+        if status.is_success() && reserved {
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
+                && let Some(u) = v.get("usage")
+            {
+                let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                let completion_tokens = u.get("completion_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                span.record("prompt_tokens", prompt_tokens as i64);
+                span.record("completion_tokens", completion_tokens as i64);
+                if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
+                    span.record("total_tokens", n);
+                }
 
-            let actual = crate::billing::tokens_to_quota(prompt_tokens, completion_tokens, pricing.as_ref());
-            span.record("actual_quota", actual);
-            if let Err(e) = crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual).await {
-                tracing::warn!(event = "billing_settle_failed", error = %e, actual, reserve, "settle_quota failed");
+                let actual = crate::billing::tokens_to_quota(prompt_tokens, completion_tokens, pricing.as_ref());
+                span.record("actual_quota", actual);
+                if let Err(e) = crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual).await {
+                    tracing::warn!(event = "billing_settle_failed", error = %e, actual, reserve, "settle_quota failed");
+                }
             }
         }
 
