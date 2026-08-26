@@ -551,12 +551,26 @@ pub fn NetworkPanel() -> Element {
                         let target = if dragging {
                             0.0
                         } else {
+                            // Only nodes whose x falls inside the edge's span
+                            // (plus node padding) can be hit — cheap prefilter.
+                            let (x0, x1) = (a.0.min(b.0), a.0.max(b.0));
+                            let (pad_x, pad_y) = (NODE_W / 2.0 + 8.0, NODE_H / 2.0 + 8.0);
                             let blockers: Vec<(f64, f64)> = nodes
                                 .iter()
                                 .filter(|&&k| k != u && k != l)
                                 .map(|&k| ps[&k])
+                                .filter(|&(bx, by)| {
+                                    bx >= x0 - pad_x
+                                        && bx <= x1 + pad_x
+                                        && by >= (a.1.min(b.1)) - pad_y
+                                        && by <= (a.1.max(b.1)) + pad_y
+                                })
                                 .collect();
-                            dodge_frac(a, b, &blockers)
+                            if blockers.is_empty() {
+                                0.0
+                            } else {
+                                dodge_frac(a, b, &blockers)
+                            }
                         };
                         let cur = dw.entry(raw).or_insert(0.0);
                         let next = *cur + (target - *cur) * 0.18;
@@ -887,19 +901,6 @@ pub fn NetworkPanel() -> Element {
                             fill: "url(#grid-dots)",
                             pointer_events: "none",
                         }
-                        // Layer activity bands (per-type roaming ranges)
-                        for l in 0..3u8 {
-                            rect {
-                                x: "-3000",
-                                y: "{band_y(l).0:.0}",
-                                width: "{VIEW_W + 6000.0:.0}",
-                                height: "{BAND_HALF * 2.0:.0}",
-                                fill: "#ffffff",
-                                opacity: "0.018",
-                                pointer_events: "none",
-                            }
-                        }
-
                         // ---- Committed wires ----
                         for (du, dl, raw) in display_edges.clone() {
                             {
@@ -1333,36 +1334,48 @@ fn physics_step(
         fl.0 -= fx;
         fl.1 -= fy;
     }
-    // Separation between every node pair, box-aware: nodes are wide pills,
-    // so horizontal clearance (node width + 12) and vertical clearance
-    // (node height + 8) are separate; the pair resolves along the axis with
-    // the smaller penetration, like two rounded boxes touching.
-    // O(n²) pairwise scan; fine at this node count.
-    let nodes: Vec<NodeKey> = layers.iter().flatten().copied().collect();
-    for i in 0..nodes.len() {
-        for j in i + 1..nodes.len() {
-            let (a, b) = (nodes[i], nodes[j]);
-            let (pa, pb) = (positions[&a], positions[&b]);
-            let (dx, dy) = (pb.0 - pa.0, pb.1 - pa.1);
-            let ox = (NODE_W + 12.0) - dx.abs();
-            let oy = (NODE_H + 8.0) - dy.abs();
-            if ox <= 0.0 || oy <= 0.0 {
-                continue;
+    // Separation, box-aware: nodes are wide pills, so horizontal clearance
+    // (node width + 12) and vertical clearance (node height + 8) are separate;
+    // the pair resolves along the axis with the smaller penetration.
+    // Bands never overlap vertically (90px gap > NODE_H + 8), so only
+    // same-layer pairs can collide: sort each layer by x and sweep forward
+    // while within horizontal clearance. O(n log n + collisions) per frame.
+    let mut nodes: Vec<NodeKey> = layers.iter().flatten().copied().collect();
+    for layer in layers.iter() {
+        let mut row: Vec<NodeKey> = layer.clone();
+        row.sort_by(|&a, &b| positions[&a].0.partial_cmp(&positions[&b].0).unwrap());
+        for i in 0..row.len() {
+            let a = row[i];
+            let pa = positions[&a];
+            for &b in &row[i + 1..] {
+                let pb = positions[&b];
+                let dx = pb.0 - pa.0;
+                if dx >= NODE_W + 12.0 {
+                    break; // sorted: everything further right is clear of a
+                }
+                let dy = pb.1 - pa.1;
+                let oy = (NODE_H + 8.0) - dy.abs();
+                if oy <= 0.0 {
+                    continue;
+                }
+                let ox = (NODE_W + 12.0) - dx;
+                // Push out along the shallower overlap axis (pure x or pure y).
+                let (fx, fy) = if ox < oy {
+                    (dx.signum() * ox * 0.55, 0.0)
+                } else {
+                    (0.0, dy.signum() * oy * 0.55)
+                };
+                let fa = forces.entry(a).or_default();
+                fa.0 -= fx;
+                fa.1 -= fy;
+                let fb = forces.entry(b).or_default();
+                fb.0 += fx;
+                fb.1 += fy;
             }
-            // Push out along the shallower overlap axis (pure x or pure y).
-            let (fx, fy) = if ox < oy {
-                (dx.signum() * ox * 0.55, 0.0)
-            } else {
-                (0.0, dy.signum() * oy * 0.55)
-            };
-            let fa = forces.entry(a).or_default();
-            fa.0 -= fx;
-            fa.1 -= fy;
-            let fb = forces.entry(b).or_default();
-            fb.0 += fx;
-            fb.1 += fy;
         }
     }
+    nodes.clear();
+    nodes.extend(layers.iter().flatten().copied());
     let mut max_v = 0.0f64;
     for &k in &nodes {
         let v = velocities.entry(k).or_default();
