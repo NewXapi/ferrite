@@ -850,6 +850,7 @@ pub fn NetworkPanel() -> Element {
                             let world = ((view.0 - px) / z0, (view.1 - py) / z0);
                             pan.set((view.0 - world.0 * z, view.1 - world.1 * z));
                         }
+                        zoom.set(z);
                     },
                     if let Some(((ax, ay), (bx, by))) = marquee() {
                         rect {
