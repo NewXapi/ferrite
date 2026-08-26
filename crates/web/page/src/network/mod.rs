@@ -12,6 +12,12 @@ use dioxus::prelude::*;
 /// - click a wire: delete it
 /// - click a node (no drag): focus — dim everything except direct neighbors
 /// - click a channel card: expand/collapse into its model nodes
+/// - ctrl+click a node: toggle it in/out of the multi-selection
+/// - shift+drag empty canvas: marquee-select (replaces selection)
+/// - drag any selected node: the whole selection follows
+/// - drag a port while ≥2 same-layer nodes are selected: wires every selected
+///   source with a legal edge to the drop target
+/// - 「适配」button: zoom/pan to fit all visible nodes
 ///
 /// Sample data; persistence + real /api/channel + /api/group come later.
 
@@ -31,17 +37,41 @@ struct ModelDef {
 }
 
 const GROUPS: &[GroupDef] = &[
-    GroupDef { name: "default", color: "#e5484d" },
-    GroupDef { name: "claude", color: "#3e9bff" },
-    GroupDef { name: "gpt-5", color: "#30a46c" },
-    GroupDef { name: "vip", color: "#e5c558" },
+    GroupDef {
+        name: "default",
+        color: "#e5484d",
+    },
+    GroupDef {
+        name: "claude",
+        color: "#3e9bff",
+    },
+    GroupDef {
+        name: "gpt-5",
+        color: "#30a46c",
+    },
+    GroupDef {
+        name: "vip",
+        color: "#e5c558",
+    },
 ];
 
 const MAPPINGS: &[MappingDef] = &[
-    MappingDef { name: "gpt-4o", color: "#f472b6" },
-    MappingDef { name: "gpt-5", color: "#a78bfa" },
-    MappingDef { name: "claude-sonnet-4", color: "#22d3ee" },
-    MappingDef { name: "gemini-2.5-pro", color: "#fb923c" },
+    MappingDef {
+        name: "gpt-4o",
+        color: "#f472b6",
+    },
+    MappingDef {
+        name: "gpt-5",
+        color: "#a78bfa",
+    },
+    MappingDef {
+        name: "claude-sonnet-4",
+        color: "#22d3ee",
+    },
+    MappingDef {
+        name: "gemini-2.5-pro",
+        color: "#fb923c",
+    },
 ];
 
 const CHANNELS: &[&str] = &[
@@ -54,15 +84,42 @@ const CHANNELS: &[&str] = &[
 ];
 
 const MODELS: &[ModelDef] = &[
-    ModelDef { channel: 0, name: "gpt-4o" },
-    ModelDef { channel: 0, name: "gpt-5" },
-    ModelDef { channel: 1, name: "gpt-4o" },
-    ModelDef { channel: 2, name: "gpt-4o" },
-    ModelDef { channel: 2, name: "gpt-5" },
-    ModelDef { channel: 2, name: "claude-sonnet-4" },
-    ModelDef { channel: 3, name: "claude-sonnet-4" },
-    ModelDef { channel: 4, name: "claude-sonnet-4" },
-    ModelDef { channel: 5, name: "gemini-2.5-pro" },
+    ModelDef {
+        channel: 0,
+        name: "gpt-4o",
+    },
+    ModelDef {
+        channel: 0,
+        name: "gpt-5",
+    },
+    ModelDef {
+        channel: 1,
+        name: "gpt-4o",
+    },
+    ModelDef {
+        channel: 2,
+        name: "gpt-4o",
+    },
+    ModelDef {
+        channel: 2,
+        name: "gpt-5",
+    },
+    ModelDef {
+        channel: 2,
+        name: "claude-sonnet-4",
+    },
+    ModelDef {
+        channel: 3,
+        name: "claude-sonnet-4",
+    },
+    ModelDef {
+        channel: 4,
+        name: "claude-sonnet-4",
+    },
+    ModelDef {
+        channel: 5,
+        name: "gemini-2.5-pro",
+    },
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -139,7 +196,10 @@ const ROW_Y: [f64; 3] = [90.0, 340.0, 590.0];
 /// Each layer roams freely inside its own horizontal band (±80 around row).
 const BAND_HALF: f64 = 80.0;
 fn band_y(layer: u8) -> (f64, f64) {
-    (ROW_Y[layer as usize] - BAND_HALF, ROW_Y[layer as usize] + BAND_HALF)
+    (
+        ROW_Y[layer as usize] - BAND_HALF,
+        ROW_Y[layer as usize] + BAND_HALF,
+    )
 }
 const VIEW_W: f64 = MARGIN * 2.0 + (MODELS.len() as f64 - 1.0) * COL_GAP;
 const VIEW_H: f64 = 700.0;
@@ -256,7 +316,8 @@ fn settle_layout(
                 }
                 prev = p.0;
             }
-            let shift = order.iter().map(|k| positions[k].0).sum::<f64>() / order.len() as f64 - mean0;
+            let shift =
+                order.iter().map(|k| positions[k].0).sum::<f64>() / order.len() as f64 - mean0;
             for &k in &order {
                 positions.get_mut(&k).unwrap().0 -= shift;
                 max_d = max_d.max(shift.abs());
@@ -280,7 +341,10 @@ fn settle_layout(
 fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
     let la = a.layer() as i16;
     let lb = b.layer() as i16;
-    if a == b || (la - lb).abs() != 1 || matches!(a, NodeKey::Channel(_)) || matches!(b, NodeKey::Channel(_))
+    if a == b
+        || (la - lb).abs() != 1
+        || matches!(a, NodeKey::Channel(_))
+        || matches!(b, NodeKey::Channel(_))
     {
         return None;
     }
@@ -289,25 +353,114 @@ fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
 
 fn bezier(a: (f64, f64), b: (f64, f64)) -> String {
     let mid = (a.1 + b.1) / 2.0;
+    path_str(a, (a.0, mid), (b.0, mid), b)
+}
+
+fn path_str(a: (f64, f64), c1: (f64, f64), c2: (f64, f64), b: (f64, f64)) -> String {
     format!(
         "M {:.0} {:.0} C {:.0} {:.0}, {:.0} {:.0}, {:.0} {:.0}",
-        a.0, a.1, a.0, mid, b.0, mid, b.0, b.1
+        a.0, a.1, c1.0, c1.1, c2.0, c2.1, b.0, b.1
     )
+}
+
+fn cubic_at(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), t: f64) -> (f64, f64) {
+    let u = 1.0 - t;
+    (
+        u * u * u * p0.0 + 3.0 * u * u * t * p1.0 + 3.0 * u * t * t * p2.0 + t * t * t * p3.0,
+        u * u * u * p0.1 + 3.0 * u * u * t * p1.1 + 3.0 * u * t * t * p2.1 + t * t * t * p3.1,
+    )
+}
+
+/// Cubic bezier that dodges blocker node rects while keeping the curve look:
+/// tries growing lateral control-point offsets and keeps the first
+/// collision-free one, else the least-colliding.
+fn routed_bezier(a: (f64, f64), b: (f64, f64), blockers: &[(f64, f64)]) -> String {
+    const FRACS: [f64; 5] = [0.0, 0.12, -0.12, 0.26, -0.26];
+    const SAMPLES: usize = 20;
+    const PAD_X: f64 = NODE_W / 2.0 + 8.0;
+    const PAD_Y: f64 = NODE_H / 2.0 + 8.0;
+
+    let dist = (b.0 - a.0).hypot(b.1 - a.1);
+    let mid = (a.1 + b.1) / 2.0;
+    let mut best: Option<(usize, f64)> = None;
+    for &f in &FRACS {
+        let off = f * dist;
+        let (c1, c2) = ((a.0 + off, mid), (b.0 + off, mid));
+        let mut hits = 0usize;
+        for i in 0..SAMPLES {
+            let t = i as f64 / (SAMPLES - 1) as f64;
+            let p = cubic_at(a, c1, c2, b, t);
+            if blockers
+                .iter()
+                .any(|&(bx, by)| (p.0 - bx).abs() < PAD_X && (p.1 - by).abs() < PAD_Y)
+            {
+                hits += 1;
+            }
+        }
+        if hits == 0 {
+            return path_str(a, c1, c2, b);
+        }
+        if best.is_none() || hits < best.unwrap().0 {
+            best = Some((hits, f));
+        }
+    }
+    let off = best.unwrap_or((0, 0.0)).1 * dist;
+    path_str(a, (a.0 + off, mid), (b.0 + off, mid), b)
+}
+
+/// Pan/zoom so all points sit inside the viewBox with padding. Returns (pan, zoom).
+fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
+    let pad = NODE_W / 2.0 + 24.0;
+    let (minx, maxx) = pts
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| {
+            (a.min(x), b.max(x))
+        });
+    let (miny, maxy) = pts
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| {
+            (a.min(y), b.max(y))
+        });
+    let z = (((VIEW_W - 2.0 * pad) / (maxx - minx)).min((VIEW_H - 2.0 * pad) / (maxy - miny)))
+        .clamp(0.35, 3.0);
+    let cx = (minx + maxx) / 2.0;
+    let cy = (miny + maxy) / 2.0;
+    ((VIEW_W / 2.0 - cx * z, VIEW_H / 2.0 - cy * z), z)
 }
 
 #[derive(Clone, Copy)]
 enum Drag {
     /// Node body drag: reposition. sx/sy = start client coords.
-    Move { key: NodeKey, sx: f64, sy: f64, ox: f64, oy: f64, moved: bool },
+    Move {
+        key: NodeKey,
+        sx: f64,
+        sy: f64,
+        ox: f64,
+        oy: f64,
+        moved: bool,
+    },
     /// Port drag: pull a wire.
     Wire { src: NodeKey },
     /// Background drag: pan. px/py = pan at drag start.
-    Pan { sx: f64, sy: f64, px: f64, py: f64, moved: bool },
+    Pan {
+        sx: f64,
+        sy: f64,
+        px: f64,
+        py: f64,
+        moved: bool,
+    },
+    /// Background drag: marquee-select; both rect corners live in `marquee`.
+    Select,
 }
 
 #[component]
 pub fn NetworkPanel() -> Element {
-    let mut edges = use_signal(|| SEED_EDGES.iter().copied().collect::<HashSet<(NodeKey, NodeKey)>>());
+    let mut edges = use_signal(|| {
+        SEED_EDGES
+            .iter()
+            .copied()
+            .collect::<HashSet<(NodeKey, NodeKey)>>()
+    });
     let mut drag = use_signal(|| None::<Drag>);
     let mut hover_wire = use_signal(|| None::<(NodeKey, NodeKey)>);
     let mut hover = use_signal(|| None::<NodeKey>);
@@ -315,7 +468,11 @@ pub fn NetworkPanel() -> Element {
     let mut rect = use_signal(|| None::<(f64, f64, f64, f64)>);
     let mut pan = use_signal(|| (0.0f64, 0.0f64));
     let mut zoom = use_signal(|| 1.0f64);
-    let mut selected = use_signal(|| None::<NodeKey>);
+    let mut selected = use_signal(HashSet::<NodeKey>::new);
+    // Group-move anchors: (node, world offset from cursor) for the whole selection.
+    let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
+    // Marquee rect in viewBox coords while a Select drag is active.
+    let mut marquee = use_signal(|| None::<((f64, f64), (f64, f64))>);
     let mut expanded = use_signal(|| HashSet::from([2usize])); // OneAPI 上游 pre-expanded
     let mut positions = use_signal(|| HashMap::<NodeKey, (f64, f64)>::new());
     // Live spring layout: a 16ms ticker integrates forces frame by frame.
@@ -357,8 +514,15 @@ pub fn NetworkPanel() -> Element {
                 let ex = expanded.peek().clone();
                 let layers = visible_layers(&ex);
                 let pairs = display_edge_pairs(&edges.peek(), &ex);
-                let pairs_xy: Vec<(NodeKey, NodeKey)> = pairs.iter().map(|&(u, l, _)| (u, l)).collect();
-                energy = physics_step(&layers, &pairs_xy, held, &mut positions.write(), &mut velocities);
+                let pairs_xy: Vec<(NodeKey, NodeKey)> =
+                    pairs.iter().map(|&(u, l, _)| (u, l)).collect();
+                energy = physics_step(
+                    &layers,
+                    &pairs_xy,
+                    held,
+                    &mut positions.write(),
+                    &mut velocities,
+                );
             }
         });
     });
@@ -367,6 +531,8 @@ pub fn NetworkPanel() -> Element {
     let expanded_now = expanded();
 
     let layers = visible_layers(&expanded_now);
+    let selection_now = selected();
+    let layers_fit = layers.clone(); // owned copy for the 适配 button's handler
 
     let positions_now = positions();
     let pos = |key: NodeKey| -> (f64, f64) {
@@ -384,7 +550,12 @@ pub fn NetworkPanel() -> Element {
     //   mapping (1) reaches 1 → 0  and  1 → 2  (one hop each, no turnback)
     //   model (2)   reaches 2 → 1 → 0
     // "seen" marks visited nodes (type + id), so cycles terminate on their own.
-    let focus: Option<HashSet<NodeKey>> = selected().map(|start| {
+    let focus: Option<HashSet<NodeKey>> = (if selection_now.len() == 1 {
+        selection_now.iter().next().copied()
+    } else {
+        None
+    })
+    .map(|start| {
         let start_layer = start.layer() as i16;
         let dist = |k: NodeKey| (k.layer() as i16 - start_layer).abs();
         let mut seen: HashSet<NodeKey> = HashSet::from([start]);
@@ -421,7 +592,14 @@ pub fn NetworkPanel() -> Element {
 
     let anchor = |key: NodeKey, as_upper: bool| -> (f64, f64) {
         let (x, y) = pos(key);
-        (x, if as_upper { y + NODE_H / 2.0 } else { y - NODE_H / 2.0 })
+        (
+            x,
+            if as_upper {
+                y + NODE_H / 2.0
+            } else {
+                y - NODE_H / 2.0
+            },
+        )
     };
 
     // Dangling wire endpoint: snap to legal hovered node, else cursor.
@@ -449,7 +627,7 @@ pub fn NetworkPanel() -> Element {
     let hint = match drag_now {
         Some(Drag::Wire { .. }) => "拖到相邻层节点松开连线",
         Some(Drag::Move { .. }) => "松开落位",
-        _ => "滚轮缩放 · 拖空白平移 · 拖节点摆位 · 拖圆点连线 · 点节点聚焦 · 点渠道卡展开",
+        _ => "滚轮缩放 · 拖空白平移 · Shift拖空白框选 · Ctrl点选多个 · 拖节点摆位 · 拖圆点连线",
     };
 
     rsx! {
@@ -461,7 +639,25 @@ pub fn NetworkPanel() -> Element {
                         "{g.name}"
                     }
                 }
-                span { class: "ml-auto text-xs text-zinc-600", "{hint}" }
+                button {
+                    class: "ml-auto rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                    onclick: move |_| {
+                        // Zoom/pan so every visible node fits inside the viewBox.
+                        let pts: Vec<(f64, f64)> = layers_fit
+                            .iter()
+                            .flatten()
+                            .filter_map(|k| positions.peek().get(k).copied())
+                            .collect();
+                        if pts.is_empty() {
+                            return;
+                        }
+                        let ((px, py), z) = fit_view(&pts);
+                        pan.set((px, py));
+                        zoom.set(z);
+                    },
+                    "适配"
+                }
+                span { class: "text-xs text-zinc-600", "{hint}" }
             }
             div { class: "min-h-0 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
@@ -479,11 +675,21 @@ pub fn NetworkPanel() -> Element {
                             rect.set(Some((r.origin.x, r.origin.y, r.size.width, r.size.height)));
                         }
                     },
-                    // Background press → pan (nodes/ports/wires stop propagation)
+                    // Background press → pan, or marquee with Shift held
+                    // (nodes/ports/wires stop propagation)
                     onmousedown: move |e| {
                         let c = e.client_coordinates();
-                        let (px, py) = pan();
-                        drag.set(Some(Drag::Pan { sx: c.x, sy: c.y, px, py, moved: false }));
+                        if e.modifiers().shift() {
+                            // Marquee anchor = press point in viewBox coords.
+                            if let Some((rx, ry, rw, rh)) = *rect.peek() {
+                                let v = ((c.x - rx) * VIEW_W / rw, (c.y - ry) * VIEW_H / rh);
+                                marquee.set(Some((v, v)));
+                            }
+                            drag.set(Some(Drag::Select));
+                        } else {
+                            let (px, py) = pan();
+                            drag.set(Some(Drag::Pan { sx: c.x, sy: c.y, px, py, moved: false }));
+                        }
                     },
                     onmousemove: move |e| {
                         let c = e.client_coordinates();
@@ -499,18 +705,60 @@ pub fn NetworkPanel() -> Element {
                             }
                             Some(Drag::Move { key, sx, sy, ox, oy, .. }) => {
                                 let moved_flag = (c.x - sx).abs() + (c.y - sy).abs() > 4.0;
-                                let (b0, b1) = band_y(key.layer());
-                                positions.write().insert(key, (world.0 + ox, (world.1 + oy).clamp(b0, b1)));
+                                {
+                                    let mut pos_w = positions.write();
+                                    for &(k, kox, koy) in moving.peek().iter() {
+                                        let (b0, b1) = band_y(k.layer());
+                                        pos_w.insert(k, (world.0 + kox, (world.1 + koy).clamp(b0, b1)));
+                                    }
+                                }
                                 drag.set(Some(Drag::Move { key, sx, sy, ox, oy, moved: moved_flag }));
                             }
                             Some(Drag::Wire { .. }) => cursor_world.set(world),
+                            Some(Drag::Select) => {
+                                if let Some((rx, ry, rw, rh)) = *rect.peek() {
+                                    let v = ((c.x - rx) * VIEW_W / rw, (c.y - ry) * VIEW_H / rh);
+                                    let cur = *marquee.read();
+                                    if let Some((a, _)) = cur {
+                                        marquee.set(Some((a, v)));
+                                    }
+                                }
+                            }
                             None => {}
                         }
                     },
                     onmouseup: move |_| {
                         let current = *drag.peek();
                         match current {
-                            Some(Drag::Pan { moved: false, .. }) => selected.set(None),
+                            Some(Drag::Pan { moved: false, .. }) => selected.set(HashSet::new()),
+                            Some(Drag::Select) => {
+                                match *marquee.peek() {
+                                    // Tiny rect → plain click on empty canvas: clear.
+                                    Some((a, b)) if (a.0 - b.0).abs() + (a.1 - b.1).abs() > 4.0 => {
+                                        // Marquee corners are viewBox coords → world directly.
+                                        let (px, py) = *pan.peek();
+                                        let z = *zoom.peek();
+                                        let wa = ((a.0 - px) / z, (a.1 - py) / z);
+                                        let wb = ((b.0 - px) / z, (b.1 - py) / z);
+                                        let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
+                                        let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
+                                        let hit: HashSet<NodeKey> = layers
+                                            .iter()
+                                            .flatten()
+                                            .copied()
+                                            .filter(|&k| {
+                                                let Some((x, y)) = positions.peek().get(&k).copied() else {
+                                                    return false;
+                                                };
+                                                x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1
+                                            })
+                                            .collect();
+                                        selected.set(hit);
+                                    }
+                                    _ => selected.set(HashSet::new()),
+                                }
+                                marquee.set(None);
+                            }
                             _ => {}
                         }
                         drag.set(None);
@@ -519,6 +767,8 @@ pub fn NetworkPanel() -> Element {
                     onmouseleave: move |_| {
                         drag.set(None);
                         hover.set(None);
+                        marquee.set(None);
+                        moving.set(Vec::new());
                     },
                     onwheel: move |e| {
                         e.prevent_default();
@@ -534,18 +784,19 @@ pub fn NetworkPanel() -> Element {
                             let world = ((view.0 - px) / z0, (view.1 - py) / z0);
                             pan.set((view.0 - world.0 * z, view.1 - world.1 * z));
                         }
-                        zoom.set(z);
                     },
-
-                    // Layer labels stay in screen space (outside the panned group)
-                    for (label, y) in [("分组", ROW_Y[0]), ("模型映射", ROW_Y[1]), ("渠道模型", ROW_Y[2])] {
-                        text {
-                            x: "8",
-                            y: "{y - 26.0:.0}",
-                            fill: "#52525b",
-                            font_size: "11",
+                    if let Some(((ax, ay), (bx, by))) = marquee() {
+                        rect {
+                            x: "{ax.min(bx):.0}",
+                            y: "{ay.min(by):.0}",
+                            width: "{(ax - bx).abs().max(1.0):.0}",
+                            height: "{(ay - by).abs().max(1.0):.0}",
+                            fill: "#fafafa",
+                            fill_opacity: "0.05",
+                            stroke: "#a1a1aa",
+                            stroke_width: "1",
+                            stroke_dasharray: "5 4",
                             pointer_events: "none",
-                            "{label}"
                         }
                     }
 
@@ -586,7 +837,13 @@ pub fn NetworkPanel() -> Element {
                         for (du, dl, raw) in display_edges.clone() {
                             {
                                 let wire_color = color(du);
-                                let d = bezier(anchor(du, true), anchor(dl, false));
+                                let blockers: Vec<(f64, f64)> = layers
+                                    .iter()
+                                    .flatten()
+                                    .filter(|&&k| k != du && k != dl)
+                                    .map(|&k| pos(k))
+                                    .collect();
+                                let d = routed_bezier(anchor(du, true), anchor(dl, false), &blockers);
                                 let opacity = match &focus {
                                     Some(set) if set.contains(&du) && set.contains(&dl) => "0.9",
                                     Some(_) => "0.10",
@@ -705,6 +962,7 @@ pub fn NetworkPanel() -> Element {
                                             && !edges_read(&edges).contains(&normalize(src, key).unwrap())
                                     });
                                     let hov = hover_now == Some(key);
+                                    let sel = selection_now.contains(&key);
                                     let title_y = if sub_text.is_empty() { y + 4.5 } else { y - 0.5 };
                                     // Per-type look: group = soft tinted pill, mapping = square chip,
                                     // channel/model = solid card. Distinct at a glance in any state.
@@ -726,6 +984,22 @@ pub fn NetworkPanel() -> Element {
                                                 let c = e.client_coordinates();
                                                 let w = to_world(c.x, c.y);
                                                 let (nx, ny) = (x, y);
+                                                // Dragging one member moves the whole selection:
+                                                // record each member's offset from the cursor once.
+                                                {
+                                                    let sel = selected.read();
+                                                    if sel.len() > 1 && sel.contains(&key) {
+                                                        let ps = positions.peek();
+                                                        moving.set(
+                                                            sel.iter().map(|&k| {
+                                                                let p = ps[&k];
+                                                                (k, p.0 - w.0, p.1 - w.1)
+                                                            }).collect(),
+                                                        );
+                                                    } else {
+                                                        moving.set(Vec::new());
+                                                    }
+                                                }
                                                 drag.set(Some(Drag::Move { key, sx: c.x, sy: c.y, ox: nx - w.0, oy: ny - w.1, moved: false }));
                                             },
                                             onmouseup: move |e| {
@@ -733,13 +1007,40 @@ pub fn NetworkPanel() -> Element {
                                                 let current = *drag.peek();
                                                 match current {
                                                     Some(Drag::Wire { src }) if src != key => {
-                                                        if let Some(pair) = normalize(src, key) {
-                                                            edges.write().insert(pair);
+                                                        // Multi-wire: every same-layer selected source
+                                                        // with a legal edge to this target connects too.
+                                                        let sources: Vec<NodeKey> = {
+                                                            let sel = selected.read();
+                                                            if sel.len() > 1 && sel.contains(&src) {
+                                                                sel.iter()
+                                                                    .copied()
+                                                                    .filter(|&s| {
+                                                                        s.layer() == src.layer()
+                                                                            && normalize(s, key)
+                                                                                .is_some_and(|pair| !edges_read(&edges).contains(&pair))
+                                                                    })
+                                                                    .collect()
+                                                            } else {
+                                                                vec![src]
+                                                            }
+                                                        };
+                                                        let mut ew = edges.write();
+                                                        for s in sources {
+                                                            if let Some(pair) = normalize(s, key) {
+                                                                ew.insert(pair);
+                                                            }
                                                         }
                                                     }
                                                     Some(Drag::Move { key: k, moved: false, .. }) if k == key => {
-                                                        let cur = selected();
-                                                        selected.set(if cur == Some(key) { None } else { Some(key) });
+                                                        let mut sel = selected.write();
+                                                        if e.modifiers().ctrl() {
+                                                            if !sel.remove(&key) {
+                                                                sel.insert(key);
+                                                            }
+                                                        } else {
+                                                            sel.clear();
+                                                            sel.insert(key);
+                                                        }
                                                     }
                                                     _ => {}
                                                 }
@@ -756,8 +1057,8 @@ pub fn NetworkPanel() -> Element {
                                                 rx: "{rx}",
                                                 fill: "{fill}",
                                                 fill_opacity: "{fill_op}",
-                                                stroke: if legal && hov { "#fafafa" } else { node_color },
-                                                stroke_width: if hov || legal { sw_hov } else { sw },
+                                                stroke: if sel || (legal && hov) { "#fafafa" } else { node_color },
+                                                stroke_width: if hov || legal || sel { sw_hov } else { sw },
                                             }
                                             text {
                                                 x: "{x:.0}",
@@ -874,8 +1175,11 @@ fn visible_layers(expanded: &HashSet<usize>) -> [Vec<NodeKey>; 3] {
     ];
     for c in 0..CHANNELS.len() {
         if expanded.contains(&c) {
-            layers[2]
-                .extend((0..MODELS.len()).filter(|&i| MODELS[i].channel == c).map(NodeKey::Model));
+            layers[2].extend(
+                (0..MODELS.len())
+                    .filter(|&i| MODELS[i].channel == c)
+                    .map(NodeKey::Model),
+            );
         } else {
             layers[2].push(NodeKey::Channel(c));
         }
@@ -1012,8 +1316,8 @@ fn physics_step(
         }
         let p = positions.get_mut(&k).unwrap();
         let (b0, b1) = band_y(k.layer());
-            p.0 = (p.0 + v.0).max(60.0);
-            p.1 = (p.1 + v.1).clamp(b0, b1);
+        p.0 = (p.0 + v.0).max(60.0);
+        p.1 = (p.1 + v.1).clamp(b0, b1);
         max_v = max_v.max(v.0.hypot(v.1));
     }
     max_v
