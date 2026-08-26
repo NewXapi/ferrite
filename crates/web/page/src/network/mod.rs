@@ -729,7 +729,9 @@ pub fn NetworkPanel() -> Element {
                     },
                     "适配"
                 }
-                span { class: "text-xs text-zinc-600", "{hint}" }
+                // w-full pins the hint to its own line: the legend row and the
+                // canvas below must never shift when the hint text changes.
+                span { class: "w-full text-right text-xs text-zinc-600 leading-4", "{hint}" }
             }
             div { class: "min-h-0 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
