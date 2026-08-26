@@ -72,7 +72,11 @@ pub fn ModelCard(model: ModelInfo) -> Element {
         .enumerate()
         .map(|(i, v)| (i as f32 * (200.0 / (n - 1.0)), 50.0 - *v as f32 * 0.42))
         .collect();
-    let line: String = pts.iter().map(|(x, y)| format!("{x:.1},{y:.1}")).collect::<Vec<_>>().join(" ");
+    let line: String = pts
+        .iter()
+        .map(|(x, y)| format!("{x:.1},{y:.1}"))
+        .collect::<Vec<_>>()
+        .join(" ");
     let area = format!("0,56 {line} 200,56");
     let (last_x, last_y) = *pts.last().unwrap();
     let gid = format!("fill-{}", model.name.replace(['.', '-'], "_"));
@@ -207,10 +211,18 @@ fn MiniStat(label: &'static str, value: &'static str) -> Element {
     }
 }
 
-const TREND_A: &[u8] = &[30, 38, 34, 46, 52, 47, 60, 58, 66, 61, 72, 78, 70, 82, 76, 88, 84, 92, 86, 95, 90, 97, 93, 100];
-const HEAT_A: &[u8] = &[1, 0, 2, 1, 3, 2, 0, 4, 2, 1, 3, 0, 2, 4, 1, 2, 3, 0, 1, 2, 4, 3, 2, 1];
-const TREND_B: &[u8] = &[70, 62, 66, 54, 60, 48, 56, 44, 52, 40, 46, 34, 42, 30, 38, 28, 36, 26, 34, 40, 30, 44, 36, 50];
-const HEAT_B: &[u8] = &[3, 4, 2, 3, 1, 2, 4, 0, 2, 3, 1, 4, 2, 0, 3, 2, 1, 3, 4, 2, 1, 0, 2, 3];
+const TREND_A: &[u8] = &[
+    30, 38, 34, 46, 52, 47, 60, 58, 66, 61, 72, 78, 70, 82, 76, 88, 84, 92, 86, 95, 90, 97, 93, 100,
+];
+const HEAT_A: &[u8] = &[
+    1, 0, 2, 1, 3, 2, 0, 4, 2, 1, 3, 0, 2, 4, 1, 2, 3, 0, 1, 2, 4, 3, 2, 1,
+];
+const TREND_B: &[u8] = &[
+    70, 62, 66, 54, 60, 48, 56, 44, 52, 40, 46, 34, 42, 30, 38, 28, 36, 26, 34, 40, 30, 44, 36, 50,
+];
+const HEAT_B: &[u8] = &[
+    3, 4, 2, 3, 1, 2, 4, 0, 2, 3, 1, 4, 2, 0, 3, 2, 1, 3, 4, 2, 1, 0, 2, 3,
+];
 
 const MOCK_MODELS: &[ModelInfo] = &[
     ModelInfo {
@@ -228,10 +240,30 @@ const MOCK_MODELS: &[ModelInfo] = &[
         trend: TREND_A,
         heat: HEAT_A,
         groups: &[
-            GroupPrice { name: "默认", input: "12.5", output: "100", cache: "1.25" },
-            GroupPrice { name: "奶酪", input: "8", output: "10", cache: "1" },
-            GroupPrice { name: "牛奶", input: "10", output: "80", cache: "1.1" },
-            GroupPrice { name: "芝士", input: "15", output: "120", cache: "1.5" },
+            GroupPrice {
+                name: "默认",
+                input: "12.5",
+                output: "100",
+                cache: "1.25",
+            },
+            GroupPrice {
+                name: "奶酪",
+                input: "8",
+                output: "10",
+                cache: "1",
+            },
+            GroupPrice {
+                name: "牛奶",
+                input: "10",
+                output: "80",
+                cache: "1.1",
+            },
+            GroupPrice {
+                name: "芝士",
+                input: "15",
+                output: "120",
+                cache: "1.5",
+            },
         ],
     },
     ModelInfo {
@@ -249,9 +281,24 @@ const MOCK_MODELS: &[ModelInfo] = &[
         trend: TREND_B,
         heat: HEAT_B,
         groups: &[
-            GroupPrice { name: "默认", input: "10", output: "20", cache: "0.1" },
-            GroupPrice { name: "蓝纹奶酪", input: "12", output: "24", cache: "0.12" },
-            GroupPrice { name: "芝士", input: "9", output: "18", cache: "0.09" },
+            GroupPrice {
+                name: "默认",
+                input: "10",
+                output: "20",
+                cache: "0.1",
+            },
+            GroupPrice {
+                name: "蓝纹奶酪",
+                input: "12",
+                output: "24",
+                cache: "0.12",
+            },
+            GroupPrice {
+                name: "芝士",
+                input: "9",
+                output: "18",
+                cache: "0.09",
+            },
         ],
     },
     ModelInfo {
@@ -268,13 +315,16 @@ const MOCK_MODELS: &[ModelInfo] = &[
         latency_p50: "2.1s",
         trend: TREND_A,
         heat: HEAT_B,
-        groups: &[
-            GroupPrice { name: "默认", input: "15", output: "75", cache: "1.5" },
-        ],
+        groups: &[GroupPrice {
+            name: "默认",
+            input: "15",
+            output: "75",
+            cache: "1.5",
+        }],
     },
 ];
 
-/// Preview grid（趋势 tab）: demonstrates the card in a real layout with 2 models.
+/// 模型卡片网格: 遵循页面响应式约定 (手机 1 栏 / 平板 md 3 栏 / Web xl 5 栏)。
 #[component]
 pub fn ModelsPanel() -> Element {
     rsx! {
@@ -283,7 +333,7 @@ pub fn ModelsPanel() -> Element {
                 h2 { class: "text-base font-semibold text-zinc-100", "模型" }
                 span { class: "text-xs text-zinc-600", "mock · {MOCK_MODELS.len()} 个" }
             }
-            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3",
+            div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-5",
                 for m in MOCK_MODELS {
                     ModelCard { model: m.clone() }
                 }

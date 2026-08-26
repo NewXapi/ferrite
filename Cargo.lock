@@ -2244,6 +2244,7 @@ dependencies = [
 name = "newapi-page"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dioxus",
  "gloo-timers",
  "wasm-bindgen",
