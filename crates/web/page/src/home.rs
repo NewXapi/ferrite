@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::auth::auth_drawer::AuthDrawer;
+use crate::components::{Section, SectionPill, TopNavMeter};
 use crate::model::ModelsPanel;
 use crate::network::NetworkPanel;
 use crate::overview::OverviewPanel;
@@ -11,30 +12,9 @@ pub enum Theme {
     Dark,
     Light,
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Section {
-    Dashboard,
-    Keys,
-    Usage,
-    Logs,
-    Channels,
-    Network,
-}
 
-impl Section {
-    fn label(self) -> &'static str {
-        match self {
-            Section::Dashboard => "总览",
-            Section::Keys => "密钥",
-            Section::Usage => "用量",
-            Section::Logs => "日志",
-            Section::Channels => "渠道",
-            Section::Network => "拓扑",
-            }
-    }
-}
-/// Console shell: floating capsule topbar, left navigation rail, windowed canvas
-/// with a tab bar, and a right context rail. Grayscale, layout-first, data mocked.
+/// Console shell: floating capsule topbar, one full-width windowed canvas with a
+/// tab bar, GNOME-style nav pill on the left edge, and a meter in the capsule.
 #[component]
 pub fn HomePage() -> Element {
     let mut drawer_open = use_signal(|| false);
@@ -78,30 +58,14 @@ pub fn HomePage() -> Element {
 
                 // Floating capsule header (overrides the in-titlebar row on desktop)
                 header {
-                    class: "fixed top-4 left-1/2 z-30 hidden -translate-x-1/2 md:block",
-                    div { class: "flex items-center gap-5 rounded-full border border-zinc-800/80 bg-zinc-900/75 px-5 py-2.5 backdrop-blur-xl shadow-lg shadow-black/20",
+                    class: "fixed top-4 left-1/2 z-30 hidden w-max -translate-x-1/2 md:block",
+                    div { class: "flex items-center gap-5 rounded-full border border-zinc-800/80 bg-zinc-900/90 px-5 py-2.5 shadow-lg shadow-black/20",
                         // Logo cluster
                         div { class: "flex items-center gap-1.5",
                             span { class: "text-lg font-semibold tracking-tight text-zinc-100", "New API" }
                             span { class: "hidden sm:inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500", "web-rs" }
                         }
-                        // Section quick nav (mirrors blocker status on the canvas)
-                        nav { class: "hidden lg:flex items-center gap-4",
-                            a { class: "text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100", href: "#",
-                                onclick: move |event| { event.prevent_default(); section.set(Section::Keys); },
-                                "密钥"
-                            }
-                            a { class: "text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100", href: "#",
-                                onclick: move |event| { event.prevent_default(); section.set(Section::Usage); },
-                                "用量"
-                            }
-                            a { class: "text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100", href: "#",
-                                onclick: move |event| { event.prevent_default(); section.set(Section::Channels); },
-                                "渠道"
-                            }
-                        }
-                        // Divider
-                        span { class: "hidden lg:block h-5 w-px bg-zinc-800" }
+                        TopNavMeter { active: section(), on_select: move |s| section.set(s) }
                         // Theme + sign-in
                         button {
                             class: "rounded-full px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
@@ -116,35 +80,7 @@ pub fn HomePage() -> Element {
                     }
                 }
 
-                // ---- Left navigation rail ----
-    aside { class: "hidden w-56 shrink-0 flex-col justify-between border-r border-zinc-800 bg-zinc-900/40 lg:flex",
-                    div {
-                        // Brand
-                        div { class: "border-b border-zinc-800 px-4 py-4",
-                            div { class: "flex items-baseline gap-2",
-                                span { class: "text-base font-semibold tracking-tight", "New API" }
-                                span { class: "text-xs text-zinc-500", "控制台" }
-                            }
-                        }
-                        // Workspace nav
-                        nav { class: "flex flex-col gap-1.5 px-3 py-3",
-                            for s in [
-                                Section::Dashboard,
-                                Section::Keys,
-                                Section::Usage,
-                                Section::Logs,
-                                Section::Channels,
-                                Section::Network,
-                            ] {
-                                NavItem {
-                                    label: s.label(),
-                                    active: section() == s,
-                                    onclick: move |_| section.set(s),
-                                }
-                            }
-                        }
-                    }
-                }
+                SectionPill { active: section(), on_select: move |s| section.set(s) }
 
                 // ---- Center: windowed canvas ----
                     main { class: "flex min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
@@ -169,26 +105,6 @@ pub fn HomePage() -> Element {
                             (Section::Logs, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
                             (Section::Channels, _) => rsx! { PlaceholderPane { text: "渠道管理（占位）" } },
                             (Section::Network, _) => rsx! { NetworkPanel {} },
-                        }
-                    }
-                }
-
-                // ---- Right context rail ----
-                aside { class: "hidden w-64 shrink-0 border-l border-zinc-800 bg-zinc-900/40 p-5 xl:block",
-                    div { class: "space-y-5",
-                        RailItem { label: "状态", value: "正常运行" }
-                        RailItem { label: "负载", value: "中等" }
-                        RailItem { label: "区间", value: "近 24 小时" }
-                        RailItem { label: "渠道健康", value: "12 / 14" }
-                        RailItem { label: "可用模型", value: "47" }
-
-                        div { class: "border-t border-zinc-800 pt-4",
-                            p { class: "mb-2 text-xs uppercase tracking-wider text-zinc-600", "资源" }
-                            div { class: "flex flex-col gap-1.5 text-sm text-zinc-400",
-                                a { class: "transition-colors hover:text-zinc-200", href: "#", "API 文档" }
-                                a { class: "transition-colors hover:text-zinc-200", href: "#", "定价说明" }
-                                a { class: "transition-colors hover:text-zinc-200", href: "#", "更新公告" }
-                            }
                         }
                     }
                 }
@@ -226,22 +142,6 @@ pub(crate) fn ConsolePanel(header: Element, children: Element) -> Element {
 }
 
 #[component]
-fn NavItem(label: &'static str, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
-    let tone = if active {
-        "is-pressed bg-zinc-900 border-zinc-600 text-zinc-100"
-    } else {
-        "bg-zinc-800 border-transparent text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-    };
-    rsx! {
-        button {
-            class: "btn-tactile w-full rounded-full border px-3 py-2 text-left text-sm font-medium {tone}",
-            onclick: move |event| onclick.call(event),
-            "{label}"
-        }
-    }
-}
-
-#[component]
 fn TabItem(label: &'static str, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
     let tone = if active {
         "text-zinc-100"
@@ -256,16 +156,6 @@ fn TabItem(label: &'static str, active: bool, onclick: EventHandler<MouseEvent>)
             if active {
                 span { class: "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 bg-zinc-100" }
             }
-        }
-    }
-}
-
-#[component]
-fn RailItem(label: &'static str, value: &'static str) -> Element {
-    rsx! {
-        div {
-            p { class: "text-xs text-zinc-600", "{label}" }
-            p { class: "mt-0.5 text-sm font-medium text-zinc-300", "{value}" }
         }
     }
 }

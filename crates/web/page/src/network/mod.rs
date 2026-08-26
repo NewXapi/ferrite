@@ -247,8 +247,8 @@ fn settle_layout(
             // Sweep is right-only; pin the row's mean so it can't drift off-canvas.
             let mean0 = order.iter().map(|k| positions[k].0).sum::<f64>() / order.len() as f64;
             let mut prev = f64::NEG_INFINITY;
-            for k in order.iter().copied() {
-                let p = positions.get_mut(&k).unwrap();
+            for k in order.iter() {
+                let p = positions.get_mut(k).unwrap();
                 let need = prev + ROW_MIN_GAP - p.0;
                 if need > 0.0 {
                     p.0 += need;
@@ -317,7 +317,7 @@ pub fn NetworkPanel() -> Element {
     let mut zoom = use_signal(|| 1.0f64);
     let mut selected = use_signal(|| None::<NodeKey>);
     let mut expanded = use_signal(|| HashSet::from([2usize])); // OneAPI 上游 pre-expanded
-    let mut positions = use_signal(|| HashMap::<NodeKey, (f64, f64)>::new());
+    let mut positions = use_signal(HashMap::<NodeKey, (f64, f64)>::new);
     // Live spring layout: a 16ms ticker integrates forces frame by frame.
     // Structure changes (wires / collapse) bump `wake`; the loop steps while
     // it's woken, while a node is being dragged, or while energy remains,
@@ -509,10 +509,7 @@ pub fn NetworkPanel() -> Element {
                     },
                     onmouseup: move |_| {
                         let current = *drag.peek();
-                        match current {
-                            Some(Drag::Pan { moved: false, .. }) => selected.set(None),
-                            _ => {}
-                        }
+                        if let Some(Drag::Pan { moved: false, .. }) = current { selected.set(None) }
                         drag.set(None);
                         hover.set(None);
                     },
