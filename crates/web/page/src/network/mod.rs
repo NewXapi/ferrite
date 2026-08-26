@@ -544,47 +544,56 @@ pub fn NetworkPanel() -> Element {
 
     let display_edges = display_edge_pairs(&edges(), &expanded_now);
 
-    // ---- Focus set: layer-distance BFS from the selected node ----
-    // A step is admitted iff it strictly increases |layer − start.layer|:
-    //   group (0)   reaches 0 → 1 → 2
-    //   mapping (1) reaches 1 → 0  and  1 → 2  (one hop each, no turnback)
-    //   model (2)   reaches 2 → 1 → 0
-    // "seen" marks visited nodes (type + id), so cycles terminate on their own.
-    let focus: Option<HashSet<NodeKey>> = (if selection_now.len() == 1 {
-        selection_now.iter().next().copied()
-    } else {
+    // ---- Focus: union of layer-distance BFS from every selected node ----
+    // A step is admitted iff it strictly increases |layer − start.layer|.
+    // Multi-selection dims anything not connected to ANY selected node;
+    // a single selection behaves like the old click-to-focus.
+    let focus: Option<HashSet<NodeKey>> = if selection_now.is_empty() {
         None
-    })
-    .map(|start| {
-        let start_layer = start.layer() as i16;
-        let dist = |k: NodeKey| (k.layer() as i16 - start_layer).abs();
-        let mut seen: HashSet<NodeKey> = HashSet::from([start]);
-        let mut queue: VecDeque<NodeKey> = VecDeque::from([start]);
-        while let Some(n) = queue.pop_front() {
-            for &(up, low, _) in &display_edges {
-                let next = if up == n && dist(low) > dist(n) {
-                    Some(low)
-                } else if low == n && dist(up) > dist(n) {
-                    Some(up)
-                } else {
-                    None
-                };
-                if let Some(m) = next {
-                    if seen.insert(m) {
-                        queue.push_back(m);
+    } else {
+        let mut out = HashSet::new();
+        for start in &selection_now {
+            let start_layer = start.layer() as i16;
+            let dist = |k: NodeKey| (k.layer() as i16 - start_layer).abs();
+            let mut seen: HashSet<NodeKey> = HashSet::from([*start]);
+            let mut queue: VecDeque<NodeKey> = VecDeque::from([*start]);
+            while let Some(n) = queue.pop_front() {
+                for &(up, low, _) in &display_edges {
+                    let next = if up == n && dist(low) > dist(n) {
+                        Some(low)
+                    } else if low == n && dist(up) > dist(n) {
+                        Some(up)
+                    } else {
+                        None
+                    };
+                    if let Some(m) = next {
+                        if seen.insert(m) {
+                            queue.push_back(m);
+                        }
                     }
                 }
             }
+            out.extend(seen);
         }
-        seen
-    });
+        Some(out)
+    };
 
     // ---- Coordinate helpers ----
-    let to_world = move |client_x: f64, client_y: f64| -> (f64, f64) {
+    // preserveAspectRatio="xMidYMid meet": uniform scale + centered letterbox.
+    // All client→viewBox mapping MUST go through this or it drifts off-cursor.
+    let client_to_view = move |cx: f64, cy: f64| -> (f64, f64) {
         let Some((rx, ry, rw, rh)) = *rect.peek() else {
-            return (client_x, client_y);
+            return (cx, cy);
         };
-        let view = ((client_x - rx) * VIEW_W / rw, (client_y - ry) * VIEW_H / rh);
+        let s = (rw / VIEW_W).min(rh / VIEW_H);
+        (
+            (cx - rx - (rw - VIEW_W * s) / 2.0) / s,
+            (cy - ry - (rh - VIEW_H * s) / 2.0) / s,
+        )
+    };
+
+    let to_world = move |client_x: f64, client_y: f64| -> (f64, f64) {
+        let view = client_to_view(client_x, client_y);
         let (px, py) = *pan.peek();
         let z = *zoom.peek();
         ((view.0 - px) / z, (view.1 - py) / z)
@@ -681,8 +690,8 @@ pub fn NetworkPanel() -> Element {
                         let c = e.client_coordinates();
                         if e.modifiers().shift() {
                             // Marquee anchor = press point in viewBox coords.
-                            if let Some((rx, ry, rw, rh)) = *rect.peek() {
-                                let v = ((c.x - rx) * VIEW_W / rw, (c.y - ry) * VIEW_H / rh);
+                            if rect.peek().is_some() {
+                                let v = client_to_view(c.x, c.y);
                                 marquee.set(Some((v, v)));
                             }
                             drag.set(Some(Drag::Select));
@@ -699,7 +708,8 @@ pub fn NetworkPanel() -> Element {
                             Some(Drag::Pan { sx, sy, px, py, .. }) => {
                                 let moved_flag = (c.x - sx).abs() + (c.y - sy).abs() > 4.0;
                                 if let Some((_, _, rw, rh)) = *rect.peek() {
-                                    pan.set((px + (c.x - sx) * VIEW_W / rw, py + (c.y - sy) * VIEW_H / rh));
+                                    let s = (rw / VIEW_W).min(rh / VIEW_H);
+                                    pan.set((px + (c.x - sx) / s, py + (c.y - sy) / s));
                                 }
                                 drag.set(Some(Drag::Pan { sx, sy, px, py, moved: moved_flag }));
                             }
@@ -707,7 +717,14 @@ pub fn NetworkPanel() -> Element {
                                 let moved_flag = (c.x - sx).abs() + (c.y - sy).abs() > 4.0;
                                 {
                                     let mut pos_w = positions.write();
+                                    let (kb0, kb1) = band_y(key.layer());
+                                    // Leader always follows the cursor, even when flying solo.
+                                    pos_w.insert(key, (world.0 + ox, (world.1 + oy).clamp(kb0, kb1)));
+                                    // Group members keep their offsets when part of a selection.
                                     for &(k, kox, koy) in moving.peek().iter() {
+                                        if k == key {
+                                            continue;
+                                        }
                                         let (b0, b1) = band_y(k.layer());
                                         pos_w.insert(k, (world.0 + kox, (world.1 + koy).clamp(b0, b1)));
                                     }
@@ -716,8 +733,8 @@ pub fn NetworkPanel() -> Element {
                             }
                             Some(Drag::Wire { .. }) => cursor_world.set(world),
                             Some(Drag::Select) => {
-                                if let Some((rx, ry, rw, rh)) = *rect.peek() {
-                                    let v = ((c.x - rx) * VIEW_W / rw, (c.y - ry) * VIEW_H / rh);
+                                {
+                                    let v = client_to_view(c.x, c.y);
                                     let cur = *marquee.read();
                                     if let Some((a, _)) = cur {
                                         marquee.set(Some((a, v)));
@@ -778,8 +795,8 @@ pub fn NetworkPanel() -> Element {
                         let z = (z0 * factor).clamp(0.35, 3.0);
                         // Keep the world point under the cursor stationary.
                         let c = e.client_coordinates();
-                        if let Some((rx, ry, rw, rh)) = *rect.peek() {
-                            let view = ((c.x - rx) * VIEW_W / rw, (c.y - ry) * VIEW_H / rh);
+                        if rect.peek().is_some() {
+                            let view = client_to_view(c.x, c.y);
                             let (px, py) = pan();
                             let world = ((view.0 - px) / z0, (view.1 - py) / z0);
                             pan.set((view.0 - world.0 * z, view.1 - world.1 * z));
@@ -962,7 +979,6 @@ pub fn NetworkPanel() -> Element {
                                             && !edges_read(&edges).contains(&normalize(src, key).unwrap())
                                     });
                                     let hov = hover_now == Some(key);
-                                    let sel = selection_now.contains(&key);
                                     let title_y = if sub_text.is_empty() { y + 4.5 } else { y - 0.5 };
                                     // Per-type look: group = soft tinted pill, mapping = square chip,
                                     // channel/model = solid card. Distinct at a glance in any state.
@@ -1057,8 +1073,8 @@ pub fn NetworkPanel() -> Element {
                                                 rx: "{rx}",
                                                 fill: "{fill}",
                                                 fill_opacity: "{fill_op}",
-                                                stroke: if sel || (legal && hov) { "#fafafa" } else { node_color },
-                                                stroke_width: if hov || legal || sel { sw_hov } else { sw },
+                                                stroke: if legal && hov { "#fafafa" } else { node_color },
+                                                stroke_width: if hov || legal { sw_hov } else { sw },
                                             }
                                             text {
                                                 x: "{x:.0}",
