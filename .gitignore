@@ -3,3 +3,7 @@
 *.pdb
 todo/
 /logs
+
+.codegraph/
+.code-review-graph/
+node_modules/

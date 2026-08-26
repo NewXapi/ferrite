@@ -2,12 +2,18 @@
 resolver = "2"
 members = [
     "apps/api",
+    "apps/web",
+    "crates/web/page",
+    "crates/web/shared/client",
+    "crates/web/shared/session",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+rust-version = "1.85"
+publish = false
 
 [workspace.dependencies]
 tokio       = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync", "time", "io-util"] }
@@ -29,6 +35,9 @@ rand        = "0.8"
 futures-util = "0.3"
 tracing-appender = "0.2"
 tracing-log = "0.2"
+dioxus      = { version = "=0.7.9", features = ["router"] }
+gloo-net   = { version = "0.6", features = ["json"] }
+http        = "1"
 
 [profile.release]
 lto           = "fat"

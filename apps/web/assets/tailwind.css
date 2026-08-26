@@ -1,0 +1,99 @@
+/* Tailwind CSS v4 entry — scans Dioxus rsx! class attributes in Rust sources. */
+@import "tailwindcss";
+
+@source "../../../crates/web/**/*.rs";
+
+/* Light theme overrides (unlayered — beats @layer utilities) */
+.light { color-scheme: light; }
+
+/* Background zinc inversions (N → 1000-N) */
+.light.bg-zinc-950, .light .bg-zinc-950 { background-color: var(--color-zinc-50); }
+.light .bg-zinc-900 { background-color: var(--color-zinc-100); }
+.light .bg-zinc-800 { background-color: var(--color-zinc-200); }
+.light .bg-zinc-700 { background-color: var(--color-zinc-300); }
+.light .bg-zinc-600 { background-color: var(--color-zinc-400); }
+.light .bg-zinc-500 { background-color: var(--color-zinc-500); }
+.light .bg-zinc-400 { background-color: var(--color-zinc-600); }
+.light .bg-zinc-300 { background-color: var(--color-zinc-700); }
+.light .bg-zinc-200 { background-color: var(--color-zinc-800); }
+.light .bg-zinc-100 { background-color: var(--color-zinc-900); }
+.light .bg-neutral-100 { background-color: var(--color-zinc-900); }
+
+/* Background zinc alpha variants via color-mix */
+.light .bg-zinc-900\/40 { background-color: color-mix(in oklab, var(--color-zinc-100) 40%, transparent); }
+.light .bg-zinc-900\/60 { background-color: color-mix(in oklab, var(--color-zinc-100) 60%, transparent); }
+.light .bg-zinc-900\/75 { background-color: color-mix(in oklab, var(--color-zinc-100) 75%, transparent); }
+.light .bg-zinc-800\/50 { background-color: color-mix(in oklab, var(--color-zinc-200) 50%, transparent); }
+.light .bg-zinc-800\/60 { background-color: color-mix(in oklab, var(--color-zinc-200) 60%, transparent); }
+
+/* Border zinc inversions */
+.light .border-zinc-800 { border-color: var(--color-zinc-200); }
+.light .border-zinc-700 { border-color: var(--color-zinc-300); }
+.light .border-zinc-600 { border-color: var(--color-zinc-400); }
+.light .border-zinc-500 { border-color: var(--color-zinc-500); }
+.light .border-zinc-400 { border-color: var(--color-zinc-600); }
+.light .border-zinc-100 { border-color: var(--color-zinc-900); }
+.light .border-zinc-800\/80 { border-color: color-mix(in oklab, var(--color-zinc-200) 80%, transparent); }
+
+/* Text zinc inversions */
+.light .text-zinc-100 { color: var(--color-zinc-900); }
+.light .text-zinc-200 { color: var(--color-zinc-800); }
+.light .text-zinc-300 { color: var(--color-zinc-700); }
+.light .text-zinc-400 { color: var(--color-zinc-600); }
+.light .text-zinc-500 { color: var(--color-zinc-500); }
+.light .text-zinc-600 { color: var(--color-zinc-400); }
+.light .text-zinc-700 { color: var(--color-zinc-300); }
+.light .text-zinc-900 { color: var(--color-zinc-100); }
+.light .text-neutral-900 { color: var(--color-zinc-100); }
+
+/* Ring zinc inversion */
+.light .hover\:ring-zinc-400:hover { --tw-ring-color: var(--color-zinc-600); }
+
+/* Tactile press button (sidebar nav): raised lip, sinks when pressed/selected.
+   Lip color derives from currentColor at 60% — bright on the dark theme,
+   dark on the light theme, no .light overrides needed. */
+.btn-tactile {
+    box-shadow: 0 3px 0 0 color-mix(in oklab, currentColor 60%, transparent);
+    transition:
+        transform 0.12s ease,
+        box-shadow 0.12s ease,
+        background-color 0.15s ease,
+        color 0.15s ease;
+}
+.btn-tactile:hover:not(.is-pressed) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 0 0 color-mix(in oklab, currentColor 60%, transparent);
+}
+.btn-tactile:active:not(.is-pressed),
+.btn-tactile.is-pressed {
+    transform: translateY(2px);
+    box-shadow: none;
+}
+
+/* Thin, translucent scrollbar — only shows when content actually overflows */
+.scroll-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(244, 244, 245, 0.18) transparent;
+}
+.scroll-subtle::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.scroll-subtle::-webkit-scrollbar-track {
+    background: transparent;
+}
+.scroll-subtle::-webkit-scrollbar-thumb {
+    background: rgba(244, 244, 245, 0.18);
+    border-radius: 9999px;
+}
+.light .scroll-subtle {
+    scrollbar-color: rgba(24, 24, 27, 0.25) transparent;
+}
+.light .scroll-subtle::-webkit-scrollbar-thumb {
+    background: rgba(24, 24, 27, 0.22);
+}
+
+/* ===== Retro quadrant page (#retro) ===== */
+.retro-glow {
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.13), transparent 70%);
+}
