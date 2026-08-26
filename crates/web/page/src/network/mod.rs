@@ -371,10 +371,9 @@ fn cubic_at(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), t: f
     )
 }
 
-/// Cubic bezier that dodges blocker node rects while keeping the curve look:
-/// tries growing lateral control-point offsets and keeps the first
-/// collision-free one, else the least-colliding.
-fn routed_bezier(a: (f64, f64), b: (f64, f64), blockers: &[(f64, f64)]) -> String {
+/// Fraction of lateral control-point offset that dodges blocker rects:
+/// first collision-free candidate wins, else the least-colliding one.
+fn dodge_frac(a: (f64, f64), b: (f64, f64), blockers: &[(f64, f64)]) -> f64 {
     const FRACS: [f64; 5] = [0.0, 0.12, -0.12, 0.26, -0.26];
     const SAMPLES: usize = 20;
     const PAD_X: f64 = NODE_W / 2.0 + 8.0;
@@ -398,14 +397,23 @@ fn routed_bezier(a: (f64, f64), b: (f64, f64), blockers: &[(f64, f64)]) -> Strin
             }
         }
         if hits == 0 {
-            return path_str(a, c1, c2, b);
+            return f;
         }
         if best.is_none() || hits < best.unwrap().0 {
             best = Some((hits, f));
         }
     }
-    let off = best.unwrap_or((0, 0.0)).1 * dist;
-    path_str(a, (a.0 + off, mid), (b.0 + off, mid), b)
+    best.unwrap_or((0, 0.0)).1
+}
+
+/// Bezier path with a lateral control-point dodge of `frac` × edge length.
+fn offset_bezier(a: (f64, f64), b: (f64, f64), frac: f64) -> String {
+    if frac == 0.0 {
+        return bezier(a, b);
+    }
+    let dist = (b.0 - a.0).hypot(b.1 - a.1);
+    let mid = (a.1 + b.1) / 2.0;
+    path_str(a, (a.0 + frac * dist, mid), (b.0 + frac * dist, mid), b)
 }
 
 /// Pan/zoom so all points sit inside the viewBox with padding. Returns (pan, zoom).
@@ -473,6 +481,8 @@ pub fn NetworkPanel() -> Element {
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
     let mut marquee = use_signal(|| None::<((f64, f64), (f64, f64))>);
+    // Per-edge dodge curve factor, eased by the ticker (0 = straight).
+    let mut dodge = use_signal(HashMap::<(NodeKey, NodeKey), f64>::new);
     let mut expanded = use_signal(|| HashSet::from([2usize])); // OneAPI 上游 pre-expanded
     let mut positions = use_signal(|| HashMap::<NodeKey, (f64, f64)>::new());
     // Live spring layout: a 16ms ticker integrates forces frame by frame.
@@ -481,7 +491,7 @@ pub fn NetworkPanel() -> Element {
     // then sleeps. Dragged nodes are held; live neighbors dodge in real time.
     let mut wake = use_signal(|| 0u32);
     use_effect(move || {
-        let _ = (edges(), expanded());
+        let _ = (edges(), expanded(), drag());
         let next = wake.peek().wrapping_add(1);
         wake.set(next);
     });
@@ -500,6 +510,8 @@ pub fn NetworkPanel() -> Element {
             let mut velocities = HashMap::<NodeKey, (f64, f64)>::new();
             let mut seen_wake = *wake.peek();
             let mut energy = f64::MAX;
+            // Dodge easing keeps the ticker alive until curves converge.
+            let mut dodge_active = false;
             loop {
                 gloo_timers::future::TimeoutFuture::new(16).await;
                 let held = match *drag.peek() {
@@ -508,7 +520,7 @@ pub fn NetworkPanel() -> Element {
                 };
                 let dirty = seen_wake != *wake.peek();
                 seen_wake = *wake.peek();
-                if !(dirty || held.is_some() || energy > 0.08) {
+                if !(dirty || held.is_some() || energy > 0.08 || dodge_active) {
                     continue;
                 }
                 let ex = expanded.peek().clone();
@@ -523,6 +535,42 @@ pub fn NetworkPanel() -> Element {
                     &mut positions.write(),
                     &mut velocities,
                 );
+                // Wire dodge eases toward its target each frame: 0 while any
+                // drag is live (wires follow rigidly, no morphing) and the
+                // best dodge fraction after release, so avoidance grows in
+                // smoothly instead of snapping mid-drag.
+                let dragging = matches!(*drag.peek(), Some(Drag::Move { .. } | Drag::Wire { .. }));
+                {
+                    let ps = positions.peek();
+                    let nodes: Vec<NodeKey> = layers.iter().flatten().copied().collect();
+                    let mut dw = dodge.write();
+                    dodge_active = false;
+                    for &(u, l, raw) in &pairs {
+                        let (pu, pl) = (ps[&u], ps[&l]);
+                        let (a, b) = ((pu.0, pu.1 + NODE_H / 2.0), (pl.0, pl.1 - NODE_H / 2.0));
+                        let target = if dragging {
+                            0.0
+                        } else {
+                            let blockers: Vec<(f64, f64)> = nodes
+                                .iter()
+                                .filter(|&&k| k != u && k != l)
+                                .map(|&k| ps[&k])
+                                .collect();
+                            dodge_frac(a, b, &blockers)
+                        };
+                        let cur = dw.entry(raw).or_insert(0.0);
+                        let next = *cur + (target - *cur) * 0.18;
+                        let next = if (next - target).abs() < 0.003 {
+                            target
+                        } else {
+                            next
+                        };
+                        if (*cur - next).abs() > 0.0005 {
+                            dodge_active = true;
+                            *cur = next;
+                        }
+                    }
+                }
             }
         });
     });
@@ -543,6 +591,7 @@ pub fn NetworkPanel() -> Element {
     };
 
     let display_edges = display_edge_pairs(&edges(), &expanded_now);
+    let dodge_now = dodge();
 
     // ---- Focus: union of layer-distance BFS from every selected node ----
     // A step is admitted iff it strictly increases |layer − start.layer|.
@@ -854,13 +903,9 @@ pub fn NetworkPanel() -> Element {
                         for (du, dl, raw) in display_edges.clone() {
                             {
                                 let wire_color = color(du);
-                                let blockers: Vec<(f64, f64)> = layers
-                                    .iter()
-                                    .flatten()
-                                    .filter(|&&k| k != du && k != dl)
-                                    .map(|&k| pos(k))
-                                    .collect();
-                                let d = routed_bezier(anchor(du, true), anchor(dl, false), &blockers);
+                                // Dodge factor is eased by the ticker; render only reads it.
+                                let frac = dodge_now.get(&raw).copied().unwrap_or(0.0);
+                                let d = offset_bezier(anchor(du, true), anchor(dl, false), frac);
                                 let opacity = match &focus {
                                     Some(set) if set.contains(&du) && set.contains(&dl) => "0.9",
                                     Some(_) => "0.10",
