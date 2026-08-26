@@ -192,9 +192,9 @@ const SEED_EDGES: &[(NodeKey, NodeKey)] = &[
 
 const MARGIN: f64 = 110.0;
 const COL_GAP: f64 = 130.0;
-const ROW_Y: [f64; 3] = [90.0, 340.0, 590.0];
-/// Each layer roams freely inside its own horizontal band (±80 around row).
-const BAND_HALF: f64 = 80.0;
+const ROW_Y: [f64; 3] = [100.0, 400.0, 700.0];
+/// Each layer roams freely inside its own horizontal band (±120 around row).
+const BAND_HALF: f64 = 120.0;
 fn band_y(layer: u8) -> (f64, f64) {
     (
         ROW_Y[layer as usize] - BAND_HALF,
@@ -202,7 +202,7 @@ fn band_y(layer: u8) -> (f64, f64) {
     )
 }
 const VIEW_W: f64 = MARGIN * 2.0 + (MODELS.len() as f64 - 1.0) * COL_GAP;
-const VIEW_H: f64 = 700.0;
+const VIEW_H: f64 = 840.0;
 const NODE_W: f64 = 104.0;
 const NODE_H: f64 = 36.0;
 
@@ -1334,48 +1334,43 @@ fn physics_step(
         fl.0 -= fx;
         fl.1 -= fy;
     }
-    // Separation, box-aware: nodes are wide pills, so horizontal clearance
-    // (node width + 12) and vertical clearance (node height + 8) are separate;
-    // the pair resolves along the axis with the smaller penetration.
-    // Bands never overlap vertically (90px gap > NODE_H + 8), so only
-    // same-layer pairs can collide: sort each layer by x and sweep forward
-    // while within horizontal clearance. O(n log n + collisions) per frame.
+    // Separation, box-aware: nodes are wide pills; horizontal clearance
+    // (width + 12) and vertical clearance (height + 8) resolve along the
+    // shallower penetration axis. Sweep over all nodes sorted by x: inner
+    // loop breaks as soon as the x gap clears, so cost stays
+    // O(n log n + collisions) per frame regardless of band geometry.
     let mut nodes: Vec<NodeKey> = layers.iter().flatten().copied().collect();
-    for layer in layers.iter() {
-        let mut row: Vec<NodeKey> = layer.clone();
-        row.sort_by(|&a, &b| positions[&a].0.partial_cmp(&positions[&b].0).unwrap());
-        for i in 0..row.len() {
-            let a = row[i];
-            let pa = positions[&a];
-            for &b in &row[i + 1..] {
-                let pb = positions[&b];
-                let dx = pb.0 - pa.0;
-                if dx >= NODE_W + 12.0 {
-                    break; // sorted: everything further right is clear of a
-                }
-                let dy = pb.1 - pa.1;
-                let oy = (NODE_H + 8.0) - dy.abs();
-                if oy <= 0.0 {
-                    continue;
-                }
-                let ox = (NODE_W + 12.0) - dx;
-                // Push out along the shallower overlap axis (pure x or pure y).
-                let (fx, fy) = if ox < oy {
-                    (dx.signum() * ox * 0.55, 0.0)
-                } else {
-                    (0.0, dy.signum() * oy * 0.55)
-                };
-                let fa = forces.entry(a).or_default();
-                fa.0 -= fx;
-                fa.1 -= fy;
-                let fb = forces.entry(b).or_default();
-                fb.0 += fx;
-                fb.1 += fy;
+    let mut sweep: Vec<NodeKey> = nodes.clone();
+    sweep.sort_by(|&a, &b| positions[&a].0.partial_cmp(&positions[&b].0).unwrap());
+    for i in 0..sweep.len() {
+        let a = sweep[i];
+        let pa = positions[&a];
+        for &b in &sweep[i + 1..] {
+            let pb = positions[&b];
+            let dx = pb.0 - pa.0;
+            if dx >= NODE_W + 12.0 {
+                break; // sorted: everything further right is clear of a
             }
+            let dy = pb.1 - pa.1;
+            let oy = (NODE_H + 8.0) - dy.abs();
+            if oy <= 0.0 {
+                continue;
+            }
+            let ox = (NODE_W + 12.0) - dx;
+            // Push out along the shallower overlap axis (pure x or pure y).
+            let (fx, fy) = if ox < oy {
+                (dx.signum() * ox * 0.55, 0.0)
+            } else {
+                (0.0, dy.signum() * oy * 0.55)
+            };
+            let fa = forces.entry(a).or_default();
+            fa.0 -= fx;
+            fa.1 -= fy;
+            let fb = forces.entry(b).or_default();
+            fb.0 += fx;
+            fb.1 += fy;
         }
     }
-    nodes.clear();
-    nodes.extend(layers.iter().flatten().copied());
     let mut max_v = 0.0f64;
     for &k in &nodes {
         let v = velocities.entry(k).or_default();
