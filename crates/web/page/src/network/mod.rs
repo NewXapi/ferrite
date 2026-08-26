@@ -688,6 +688,39 @@ pub fn NetworkPanel() -> Element {
         cursor_world()
     })();
 
+    // Commit the active marquee into `selected`. Releasing over a node
+    // stop_propagates to this node's mouseup instead of the canvas', so both
+    // handlers route through here — otherwise the marquee hangs mid-drag.
+    let mut commit_select = move || {
+        match *marquee.peek() {
+            // Tiny rect → plain click on empty canvas: clear.
+            Some((a, b)) if (a.0 - b.0).abs() + (a.1 - b.1).abs() > 4.0 => {
+                // Marquee corners are viewBox coords → world directly.
+                let (px, py) = *pan.peek();
+                let z = *zoom.peek();
+                let wa = ((a.0 - px) / z, (a.1 - py) / z);
+                let wb = ((b.0 - px) / z, (b.1 - py) / z);
+                let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
+                let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
+                let layers = visible_layers(&expanded.peek());
+                let hit: HashSet<NodeKey> = layers
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .filter(|&k| {
+                        let Some((x, y)) = positions.peek().get(&k).copied() else {
+                            return false;
+                        };
+                        x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1
+                    })
+                    .collect();
+                selected.set(hit);
+            }
+            _ => selected.set(HashSet::new()),
+        }
+        marquee.set(None);
+    };
+
     let port_of = |key: NodeKey| -> &'static str {
         match key {
             NodeKey::Group(_) => "bottom",
@@ -813,34 +846,7 @@ pub fn NetworkPanel() -> Element {
                         let current = *drag.peek();
                         match current {
                             Some(Drag::Pan { moved: false, .. }) => selected.set(HashSet::new()),
-                            Some(Drag::Select) => {
-                                match *marquee.peek() {
-                                    // Tiny rect → plain click on empty canvas: clear.
-                                    Some((a, b)) if (a.0 - b.0).abs() + (a.1 - b.1).abs() > 4.0 => {
-                                        // Marquee corners are viewBox coords → world directly.
-                                        let (px, py) = *pan.peek();
-                                        let z = *zoom.peek();
-                                        let wa = ((a.0 - px) / z, (a.1 - py) / z);
-                                        let wb = ((b.0 - px) / z, (b.1 - py) / z);
-                                        let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
-                                        let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
-                                        let hit: HashSet<NodeKey> = layers
-                                            .iter()
-                                            .flatten()
-                                            .copied()
-                                            .filter(|&k| {
-                                                let Some((x, y)) = positions.peek().get(&k).copied() else {
-                                                    return false;
-                                                };
-                                                x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1
-                                            })
-                                            .collect();
-                                        selected.set(hit);
-                                    }
-                                    _ => selected.set(HashSet::new()),
-                                }
-                                marquee.set(None);
-                            }
+                            Some(Drag::Select) => commit_select(),
                             _ => {}
                         }
                         drag.set(None);
@@ -1028,6 +1034,7 @@ pub fn NetworkPanel() -> Element {
                                             && !edges_read(&edges).contains(&normalize(src, key).unwrap())
                                     });
                                     let hov = hover_now == Some(key);
+                                    let sel = selection_now.contains(&key);
                                     let title_y = if sub_text.is_empty() { y + 4.5 } else { y - 0.5 };
                                     // Per-type look: group = soft tinted pill, mapping = square chip,
                                     // channel/model = solid card. Distinct at a glance in any state.
@@ -1071,6 +1078,9 @@ pub fn NetworkPanel() -> Element {
                                                 e.stop_propagation();
                                                 let current = *drag.peek();
                                                 match current {
+                                                    // Releasing a marquee over a node must still commit
+                                                    // (stop_propagation hides it from the canvas handler).
+                                                    Some(Drag::Select) => commit_select(),
                                                     Some(Drag::Wire { src }) if src != key => {
                                                         // Multi-wire: every same-layer selected source
                                                         // with a legal edge to this target connects too.
@@ -1122,8 +1132,10 @@ pub fn NetworkPanel() -> Element {
                                                 rx: "{rx}",
                                                 fill: "{fill}",
                                                 fill_opacity: "{fill_op}",
-                                                stroke: if legal && hov { "#fafafa" } else { node_color },
-                                                stroke_width: if hov || legal { sw_hov } else { sw },
+                                                // Selected nodes get a white ring; non-connected ones
+                                                // dim out via focus, so the picks stay recognizable.
+                                                stroke: if sel || (legal && hov) { "#fafafa" } else { node_color },
+                                                stroke_width: if hov || legal || sel { sw_hov } else { sw },
                                             }
                                             text {
                                                 x: "{x:.0}",
@@ -1341,8 +1353,7 @@ fn physics_step(
     // shallower penetration axis. Sweep over all nodes sorted by x: inner
     // loop breaks as soon as the x gap clears, so cost stays
     // O(n log n + collisions) per frame regardless of band geometry.
-    let mut nodes: Vec<NodeKey> = layers.iter().flatten().copied().collect();
-    let mut sweep: Vec<NodeKey> = nodes.clone();
+    let mut sweep: Vec<NodeKey> = layers.iter().flatten().copied().collect();
     sweep.sort_by(|&a, &b| positions[&a].0.partial_cmp(&positions[&b].0).unwrap());
     for i in 0..sweep.len() {
         let a = sweep[i];
@@ -1374,7 +1385,7 @@ fn physics_step(
         }
     }
     let mut max_v = 0.0f64;
-    for &k in &nodes {
+    for &k in &sweep {
         let v = velocities.entry(k).or_default();
         if Some(k) == held {
             *v = (0.0, 0.0);
