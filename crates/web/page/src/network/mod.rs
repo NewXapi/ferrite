@@ -328,48 +328,6 @@ fn settle_layout(
     }
 }
 
-/// 不像 settle_layout 会把整图拉回 VIEW_W/2，它只把每层自己的 barycenter 对齐，
-/// 原封不动保留左缘锚定，避免焦点态子图又被甩回中央。
-fn settle_layout_forward(
-    layers: &[Vec<NodeKey>; 3],
-    edges: &[(NodeKey, NodeKey)],
-    positions: &mut HashMap<NodeKey, (f64, f64)>,
-) {
-    for _ in 0..60 {
-        let mut max_d = 0.0f64;
-        for row in layers.iter() {
-            for &k in row {
-                let (mut sum, mut n) = (0.0f64, 0.0f64);
-                for &(up, low) in edges {
-                    let other = if up == k {
-                        Some(low)
-                    } else if low == k {
-                        Some(up)
-                    } else {
-                        None
-                    };
-                    if let Some(o) = other {
-                        if let Some(p) = positions.get(&o) {
-                            sum += p.0;
-                            n += 1.0;
-                        }
-                    }
-                }
-                if n > 0.0 {
-                    if let Some(p) = positions.get_mut(&k) {
-                        let d = (sum / n - p.0) * 0.25;
-                        p.0 += d;
-                        max_d = max_d.max(d.abs());
-                    }
-                }
-            }
-        }
-        if max_d < 0.15 {
-            break;
-        }
-    }
-}
-
 /// Node→node edge must span exactly one layer; channels are aggregates only.
 fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
     let la = a.layer() as i16;
@@ -522,36 +480,68 @@ fn focus_cone(start: NodeKey, edges: &[(NodeKey, NodeKey)]) -> HashSet<NodeKey> 
 /// 焦点子图的一次性排布：每层按当前 x 顺序均匀铺开（保持相对次序，
 /// 视觉跳动最小），再松弛让上层压在下层重心上。
 /// 只在进入焦点时算一次；之后位置交给物理与拖拽。
+/// 排布按可视框宽度走：每层按其当前 x 保持相对次序，在框内均匀摊开；
+/// 再做几轮轻重心的 barycenter 渐拢让连线尽量垂直（力矩减半，避免塌列）。
+/// 只在进入焦点时算一次；之后位置交给拖拽，物理不接管（见 ticker）。
 fn layout_subgraph(
     sub: &HashSet<NodeKey>,
     edges: &[(NodeKey, NodeKey)],
     cur: &HashMap<NodeKey, (f64, f64)>,
+    area: (f64, f64, f64, f64),
 ) -> HashMap<NodeKey, (f64, f64)> {
+    let (bx, _, bw, _) = area;
     let mut rows: [Vec<NodeKey>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for &k in sub {
         rows[k.layer() as usize].push(k);
     }
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
+    const PADDING: f64 = 40.0;
     for (l, row) in rows.iter_mut().enumerate() {
         row.sort_by(|a, b| {
             let xa = cur.get(a).map(|p| p.0).unwrap_or(0.0);
             let xb = cur.get(b).map(|p| p.0).unwrap_or(0.0);
             xa.partial_cmp(&xb).unwrap_or(std::cmp::Ordering::Equal)
         });
-        // 每层都**左对齐**到可视区左缘，贴着层标题；垂直的 z 收缩只剩在 y，
-        // 避免「图中央却空一块、又离标签老远」。
-        let left = 24.0;
+        let n = row.len();
+        let usable = bw - PADDING * 2.0;
         for (i, &k) in row.iter().enumerate() {
-            out.insert(k, (left + i as f64 * COL_GAP, ROW_Y[l]));
+            let frac = if n <= 1 {
+                0.5
+            } else {
+                i as f64 / (n - 1) as f64
+            };
+            out.insert(k, (bx + PADDING + frac * usable, ROW_Y[l]));
+        }
+        // 上下层同宽的均摊看起来呆板：单层的位置往其邻居重心收一点。
+        let sub_edges: Vec<(NodeKey, NodeKey)> = edges
+            .iter()
+            .copied()
+            .filter(|(u, lo)| sub.contains(u) && sub.contains(lo))
+            .collect();
+        for k in row.iter().copied() {
+            let (mut sum, mut cnt) = (0.0f64, 0.0f64);
+            for &(u, lo) in &sub_edges {
+                let other = if u == k {
+                    Some(lo)
+                } else if lo == k {
+                    Some(u)
+                } else {
+                    None
+                };
+                if let Some(o) = other {
+                    // 只看更靠下的层已定位置的邻居（先铺下层再铺上层时用得上）
+                    if let Some(op) = out.get(&o) {
+                        sum += op.0;
+                        cnt += 1.0;
+                    }
+                }
+            }
+            if cnt > 0.0 {
+                let cur_x = out[&k].0;
+                out.insert(k, (cur_x + (sum / cnt - cur_x) * 0.45, ROW_Y[l]));
+            }
         }
     }
-    let layers = [rows[0].clone(), rows[1].clone(), rows[2].clone()];
-    let sub_edges: Vec<(NodeKey, NodeKey)> = edges
-        .iter()
-        .copied()
-        .filter(|(u, l)| sub.contains(u) && sub.contains(l))
-        .collect();
-    settle_layout_forward(&layers, &sub_edges, &mut out);
     out
 }
 
@@ -564,8 +554,13 @@ struct Tween {
     to_pan: (f64, f64),
     from_zoom: f64,
     to_zoom: f64,
-    /// 每个节点的错峰延迟，让队列次第滑入（而非整段卡死）。
+    /// 每个节点的错峰延迟（秒），让队列次第滑入（而非整段卡死）。
     delay: HashMap<NodeKey, f64>,
+    /// 开始时刻（performance.now()，毫秒）。用真实时间驱动进度，
+    /// 帧率抖动就不会造成节奏忽快忽慢。
+    started_ms: f64,
+    /// 总时长（毫秒，不含错峰）。
+    duration_ms: f64,
     /// 0 → 1
     t: f64,
 }
@@ -589,8 +584,8 @@ fn stagger_delay(start: NodeKey, edges: &[(NodeKey, NodeKey)]) -> HashMap<NodeKe
             } else {
                 continue;
             };
-            if !delay.contains_key(&m) {
-                delay.insert(m, d0 + 0.10);
+            if let std::collections::hash_map::Entry::Vacant(e) = delay.entry(m) {
+                e.insert(d0 + 0.09);
                 queue.push_back(m);
             }
         }
@@ -617,8 +612,17 @@ fn make_tween(
         from_zoom,
         to_zoom,
         delay,
+        started_ms: now_ms(),
+        duration_ms: 420.0,
         t: 0.0,
     }
+}
+
+fn now_ms() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map(|p| p.now())
+        .unwrap_or(0.0)
 }
 
 fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
@@ -742,15 +746,17 @@ pub fn NetworkPanel() -> Element {
                     let done = {
                         let mut tw = tween.write();
                         let Some(t) = tw.as_mut() else { continue };
-                        // 总时长约 350ms，错峰只延迟各节点的开始，不拉长全程
-                        t.t = (t.t + 0.045).min(1.0);
+                        // 真实时间驱动：progress = (now - start) / duration，
+                        // 帧间隔抖动不会反映到节奏上。
+                        let raw = ((now_ms() - t.started_ms) / t.duration_ms).clamp(0.0, 1.0);
+                        t.t = raw;
                         {
                             let mut pw = positions.write();
                             for (k, to) in t.to.iter() {
                                 let from = t.from.get(k).copied().unwrap_or(*to);
                                 // 错峰：这个节点先静下来再动，序列感
                                 let d = t.delay.get(k).copied().unwrap_or(0.0);
-                                let local = ((t.t - d) / (1.0 - d)).clamp(0.0, 1.0);
+                                let local = ((raw - d) / (1.0 - d)).clamp(0.0, 1.0);
                                 let e = ease_out_quint(local);
                                 pw.insert(
                                     *k,
@@ -778,26 +784,17 @@ pub fn NetworkPanel() -> Element {
                 if !(dirty || held.is_some() || energy > 0.08 || dodge_active) {
                     continue;
                 }
-                let mut layers = visible_layers();
-                let pairs = display_edge_pairs(&edges.peek());
-                // 焦点态：物理只作用在锥内节点上，锥外节点不受力不动位，
-                // 避免 vip 这类多连分组被锥外别名拽走。
-                if let Some(cone) = focus_space.peek().as_ref() {
-                    for row in layers.iter_mut() {
-                        row.retain(|k| cone.contains(k));
-                    }
+                // 焦点态下物理完全停摆：位置已经在排布时摆好，
+                // 绳簧/碰撞继续跑只会把好位置拽歪。只有拖拽仍走 held 分支。
+                if focus_space.peek().is_some() && held.is_none() {
+                    energy = 0.0;
+                    dodge_active = false;
+                    continue;
                 }
-                let pairs_xy: Vec<(NodeKey, NodeKey)> = {
-                    let cone = focus_space.peek();
-                    pairs
-                        .iter()
-                        .filter(|&(u, l, _)| {
-                            cone.as_ref()
-                                .map_or(true, |c| c.contains(u) && c.contains(l))
-                        })
-                        .map(|&(u, l, _)| (u, l))
-                        .collect()
-                };
+                let layers = visible_layers();
+                let pairs = display_edge_pairs(&edges.peek());
+                let pairs_xy: Vec<(NodeKey, NodeKey)> =
+                    pairs.iter().map(|&(u, l, _)| (u, l)).collect();
                 energy = physics_step(
                     &layers,
                     &pairs_xy,
@@ -1484,8 +1481,9 @@ pub fn NetworkPanel() -> Element {
                                                                     all.iter().copied().collect();
                                                                 let cone = focus_cone(key, &ev);
                                                                 let cur = positions.peek().clone();
-                                                                let target = layout_subgraph(&cone, &ev, &cur);
                                                                 let vb = visible_box(*rect.peek(), true);
+                                                                let target =
+                                                                    layout_subgraph(&cone, &ev, &cur, vb);
                                                                 let pts: Vec<(f64, f64)> =
                                                                     target.values().copied().collect();
                                                                 let (to_pan, to_zoom) = fit_view_into(&pts, vb);
