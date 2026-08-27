@@ -123,7 +123,7 @@ const MODELS: &[ModelDef] = &[
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum NodeKey {
+pub enum NodeKey {
     Group(usize),
     Mapping(usize),
     Model(usize),
@@ -139,9 +139,68 @@ impl NodeKey {
             NodeKey::Model(_) | NodeKey::Channel(_) => 2,
         }
     }
+
+    /// 该节点属于哪个实体层（用于图层过滤与检视器分派）。
+    pub fn kind(self) -> NodeKind {
+        match self {
+            NodeKey::Group(_) => NodeKind::Group,
+            NodeKey::Mapping(_) => NodeKind::Mapping,
+            NodeKey::Model(_) | NodeKey::Channel(_) => NodeKind::Channel,
+        }
+    }
 }
 
-fn color(key: NodeKey) -> &'static str {
+/// 三种实体层。图层芯片、选择条统计、检视器都按它分派。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum NodeKind {
+    Group,
+    Mapping,
+    Channel,
+}
+
+impl NodeKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            NodeKind::Group => "分组",
+            NodeKind::Mapping => "模型映射",
+            NodeKind::Channel => "渠道模型",
+        }
+    }
+
+    pub const ALL: [NodeKind; 3] = [NodeKind::Group, NodeKind::Mapping, NodeKind::Channel];
+}
+
+/// 共享选中态：画布与右侧检视器同读同写。
+#[derive(Clone, Copy)]
+pub struct ManageState {
+    /// 当前选中的节点集合。
+    pub selected: Signal<HashSet<NodeKey>>,
+    /// 每层是否可见。
+    pub visible: Signal<HashSet<NodeKind>>,
+    /// 当前活动层：决定「新增节点」建什么。
+    pub active_kind: Signal<NodeKind>,
+    /// 右键菜单位置（客户端坐标）与命中节点。
+    pub context_menu: Signal<Option<(f64, f64, Option<NodeKey>)>>,
+}
+
+impl ManageState {
+    pub fn new() -> Self {
+        Self {
+            selected: Signal::new(HashSet::new()),
+            visible: Signal::new(NodeKind::ALL.into_iter().collect()),
+            active_kind: Signal::new(NodeKind::Channel),
+            context_menu: Signal::new(None),
+        }
+    }
+}
+
+impl Default for ManageState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub fn color(key: NodeKey) -> &'static str {
     match key {
         NodeKey::Group(i) => GROUPS[i].color,
         NodeKey::Mapping(i) => MAPPINGS[i].color,
@@ -149,7 +208,7 @@ fn color(key: NodeKey) -> &'static str {
     }
 }
 
-fn node_title(key: NodeKey) -> String {
+pub fn node_title(key: NodeKey) -> String {
     match key {
         NodeKey::Group(i) => GROUPS[i].name.into(),
         NodeKey::Mapping(i) => MAPPINGS[i].name.into(),
@@ -158,7 +217,7 @@ fn node_title(key: NodeKey) -> String {
     }
 }
 
-fn subtitle(key: NodeKey) -> String {
+pub fn subtitle(key: NodeKey) -> String {
     match key {
         NodeKey::Model(i) => CHANNELS[MODELS[i].channel].into(),
         NodeKey::Channel(c) => {
@@ -476,7 +535,9 @@ pub fn NetworkPanel() -> Element {
     let mut rect = use_signal(|| None::<(f64, f64, f64, f64)>);
     let mut pan = use_signal(|| (0.0f64, 0.0f64));
     let mut zoom = use_signal(|| 1.0f64);
-    let mut selected = use_signal(HashSet::<NodeKey>::new);
+    // 选中态提到 ManageState，供右侧检视器与选择条共享。
+    let state = use_context::<ManageState>();
+    let mut selected = state.selected;
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -592,7 +653,13 @@ pub fn NetworkPanel() -> Element {
     // ---- Visible nodes per layer (collapse-aware) ----
     let expanded_now = expanded();
 
-    let layers = visible_layers(&expanded_now);
+    // 图层可见性只影响渲染，不影响物理与布局：隐藏层仍参与力学，
+    // 避免切可见性时整图重排。
+    let visible_kinds = state.visible.read().clone();
+    let mut layers = visible_layers(&expanded_now);
+    for row in layers.iter_mut() {
+        row.retain(|k| visible_kinds.contains(&k.kind()));
+    }
     let selection_now = selected();
     let layers_fit = layers.clone(); // owned copy for the 适配 button's handler
 
@@ -736,36 +803,35 @@ pub fn NetworkPanel() -> Element {
     };
 
     rsx! {
-        div { class: "flex h-full min-h-[480px] flex-col",
-            div { class: "flex flex-wrap items-center gap-3 px-1 pb-3",
+        div { class: "relative flex h-full min-h-0 flex-col",
+            // 画布填满：图例/适配/提示统一改为浮层，绝对定位不挤压画布，
+            // 切状态时画布尺寸恒定（历史上这里挤压过整页布局）。
+            div { class: "pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5",
                 for g in GROUPS {
-                    span { class: "inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400",
-                        span { class: "h-2.5 w-2.5 rounded-full", style: "background: {g.color}" }
+                    span { class: "inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 px-2 py-0.5 text-[11px] text-zinc-400 backdrop-blur",
+                        span { class: "h-2 w-2 rounded-full", style: "background: {g.color}" }
                         "{g.name}"
                     }
                 }
-                button {
-                    class: "ml-auto rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
-                    onclick: move |_| {
-                        // Zoom/pan so every visible node fits inside the viewBox.
-                        let pts: Vec<(f64, f64)> = layers_fit
-                            .iter()
-                            .flatten()
-                            .filter_map(|k| positions.peek().get(k).copied())
-                            .collect();
-                        if pts.is_empty() {
-                            return;
-                        }
-                        let ((px, py), z) = fit_view(&pts);
-                        pan.set((px, py));
-                        zoom.set(z);
-                    },
-                    "适配"
-                }
-                // w-full pins the hint to its own line: the legend row and the
-                // canvas below must never shift when the hint text changes.
-                span { class: "w-full text-right text-xs text-zinc-600 leading-4", "{hint}" }
             }
+            button {
+                class: "absolute right-3 top-3 z-10 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                onclick: move |_| {
+                    let pts: Vec<(f64, f64)> = layers_fit
+                        .iter()
+                        .flatten()
+                        .filter_map(|k| positions.peek().get(k).copied())
+                        .collect();
+                    if pts.is_empty() {
+                        return;
+                    }
+                    let ((px, py), z) = fit_view(&pts);
+                    pan.set((px, py));
+                    zoom.set(z);
+                },
+                "适配"
+            }
+            span { class: "pointer-events-none absolute bottom-3 right-3 z-10 text-[11px] leading-4 text-zinc-600", "{hint}" }
             div { class: "min-h-0 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
                     view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
@@ -781,6 +847,13 @@ pub fn NetworkPanel() -> Element {
                         if let Ok(r) = e.get_client_rect().await {
                             rect.set(Some((r.origin.x, r.origin.y, r.size.width, r.size.height)));
                         }
+                    },
+                    // 右键空白：出上下文菜单（新增/整理/全选），不清空选中。
+                    oncontextmenu: move |e| {
+                        e.prevent_default();
+                        let c = e.client_coordinates();
+                        let mut menu = state.context_menu;
+                        menu.set(Some((c.x, c.y, None)));
                     },
                     // Background press → pan, or marquee with Shift held
                     // (nodes/ports/wires stop propagation)
@@ -1048,6 +1121,17 @@ pub fn NetworkPanel() -> Element {
                                         g {
                                             opacity: "{node_opacity}",
                                             onmouseenter: move |_| hover.set(Some(key)),
+                                            // 右键节点：若不在选中集则先独选它，再出菜单。
+                                            oncontextmenu: move |e| {
+                                                e.prevent_default();
+                                                e.stop_propagation();
+                                                if !selected.peek().contains(&key) {
+                                                    selected.set(HashSet::from([key]));
+                                                }
+                                                let c = e.client_coordinates();
+                                                let mut menu = state.context_menu;
+                                                menu.set(Some((c.x, c.y, Some(key))));
+                                            },
                                             onmouseleave: move |_| {
                                                 if *hover.peek() == Some(key) { hover.set(None) }
                                             },
