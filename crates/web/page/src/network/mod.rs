@@ -4,6 +4,100 @@ use dioxus::prelude::*;
 
 use crate::store::EntityStore;
 
+/// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
+/// 任一侧改名/增删，其他侧立即反映。
+#[derive(Clone)]
+struct GraphView {
+    /// 分组名（按 store 顺序；即 NodeKey::Group(i) 中的 i）
+    groups: Vec<String>,
+    /// 模型别名
+    aliases: Vec<String>,
+    /// 渠道名
+    channels: Vec<String>,
+    /// 调度模型：(渠道序号, 模型名)，展开自每个渠道的 dispatch
+    dispatch: Vec<(usize, String)>,
+}
+
+impl GraphView {
+    fn from_store(store: &EntityStore) -> Self {
+        let groups: Vec<String> = store.groups.read().iter().map(|g| g.name.clone()).collect();
+        let aliases: Vec<String> = store
+            .aliases
+            .read()
+            .iter()
+            .map(|a| a.alias.clone())
+            .collect();
+        let channels: Vec<String> = store
+            .channels
+            .read()
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+        let dispatch: Vec<(usize, String)> = store
+            .channels
+            .read()
+            .iter()
+            .enumerate()
+            .flat_map(|(ci, c)| c.dispatch.iter().map(move |m| (ci, m.clone())))
+            .collect();
+        Self {
+            groups,
+            aliases,
+            channels,
+            dispatch,
+        }
+    }
+}
+
+/// 调色板：store 里条目可增删，颜色按序号取模循环，不存进 store。
+const GROUP_PALETTE: &[&str] = &[
+    "#e5484d", "#3e9bff", "#30a46c", "#e5c558", "#d946ef", "#f97316",
+];
+const ALIAS_PALETTE: &[&str] = &[
+    "#f472b6", "#a78bfa", "#22d3ee", "#fb923c", "#34d399", "#f87171",
+];
+
+fn view_color(_view: &GraphView, key: NodeKey) -> &'static str {
+    match key {
+        NodeKey::Group(i) => GROUP_PALETTE[i % GROUP_PALETTE.len()],
+        NodeKey::Mapping(i) => ALIAS_PALETTE[i % ALIAS_PALETTE.len()],
+        NodeKey::Dispatch(_) => "#3f3f46",
+    }
+}
+
+fn view_title(view: &GraphView, key: NodeKey) -> String {
+    match key {
+        NodeKey::Group(i) => view.groups.get(i).cloned().unwrap_or_default(),
+        NodeKey::Mapping(i) => view.aliases.get(i).cloned().unwrap_or_default(),
+        NodeKey::Dispatch(i) => view
+            .dispatch
+            .get(i)
+            .map(|(_, n)| n.clone())
+            .unwrap_or_default(),
+    }
+}
+
+fn view_subtitle(view: &GraphView, key: NodeKey) -> String {
+    match key {
+        NodeKey::Dispatch(i) => view
+            .dispatch
+            .get(i)
+            .and_then(|(ci, _)| view.channels.get(*ci))
+            .cloned()
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+/// 按 GraphView 尺寸算出可见层。
+fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
+    [
+        (0..view.groups.len()).map(NodeKey::Group).collect(),
+        (0..view.aliases.len()).map(NodeKey::Mapping).collect(),
+        (0..view.dispatch.len()).map(NodeKey::Dispatch).collect(),
+    ]
+}
+
 /// 3-layer interactive routing editor, Mini-Metro flavored:
 ///   groups (top) ←→ model mappings (middle) ←→ channel models (bottom).
 ///
@@ -23,107 +117,6 @@ use crate::store::EntityStore;
 ///
 /// Sample data; persistence + real /api/channel + /api/group come later.
 
-struct GroupDef {
-    name: &'static str,
-    color: &'static str,
-}
-
-struct AliasDef {
-    name: &'static str,
-    color: &'static str,
-}
-
-struct DispatchDef {
-    channel: usize,
-    name: &'static str,
-}
-
-const GROUPS: &[GroupDef] = &[
-    GroupDef {
-        name: "default",
-        color: "#e5484d",
-    },
-    GroupDef {
-        name: "claude",
-        color: "#3e9bff",
-    },
-    GroupDef {
-        name: "gpt-5",
-        color: "#30a46c",
-    },
-    GroupDef {
-        name: "vip",
-        color: "#e5c558",
-    },
-];
-
-const ALIASES: &[AliasDef] = &[
-    AliasDef {
-        name: "gpt-4o",
-        color: "#f472b6",
-    },
-    AliasDef {
-        name: "gpt-5",
-        color: "#a78bfa",
-    },
-    AliasDef {
-        name: "claude-sonnet-4",
-        color: "#22d3ee",
-    },
-    AliasDef {
-        name: "gemini-2.5-pro",
-        color: "#fb923c",
-    },
-];
-
-const CHANNELS: &[&str] = &[
-    "OpenAI 官方",
-    "Azure East",
-    "OneAPI 上游",
-    "Claude 官网",
-    "AWS Bedrock",
-    "Gemini",
-];
-
-const DISPATCH: &[DispatchDef] = &[
-    DispatchDef {
-        channel: 0,
-        name: "gpt-4o",
-    },
-    DispatchDef {
-        channel: 0,
-        name: "gpt-5",
-    },
-    DispatchDef {
-        channel: 1,
-        name: "gpt-4o",
-    },
-    DispatchDef {
-        channel: 2,
-        name: "gpt-4o",
-    },
-    DispatchDef {
-        channel: 2,
-        name: "gpt-5",
-    },
-    DispatchDef {
-        channel: 2,
-        name: "claude-sonnet-4",
-    },
-    DispatchDef {
-        channel: 3,
-        name: "claude-sonnet-4",
-    },
-    DispatchDef {
-        channel: 4,
-        name: "claude-sonnet-4",
-    },
-    DispatchDef {
-        channel: 5,
-        name: "gemini-2.5-pro",
-    },
-];
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum NodeKey {
     Group(usize),
@@ -139,29 +132,6 @@ impl NodeKey {
             NodeKey::Mapping(_) => 1,
             NodeKey::Dispatch(_) => 2,
         }
-    }
-}
-
-fn color(key: NodeKey) -> &'static str {
-    match key {
-        NodeKey::Group(i) => GROUPS[i].color,
-        NodeKey::Mapping(i) => ALIASES[i].color,
-        NodeKey::Dispatch(_) => "#3f3f46",
-    }
-}
-
-fn node_title(key: NodeKey) -> String {
-    match key {
-        NodeKey::Group(i) => GROUPS[i].name.into(),
-        NodeKey::Mapping(i) => ALIASES[i].name.into(),
-        NodeKey::Dispatch(i) => DISPATCH[i].name.into(),
-    }
-}
-
-fn subtitle(key: NodeKey) -> String {
-    match key {
-        NodeKey::Dispatch(i) => CHANNELS[DISPATCH[i].channel].into(),
-        _ => String::new(),
     }
 }
 
@@ -197,7 +167,9 @@ fn band_y(layer: u8) -> (f64, f64) {
         ROW_Y[layer as usize] + BAND_HALF,
     )
 }
-const VIEW_W: f64 = MARGIN * 2.0 + (DISPATCH.len() as f64 - 1.0) * COL_GAP;
+// 视图宽度按最大列数留余量：调度模型从 store 读（数量可变），
+// 这里给 12 列的静态宽度即可，超出时靠缩放兜底。
+const VIEW_W: f64 = MARGIN * 2.0 + 12.0 * COL_GAP;
 const VIEW_H: f64 = 840.0;
 const NODE_W: f64 = 104.0;
 const NODE_H: f64 = 36.0;
@@ -209,8 +181,8 @@ const NODE_H: f64 = 36.0;
 /// handles collisions and user drags, so the graph no longer reels inward
 /// on open (the old grid was wider than the rope slack radius, so every link
 /// started taut and pulled everything toward the center).
-fn initial_positions() -> HashMap<NodeKey, (f64, f64)> {
-    let layers = visible_layers();
+fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
+    let layers = visible_layers_of(view);
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
     // row 0: even spread around the canvas center
     let n = layers[0].len();
@@ -671,6 +643,7 @@ enum Drag {
 
 #[component]
 pub fn NetworkPanel() -> Element {
+    let store = use_context::<EntityStore>();
     let mut edges = use_signal(|| {
         SEED_EDGES
             .iter()
@@ -718,8 +691,9 @@ pub fn NetworkPanel() -> Element {
     use_hook(move || {
         // Deterministic startup layout before the ticker takes over.
         {
-            let mut p = initial_positions();
-            let layers = visible_layers();
+            let view0 = GraphView::from_store(&store);
+            let mut p = initial_positions(&view0);
+            let layers = visible_layers_of(&view0);
             let pairs = display_edge_pairs(&edges.peek());
             let pairs_xy: Vec<(NodeKey, NodeKey)> = pairs.iter().map(|&(u, l, _)| (u, l)).collect();
             settle_layout(&layers, &pairs_xy, &mut p);
@@ -791,7 +765,8 @@ pub fn NetworkPanel() -> Element {
                     dodge_active = false;
                     continue;
                 }
-                let layers = visible_layers();
+                let view_now = GraphView::from_store(&store);
+                let layers = visible_layers_of(&view_now);
                 let pairs = display_edge_pairs(&edges.peek());
                 let pairs_xy: Vec<(NodeKey, NodeKey)> =
                     pairs.iter().map(|&(u, l, _)| (u, l)).collect();
@@ -860,7 +835,8 @@ pub fn NetworkPanel() -> Element {
     let cone_now = focus_space();
     // 焦点态：无关节点直接不渲染（不是变暗），物理仍照全图跑，
     // 退出时才需要它们的位置。
-    let mut layers = visible_layers();
+    let view_now = GraphView::from_store(&store);
+    let mut layers = visible_layers_of(&view_now);
     if let Some(cone) = &cone_now {
         for row in layers.iter_mut() {
             row.retain(|k| cone.contains(k));
@@ -877,6 +853,7 @@ pub fn NetworkPanel() -> Element {
             .unwrap_or((VIEW_W / 2.0, ROW_Y[key.layer() as usize]))
     };
 
+    let view_now = GraphView::from_store(&store);
     let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = {
         let all = display_edge_pairs(&edges());
         match &cone_now {
@@ -987,7 +964,8 @@ pub fn NetworkPanel() -> Element {
                 let wb = ((b.0 - px) / z, (b.1 - py) / z);
                 let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
                 let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
-                let layers = visible_layers();
+                let view_m = GraphView::from_store(&store);
+                let layers = visible_layers_of(&view_m);
                 let hit: HashSet<NodeKey> = layers
                     .iter()
                     .flatten()
@@ -1026,10 +1004,10 @@ pub fn NetworkPanel() -> Element {
     rsx! {
         div { class: "flex h-full min-h-[480px] flex-col",
             div { class: "flex flex-wrap items-center gap-3 px-1 pb-3",
-                for g in GROUPS {
+                for (i, g) in view_now.groups.iter().enumerate() {
                     span { class: "inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400",
-                        span { class: "h-2.5 w-2.5 rounded-full", style: "background: {g.color}" }
-                        "{g.name}"
+                        span { class: "h-2.5 w-2.5 rounded-full", style: "background: {GROUP_PALETTE[i % GROUP_PALETTE.len()]}" }
+                        "{g}"
                     }
                 }
                 button {
@@ -1239,7 +1217,7 @@ pub fn NetworkPanel() -> Element {
                         // ---- Committed wires ----
                         for (du, dl, raw) in display_edges.clone() {
                             {
-                                let wire_color = color(du);
+                                let wire_color = view_color(&view_now, du);
                                 // Dodge factor is eased by the ticker; render only reads it.
                                 let frac = dodge_now.get(&raw).copied().unwrap_or(0.0);
                                 let d = offset_bezier(anchor(du, true), anchor(dl, false), frac);
@@ -1331,7 +1309,7 @@ pub fn NetworkPanel() -> Element {
                             path {
                                 d: "{bezier(anchor(src, true), temp_end)}",
                                 fill: "none",
-                                stroke: "{color(src)}",
+                                stroke: "{view_color(&view_now, src)}",
                                 stroke_width: "3",
                                 stroke_linecap: "round",
                                 stroke_dasharray: "6 6",
@@ -1345,9 +1323,9 @@ pub fn NetworkPanel() -> Element {
                             for key in layers[layer].clone() {
                                 {
                                     let (x, y) = pos(key);
-                                    let node_color = color(key);
-                                    let title_text = node_title(key);
-                                    let sub_text = subtitle(key);
+                                    let node_color = view_color(&view_now, key);
+                                    let title_text = view_title(&view_now, key);
+                                    let sub_text = view_subtitle(&view_now, key);
                                     let ports = port_of(key);
                                     let node_opacity = match &focus {
                                         Some(set) if set.contains(&key) => "1",
@@ -1634,13 +1612,6 @@ fn edges_read(edges: &Signal<HashSet<(NodeKey, NodeKey)>>) -> HashSet<(NodeKey, 
 
 /// 三层可见节点。调度模型全部平铺——不再有渠道聚合卡，
 /// 因为渠道是凭证容器（在设置页编辑），不是图上的节点。
-fn visible_layers() -> [Vec<NodeKey>; 3] {
-    [
-        (0..GROUPS.len()).map(NodeKey::Group).collect(),
-        (0..ALIASES.len()).map(NodeKey::Mapping).collect(),
-        (0..DISPATCH.len()).map(NodeKey::Dispatch).collect(),
-    ]
-}
 
 /// 待绘制的边。节点不再折叠，故显示边即存储边；第三元保留
 /// 原始边（删除时用），维持调用方签名不变。
@@ -1769,6 +1740,27 @@ fn physics_step(
     max_v
 }
 
+/// 别名/分组标题都从 store 派生，读不到时回退为占位串（那说明 store 还没装上）。
+fn node_title_from_store(node: NodeKey) -> String {
+    let store = use_context::<EntityStore>();
+    let view = GraphView::from_store(&store);
+    view_title(&view, node)
+}
+
+/// 节点的主色调，同样由 GraphView 派生。
+fn accent_color(node: NodeKey) -> &'static str {
+    store_view_color(node)
+}
+
+/// view_color 的免费变量版本：直接读 store。
+fn store_view_color(node: NodeKey) -> &'static str {
+    match node {
+        NodeKey::Group(i) => GROUP_PALETTE[i % GROUP_PALETTE.len()],
+        NodeKey::Mapping(i) => ALIAS_PALETTE[i % ALIAS_PALETTE.len()],
+        NodeKey::Dispatch(_) => "#3f3f46",
+    }
+}
+
 /// 侧边抽屉：左键点节点后就地编辑该实体。
 ///
 /// `absolute` 覆盖画布右侧，画布尺寸恒定，开合不引起重排。
@@ -1784,13 +1776,13 @@ fn NodeInspector(
     on_crumb: EventHandler<usize>,
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
-    let title = node_title(node);
+    let title = node_title_from_store(node);
     let kind_label = match node {
         NodeKey::Group(_) => "分组",
         NodeKey::Mapping(_) => "模型别名",
         NodeKey::Dispatch(_) => "调度模型",
     };
-    let accent = color(node);
+    let accent = accent_color(node);
 
     rsx! {
         aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
@@ -1800,7 +1792,7 @@ fn NodeInspector(
                     for (i, crumb) in crumbs.iter().enumerate() {
                         {
                             let is_last = i == crumbs.len() - 1;
-                            let label = node_title(*crumb);
+                            let label = node_title_from_store(*crumb);
                             let tone = if is_last {
                                 "text-zinc-200"
                             } else {
@@ -1858,13 +1850,17 @@ fn GroupInspect(index: usize) -> Element {
     // 与「设置」tab 共享 store：这里改名，那边立即可见。
     let mut store = use_context::<EntityStore>();
     let row = store.groups.read().get(index).cloned();
-    let aliases: Vec<&'static str> = SEED_EDGES
+    let aliases: Vec<String> = store
+        .aliases
+        .read()
         .iter()
-        .filter(|(u, _)| *u == NodeKey::Group(index))
-        .filter_map(|(_, l)| match l {
-            NodeKey::Mapping(i) => Some(ALIASES[*i].name),
-            _ => None,
+        .enumerate()
+        .filter(|(i, _)| {
+            SEED_EDGES
+                .iter()
+                .any(|(u, l)| *u == NodeKey::Group(index) && *l == NodeKey::Mapping(*i))
         })
+        .map(|(_, a)| a.alias.clone())
         .collect();
     let Some(r) = row else {
         return rsx! { p { class: "text-xs text-zinc-600", "该分组不存在" } };
@@ -1891,21 +1887,23 @@ fn GroupInspect(index: usize) -> Element {
 fn AliasInspect(index: usize) -> Element {
     let mut store = use_context::<EntityStore>();
     let row = store.aliases.read().get(index).cloned();
-    let groups: Vec<&'static str> = SEED_EDGES
+    let groups: Vec<String> = store
+        .groups
+        .read()
         .iter()
-        .filter(|(_, l)| *l == NodeKey::Mapping(index))
-        .filter_map(|(u, _)| match u {
-            NodeKey::Group(i) => Some(GROUPS[*i].name),
-            _ => None,
+        .enumerate()
+        .filter(|(i, _)| {
+            SEED_EDGES
+                .iter()
+                .any(|(u, l)| *u == NodeKey::Group(*i) && *l == NodeKey::Mapping(index))
         })
+        .map(|(_, g)| g.name.clone())
         .collect();
-    let dispatch: Vec<&'static str> = SEED_EDGES
+    let dispatch: Vec<String> = store
+        .channels
+        .read()
         .iter()
-        .filter(|(u, _)| *u == NodeKey::Mapping(index))
-        .filter_map(|(_, l)| match l {
-            NodeKey::Dispatch(i) => Some(DISPATCH[*i].name),
-            _ => None,
-        })
+        .flat_map(|c| c.dispatch.clone())
         .collect();
     let Some(r) = row else {
         return rsx! { p { class: "text-xs text-zinc-600", "该别名不存在" } };
@@ -1932,22 +1930,30 @@ fn AliasInspect(index: usize) -> Element {
 #[component]
 fn DispatchInspect(index: usize) -> Element {
     let mut store = use_context::<EntityStore>();
-    let d = &DISPATCH[index];
-    let ci = d.channel;
+    let view = GraphView::from_store(&store);
+    let (ci, model_name) = view
+        .dispatch
+        .get(index)
+        .cloned()
+        .unwrap_or((0, String::new()));
     let row = store.channels.read().get(ci).cloned();
-    let aliases: Vec<&'static str> = SEED_EDGES
+    let aliases: Vec<String> = store
+        .aliases
+        .read()
         .iter()
-        .filter(|(_, l)| *l == NodeKey::Dispatch(index))
-        .filter_map(|(u, _)| match u {
-            NodeKey::Mapping(i) => Some(ALIASES[*i].name),
-            _ => None,
+        .enumerate()
+        .filter(|(i, _)| {
+            SEED_EDGES
+                .iter()
+                .any(|(u, l)| *u == NodeKey::Mapping(*i) && *l == NodeKey::Dispatch(index))
         })
+        .map(|(_, a)| a.alias.clone())
         .collect();
 
     rsx! {
         div { class: "space-y-1",
             span { class: "text-[11px] text-zinc-500", "模型名（只读，来自上游）" }
-            div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{d.name}" }
+            div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{model_name}" }
         }
         if let Some(c) = row {
             div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
@@ -2023,7 +2029,7 @@ fn InspectField(label: &'static str, value: Signal<String>, placeholder: &'stati
 }
 
 #[component]
-fn InspectList(title: &'static str, items: Vec<&'static str>, empty: &'static str) -> Element {
+fn InspectList(title: &'static str, items: Vec<String>, empty: &'static str) -> Element {
     rsx! {
         div { class: "space-y-1.5",
             span { class: "text-[11px] text-zinc-500", "{title}" }

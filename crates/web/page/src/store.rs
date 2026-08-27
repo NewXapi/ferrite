@@ -1,6 +1,9 @@
 //! 管理面板的共享实体 store：分组 / 模型别名 / 渠道。
-//! 拓扑图抽屉与「设置」tab 读写同一份数据，避免两处编辑互相看不见。
+//! 拓扑图、抽屉与「设置」tab 读写同一份数据，任一侧修改立即同步。
 //! 目前全是 mock；将来 API crate 加载后替换初始值即可替换来源。
+//!
+//! 索引必须与图的 SEED_EDGES 对齐（见 network/mod.rs）：
+//! 分组顺序 default/claude/gpt-5/vip，别名 gpt-4o/gpt-5/claude-sonnet-4/gemini-2.5-pro。
 
 use dioxus::prelude::*;
 
@@ -43,16 +46,16 @@ impl EntityStore {
                     display: "默认分组".into(),
                 },
                 GroupRow {
-                    name: "vip".into(),
-                    display: "VIP".into(),
-                },
-                GroupRow {
                     name: "claude".into(),
                     display: "Claude 专用".into(),
                 },
                 GroupRow {
-                    name: "trial".into(),
-                    display: "试用".into(),
+                    name: "gpt-5".into(),
+                    display: "GPT-5".into(),
+                },
+                GroupRow {
+                    name: "vip".into(),
+                    display: "VIP".into(),
                 },
             ]),
             aliases: Signal::new(vec![
@@ -78,18 +81,14 @@ impl EntityStore {
                     name: "OpenAI 官方".into(),
                     url: "https://api.openai.com/v1".into(),
                     keys: "sk-**************************".into(),
-                    candidates: vec![
-                        ("o3".into(), false),
-                        ("o3-mini".into(), false),
-                        ("text-embedding-3-large".into(), false),
-                    ],
-                    dispatch: vec!["gpt-4o-2024-11-20".into(), "gpt-4o-mini".into()],
+                    candidates: vec![],
+                    dispatch: vec!["gpt-4o".into(), "gpt-5".into()],
                 },
                 ChannelRow {
                     name: "Azure East".into(),
                     url: "https://east.azure.example/openai".into(),
                     keys: "az-****".into(),
-                    candidates: vec![("gpt-4o".into(), false)],
+                    candidates: vec![],
                     dispatch: vec!["gpt-4o".into()],
                 },
                 ChannelRow {
@@ -98,6 +97,27 @@ impl EntityStore {
                     keys: "oa-****".into(),
                     candidates: vec![],
                     dispatch: vec!["gpt-4o".into(), "gpt-5".into(), "claude-sonnet-4".into()],
+                },
+                ChannelRow {
+                    name: "Claude 官网".into(),
+                    url: "https://api.anthropic.com".into(),
+                    keys: "ak-****".into(),
+                    candidates: vec![],
+                    dispatch: vec!["claude-sonnet-4".into()],
+                },
+                ChannelRow {
+                    name: "AWS Bedrock".into(),
+                    url: "https://bedrock.us-east-1.amazonaws.com".into(),
+                    keys: "aws-****".into(),
+                    candidates: vec![],
+                    dispatch: vec!["claude-sonnet-4".into()],
+                },
+                ChannelRow {
+                    name: "Gemini".into(),
+                    url: "https://generativelanguage.googleapis.com".into(),
+                    keys: "gm-****".into(),
+                    candidates: vec![],
+                    dispatch: vec!["gemini-2.5-pro".into()],
                 },
             ]),
         }
