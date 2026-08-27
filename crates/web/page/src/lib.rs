@@ -2,7 +2,7 @@
 
 pub mod app;
 pub mod auth;
-pub mod channels;
+pub mod entities;
 pub mod home;
 pub mod model;
 pub mod network;

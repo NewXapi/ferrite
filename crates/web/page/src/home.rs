@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::auth::auth_drawer::AuthDrawer;
-use crate::channels::{ChannelsLayer, GroupsLayer, MappingsLayer};
+use crate::entities::EntitiesPanel;
 use crate::model::ModelsPanel;
 use crate::network::NetworkPanel;
 use crate::overview::OverviewPanel;
@@ -25,9 +25,7 @@ enum Section {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ManageTab {
     Topology,
-    Groups,
-    Mappings,
-    Channels,
+    Entities,
     Import,
 }
 
@@ -66,9 +64,7 @@ pub fn HomePage() -> Element {
         Section::Manage => rsx! {
             div { class: "flex h-full",
                 TabItem { label: "拓扑", active: manage_tab() == ManageTab::Topology, onclick: move |_| manage_tab.set(ManageTab::Topology) }
-                TabItem { label: "分组", active: manage_tab() == ManageTab::Groups, onclick: move |_| manage_tab.set(ManageTab::Groups) }
-                TabItem { label: "模型映射", active: manage_tab() == ManageTab::Mappings, onclick: move |_| manage_tab.set(ManageTab::Mappings) }
-                TabItem { label: "渠道模型", active: manage_tab() == ManageTab::Channels, onclick: move |_| manage_tab.set(ManageTab::Channels) }
+                TabItem { label: "设置", active: manage_tab() == ManageTab::Entities, onclick: move |_| manage_tab.set(ManageTab::Entities) }
                 TabItem { label: "导入", active: manage_tab() == ManageTab::Import, onclick: move |_| manage_tab.set(ManageTab::Import) }
             }
         },
@@ -185,9 +181,7 @@ pub fn HomePage() -> Element {
                             (Section::Usage, _, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
                             (Section::Logs, _, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
                             (Section::Manage, _, ManageTab::Topology) => rsx! { NetworkPanel {} },
-                            (Section::Manage, _, ManageTab::Groups) => rsx! { GroupsLayer {} },
-                            (Section::Manage, _, ManageTab::Mappings) => rsx! { MappingsLayer {} },
-                            (Section::Manage, _, ManageTab::Channels) => rsx! { ChannelsLayer {} },
+                            (Section::Manage, _, ManageTab::Entities) => rsx! { EntitiesPanel {} },
                             (Section::Manage, _, ManageTab::Import) => rsx! { PlaceholderPane { text: "导入拓扑配置（占位）" } },
                         }
                     }
