@@ -26,12 +26,12 @@ struct GroupDef {
     color: &'static str,
 }
 
-struct MappingDef {
+struct AliasDef {
     name: &'static str,
     color: &'static str,
 }
 
-struct ModelDef {
+struct DispatchDef {
     channel: usize,
     name: &'static str,
 }
@@ -55,23 +55,34 @@ const GROUPS: &[GroupDef] = &[
     },
 ];
 
-const MAPPINGS: &[MappingDef] = &[
-    MappingDef {
+const ALIASES: &[AliasDef] = &[
+    AliasDef {
         name: "gpt-4o",
         color: "#f472b6",
     },
-    MappingDef {
+    AliasDef {
         name: "gpt-5",
         color: "#a78bfa",
     },
-    MappingDef {
+    AliasDef {
         name: "claude-sonnet-4",
         color: "#22d3ee",
     },
-    MappingDef {
+    AliasDef {
         name: "gemini-2.5-pro",
         color: "#fb923c",
     },
+];
+
+/// 渠道凭证（mock）。真实来源是设置页的渠道卡片；抽屉只读展示，
+/// 因为一份 URL/Key 被多个调度模型共享，不该在单个节点上改。
+const CHANNEL_CREDS: &[(&str, &str)] = &[
+    ("https://api.openai.com/v1", "sk-****"),
+    ("https://east.azure.example/openai", "az-****"),
+    ("https://oneapi.example/v1", "oa-****"),
+    ("https://api.anthropic.com", "ak-****"),
+    ("https://bedrock.us-east-1.amazonaws.com", "aws-****"),
+    ("https://generativelanguage.googleapis.com", "gm-****"),
 ];
 
 const CHANNELS: &[&str] = &[
@@ -83,40 +94,40 @@ const CHANNELS: &[&str] = &[
     "Gemini",
 ];
 
-const MODELS: &[ModelDef] = &[
-    ModelDef {
+const DISPATCH: &[DispatchDef] = &[
+    DispatchDef {
         channel: 0,
         name: "gpt-4o",
     },
-    ModelDef {
+    DispatchDef {
         channel: 0,
         name: "gpt-5",
     },
-    ModelDef {
+    DispatchDef {
         channel: 1,
         name: "gpt-4o",
     },
-    ModelDef {
+    DispatchDef {
         channel: 2,
         name: "gpt-4o",
     },
-    ModelDef {
+    DispatchDef {
         channel: 2,
         name: "gpt-5",
     },
-    ModelDef {
+    DispatchDef {
         channel: 2,
         name: "claude-sonnet-4",
     },
-    ModelDef {
+    DispatchDef {
         channel: 3,
         name: "claude-sonnet-4",
     },
-    ModelDef {
+    DispatchDef {
         channel: 4,
         name: "claude-sonnet-4",
     },
-    ModelDef {
+    DispatchDef {
         channel: 5,
         name: "gemini-2.5-pro",
     },
@@ -126,9 +137,8 @@ const MODELS: &[ModelDef] = &[
 enum NodeKey {
     Group(usize),
     Mapping(usize),
-    Model(usize),
-    /// Collapsed channel card; never appears in stored edges.
-    Channel(usize),
+    /// 调度模型：渠道下真实可用的上游模型。
+    Dispatch(usize),
 }
 
 impl NodeKey {
@@ -136,7 +146,7 @@ impl NodeKey {
         match self {
             NodeKey::Group(_) => 0,
             NodeKey::Mapping(_) => 1,
-            NodeKey::Model(_) | NodeKey::Channel(_) => 2,
+            NodeKey::Dispatch(_) => 2,
         }
     }
 }
@@ -144,27 +154,22 @@ impl NodeKey {
 fn color(key: NodeKey) -> &'static str {
     match key {
         NodeKey::Group(i) => GROUPS[i].color,
-        NodeKey::Mapping(i) => MAPPINGS[i].color,
-        NodeKey::Model(_) | NodeKey::Channel(_) => "#3f3f46",
+        NodeKey::Mapping(i) => ALIASES[i].color,
+        NodeKey::Dispatch(_) => "#3f3f46",
     }
 }
 
 fn node_title(key: NodeKey) -> String {
     match key {
         NodeKey::Group(i) => GROUPS[i].name.into(),
-        NodeKey::Mapping(i) => MAPPINGS[i].name.into(),
-        NodeKey::Model(i) => MODELS[i].name.into(),
-        NodeKey::Channel(c) => CHANNELS[c].into(),
+        NodeKey::Mapping(i) => ALIASES[i].name.into(),
+        NodeKey::Dispatch(i) => DISPATCH[i].name.into(),
     }
 }
 
 fn subtitle(key: NodeKey) -> String {
     match key {
-        NodeKey::Model(i) => CHANNELS[MODELS[i].channel].into(),
-        NodeKey::Channel(c) => {
-            let n = MODELS.iter().filter(|m| m.channel == c).count();
-            format!("{n} 个模型")
-        }
+        NodeKey::Dispatch(i) => CHANNELS[DISPATCH[i].channel].into(),
         _ => String::new(),
     }
 }
@@ -179,15 +184,15 @@ const SEED_EDGES: &[(NodeKey, NodeKey)] = &[
     (NodeKey::Group(3), NodeKey::Mapping(1)), // vip — gpt-5
     (NodeKey::Group(3), NodeKey::Mapping(2)), // vip — claude-sonnet-4
     (NodeKey::Group(3), NodeKey::Mapping(3)), // vip — gemini-2.5-pro
-    (NodeKey::Mapping(0), NodeKey::Model(0)),
-    (NodeKey::Mapping(0), NodeKey::Model(2)),
-    (NodeKey::Mapping(0), NodeKey::Model(3)),
-    (NodeKey::Mapping(1), NodeKey::Model(1)),
-    (NodeKey::Mapping(1), NodeKey::Model(4)),
-    (NodeKey::Mapping(2), NodeKey::Model(5)),
-    (NodeKey::Mapping(2), NodeKey::Model(6)),
-    (NodeKey::Mapping(2), NodeKey::Model(7)),
-    (NodeKey::Mapping(3), NodeKey::Model(8)),
+    (NodeKey::Mapping(0), NodeKey::Dispatch(0)),
+    (NodeKey::Mapping(0), NodeKey::Dispatch(2)),
+    (NodeKey::Mapping(0), NodeKey::Dispatch(3)),
+    (NodeKey::Mapping(1), NodeKey::Dispatch(1)),
+    (NodeKey::Mapping(1), NodeKey::Dispatch(4)),
+    (NodeKey::Mapping(2), NodeKey::Dispatch(5)),
+    (NodeKey::Mapping(2), NodeKey::Dispatch(6)),
+    (NodeKey::Mapping(2), NodeKey::Dispatch(7)),
+    (NodeKey::Mapping(3), NodeKey::Dispatch(8)),
 ];
 
 const MARGIN: f64 = 110.0;
@@ -201,7 +206,7 @@ fn band_y(layer: u8) -> (f64, f64) {
         ROW_Y[layer as usize] + BAND_HALF,
     )
 }
-const VIEW_W: f64 = MARGIN * 2.0 + (MODELS.len() as f64 - 1.0) * COL_GAP;
+const VIEW_W: f64 = MARGIN * 2.0 + (DISPATCH.len() as f64 - 1.0) * COL_GAP;
 const VIEW_H: f64 = 840.0;
 const NODE_W: f64 = 104.0;
 const NODE_H: f64 = 36.0;
@@ -213,8 +218,8 @@ const NODE_H: f64 = 36.0;
 /// handles collisions and user drags, so the graph no longer reels inward
 /// on open (the old grid was wider than the rope slack radius, so every link
 /// started taut and pulled everything toward the center).
-fn initial_positions(expanded: &HashSet<usize>) -> HashMap<NodeKey, (f64, f64)> {
-    let layers = visible_layers(expanded);
+fn initial_positions() -> HashMap<NodeKey, (f64, f64)> {
+    let layers = visible_layers();
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
     // row 0: even spread around the canvas center
     let n = layers[0].len();
@@ -235,12 +240,7 @@ fn initial_positions(expanded: &HashSet<usize>) -> HashMap<NodeKey, (f64, f64)> 
             let xs: Vec<f64> = SEED_EDGES
                 .iter()
                 .filter_map(|&(u, lo)| {
-                    let folded = match lo {
-                        NodeKey::Model(i) if !expanded.contains(&MODELS[i].channel) => {
-                            NodeKey::Channel(MODELS[i].channel)
-                        }
-                        other => other,
-                    };
+                    let folded = lo;
                     if folded == k {
                         out.get(&u).map(|p| p.0)
                     } else {
@@ -341,11 +341,7 @@ fn settle_layout(
 fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
     let la = a.layer() as i16;
     let lb = b.layer() as i16;
-    if a == b
-        || (la - lb).abs() != 1
-        || matches!(a, NodeKey::Channel(_))
-        || matches!(b, NodeKey::Channel(_))
-    {
+    if a == b || (la - lb).abs() != 1 {
         return None;
     }
     Some(if la < lb { (a, b) } else { (b, a) })
@@ -477,13 +473,14 @@ pub fn NetworkPanel() -> Element {
     let mut pan = use_signal(|| (0.0f64, 0.0f64));
     let mut zoom = use_signal(|| 1.0f64);
     let mut selected = use_signal(HashSet::<NodeKey>::new);
+    // 侧边抽屉当前检视的节点；None 表示抽屉关闭。
+    let mut inspect = use_signal(|| None::<NodeKey>);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
     let mut marquee = use_signal(|| None::<((f64, f64), (f64, f64))>);
     // Per-edge dodge curve factor, eased by the ticker (0 = straight).
     let mut dodge = use_signal(HashMap::<(NodeKey, NodeKey), f64>::new);
-    let mut expanded = use_signal(|| HashSet::from([2usize])); // OneAPI 上游 pre-expanded
     let mut positions = use_signal(|| HashMap::<NodeKey, (f64, f64)>::new());
     // Live spring layout: a 16ms ticker integrates forces frame by frame.
     // Structure changes (wires / collapse) bump `wake`; the loop steps while
@@ -491,17 +488,16 @@ pub fn NetworkPanel() -> Element {
     // then sleeps. Dragged nodes are held; live neighbors dodge in real time.
     let mut wake = use_signal(|| 0u32);
     use_effect(move || {
-        let _ = (edges(), expanded(), drag());
+        let _ = (edges(), drag());
         let next = wake.peek().wrapping_add(1);
         wake.set(next);
     });
     use_hook(move || {
         // Deterministic startup layout before the ticker takes over.
         {
-            let ex = expanded.peek().clone();
-            let mut p = initial_positions(&ex);
-            let layers = visible_layers(&ex);
-            let pairs = display_edge_pairs(&edges.peek(), &ex);
+            let mut p = initial_positions();
+            let layers = visible_layers();
+            let pairs = display_edge_pairs(&edges.peek());
             let pairs_xy: Vec<(NodeKey, NodeKey)> = pairs.iter().map(|&(u, l, _)| (u, l)).collect();
             settle_layout(&layers, &pairs_xy, &mut p);
             *positions.write() = p;
@@ -523,9 +519,8 @@ pub fn NetworkPanel() -> Element {
                 if !(dirty || held.is_some() || energy > 0.08 || dodge_active) {
                     continue;
                 }
-                let ex = expanded.peek().clone();
-                let layers = visible_layers(&ex);
-                let pairs = display_edge_pairs(&edges.peek(), &ex);
+                let layers = visible_layers();
+                let pairs = display_edge_pairs(&edges.peek());
                 let pairs_xy: Vec<(NodeKey, NodeKey)> =
                     pairs.iter().map(|&(u, l, _)| (u, l)).collect();
                 energy = physics_step(
@@ -590,9 +585,7 @@ pub fn NetworkPanel() -> Element {
     });
 
     // ---- Visible nodes per layer (collapse-aware) ----
-    let expanded_now = expanded();
-
-    let layers = visible_layers(&expanded_now);
+    let layers = visible_layers();
     let selection_now = selected();
     let layers_fit = layers.clone(); // owned copy for the 适配 button's handler
 
@@ -604,7 +597,7 @@ pub fn NetworkPanel() -> Element {
             .unwrap_or((VIEW_W / 2.0, ROW_Y[key.layer() as usize]))
     };
 
-    let display_edges = display_edge_pairs(&edges(), &expanded_now);
+    let display_edges = display_edge_pairs(&edges());
     let dodge_now = dodge();
 
     // ---- Focus: union of layer-distance BFS from every selected node ----
@@ -702,7 +695,7 @@ pub fn NetworkPanel() -> Element {
                 let wb = ((b.0 - px) / z, (b.1 - py) / z);
                 let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
                 let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
-                let layers = visible_layers(&expanded.peek());
+                let layers = visible_layers();
                 let hit: HashSet<NodeKey> = layers
                     .iter()
                     .flatten()
@@ -725,7 +718,7 @@ pub fn NetworkPanel() -> Element {
         match key {
             NodeKey::Group(_) => "bottom",
             NodeKey::Mapping(_) => "both",
-            NodeKey::Model(_) | NodeKey::Channel(_) => "top",
+            NodeKey::Dispatch(_) => "top",
         }
     };
 
@@ -766,7 +759,10 @@ pub fn NetworkPanel() -> Element {
                 // canvas below must never shift when the hint text changes.
                 span { class: "w-full text-right text-xs text-zinc-600 leading-4", "{hint}" }
             }
-            div { class: "min-h-0 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
+            // 画布与抽屉同层：抽屉 absolute 覆盖右侧，画布尺寸恒定，
+            // 开合不引起任何重排。
+            div { class: "relative min-h-0 flex-1",
+                div { class: "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
                     view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
                     width: "100%",
@@ -845,7 +841,10 @@ pub fn NetworkPanel() -> Element {
                     onmouseup: move |_| {
                         let current = *drag.peek();
                         match current {
-                            Some(Drag::Pan { moved: false, .. }) => selected.set(HashSet::new()),
+                            Some(Drag::Pan { moved: false, .. }) => {
+                                selected.set(HashSet::new());
+                                inspect.set(None);
+                            }
                             Some(Drag::Select) => commit_select(),
                             _ => {}
                         }
@@ -886,6 +885,19 @@ pub fn NetworkPanel() -> Element {
                             stroke_width: "1",
                             stroke_dasharray: "5 4",
                             pointer_events: "none",
+                        }
+                    }
+
+                    // 层标题留在屏幕空间（在 pan 组之外），缩放平移时不动。
+                    // 1240807 那次改动误删了这三个标签，此处恢复并改用新术语。
+                    for (label, y) in [("分组", ROW_Y[0]), ("模型别名", ROW_Y[1]), ("调度模型", ROW_Y[2])] {
+                        text {
+                            x: "8",
+                            y: "{y - 26.0:.0}",
+                            fill: "#52525b",
+                            font_size: "11",
+                            pointer_events: "none",
+                            "{label}"
                         }
                     }
 
@@ -1021,7 +1033,6 @@ pub fn NetworkPanel() -> Element {
                                     let node_color = color(key);
                                     let title_text = node_title(key);
                                     let sub_text = subtitle(key);
-                                    let is_channel = matches!(key, NodeKey::Channel(_));
                                     let ports = port_of(key);
                                     let node_opacity = match &focus {
                                         Some(set) if set.contains(&key) => "1",
@@ -1107,14 +1118,20 @@ pub fn NetworkPanel() -> Element {
                                                         }
                                                     }
                                                     Some(Drag::Move { key: k, moved: false, .. }) if k == key => {
-                                                        let mut sel = selected.write();
                                                         if e.modifiers().ctrl() {
+                                                            let mut sel = selected.write();
                                                             if !sel.remove(&key) {
                                                                 sel.insert(key);
                                                             }
                                                         } else {
-                                                            sel.clear();
-                                                            sel.insert(key);
+                                                            {
+                                                                let mut sel = selected.write();
+                                                                sel.clear();
+                                                                sel.insert(key);
+                                                            }
+                                                            // 单击即打开抽屉；再点同一节点则关闭。
+                                                            let same = *inspect.peek() == Some(key);
+                                                            inspect.set(if same { None } else { Some(key) });
                                                         }
                                                     }
                                                     _ => {}
@@ -1124,7 +1141,7 @@ pub fn NetworkPanel() -> Element {
                                             },
 
                                             rect {
-                                                class: if is_channel { "cursor-pointer" } else { "cursor-grab" },
+                                                class: "cursor-grab",
                                                 x: "{x - NODE_W / 2.0:.0}",
                                                 y: "{y - NODE_H / 2.0:.0}",
                                                 width: "{NODE_W:.0}",
@@ -1158,40 +1175,8 @@ pub fn NetworkPanel() -> Element {
                                                     "{sub_text}"
                                                 }
                                             }
-                                            // Expand toggle on channel cards
-                                            if is_channel {
-                                                g {
-                                                    class: "cursor-pointer",
-                                                    onmousedown: move |e| e.stop_propagation(),
-                                                    onmouseup: move |e| {
-                                                        e.stop_propagation();
-                                                        if let NodeKey::Channel(c) = key {
-                                                            let mut set = expanded.write();
-                                                            if !set.remove(&c) { set.insert(c); }
-                                                        }
-                                                        drag.set(None);
-                                                    },
-                                                    rect {
-                                                        x: "{x + NODE_W / 2.0 - 16.0:.0}",
-                                                        y: "{y - 6.0:.0}",
-                                                        width: "12",
-                                                        height: "12",
-                                                        rx: "3",
-                                                        fill: "#27272a",
-                                                    }
-                                                    text {
-                                                        x: "{x + NODE_W / 2.0 - 10.0:.0}",
-                                                        y: "{y + 3.0:.0}",
-                                                        text_anchor: "middle",
-                                                        fill: "#a1a1aa",
-                                                        font_size: "11",
-                                                        pointer_events: "none",
-                                                        "＋"
-                                                    }
-                                                }
-                                            }
                                             // Port dots (wire start)
-                                            if ports != "top" && !is_channel {
+                                            if ports != "top" {
                                                 circle {
                                                     class: "cursor-crosshair",
                                                     cx: "{x:.0}",
@@ -1208,7 +1193,7 @@ pub fn NetworkPanel() -> Element {
                                                     },
                                                 }
                                             }
-                                            if ports != "bottom" && !is_channel {
+                                            if ports != "bottom" {
                                                 circle {
                                                     class: "cursor-crosshair",
                                                     cx: "{x:.0}",
@@ -1232,6 +1217,13 @@ pub fn NetworkPanel() -> Element {
                         }
                     }
                 }
+                }
+                if let Some(node) = inspect() {
+                    NodeInspector {
+                        node: node,
+                        on_close: move |_| inspect.set(None),
+                    }
+                }
             }
         }
     }
@@ -1242,49 +1234,22 @@ fn edges_read(edges: &Signal<HashSet<(NodeKey, NodeKey)>>) -> HashSet<(NodeKey, 
 }
 // ---- Layout ----
 
-/// Visible nodes grouped by layer; a channel collapses to one card otherwise
-/// contributes all its model nodes.
-fn visible_layers(expanded: &HashSet<usize>) -> [Vec<NodeKey>; 3] {
-    let mut layers: [Vec<NodeKey>; 3] = [
+/// 三层可见节点。调度模型全部平铺——不再有渠道聚合卡，
+/// 因为渠道是凭证容器（在设置页编辑），不是图上的节点。
+fn visible_layers() -> [Vec<NodeKey>; 3] {
+    [
         (0..GROUPS.len()).map(NodeKey::Group).collect(),
-        (0..MAPPINGS.len()).map(NodeKey::Mapping).collect(),
-        Vec::new(),
-    ];
-    for c in 0..CHANNELS.len() {
-        if expanded.contains(&c) {
-            layers[2].extend(
-                (0..MODELS.len())
-                    .filter(|&i| MODELS[i].channel == c)
-                    .map(NodeKey::Model),
-            );
-        } else {
-            layers[2].push(NodeKey::Channel(c));
-        }
-    }
-    layers
+        (0..ALIASES.len()).map(NodeKey::Mapping).collect(),
+        (0..DISPATCH.len()).map(NodeKey::Dispatch).collect(),
+    ]
 }
 
-/// Edges as drawn: a Model endpoint folds into its Channel card while the
-/// channel is collapsed; duplicates from folded models are dropped. The third
-/// element is the stored (raw) edge used for deletion.
+/// 待绘制的边。节点不再折叠，故显示边即存储边；第三元保留
+/// 原始边（删除时用），维持调用方签名不变。
 fn display_edge_pairs(
     edges: &HashSet<(NodeKey, NodeKey)>,
-    expanded: &HashSet<usize>,
 ) -> Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> {
-    let mut out = Vec::new();
-    let mut seen: HashSet<(NodeKey, NodeKey)> = HashSet::new();
-    for &(u, l) in edges {
-        let dl = match l {
-            NodeKey::Model(i) if !expanded.contains(&MODELS[i].channel) => {
-                NodeKey::Channel(MODELS[i].channel)
-            }
-            other => other,
-        };
-        if u != dl && seen.insert((u, dl)) {
-            out.push((u, dl, (u, l)));
-        }
-    }
-    out
+    edges.iter().map(|&(u, l)| (u, l, (u, l))).collect()
 }
 
 /// One physics frame for the layered graph. x only — y is pinned to the row.
@@ -1404,4 +1369,181 @@ fn physics_step(
         max_v = max_v.max(v.0.hypot(v.1));
     }
     max_v
+}
+
+/// 侧边抽屉：左键点节点后就地编辑该实体。
+///
+/// `absolute` 覆盖画布右侧，画布尺寸恒定，开合不引起重排。
+/// 三层的编辑内容不同：
+/// - 分组：名字（可改）
+/// - 模型别名：名字（可改）
+/// - 调度模型：模型名**只读**（来自上游，改了就路由不到），
+///   附带展示所属渠道的 URL/Key，渠道本身在设置页改
+#[component]
+fn NodeInspector(node: NodeKey, on_close: EventHandler<MouseEvent>) -> Element {
+    let title = node_title(node);
+    let kind_label = match node {
+        NodeKey::Group(_) => "分组",
+        NodeKey::Mapping(_) => "模型别名",
+        NodeKey::Dispatch(_) => "调度模型",
+    };
+    let accent = color(node);
+
+    rsx! {
+        aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+            // 头部
+            div { class: "flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2",
+                span { class: "h-2.5 w-2.5 shrink-0 rounded-full", style: "background: {accent}" }
+                div { class: "min-w-0 flex-1",
+                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    p { class: "text-[11px] text-zinc-500", "{kind_label}" }
+                }
+                button {
+                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    onclick: move |e| on_close.call(e),
+                    "✕"
+                }
+            }
+            // 主体
+            div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
+                match node {
+                    NodeKey::Group(i) => rsx! { GroupInspect { index: i } },
+                    NodeKey::Mapping(i) => rsx! { AliasInspect { index: i } },
+                    NodeKey::Dispatch(i) => rsx! { DispatchInspect { index: i } },
+                }
+            }
+            // 底部操作条
+            div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2",
+                button { class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400", "删除" }
+                span { class: "flex-1" }
+                button { class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300", "保存" }
+            }
+        }
+    }
+}
+
+#[component]
+fn GroupInspect(index: usize) -> Element {
+    let name = use_signal(|| GROUPS[index].name.to_string());
+    let aliases: Vec<&'static str> = SEED_EDGES
+        .iter()
+        .filter(|(u, _)| *u == NodeKey::Group(index))
+        .filter_map(|(_, l)| match l {
+            NodeKey::Mapping(i) => Some(ALIASES[*i].name),
+            _ => None,
+        })
+        .collect();
+
+    rsx! {
+        InspectField { label: "分组名", value: name, placeholder: "vip" }
+        InspectList { title: "包含的模型别名", items: aliases, empty: "拖端口连线以加入别名" }
+    }
+}
+
+#[component]
+fn AliasInspect(index: usize) -> Element {
+    let name = use_signal(|| ALIASES[index].name.to_string());
+    let groups: Vec<&'static str> = SEED_EDGES
+        .iter()
+        .filter(|(_, l)| *l == NodeKey::Mapping(index))
+        .filter_map(|(u, _)| match u {
+            NodeKey::Group(i) => Some(GROUPS[*i].name),
+            _ => None,
+        })
+        .collect();
+    let dispatch: Vec<&'static str> = SEED_EDGES
+        .iter()
+        .filter(|(u, _)| *u == NodeKey::Mapping(index))
+        .filter_map(|(_, l)| match l {
+            NodeKey::Dispatch(i) => Some(DISPATCH[*i].name),
+            _ => None,
+        })
+        .collect();
+
+    rsx! {
+        InspectField { label: "别名", value: name, placeholder: "gpt-4o" }
+        InspectList { title: "所属分组", items: groups, empty: "未加入任何分组" }
+        InspectList { title: "路由到的调度模型", items: dispatch, empty: "未连接调度模型" }
+    }
+}
+
+#[component]
+fn DispatchInspect(index: usize) -> Element {
+    let d = &DISPATCH[index];
+    let channel = CHANNELS[d.channel];
+    // mock：渠道凭证真实来源是设置页，此处只做展示
+    let (url, key) = CHANNEL_CREDS[d.channel];
+    let aliases: Vec<&'static str> = SEED_EDGES
+        .iter()
+        .filter(|(_, l)| *l == NodeKey::Dispatch(index))
+        .filter_map(|(u, _)| match u {
+            NodeKey::Mapping(i) => Some(ALIASES[*i].name),
+            _ => None,
+        })
+        .collect();
+
+    rsx! {
+        div { class: "space-y-1",
+            span { class: "text-[11px] text-zinc-500", "模型名（只读，来自上游）" }
+            div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{d.name}" }
+        }
+        div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
+            div { class: "flex items-center justify-between gap-2",
+                span { class: "text-[11px] uppercase tracking-wider text-zinc-600", "所属渠道" }
+                span { class: "text-[11px] text-zinc-600", "在设置页编辑" }
+            }
+            p { class: "text-xs font-medium text-zinc-200", "{channel}" }
+            div { class: "space-y-1",
+                CredRow { label: "URL", value: url }
+                CredRow { label: "Key", value: key }
+            }
+        }
+        InspectList { title: "被哪些别名路由", items: aliases, empty: "未被任何别名引用" }
+    }
+}
+
+#[component]
+fn CredRow(label: &'static str, value: &'static str) -> Element {
+    rsx! {
+        div { class: "flex items-baseline gap-2",
+            span { class: "w-8 shrink-0 text-[11px] text-zinc-600", "{label}" }
+            span { class: "truncate font-mono text-[11px] text-zinc-400", "{value}" }
+        }
+    }
+}
+
+#[component]
+fn InspectField(label: &'static str, value: Signal<String>, placeholder: &'static str) -> Element {
+    rsx! {
+        label { class: "block space-y-1",
+            span { class: "text-[11px] text-zinc-500", "{label}" }
+            input {
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                value: "{value.read()}",
+                placeholder: "{placeholder}",
+                oninput: move |e| value.set(e.value()),
+            }
+        }
+    }
+}
+
+#[component]
+fn InspectList(title: &'static str, items: Vec<&'static str>, empty: &'static str) -> Element {
+    rsx! {
+        div { class: "space-y-1.5",
+            span { class: "text-[11px] text-zinc-500", "{title}" }
+            if items.is_empty() {
+                p { class: "text-[11px] text-zinc-600", "{empty}" }
+            } else {
+                div { class: "flex flex-wrap gap-1.5",
+                    for it in items.iter() {
+                        span { class: "inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300",
+                            "{it}"
+                            button { class: "text-zinc-600 hover:text-red-400", "✕" }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
