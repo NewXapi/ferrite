@@ -337,6 +337,48 @@ fn settle_layout(
     }
 }
 
+/// 不像 settle_layout 会把整图拉回 VIEW_W/2，它只把每层自己的 barycenter 对齐，
+/// 原封不动保留左缘锚定，避免焦点态子图又被甩回中央。
+fn settle_layout_forward(
+    layers: &[Vec<NodeKey>; 3],
+    edges: &[(NodeKey, NodeKey)],
+    positions: &mut HashMap<NodeKey, (f64, f64)>,
+) {
+    for _ in 0..60 {
+        let mut max_d = 0.0f64;
+        for row in layers.iter() {
+            for &k in row {
+                let (mut sum, mut n) = (0.0f64, 0.0f64);
+                for &(up, low) in edges {
+                    let other = if up == k {
+                        Some(low)
+                    } else if low == k {
+                        Some(up)
+                    } else {
+                        None
+                    };
+                    if let Some(o) = other {
+                        if let Some(p) = positions.get(&o) {
+                            sum += p.0;
+                            n += 1.0;
+                        }
+                    }
+                }
+                if n > 0.0 {
+                    if let Some(p) = positions.get_mut(&k) {
+                        let d = (sum / n - p.0) * 0.25;
+                        p.0 += d;
+                        max_d = max_d.max(d.abs());
+                    }
+                }
+            }
+        }
+        if max_d < 0.15 {
+            break;
+        }
+    }
+}
+
 /// Node→node edge must span exactly one layer; channels are aggregates only.
 fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
     let la = a.layer() as i16;
@@ -454,8 +496,9 @@ fn fit_view_into(pts: &[(f64, f64)], (bx, by, bw, bh): (f64, f64, f64, f64)) -> 
         });
     let (w, h) = ((maxx - minx).max(1.0), (maxy - miny).max(1.0));
     let z = (((bw - 2.0 * pad) / w).min((bh - 2.0 * pad) / h)).clamp(0.35, 1.6);
-    let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
-    ((bx + bw / 2.0 - cx * z, by + bh / 2.0 - cy * z), z)
+    let cy = (miny + maxy) / 2.0;
+    // x 左对齐：子图贴可视区左缘（即层标签旁边），不要居中把左侧空出一大块。
+    ((bx + pad - minx * z, by + bh / 2.0 - cy * z), z)
 }
 
 /// 连通锥：从起点向外扩散，每步必须**远离**起点所在层。
@@ -504,12 +547,11 @@ fn layout_subgraph(
             let xb = cur.get(b).map(|p| p.0).unwrap_or(0.0);
             xa.partial_cmp(&xb).unwrap_or(std::cmp::Ordering::Equal)
         });
-        let span = (row.len() as f64 - 1.0).max(0.0) * COL_GAP;
+        // 每层都**左对齐**到可视区左缘，贴着层标题；垂直的 z 收缩只剩在 y，
+        // 避免「图中央却空一块、又离标签老远」。
+        let left = 24.0;
         for (i, &k) in row.iter().enumerate() {
-            out.insert(
-                k,
-                (VIEW_W / 2.0 - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]),
-            );
+            out.insert(k, (left + i as f64 * COL_GAP, ROW_Y[l]));
         }
     }
     let layers = [rows[0].clone(), rows[1].clone(), rows[2].clone()];
@@ -518,7 +560,7 @@ fn layout_subgraph(
         .copied()
         .filter(|(u, l)| sub.contains(u) && sub.contains(l))
         .collect();
-    settle_layout(&layers, &sub_edges, &mut out);
+    settle_layout_forward(&layers, &sub_edges, &mut out);
     out
 }
 
@@ -531,12 +573,61 @@ struct Tween {
     to_pan: (f64, f64),
     from_zoom: f64,
     to_zoom: f64,
+    /// 每个节点的错峰延迟，让队列次第滑入（而非整段卡死）。
+    delay: HashMap<NodeKey, f64>,
     /// 0 → 1
     t: f64,
 }
 
-fn ease_out_cubic(t: f64) -> f64 {
-    1.0 - (1.0 - t).powi(3)
+/// 两次进入更顺滑：前期快启动，末段缓刹。
+fn ease_out_quint(t: f64) -> f64 {
+    1.0 - (1.0 - t).powi(5)
+}
+
+/// 给锥内节点算错峰延迟：从起点向外传播，越远的越晚进。
+fn stagger_delay(start: NodeKey, edges: &[(NodeKey, NodeKey)]) -> HashMap<NodeKey, f64> {
+    let mut delay: HashMap<NodeKey, f64> = HashMap::from([(start, 0.0)]);
+    let mut queue: VecDeque<NodeKey> = VecDeque::from([start]);
+    while let Some(n) = queue.pop_front() {
+        let d0 = delay[&n];
+        for &(u, l) in edges {
+            let m = if u == n {
+                l
+            } else if l == n {
+                u
+            } else {
+                continue;
+            };
+            if !delay.contains_key(&m) {
+                delay.insert(m, d0 + 0.10);
+                queue.push_back(m);
+            }
+        }
+    }
+    // 退出时反着来：先动的先回
+    delay
+}
+
+/// Tween 统一构造，省得三个位置重复写字段。
+fn make_tween(
+    from: HashMap<NodeKey, (f64, f64)>,
+    to: HashMap<NodeKey, (f64, f64)>,
+    from_pan: (f64, f64),
+    to_pan: (f64, f64),
+    from_zoom: f64,
+    to_zoom: f64,
+    delay: HashMap<NodeKey, f64>,
+) -> Tween {
+    Tween {
+        from,
+        to,
+        from_pan,
+        to_pan,
+        from_zoom,
+        to_zoom,
+        delay,
+        t: 0.0,
+    }
 }
 
 fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
@@ -608,7 +699,8 @@ pub fn NetworkPanel() -> Element {
     // 进出焦点的补间动画；Some 时 ticker 每帧推进。
     let mut tween = use_signal(|| None::<Tween>);
     // 焦点态下每个节点的目标位；退出时用来还原。
-    let mut saved_positions = use_signal(|| None::<HashMap<NodeKey, (f64, f64)>>);
+    let mut saved_positions =
+        use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -657,18 +749,24 @@ pub fn NetworkPanel() -> Element {
                     let done = {
                         let mut tw = tween.write();
                         let Some(t) = tw.as_mut() else { continue };
-                        t.t = (t.t + 0.08).min(1.0);
-                        let e = ease_out_cubic(t.t);
+                        // 总时长约 350ms，错峰只延迟各节点的开始，不拉长全程
+                        t.t = (t.t + 0.045).min(1.0);
                         {
                             let mut pw = positions.write();
                             for (k, to) in t.to.iter() {
                                 let from = t.from.get(k).copied().unwrap_or(*to);
+                                // 错峰：这个节点先静下来再动，序列感
+                                let d = t.delay.get(k).copied().unwrap_or(0.0);
+                                let local = ((t.t - d) / (1.0 - d)).clamp(0.0, 1.0);
+                                let e = ease_out_quint(local);
                                 pw.insert(
                                     *k,
                                     (from.0 + (to.0 - from.0) * e, from.1 + (to.1 - from.1) * e),
                                 );
                             }
                         }
+                        // 视图不做错峰，主视角平滑即可
+                        let e = ease_out_quint(t.t);
                         pan.set((
                             t.from_pan.0 + (t.to_pan.0 - t.from_pan.0) * e,
                             t.from_pan.1 + (t.to_pan.1 - t.from_pan.1) * e,
@@ -687,10 +785,26 @@ pub fn NetworkPanel() -> Element {
                 if !(dirty || held.is_some() || energy > 0.08 || dodge_active) {
                     continue;
                 }
-                let layers = visible_layers();
+                let mut layers = visible_layers();
                 let pairs = display_edge_pairs(&edges.peek());
-                let pairs_xy: Vec<(NodeKey, NodeKey)> =
-                    pairs.iter().map(|&(u, l, _)| (u, l)).collect();
+                // 焦点态：物理只作用在锥内节点上，锥外节点不受力不动位，
+                // 避免 vip 这类多连分组被锥外别名拽走。
+                if let Some(cone) = focus_space.peek().as_ref() {
+                    for row in layers.iter_mut() {
+                        row.retain(|k| cone.contains(k));
+                    }
+                }
+                let pairs_xy: Vec<(NodeKey, NodeKey)> = {
+                    let cone = focus_space.peek();
+                    pairs
+                        .iter()
+                        .filter(|&(u, l, _)| {
+                            cone.as_ref()
+                                .map_or(true, |c| c.contains(u) && c.contains(l))
+                        })
+                        .map(|&(u, l, _)| (u, l))
+                        .collect()
+                };
                 energy = physics_step(
                     &layers,
                     &pairs_xy,
@@ -1035,24 +1149,22 @@ pub fn NetworkPanel() -> Element {
                             Some(Drag::Pan { moved: false, .. }) => {
                                 selected.set(HashSet::new());
                                 inspect.set(None);
-                                if let Some(saved) = saved_positions.take() {
+                                if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
                                     let from = positions.peek().clone();
-                                    let vb = visible_box(*rect.peek(), false);
-                                    let pts: Vec<(f64, f64)> = saved.values().copied().collect();
-                                    let (to_pan, to_zoom) = if pts.is_empty() {
-                                        (*pan.peek(), *zoom.peek())
-                                    } else {
-                                        fit_view_into(&pts, vb)
-                                    };
-                                    tween.set(Some(Tween {
+                                    let (to_pan, to_zoom) = (saved_pan, saved_zoom);
+                                    let mut delay = HashMap::new();
+                                    for (i, k) in saved.keys().enumerate() {
+                                        delay.insert(*k, i as f64 * 0.06);
+                                    }
+                                    tween.set(Some(make_tween(
                                         from,
-                                        to: saved,
-                                        from_pan: *pan.peek(),
+                                        saved,
+                                        *pan.peek(),
                                         to_pan,
-                                        from_zoom: *zoom.peek(),
+                                        *zoom.peek(),
                                         to_zoom,
-                                        t: 0.0,
-                                    }));
+                                        delay,
+                                    )));
                                 }
                                 focus_space.set(None);
                             }
@@ -1344,25 +1456,22 @@ pub fn NetworkPanel() -> Element {
                                                             if same {
                                                                 // 再点同一节点：退出焦点空间，还原全图
                                                                 inspect.set(None);
-                                                                if let Some(saved) = saved_positions.take() {
+                                                                if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
                                                                     let from = positions.peek().clone();
-                                                                    let vb = visible_box(*rect.peek(), false);
-                                                                    let pts: Vec<(f64, f64)> =
-                                                                        saved.values().copied().collect();
-                                                                    let (to_pan, to_zoom) = if pts.is_empty() {
-                                                                        (*pan.peek(), *zoom.peek())
-                                                                    } else {
-                                                                        fit_view_into(&pts, vb)
-                                                                    };
-                                                                    tween.set(Some(Tween {
+                                                                    let (to_pan, to_zoom) = (saved_pan, saved_zoom);
+                                                                    let mut delay = HashMap::new();
+                                                                    for (i, k) in saved.keys().enumerate() {
+                                                                        delay.insert(*k, i as f64 * 0.06);
+                                                                    }
+                                                                    tween.set(Some(make_tween(
                                                                         from,
-                                                                        to: saved,
-                                                                        from_pan: *pan.peek(),
+                                                                        saved,
+                                                                        *pan.peek(),
                                                                         to_pan,
-                                                                        from_zoom: *zoom.peek(),
+                                                                        *zoom.peek(),
                                                                         to_zoom,
-                                                                        t: 0.0,
-                                                                    }));
+                                                                        delay,
+                                                                    )));
                                                                 }
                                                                 focus_space.set(None);
                                                             } else if focus_space.peek().is_some() {
@@ -1381,16 +1490,17 @@ pub fn NetworkPanel() -> Element {
                                                                 let pts: Vec<(f64, f64)> =
                                                                     target.values().copied().collect();
                                                                 let (to_pan, to_zoom) = fit_view_into(&pts, vb);
-                                                                saved_positions.set(Some(cur.clone()));
-                                                                tween.set(Some(Tween {
-                                                                    from: cur,
-                                                                    to: target,
-                                                                    from_pan: *pan.peek(),
+                                                                saved_positions.set(Some((cur.clone(), *pan.peek(), *zoom.peek())));
+                                                                let delay = stagger_delay(key, &ev);
+                                                                tween.set(Some(make_tween(
+                                                                    cur,
+                                                                    target,
+                                                                    *pan.peek(),
                                                                     to_pan,
-                                                                    from_zoom: *zoom.peek(),
+                                                                    *zoom.peek(),
                                                                     to_zoom,
-                                                                    t: 0.0,
-                                                                }));
+                                                                    delay,
+                                                                )));
                                                                 focus_space.set(Some(cone));
                                                             }
                                                         }
@@ -1484,24 +1594,22 @@ pub fn NetworkPanel() -> Element {
                         node: node,
                         on_close: move |_| {
                             inspect.set(None);
-                            if let Some(saved) = saved_positions.take() {
+                            if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
                                 let from = positions.peek().clone();
-                                let vb = visible_box(*rect.peek(), false);
-                                let pts: Vec<(f64, f64)> = saved.values().copied().collect();
-                                let (to_pan, to_zoom) = if pts.is_empty() {
-                                    (*pan.peek(), *zoom.peek())
-                                } else {
-                                    fit_view_into(&pts, vb)
-                                };
-                                tween.set(Some(Tween {
+                                let (to_pan, to_zoom) = (saved_pan, saved_zoom);
+                                let mut delay = HashMap::new();
+                                for (i, k) in saved.keys().enumerate() {
+                                    delay.insert(*k, i as f64 * 0.06);
+                                }
+                                tween.set(Some(make_tween(
                                     from,
-                                    to: saved,
-                                    from_pan: *pan.peek(),
+                                    saved,
+                                    *pan.peek(),
                                     to_pan,
-                                    from_zoom: *zoom.peek(),
+                                    *zoom.peek(),
                                     to_zoom,
-                                    t: 0.0,
-                                }));
+                                    delay,
+                                )));
                             }
                             focus_space.set(None);
                         },
