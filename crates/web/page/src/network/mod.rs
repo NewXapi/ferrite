@@ -413,6 +413,132 @@ fn offset_bezier(a: (f64, f64), b: (f64, f64), frac: f64) -> String {
 }
 
 /// Pan/zoom so all points sit inside the viewBox with padding. Returns (pan, zoom).
+/// 抽屉宽度（客户端 px），与 NodeInspector 的 `sm:w-[320px]` 一致。
+/// 焦点子图要排到抽屉左侧，必须知道被遮掉多少。
+const DRAWER_W: f64 = 320.0;
+
+/// 可视画布区（viewBox 坐标）。抽屉覆盖的右侧不算可视区，
+/// 于是焦点子图才会完整落在左边而不是被压在抽屉底下。
+fn visible_box(rect: Option<(f64, f64, f64, f64)>, drawer: bool) -> (f64, f64, f64, f64) {
+    let Some((_, _, rw, rh)) = rect else {
+        return (0.0, 0.0, VIEW_W, VIEW_H);
+    };
+    let s = (rw / VIEW_W).min(rh / VIEW_H);
+    if s <= 0.0 {
+        return (0.0, 0.0, VIEW_W, VIEW_H);
+    }
+    let ox = (rw - VIEW_W * s) / 2.0;
+    // 窄屏抽屉是全宽/底部抽屉，不预留横向空间，否则可视区会退化成 0。
+    let avail = if drawer && rw >= 640.0 {
+        (rw - DRAWER_W).max(240.0)
+    } else {
+        rw
+    };
+    let x0 = ((0.0 - ox) / s).max(0.0);
+    let x1 = ((avail - ox) / s).min(VIEW_W);
+    (x0, 0.0, (x1 - x0).max(120.0), VIEW_H)
+}
+
+/// 把点集缩放平移进指定框（viewBox 坐标）。
+fn fit_view_into(pts: &[(f64, f64)], (bx, by, bw, bh): (f64, f64, f64, f64)) -> ((f64, f64), f64) {
+    let pad = NODE_W / 2.0 + 24.0;
+    let (minx, maxx) = pts
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| {
+            (a.min(x), b.max(x))
+        });
+    let (miny, maxy) = pts
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| {
+            (a.min(y), b.max(y))
+        });
+    let (w, h) = ((maxx - minx).max(1.0), (maxy - miny).max(1.0));
+    let z = (((bw - 2.0 * pad) / w).min((bh - 2.0 * pad) / h)).clamp(0.35, 1.6);
+    let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
+    ((bx + bw / 2.0 - cx * z, by + bh / 2.0 - cy * z), z)
+}
+
+/// 连通锥：从起点向外扩散，每步必须**远离**起点所在层。
+/// 这样点别名只拉出「它的分组 + 它的调度模型」，
+/// 而不会经由分组把整张图都拽进来。
+fn focus_cone(start: NodeKey, edges: &[(NodeKey, NodeKey)]) -> HashSet<NodeKey> {
+    let start_layer = start.layer() as i16;
+    let dist = |k: NodeKey| (k.layer() as i16 - start_layer).abs();
+    let mut seen: HashSet<NodeKey> = HashSet::from([start]);
+    let mut queue: VecDeque<NodeKey> = VecDeque::from([start]);
+    while let Some(n) = queue.pop_front() {
+        for &(up, low) in edges {
+            let next = if up == n && dist(low) > dist(n) {
+                Some(low)
+            } else if low == n && dist(up) > dist(n) {
+                Some(up)
+            } else {
+                None
+            };
+            if let Some(m) = next {
+                if seen.insert(m) {
+                    queue.push_back(m);
+                }
+            }
+        }
+    }
+    seen
+}
+
+/// 焦点子图的一次性排布：每层按当前 x 顺序均匀铺开（保持相对次序，
+/// 视觉跳动最小），再松弛让上层压在下层重心上。
+/// 只在进入焦点时算一次；之后位置交给物理与拖拽。
+fn layout_subgraph(
+    sub: &HashSet<NodeKey>,
+    edges: &[(NodeKey, NodeKey)],
+    cur: &HashMap<NodeKey, (f64, f64)>,
+) -> HashMap<NodeKey, (f64, f64)> {
+    let mut rows: [Vec<NodeKey>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for &k in sub {
+        rows[k.layer() as usize].push(k);
+    }
+    let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
+    for (l, row) in rows.iter_mut().enumerate() {
+        row.sort_by(|a, b| {
+            let xa = cur.get(a).map(|p| p.0).unwrap_or(0.0);
+            let xb = cur.get(b).map(|p| p.0).unwrap_or(0.0);
+            xa.partial_cmp(&xb).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let span = (row.len() as f64 - 1.0).max(0.0) * COL_GAP;
+        for (i, &k) in row.iter().enumerate() {
+            out.insert(
+                k,
+                (VIEW_W / 2.0 - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]),
+            );
+        }
+    }
+    let layers = [rows[0].clone(), rows[1].clone(), rows[2].clone()];
+    let sub_edges: Vec<(NodeKey, NodeKey)> = edges
+        .iter()
+        .copied()
+        .filter(|(u, l)| sub.contains(u) && sub.contains(l))
+        .collect();
+    settle_layout(&layers, &sub_edges, &mut out);
+    out
+}
+
+/// 位置/视图补间。进出焦点时平滑移动，节点不瞬移。
+#[derive(Clone)]
+struct Tween {
+    from: HashMap<NodeKey, (f64, f64)>,
+    to: HashMap<NodeKey, (f64, f64)>,
+    from_pan: (f64, f64),
+    to_pan: (f64, f64),
+    from_zoom: f64,
+    to_zoom: f64,
+    /// 0 → 1
+    t: f64,
+}
+
+fn ease_out_cubic(t: f64) -> f64 {
+    1.0 - (1.0 - t).powi(3)
+}
+
 fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
     let pad = NODE_W / 2.0 + 24.0;
     let (minx, maxx) = pts
@@ -475,6 +601,14 @@ pub fn NetworkPanel() -> Element {
     let mut selected = use_signal(HashSet::<NodeKey>::new);
     // 侧边抽屉当前检视的节点；None 表示抽屉关闭。
     let mut inspect = use_signal(|| None::<NodeKey>);
+    // 焦点空间：进入后只保留与起点连通的锥体，其余节点移出画布。
+    // Some(集合) 表示处于焦点态；集合在焦点期间**不变**（点左侧其他
+    // 节点只切抽屉，不重算子图），符合「不会变树」的要求。
+    let mut focus_space = use_signal(|| None::<HashSet<NodeKey>>);
+    // 进出焦点的补间动画；Some 时 ticker 每帧推进。
+    let mut tween = use_signal(|| None::<Tween>);
+    // 焦点态下每个节点的目标位；退出时用来还原。
+    let mut saved_positions = use_signal(|| None::<HashMap<NodeKey, (f64, f64)>>);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -516,6 +650,40 @@ pub fn NetworkPanel() -> Element {
                 };
                 let dirty = seen_wake != *wake.peek();
                 seen_wake = *wake.peek();
+
+                // 补间优先：动画期间接管位置与视图，跳过物理，
+                // 否则弹簧会把节点从目标位拽回去。
+                if tween.peek().is_some() {
+                    let done = {
+                        let mut tw = tween.write();
+                        let Some(t) = tw.as_mut() else { continue };
+                        t.t = (t.t + 0.08).min(1.0);
+                        let e = ease_out_cubic(t.t);
+                        {
+                            let mut pw = positions.write();
+                            for (k, to) in t.to.iter() {
+                                let from = t.from.get(k).copied().unwrap_or(*to);
+                                pw.insert(
+                                    *k,
+                                    (from.0 + (to.0 - from.0) * e, from.1 + (to.1 - from.1) * e),
+                                );
+                            }
+                        }
+                        pan.set((
+                            t.from_pan.0 + (t.to_pan.0 - t.from_pan.0) * e,
+                            t.from_pan.1 + (t.to_pan.1 - t.from_pan.1) * e,
+                        ));
+                        zoom.set(t.from_zoom + (t.to_zoom - t.from_zoom) * e);
+                        t.t >= 1.0
+                    };
+                    if done {
+                        tween.set(None);
+                        velocities.clear();
+                        energy = f64::MAX;
+                    }
+                    continue;
+                }
+
                 if !(dirty || held.is_some() || energy > 0.08 || dodge_active) {
                     continue;
                 }
@@ -585,7 +753,15 @@ pub fn NetworkPanel() -> Element {
     });
 
     // ---- Visible nodes per layer (collapse-aware) ----
-    let layers = visible_layers();
+    let cone_now = focus_space();
+    // 焦点态：无关节点直接不渲染（不是变暗），物理仍照全图跑，
+    // 退出时才需要它们的位置。
+    let mut layers = visible_layers();
+    if let Some(cone) = &cone_now {
+        for row in layers.iter_mut() {
+            row.retain(|k| cone.contains(k));
+        }
+    }
     let selection_now = selected();
     let layers_fit = layers.clone(); // owned copy for the 适配 button's handler
 
@@ -597,14 +773,26 @@ pub fn NetworkPanel() -> Element {
             .unwrap_or((VIEW_W / 2.0, ROW_Y[key.layer() as usize]))
     };
 
-    let display_edges = display_edge_pairs(&edges());
+    let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = {
+        let all = display_edge_pairs(&edges());
+        match &cone_now {
+            Some(cone) => all
+                .into_iter()
+                .filter(|(u, l, _)| cone.contains(u) && cone.contains(l))
+                .collect(),
+            None => all,
+        }
+    };
     let dodge_now = dodge();
 
     // ---- Focus: union of layer-distance BFS from every selected node ----
     // A step is admitted iff it strictly increases |layer − start.layer|.
     // Multi-selection dims anything not connected to ANY selected node;
     // a single selection behaves like the old click-to-focus.
-    let focus: Option<HashSet<NodeKey>> = if selection_now.is_empty() {
+    let focus: Option<HashSet<NodeKey>> = if cone_now.is_some() {
+        // 焦点空间里所有可见节点都相关，不需要再调光
+        None
+    } else if selection_now.is_empty() {
         None
     } else {
         let mut out = HashSet::new();
@@ -723,6 +911,9 @@ pub fn NetworkPanel() -> Element {
     };
 
     let hint = match drag_now {
+        _ if cone_now.is_some() => {
+            "焦点空间：只显示相关节点 · 点左侧节点切换编辑 · 点空白或再点同节点退出"
+        }
         Some(Drag::Wire { .. }) => "拖到相邻层节点松开连线",
         Some(Drag::Move { .. }) => "松开落位",
         _ => "滚轮缩放 · 拖空白平移 · Shift拖空白框选 · Ctrl点选多个 · 拖节点摆位 · 拖圆点连线",
@@ -844,6 +1035,26 @@ pub fn NetworkPanel() -> Element {
                             Some(Drag::Pan { moved: false, .. }) => {
                                 selected.set(HashSet::new());
                                 inspect.set(None);
+                                if let Some(saved) = saved_positions.take() {
+                                    let from = positions.peek().clone();
+                                    let vb = visible_box(*rect.peek(), false);
+                                    let pts: Vec<(f64, f64)> = saved.values().copied().collect();
+                                    let (to_pan, to_zoom) = if pts.is_empty() {
+                                        (*pan.peek(), *zoom.peek())
+                                    } else {
+                                        fit_view_into(&pts, vb)
+                                    };
+                                    tween.set(Some(Tween {
+                                        from,
+                                        to: saved,
+                                        from_pan: *pan.peek(),
+                                        to_pan,
+                                        from_zoom: *zoom.peek(),
+                                        to_zoom,
+                                        t: 0.0,
+                                    }));
+                                }
+                                focus_space.set(None);
                             }
                             Some(Drag::Select) => commit_select(),
                             _ => {}
@@ -1129,9 +1340,59 @@ pub fn NetworkPanel() -> Element {
                                                                 sel.clear();
                                                                 sel.insert(key);
                                                             }
-                                                            // 单击即打开抽屉；再点同一节点则关闭。
                                                             let same = *inspect.peek() == Some(key);
-                                                            inspect.set(if same { None } else { Some(key) });
+                                                            if same {
+                                                                // 再点同一节点：退出焦点空间，还原全图
+                                                                inspect.set(None);
+                                                                if let Some(saved) = saved_positions.take() {
+                                                                    let from = positions.peek().clone();
+                                                                    let vb = visible_box(*rect.peek(), false);
+                                                                    let pts: Vec<(f64, f64)> =
+                                                                        saved.values().copied().collect();
+                                                                    let (to_pan, to_zoom) = if pts.is_empty() {
+                                                                        (*pan.peek(), *zoom.peek())
+                                                                    } else {
+                                                                        fit_view_into(&pts, vb)
+                                                                    };
+                                                                    tween.set(Some(Tween {
+                                                                        from,
+                                                                        to: saved,
+                                                                        from_pan: *pan.peek(),
+                                                                        to_pan,
+                                                                        from_zoom: *zoom.peek(),
+                                                                        to_zoom,
+                                                                        t: 0.0,
+                                                                    }));
+                                                                }
+                                                                focus_space.set(None);
+                                                            } else if focus_space.peek().is_some() {
+                                                                // 焦点态内点其他节点：只换抽屉，树不变
+                                                                inspect.set(Some(key));
+                                                            } else {
+                                                                // 进入焦点空间：算连通锥 → 一次性排布 → 补间
+                                                                inspect.set(Some(key));
+                                                                let all = edges_read(&edges);
+                                                                let ev: Vec<(NodeKey, NodeKey)> =
+                                                                    all.iter().copied().collect();
+                                                                let cone = focus_cone(key, &ev);
+                                                                let cur = positions.peek().clone();
+                                                                let target = layout_subgraph(&cone, &ev, &cur);
+                                                                let vb = visible_box(*rect.peek(), true);
+                                                                let pts: Vec<(f64, f64)> =
+                                                                    target.values().copied().collect();
+                                                                let (to_pan, to_zoom) = fit_view_into(&pts, vb);
+                                                                saved_positions.set(Some(cur.clone()));
+                                                                tween.set(Some(Tween {
+                                                                    from: cur,
+                                                                    to: target,
+                                                                    from_pan: *pan.peek(),
+                                                                    to_pan,
+                                                                    from_zoom: *zoom.peek(),
+                                                                    to_zoom,
+                                                                    t: 0.0,
+                                                                }));
+                                                                focus_space.set(Some(cone));
+                                                            }
                                                         }
                                                     }
                                                     _ => {}
@@ -1221,7 +1482,29 @@ pub fn NetworkPanel() -> Element {
                 if let Some(node) = inspect() {
                     NodeInspector {
                         node: node,
-                        on_close: move |_| inspect.set(None),
+                        on_close: move |_| {
+                            inspect.set(None);
+                            if let Some(saved) = saved_positions.take() {
+                                let from = positions.peek().clone();
+                                let vb = visible_box(*rect.peek(), false);
+                                let pts: Vec<(f64, f64)> = saved.values().copied().collect();
+                                let (to_pan, to_zoom) = if pts.is_empty() {
+                                    (*pan.peek(), *zoom.peek())
+                                } else {
+                                    fit_view_into(&pts, vb)
+                                };
+                                tween.set(Some(Tween {
+                                    from,
+                                    to: saved,
+                                    from_pan: *pan.peek(),
+                                    to_pan,
+                                    from_zoom: *zoom.peek(),
+                                    to_zoom,
+                                    t: 0.0,
+                                }));
+                            }
+                            focus_space.set(None);
+                        },
                     }
                 }
             }
@@ -1400,6 +1683,7 @@ fn NodeInspector(node: NodeKey, on_close: EventHandler<MouseEvent>) -> Element {
                 }
                 button {
                     class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    title: "退出焦点空间",
                     onclick: move |e| on_close.call(e),
                     "✕"
                 }
