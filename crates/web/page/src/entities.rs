@@ -1,22 +1,15 @@
-//! 实体设置页：分组 / 模型别名 / 渠道 三块可折叠卡片，各占一行。
-//! 每张卡片上半是录入行，下半是对应的节点内容。
+//! 实体设置页：分组 / 模型别名 / 渠道 三张可折叠卡片，各占一行。
+//! 每张卡片上半是录入行，下半是该实体在拓扑里对应的节点内容。
 //!
-//! 三者的编辑重量不同，卡片内的形态也不同：
-//! - 分组、模型别名：只有名字，一行录入 + 芯片列表
-//! - 渠道：名称 + URL + Key 三输入，外加「候补池 → 调度模型」双列多选
-//!
-//! 术语（与拓扑图一致）：
-//! - 模型别名：对外暴露给用户的模型名
-//! - 调度模型：渠道下真实可用的上游模型，**不可改名**
-//! - 候补池：从渠道拉取回来但尚未加入拓扑的临时列表
-//!
-//! 数据 mock，改动仅存在于前端内存。
+//! 数据在 `crate::store::EntityStore` 中，与拓扑抽屉共享：
+//! 进这里改，抽屉里也能看到；反过来也成立。
 
 use dioxus::prelude::*;
 
+use crate::store::{ChannelRow, EntityStore};
+
 #[component]
 pub fn EntitiesPanel() -> Element {
-    // 三张卡片的折叠态，默认全开。
     let mut open = use_signal(|| [true, true, true]);
 
     rsx! {
@@ -41,18 +34,10 @@ pub fn EntitiesPanel() -> Element {
 
 #[component]
 fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
-    // (分组名, 展示名)
-    let mut groups = use_signal(|| {
-        vec![
-            ("default".to_string(), "默认分组".to_string()),
-            ("vip".to_string(), "VIP".to_string()),
-            ("claude".to_string(), "Claude 专用".to_string()),
-            ("trial".to_string(), "试用".to_string()),
-        ]
-    });
+    let store = use_context::<EntityStore>();
+    let mut groups = store.groups;
     let mut name = use_signal(String::new);
     let mut display = use_signal(String::new);
-    // 正在编辑的行；None 表示录入新项。
     let mut editing = use_signal(|| None::<usize>);
 
     let commit = move |_| {
@@ -62,8 +47,14 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
         }
         let d = display.peek().trim().to_string();
         match *editing.peek() {
-            Some(i) => groups.write()[i] = (n, d),
-            None => groups.write().push((n, d)),
+            Some(i) => {
+                groups.write()[i].name = n;
+                groups.write()[i].display = d;
+            }
+            None => groups.write().push(crate::store::GroupRow {
+                name: n,
+                display: d,
+            }),
         }
         name.set(String::new());
         display.set(String::new());
@@ -78,10 +69,9 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             open: open,
             on_toggle: on_toggle,
 
-            // 录入行
             div { class: "flex flex-wrap items-end gap-2",
                 InputCell { label: "分组名", value: name, placeholder: "vip", grow: true }
-                InputCell { label: "展示名", value: display, placeholder: "VIP（可选）", grow: true }
+                InputCell { label: "展示名", value: display, placeholder: "默认分组（可选）", grow: true }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
@@ -100,21 +90,20 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 }
             }
 
-            // 节点内容
             NodeArea {
                 if groups.read().is_empty() {
                     EmptyHint { text: "还没有分组" }
                 } else {
                     div { class: "flex flex-wrap gap-2",
-                        for (i, (n, d)) in groups.read().iter().enumerate() {
+                        for (i, r) in groups.read().iter().enumerate() {
                             EntityChip {
-                                label: n.clone(),
-                                sub: d.clone(),
+                                label: r.name.clone(),
+                                sub: r.display.clone(),
                                 active: editing() == Some(i),
                                 on_pick: move |_| {
-                                    let (n, d) = groups.read()[i].clone();
-                                    name.set(n);
-                                    display.set(d);
+                                    let r = groups.read()[i].clone();
+                                    name.set(r.name);
+                                    display.set(r.display);
                                     editing.set(Some(i));
                                 },
                                 on_remove: move |_| {
@@ -134,15 +123,8 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
 #[component]
 fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
-    // (别名, 展示名)
-    let mut aliases = use_signal(|| {
-        vec![
-            ("gpt-4o".to_string(), "GPT-4o".to_string()),
-            ("gpt-5".to_string(), "GPT-5".to_string()),
-            ("claude-sonnet-4".to_string(), "Claude Sonnet 4".to_string()),
-            ("gemini-2.5-pro".to_string(), "Gemini 2.5 Pro".to_string()),
-        ]
-    });
+    let store = use_context::<EntityStore>();
+    let mut aliases = store.aliases;
     let mut name = use_signal(String::new);
     let mut display = use_signal(String::new);
     let mut editing = use_signal(|| None::<usize>);
@@ -154,8 +136,14 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
         }
         let d = display.peek().trim().to_string();
         match *editing.peek() {
-            Some(i) => aliases.write()[i] = (n, d),
-            None => aliases.write().push((n, d)),
+            Some(i) => {
+                aliases.write()[i].alias = n;
+                aliases.write()[i].display = d;
+            }
+            None => aliases.write().push(crate::store::AliasRow {
+                alias: n,
+                display: d,
+            }),
         }
         name.set(String::new());
         display.set(String::new());
@@ -196,15 +184,15 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                     EmptyHint { text: "还没有模型别名" }
                 } else {
                     div { class: "flex flex-wrap gap-2",
-                        for (i, (n, d)) in aliases.read().iter().enumerate() {
+                        for (i, r) in aliases.read().iter().enumerate() {
                             EntityChip {
-                                label: n.clone(),
-                                sub: d.clone(),
+                                label: r.alias.clone(),
+                                sub: r.display.clone(),
                                 active: editing() == Some(i),
                                 on_pick: move |_| {
-                                    let (n, d) = aliases.read()[i].clone();
-                                    name.set(n);
-                                    display.set(d);
+                                    let r = aliases.read()[i].clone();
+                                    name.set(r.alias);
+                                    display.set(r.display);
                                     editing.set(Some(i));
                                 },
                                 on_remove: move |_| {
@@ -222,51 +210,11 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
 // ============ 卡片 3：渠道 ============
 
-#[derive(Clone, PartialEq)]
-struct ChannelRow {
-    name: String,
-    url: String,
-    keys: String,
-    /// 拉取回来的候补池：(模型名, 是否勾选)
-    candidates: Vec<(String, bool)>,
-    /// 已加入拓扑的调度模型；名字来自上游，不可改名
-    dispatch: Vec<String>,
-}
-
 #[component]
 fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
-    let mut channels = use_signal(|| {
-        vec![
-            ChannelRow {
-                name: "OpenAI 官方".into(),
-                url: "https://api.openai.com/v1".into(),
-                keys: "sk-**************************".into(),
-                candidates: vec![
-                    ("o3".to_string(), false),
-                    ("o3-mini".to_string(), false),
-                    ("text-embedding-3-large".to_string(), false),
-                ],
-                dispatch: vec!["gpt-4o-2024-11-20".into(), "gpt-4o-mini".into()],
-            },
-            ChannelRow {
-                name: "Azure East".into(),
-                url: "https://east.azure.example/openai".into(),
-                keys: "az-****".into(),
-                candidates: vec![("gpt-4o".to_string(), false)],
-                dispatch: vec!["gpt-4o".into()],
-            },
-            ChannelRow {
-                name: "OneAPI 上游".into(),
-                url: "https://oneapi.example/v1".into(),
-                keys: "oa-****".into(),
-                candidates: vec![],
-                dispatch: vec!["gpt-4o".into(), "gpt-5".into(), "claude-sonnet-4".into()],
-            },
-        ]
-    });
+    let store = use_context::<EntityStore>();
+    let mut channels = store.channels;
     let mut current = use_signal(|| 0usize);
-
-    // 录入区绑定到当前选中渠道；新建时 current 指向新行。
     let idx = current();
     let row = channels.read().get(idx).cloned();
 
@@ -278,7 +226,6 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             open: open,
             on_toggle: on_toggle,
 
-            // 渠道选择行
             div { class: "flex flex-wrap items-center gap-2",
                 for (i, c) in channels.read().iter().enumerate() {
                     {
@@ -326,7 +273,6 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             }
 
             if let Some(c) = row {
-                // 三输入：名称 + URL + Key
                 div { class: "grid grid-cols-1 gap-2 sm:grid-cols-3",
                     TextCell {
                         label: "渠道名称",
@@ -349,8 +295,8 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 }
 
                 NodeArea {
-                    div { class: "grid grid-cols-1 gap-3 lg:grid-cols-2",
-                        // 左：候补池（临时，未进拓扑）
+                    div { class: "grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-2",
+                        // 候补池
                         div { class: "flex min-h-0 flex-col gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/60 p-3",
                             div { class: "flex items-center justify-between gap-2",
                                 div {
@@ -360,14 +306,19 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                 button {
                                     class: "rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-500",
                                     onclick: move |_| {
-                                        // mock 拉取：补几个上游模型名
+                                        // mock 拉取：只补上游存在但本地没有的名字
+                                        let pool = ["gpt-4o", "gpt-4o-mini", "gpt-5", "o3", "o3-mini"];
                                         let mut w = channels.write();
-                                        let have: Vec<String> = w[idx].dispatch.clone();
-                                        for m in ["gpt-4o", "gpt-4o-mini", "gpt-5", "o3", "o3-mini"] {
-                                            let exists = w[idx].candidates.iter().any(|(n, _)| n == m)
-                                                || have.iter().any(|n| n == m);
-                                            if !exists {
-                                                w[idx].candidates.push((m.to_string(), false));
+                                        let c2 = &mut w[idx];
+                                        let have: Vec<String> = c2
+                                            .candidates
+                                            .iter()
+                                            .map(|(n, _)| n.clone())
+                                            .chain(c2.dispatch.iter().cloned())
+                                            .collect();
+                                        for m in pool {
+                                            if !have.iter().any(|x| x == m) {
+                                                c2.candidates.push((m.to_string(), false));
                                             }
                                         }
                                     },
@@ -405,7 +356,9 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                         class: "rounded border border-zinc-100 bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-900 hover:bg-zinc-300",
                                         onclick: move |_| {
                                             let mut w = channels.write();
-                                            let picked: Vec<String> = w[idx].candidates.iter()
+                                            let picked: Vec<String> = w[idx]
+                                                .candidates
+                                                .iter()
                                                 .filter(|(_, on)| *on)
                                                 .map(|(n, _)| n.clone())
                                                 .collect();
@@ -427,7 +380,7 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                             }
                         }
 
-                        // 右：调度模型（已进拓扑，不可改名）
+                        // 调度模型
                         div { class: "flex min-h-0 flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
                             div {
                                 p { class: "text-xs text-zinc-300", "调度模型" }
@@ -467,9 +420,8 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     }
 }
 
-// ============ 共享组件 ============
+// ============ 共享小件 ============
 
-/// 可折叠卡片：标题行常驻，展开后是录入区 + 节点区（children）。
 #[component]
 fn CardPanel(
     title: &'static str,
@@ -496,7 +448,6 @@ fn CardPanel(
     }
 }
 
-/// 节点内容区：卡片下半部，装该实体的节点列表。
 #[component]
 fn NodeArea(children: Element) -> Element {
     rsx! {
@@ -513,7 +464,6 @@ fn EmptyHint(text: &'static str) -> Element {
     }
 }
 
-/// 实体芯片：点本体载入录入行编辑，点 ✕ 删除。
 #[component]
 fn EntityChip(
     label: String,
@@ -551,7 +501,6 @@ fn EntityChip(
     }
 }
 
-/// 双向绑定输入（配 Signal）。
 #[component]
 fn InputCell(
     label: &'static str,
@@ -573,7 +522,6 @@ fn InputCell(
     }
 }
 
-/// 受控输入（配回调，用于写进结构体字段）。
 #[component]
 fn TextCell(
     label: &'static str,

@@ -8,5 +8,6 @@ pub mod model;
 pub mod network;
 pub mod overview;
 pub mod retro;
+pub mod store;
 
 pub use app::RootApp;

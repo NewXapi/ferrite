@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use dioxus::prelude::*;
 
+use crate::store::EntityStore;
+
 /// 3-layer interactive routing editor, Mini-Metro flavored:
 ///   groups (top) ←→ model mappings (middle) ←→ channel models (bottom).
 ///
@@ -72,17 +74,6 @@ const ALIASES: &[AliasDef] = &[
         name: "gemini-2.5-pro",
         color: "#fb923c",
     },
-];
-
-/// 渠道凭证（mock）。真实来源是设置页的渠道卡片；抽屉只读展示，
-/// 因为一份 URL/Key 被多个调度模型共享，不该在单个节点上改。
-const CHANNEL_CREDS: &[(&str, &str)] = &[
-    ("https://api.openai.com/v1", "sk-****"),
-    ("https://east.azure.example/openai", "az-****"),
-    ("https://oneapi.example/v1", "oa-****"),
-    ("https://api.anthropic.com", "ak-****"),
-    ("https://bedrock.us-east-1.amazonaws.com", "aws-****"),
-    ("https://generativelanguage.googleapis.com", "gm-****"),
 ];
 
 const CHANNELS: &[&str] = &[
@@ -701,6 +692,8 @@ pub fn NetworkPanel() -> Element {
     // 焦点态下每个节点的目标位；退出时用来还原。
     let mut saved_positions =
         use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
+    // 面包屑：焦点空间内看过哪些节点（含起点），点击可回走。
+    let mut crumbs = use_signal(Vec::<NodeKey>::new);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -1167,6 +1160,8 @@ pub fn NetworkPanel() -> Element {
                                     )));
                                 }
                                 focus_space.set(None);
+                                crumbs.set(Vec::new());
+                                crumbs.set(Vec::new());
                             }
                             Some(Drag::Select) => commit_select(),
                             _ => {}
@@ -1475,8 +1470,12 @@ pub fn NetworkPanel() -> Element {
                                                                 }
                                                                 focus_space.set(None);
                                                             } else if focus_space.peek().is_some() {
-                                                                // 焦点态内点其他节点：只换抽屉，树不变
+                                                                // 焦点态内点其他节点：只换抽屉，树不变；
+                                                                // 顺手记到面包屑里便于回走。
                                                                 inspect.set(Some(key));
+                                                                if crumbs.peek().last().copied() != Some(key) {
+                                                                    crumbs.write().push(key);
+                                                                }
                                                             } else {
                                                                 // 进入焦点空间：算连通锥 → 一次性排布 → 补间
                                                                 inspect.set(Some(key));
@@ -1502,6 +1501,7 @@ pub fn NetworkPanel() -> Element {
                                                                     delay,
                                                                 )));
                                                                 focus_space.set(Some(cone));
+                                                                crumbs.set(vec![key]);
                                                             }
                                                         }
                                                     }
@@ -1592,6 +1592,15 @@ pub fn NetworkPanel() -> Element {
                 if let Some(node) = inspect() {
                     NodeInspector {
                         node: node,
+                        crumbs: crumbs(),
+                        on_crumb: move |i: usize| {
+                            let trail = crumbs();
+                            if let Some(back) = trail.get(i).copied() {
+                                // 回到第 i 个：截断其后的记录
+                                crumbs.set(trail[..=i].to_vec());
+                                inspect.set(Some(back));
+                            }
+                        },
                         on_close: move |_| {
                             inspect.set(None);
                             if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
@@ -1771,7 +1780,12 @@ fn physics_step(
 /// - 调度模型：模型名**只读**（来自上游，改了就路由不到），
 ///   附带展示所属渠道的 URL/Key，渠道本身在设置页改
 #[component]
-fn NodeInspector(node: NodeKey, on_close: EventHandler<MouseEvent>) -> Element {
+fn NodeInspector(
+    node: NodeKey,
+    crumbs: Vec<NodeKey>,
+    on_crumb: EventHandler<usize>,
+    on_close: EventHandler<MouseEvent>,
+) -> Element {
     let title = node_title(node);
     let kind_label = match node {
         NodeKey::Group(_) => "分组",
@@ -1782,6 +1796,33 @@ fn NodeInspector(node: NodeKey, on_close: EventHandler<MouseEvent>) -> Element {
 
     rsx! {
         aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+            // 面包屑：焦点空间内浏览过哪些节点；点击回走，不改树。
+            if crumbs.len() > 1 {
+                div { class: "flex shrink-0 flex-wrap items-center gap-1 border-b border-zinc-800 px-3 py-1.5",
+                    for (i, crumb) in crumbs.iter().enumerate() {
+                        {
+                            let is_last = i == crumbs.len() - 1;
+                            let label = node_title(*crumb);
+                            let tone = if is_last {
+                                "text-zinc-200"
+                            } else {
+                                "text-zinc-500 hover:text-zinc-300"
+                            };
+                            rsx! {
+                                if i > 0 {
+                                    span { class: "text-[11px] text-zinc-700", "/" }
+                                }
+                                button {
+                                    class: "text-[11px] transition-colors {tone}",
+                                    disabled: is_last,
+                                    onclick: move |_| on_crumb.call(i),
+                                    "{label}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // 头部
             div { class: "flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2",
                 span { class: "h-2.5 w-2.5 shrink-0 rounded-full", style: "background: {accent}" }
@@ -1816,7 +1857,9 @@ fn NodeInspector(node: NodeKey, on_close: EventHandler<MouseEvent>) -> Element {
 
 #[component]
 fn GroupInspect(index: usize) -> Element {
-    let name = use_signal(|| GROUPS[index].name.to_string());
+    // 与「设置」tab 共享 store：这里改名，那边立即可见。
+    let mut store = use_context::<EntityStore>();
+    let row = store.groups.read().get(index).cloned();
     let aliases: Vec<&'static str> = SEED_EDGES
         .iter()
         .filter(|(u, _)| *u == NodeKey::Group(index))
@@ -1825,16 +1868,31 @@ fn GroupInspect(index: usize) -> Element {
             _ => None,
         })
         .collect();
+    let Some(r) = row else {
+        return rsx! { p { class: "text-xs text-zinc-600", "该分组不存在" } };
+    };
 
     rsx! {
-        InspectField { label: "分组名", value: name, placeholder: "vip" }
+        BoundField {
+            label: "分组名",
+            value: r.name,
+            placeholder: "vip",
+            on_change: move |v: String| store.groups.write()[index].name = v,
+        }
+        BoundField {
+            label: "展示名",
+            value: r.display,
+            placeholder: "默认分组",
+            on_change: move |v: String| store.groups.write()[index].display = v,
+        }
         InspectList { title: "包含的模型别名", items: aliases, empty: "拖端口连线以加入别名" }
     }
 }
 
 #[component]
 fn AliasInspect(index: usize) -> Element {
-    let name = use_signal(|| ALIASES[index].name.to_string());
+    let mut store = use_context::<EntityStore>();
+    let row = store.aliases.read().get(index).cloned();
     let groups: Vec<&'static str> = SEED_EDGES
         .iter()
         .filter(|(_, l)| *l == NodeKey::Mapping(index))
@@ -1851,9 +1909,23 @@ fn AliasInspect(index: usize) -> Element {
             _ => None,
         })
         .collect();
+    let Some(r) = row else {
+        return rsx! { p { class: "text-xs text-zinc-600", "该别名不存在" } };
+    };
 
     rsx! {
-        InspectField { label: "别名", value: name, placeholder: "gpt-4o" }
+        BoundField {
+            label: "别名",
+            value: r.alias,
+            placeholder: "gpt-4o",
+            on_change: move |v: String| store.aliases.write()[index].alias = v,
+        }
+        BoundField {
+            label: "展示名",
+            value: r.display,
+            placeholder: "GPT-4o",
+            on_change: move |v: String| store.aliases.write()[index].display = v,
+        }
         InspectList { title: "所属分组", items: groups, empty: "未加入任何分组" }
         InspectList { title: "路由到的调度模型", items: dispatch, empty: "未连接调度模型" }
     }
@@ -1861,10 +1933,10 @@ fn AliasInspect(index: usize) -> Element {
 
 #[component]
 fn DispatchInspect(index: usize) -> Element {
+    let mut store = use_context::<EntityStore>();
     let d = &DISPATCH[index];
-    let channel = CHANNELS[d.channel];
-    // mock：渠道凭证真实来源是设置页，此处只做展示
-    let (url, key) = CHANNEL_CREDS[d.channel];
+    let ci = d.channel;
+    let row = store.channels.read().get(ci).cloned();
     let aliases: Vec<&'static str> = SEED_EDGES
         .iter()
         .filter(|(_, l)| *l == NodeKey::Dispatch(index))
@@ -1879,18 +1951,51 @@ fn DispatchInspect(index: usize) -> Element {
             span { class: "text-[11px] text-zinc-500", "模型名（只读，来自上游）" }
             div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{d.name}" }
         }
-        div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
-            div { class: "flex items-center justify-between gap-2",
+        if let Some(c) = row {
+            div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
                 span { class: "text-[11px] uppercase tracking-wider text-zinc-600", "所属渠道" }
-                span { class: "text-[11px] text-zinc-600", "在设置页编辑" }
-            }
-            p { class: "text-xs font-medium text-zinc-200", "{channel}" }
-            div { class: "space-y-1",
-                CredRow { label: "URL", value: url }
-                CredRow { label: "Key", value: key }
+                BoundField {
+                    label: "渠道名称",
+                    value: c.name,
+                    placeholder: "OpenAI 官方",
+                    on_change: move |v: String| store.channels.write()[ci].name = v,
+                }
+                BoundField {
+                    label: "Base URL",
+                    value: c.url,
+                    placeholder: "https://…",
+                    on_change: move |v: String| store.channels.write()[ci].url = v,
+                }
+                BoundField {
+                    label: "API Key",
+                    value: c.keys,
+                    placeholder: "sk-…",
+                    on_change: move |v: String| store.channels.write()[ci].keys = v,
+                }
             }
         }
         InspectList { title: "被哪些别名路由", items: aliases, empty: "未被任何别名引用" }
+    }
+}
+
+/// 受控输入：直接写回 store 对应字段，随打随存。
+#[component]
+fn BoundField(
+    label: &'static str,
+    value: String,
+    placeholder: &'static str,
+    on_change: EventHandler<String>,
+) -> Element {
+    rsx! {
+        label { class: "block space-y-1",
+            span { class: "text-[11px] text-zinc-500", "{label}" }
+            input {
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                value: "{value}",
+                placeholder: "{placeholder}",
+                oninput: move |e| on_change.call(e.value()),
+            }
+        }
     }
 }
 

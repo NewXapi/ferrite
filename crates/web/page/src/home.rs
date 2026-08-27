@@ -50,6 +50,8 @@ pub fn HomePage() -> Element {
     let mut dash_tab = use_signal(|| 0u8);
     let mut manage_tab = use_signal(|| ManageTab::Topology);
     let mut theme = use_signal(|| Theme::Dark);
+    // 实体 store：拓扑抽屉与「设置」tab 共享同一份 mock 数据。
+    use_context_provider(crate::store::EntityStore::seed);
     let is_light = theme() == Theme::Light;
 
     let open_drawer = move |_| drawer_open.set(true);
