@@ -1,10 +1,8 @@
 use dioxus::prelude::*;
 
 use crate::auth::auth_drawer::AuthDrawer;
-use crate::channels::{ChannelsLayer, GroupsLayer, MappingsLayer};
-use crate::manage::ManageWorkspace;
 use crate::model::ModelsPanel;
-use crate::network::ManageState;
+use crate::network::NetworkPanel;
 use crate::overview::OverviewPanel;
 
 /// Grayscale theme id; toggling flips a `light` class on the root wrapper.
@@ -13,24 +11,14 @@ pub enum Theme {
     Dark,
     Light,
 }
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
     Dashboard,
     Keys,
     Usage,
     Logs,
-    Manage,
-}
-
-/// 管理页的面板顶部 tab：拓扑图 + 三层实体编辑 + 导入。
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ManageTab {
-    Topology,
-    Groups,
-    Mappings,
     Channels,
-    Import,
+    Network,
 }
 
 impl Section {
@@ -40,8 +28,9 @@ impl Section {
             Section::Keys => "密钥",
             Section::Usage => "用量",
             Section::Logs => "日志",
-            Section::Manage => "管理",
-        }
+            Section::Channels => "渠道",
+            Section::Network => "拓扑",
+            }
     }
 }
 /// Console shell: floating capsule topbar, left navigation rail, windowed canvas
@@ -52,35 +41,24 @@ pub fn HomePage() -> Element {
     let mut section = use_signal(|| Section::Dashboard);
     // Dashboard top-tabs (总览 / 趋势), from the reference overview design.
     let mut dash_tab = use_signal(|| 0u8);
-    let mut manage_tab = use_signal(|| ManageTab::Topology);
-    // 拓扑画布与检视抽屉共享选中态，必须在两者的公共祖先提供。
-    use_context_provider(ManageState::new);
     let mut theme = use_signal(|| Theme::Dark);
     let is_light = theme() == Theme::Light;
 
     let open_drawer = move |_| drawer_open.set(true);
     let close_drawer = move |_| drawer_open.set(false);
-    let panel_header = match section() {
-        Section::Dashboard => rsx! {
+    let panel_header = if section() == Section::Dashboard {
+        rsx! {
             div { class: "flex h-full",
                 TabItem { label: "总览", active: dash_tab() == 0, onclick: move |_| dash_tab.set(0) }
                 TabItem { label: "趋势", active: dash_tab() == 1, onclick: move |_| dash_tab.set(1) }
             }
-        },
-        Section::Manage => rsx! {
-            div { class: "flex h-full",
-                TabItem { label: "拓扑", active: manage_tab() == ManageTab::Topology, onclick: move |_| manage_tab.set(ManageTab::Topology) }
-                TabItem { label: "分组", active: manage_tab() == ManageTab::Groups, onclick: move |_| manage_tab.set(ManageTab::Groups) }
-                TabItem { label: "模型映射", active: manage_tab() == ManageTab::Mappings, onclick: move |_| manage_tab.set(ManageTab::Mappings) }
-                TabItem { label: "渠道模型", active: manage_tab() == ManageTab::Channels, onclick: move |_| manage_tab.set(ManageTab::Channels) }
-                TabItem { label: "导入", active: manage_tab() == ManageTab::Import, onclick: move |_| manage_tab.set(ManageTab::Import) }
-            }
-        },
-        _ => rsx! {
+        }
+    } else {
+        rsx! {
             div { class: "flex h-full",
                 TabItem { label: section().label(), active: true, onclick: move |_| {} }
             }
-        },
+        }
     };
 
     rsx! {
@@ -118,8 +96,8 @@ pub fn HomePage() -> Element {
                                 "用量"
                             }
                             a { class: "text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100", href: "#",
-                                onclick: move |event| { event.prevent_default(); section.set(Section::Manage); },
-                                "管理"
+                                onclick: move |event| { event.prevent_default(); section.set(Section::Channels); },
+                                "渠道"
                             }
                         }
                         // Divider
@@ -155,7 +133,8 @@ pub fn HomePage() -> Element {
                                 Section::Keys,
                                 Section::Usage,
                                 Section::Logs,
-                                Section::Manage,
+                                Section::Channels,
+                                Section::Network,
                             ] {
                                 NavItem {
                                     label: s.label(),
@@ -182,19 +161,16 @@ pub fn HomePage() -> Element {
                     // Frame — one shared panel keeps every page's chrome identical
                     ConsolePanel {
                         header: panel_header,
-                        match (section(), dash_tab(), manage_tab()) {
-                            (Section::Dashboard, 0, _) => rsx! { OverviewPanel {} },
-                            (Section::Dashboard, _, _) => rsx! { ModelsPanel {} },
-                            (Section::Keys, _, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
-                            (Section::Usage, _, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
-                            (Section::Logs, _, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
-                            (Section::Manage, _, ManageTab::Topology) => rsx! { ManageWorkspace {} },
-                            (Section::Manage, _, ManageTab::Groups) => rsx! { GroupsLayer {} },
-                            (Section::Manage, _, ManageTab::Mappings) => rsx! { MappingsLayer {} },
-                            (Section::Manage, _, ManageTab::Channels) => rsx! { ChannelsLayer {} },
-                            (Section::Manage, _, ManageTab::Import) => rsx! { PlaceholderPane { text: "导入拓扑配置（占位）" } },
+                        match (section(), dash_tab()) {
+                            (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
+                            (Section::Dashboard, _) => rsx! { ModelsPanel {} },
+                            (Section::Keys, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
+                            (Section::Usage, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
+                            (Section::Logs, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
+                            (Section::Channels, _) => rsx! { PlaceholderPane { text: "渠道管理（占位）" } },
+                            (Section::Network, _) => rsx! { NetworkPanel {} },
                         }
-                }
+                    }
                 }
 
                 // ---- Right context rail ----
