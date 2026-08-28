@@ -1,10 +1,13 @@
 //! newapi-page — page composition crate.
 
 pub mod auth;
-pub mod home;
 pub mod components;
-pub mod overview;
+pub mod entities;
+pub mod home;
 pub mod model;
 pub mod network;
+pub mod overview;
+pub mod store;
+pub mod ui;
 
 pub use home::HomePage;

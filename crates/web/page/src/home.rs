@@ -22,6 +22,8 @@ pub fn HomePage() -> Element {
     // Dashboard top-tabs (总览 / 趋势), from the reference overview design.
     let mut dash_tab = use_signal(|| 0u8);
     let mut theme = use_signal(|| Theme::Dark);
+    // 实体 store：拓扑画布/抽屉/设置共享同一份 mock 数据。
+    use_context_provider(crate::store::EntityStore::seed);
     let is_light = theme() == Theme::Light;
 
     let open_drawer = move |_| drawer_open.set(true);
@@ -103,8 +105,7 @@ pub fn HomePage() -> Element {
                             (Section::Keys, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
                             (Section::Usage, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
                             (Section::Logs, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
-                            (Section::Channels, _) => rsx! { PlaceholderPane { text: "渠道管理（占位）" } },
-                            (Section::Network, _) => rsx! { NetworkPanel {} },
+                            (Section::Manage, _) => rsx! { NetworkPanel {} },
                         }
                     }
                 }

@@ -93,3 +93,10 @@
     background: rgba(24, 24, 27, 0.22);
 }
 
+/* 完全隐藏的滚动条：滚动仍在，视觉交给导航 */
+.scroll-hidden {
+    scrollbar-width: none;
+}
+.scroll-hidden::-webkit-scrollbar {
+    display: none;
+}

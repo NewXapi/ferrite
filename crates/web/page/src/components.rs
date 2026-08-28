@@ -10,8 +10,7 @@ pub enum Section {
     Keys,
     Usage,
     Logs,
-    Channels,
-    Network,
+    Manage,
 }
 
 impl Section {
@@ -21,19 +20,17 @@ impl Section {
             Section::Keys => "密钥",
             Section::Usage => "用量",
             Section::Logs => "日志",
-            Section::Channels => "渠道",
-            Section::Network => "拓扑",
+            Section::Manage => "管理",
         }
     }
 }
 
-pub const SECTIONS: [Section; 6] = [
+pub const SECTIONS: [Section; 5] = [
     Section::Dashboard,
     Section::Keys,
     Section::Usage,
     Section::Logs,
-    Section::Channels,
-    Section::Network,
+    Section::Manage,
 ];
 
 /// Miniature top-nav pinned to the left edge: one dot per section, the focused
