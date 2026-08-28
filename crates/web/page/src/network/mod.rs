@@ -1005,13 +1005,18 @@ pub fn NetworkPanel() -> Element {
 
     let hint = match drag_now {
         _ if cone_now.is_some() => {
-            "焦点空间：只显示相关节点 · 点左侧节点切换编辑 · 点空白或再点同节点退出"
+            "焦点空间 · 左键节点切换 · 右键空白或再点同节点返回"
         }
         Some(Drag::Wire { .. }) => "拖到相邻层节点松开连线",
         Some(Drag::Move { .. }) => "松开落位",
         _ => "滚轮缩放 · 拖空白平移 · Shift拖空白框选 · Ctrl点选多个 · 拖节点摆位 · 拖圆点连线",
     };
 
+    let hint_right = if drawer_tab() != DrawerTab::Node || inspect().is_some() {
+        332
+    } else {
+        12
+    };
     rsx! {
         div { class: "flex h-full min-h-[480px] flex-col",
             // 画布与抽屉同层：抽屉 absolute 覆盖右侧，画布尺寸恒定，
@@ -1067,8 +1072,12 @@ pub fn NetworkPanel() -> Element {
                 }
                     }
                 }
-                // 右下：操作提示（绝对定位，不占布局）
-                span { class: "pointer-events-none absolute bottom-3 right-3 z-10 text-[11px] text-zinc-600", "{hint}" }
+                // 右下：操作提示；抽屉开着时同样向右让
+                span {
+                    class: "pointer-events-none absolute bottom-3 z-10 text-[11px] text-zinc-600",
+                    style: "right: {hint_right}px",
+                    "{hint}"
+                }
                 div { class: "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
                     view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
@@ -1864,24 +1873,77 @@ fn DrawerHeader(
 }
 
 /// 导入占位：贴 JSON 文本，底下按钮校验后入库。现在还只是演示壳。
+/// 导入：凭 URL + Key 新增渠道。导入按钮拉取渠道可用模型并入候补池，
+/// 最终由用户在渠道里「加入调度」才会进入拓扑。
 #[component]
 fn ImportPanel() -> Element {
+    let mut url = use_signal(String::new);
+    let mut key = use_signal(String::new);
+    let mut alias = use_signal(String::new);
+    let mut done = use_signal(|| false);
+    let mut store = use_context::<EntityStore>();
+
+    let can_import = !url.read().trim().is_empty() && !key.read().trim().is_empty();
+
     rsx! {
         div { class: "space-y-3",
             div { class: "rounded-md border border-dashed border-zinc-800 bg-zinc-950 p-3",
-                p { class: "text-xs text-zinc-400", "粘贴一段 JSON 预览导入" }
-                p { class: "mt-1 text-[11px] text-zinc-600", "支持渠道 / 分组 / 模型别名的批量导入" }
+                p { class: "text-xs text-zinc-400", "从 URL + Key 导入一个新渠道" }
+                p { class: "mt-1 text-[11px] text-zinc-600", "导入后进入设置页的候补池，手动勾选进拓扑" }
             }
-            div { class: "space-y-1.5",
-                label { class: "text-[11px] text-zinc-500", "JSON 内容" }
-                textarea {
-                    class: "min-h-[200px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
-                    placeholder: "粘贴 JSON（channels / groups / aliases）",
+            label { class: "block space-y-1.5",
+                span { class: "text-[11px] text-zinc-500", "渠道名（可选）" }
+                input {
+                    class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                    value: "{alias.read()}",
+                    placeholder: "OpenAI 官方",
+                    oninput: move |e| alias.set(e.value()),
                 }
             }
-            div { class: "flex gap-2",
-                button { class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200", "校验" }
-                button { class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300", "导入" }
+            label { class: "block space-y-1.5",
+                span { class: "text-[11px] text-zinc-500", "Base URL" }
+                input {
+                    class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                    value: "{url.read()}",
+                    placeholder: "https://…",
+                    oninput: move |e| url.set(e.value()),
+                }
+            }
+            label { class: "block space-y-1.5",
+                span { class: "text-[11px] text-zinc-500", "API Key（多 key 换行）" }
+                textarea {
+                    class: "min-h-[96px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
+                    value: "{key.read()}",
+                    placeholder: "sk-…
+sk-…",
+                    oninput: move |e| key.set(e.value()),
+                }
+            }
+            if done() {
+                p { class: "rounded-md border border-emerald-800/40 bg-emerald-950/40 px-3 py-1.5 text-[11px] text-emerald-300",
+                    "已加入渠道列表，去设置页拉取模型并加入调度"
+                }
+            }
+            button {
+                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors",
+                class: if can_import { "hover:bg-zinc-300" } else { "cursor-not-allowed opacity-50" },
+                disabled: !can_import,
+                onclick: move |_| {
+                    let n = alias.peek().trim().to_string();
+                    let name = if n.is_empty() { "新渠道".into() } else { n };
+                    store.channels.write().push(crate::store::ChannelRow {
+                        name,
+                        url: url.peek().trim().to_string(),
+                        keys: key.peek().trim().to_string(),
+                        candidates: vec![],
+                        dispatch: vec![],
+                    });
+                    alias.set(String::new());
+                    url.set(String::new());
+                    key.set(String::new());
+                    done.set(true);
+                },
+                "导入渠道"
             }
         }
     }
@@ -2067,15 +2129,36 @@ fn DispatchInspect(index: usize) -> Element {
                     placeholder: "https://…",
                     on_change: move |v: String| store.channels.write()[ci].url = v,
                 }
-                BoundField {
-                    label: "API Key",
+                BoundArea {
+                    label: "API Key（多 key 一行一个）",
                     value: c.keys,
-                    placeholder: "sk-…",
+                    placeholder: "sk-…\nsk-…",
                     on_change: move |v: String| store.channels.write()[ci].keys = v,
                 }
             }
         }
         InspectList { title: "被哪些别名路由", items: aliases, empty: "未被任何别名引用" }
+    }
+}
+
+/// 多行受控输入：给 Key 这种可包含多行的字段用。
+#[component]
+fn BoundArea(
+    label: &'static str,
+    value: String,
+    placeholder: &'static str,
+    on_change: EventHandler<String>,
+) -> Element {
+    rsx! {
+        label { class: "block space-y-1",
+            span { class: "text-[11px] text-zinc-500", "{label}" }
+            textarea {
+                class: "min-h-[72px] w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                value: "{value}",
+                placeholder: "{placeholder}",
+                oninput: move |e| on_change.call(e.value()),
+            }
+        }
     }
 }
 
