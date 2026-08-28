@@ -635,8 +635,9 @@ pub fn NetworkPanel() -> Element {
         use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
     // 抽屉当前页别：HUD 按钮可直接切到设置/导入。
     let mut drawer_tab = use_signal(|| DrawerTab::Node);
-    // 边的撤销栈：true=本次操作新增，false=本次操作删除
-    let mut history = use_signal(Vec::<(bool, (NodeKey, NodeKey))>::new);
+    // 边的撤销栈：一次手势一条记录（多选连多根 → 一次 Ctrl+Z 全撤）。
+    // true=本次操作是新增，false=删除；Vec 存当次涉及的全部边
+    let mut history = use_signal(Vec::<(bool, Vec<(NodeKey, NodeKey)>)>::new);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -671,12 +672,14 @@ pub fn NetworkPanel() -> Element {
             // undo 走 bool（true=执行一次撤销）
             // 注意：不能在这里顺便收数字，单一 eval 流只保一种类型最稳
             while let Ok(true) = ev.recv::<bool>().await {
-                if let Some((added, pair)) = history.write().pop() {
+                if let Some((added, pairs)) = history.write().pop() {
                     let mut ew = edges.write();
-                    if added {
-                        ew.remove(&pair);
-                    } else {
-                        ew.insert(pair);
+                    for pair in pairs {
+                        if added {
+                            ew.remove(&pair);
+                        } else {
+                            ew.insert(pair);
+                        }
                     }
                 }
             }
@@ -1338,7 +1341,7 @@ pub fn NetworkPanel() -> Element {
                                             e.prevent_default();
                                             e.stop_propagation();
                                             if edges.write().remove(&raw) {
-                                                history.write().push((false, raw));
+                                                history.write().push((false, vec![raw]));
                                             }
                                         },
                                         title { "右键删除连线" }
@@ -1446,13 +1449,20 @@ pub fn NetworkPanel() -> Element {
                                                                 vec![src]
                                                             }
                                                         };
-                                                        let mut ew = edges.write();
-                                                        for s in sources {
-                                                            if let Some(pair) = normalize(s, key) {
-                                                                if ew.insert(pair) {
-                                                                    history.write().push((true, pair));
+                                                        // 收集这次 gesture 实际插入的边，一次入栈
+                                                        let mut batch: Vec<(NodeKey, NodeKey)> = Vec::new();
+                                                        {
+                                                            let mut ew = edges.write();
+                                                            for s in sources {
+                                                                if let Some(pair) = normalize(s, key) {
+                                                                    if ew.insert(pair) {
+                                                                        batch.push(pair);
+                                                                    }
                                                                 }
                                                             }
+                                                        }
+                                                        if !batch.is_empty() {
+                                                            history.write().push((true, batch));
                                                         }
                                                     }
                                                     Some(Drag::Move { key: k, moved: false, .. }) if k == key => {

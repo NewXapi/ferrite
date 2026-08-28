@@ -33,8 +33,13 @@ pub fn ScrollSpyNav(
             spawn(async move {
                 let mut ev = document::eval(&format!(
                     r#"
-                    if (!window.{guard}) {{
-                        window.{guard} = true;
+                    {{
+                        // 每次挂载都先清旧挂载：否则第二次打开抽屉时守卫还在，
+                        // 但旧 interval 引用的 eval 通道已断，导航永远死。
+                        if (window.{guard}) {{
+                            clearInterval(window.{guard}.timer);
+                            window.removeEventListener('scroll', window.{guard}.fn, true);
+                        }}
                         const IDS = [{ids_js}];
                         const report = () => {{
                             const cont = document.getElementById('{container}');
@@ -42,25 +47,26 @@ pub fn ScrollSpyNav(
                             const secs = IDS.map(id => document.getElementById(id)).filter(Boolean);
                             if (!secs.length) return;
                             const cr = cont.getBoundingClientRect();
-                            // active = 视口内可见面积最大的分区
                             let active = 0, best = -1;
                             secs.forEach((el, i) => {{
                                 const r = el.getBoundingClientRect();
                                 const ov = Math.min(r.bottom, cr.bottom) - Math.max(r.top, cr.top);
                                 if (ov > best) {{ best = ov; active = i; }}
                             }});
-                            // fracs = 各分区在文档流里的纵向比例（决定圆点位置）
                             const fr = secs.map(el =>
                                 (el.getBoundingClientRect().top - cr.top + cont.scrollTop) / cont.scrollHeight
                             );
                             dioxus.send([active, ...fr]);
                         }};
-                        // scroll 不冒泡，用 capture 才能抓到容器自己的滚动
-                        window.addEventListener('scroll', (e) => {{
+                        const onScroll = (e) => {{
                             if (e.target === document.getElementById('{container}')) report();
-                        }}, true);
-                        // 兜底：抽屉重开/内容重排时补一次
-                        setInterval(() => {{ if (document.getElementById('{container}')) report(); }}, 500);
+                        }};
+                        window.addEventListener('scroll', onScroll, true);
+                        const timer = setInterval(() => {{
+                            if (document.getElementById('{container}')) report();
+                        }}, 500);
+                        window.{guard} = {{ timer, fn: onScroll }};
+                        report();
                     }}
                     "#
                 ));
