@@ -636,6 +636,8 @@ pub fn NetworkPanel() -> Element {
     let mut drawer_tab = use_signal(|| DrawerTab::Node);
     // 设置页滚动到哪个分区（导航圆点高亮）
     let mut active_section = use_signal(|| 0usize);
+    // 边的撤销栈：true=本次操作新增，false=本次操作删除
+    let mut history = use_signal(Vec::<(bool, (NodeKey, NodeKey))>::new);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -654,6 +656,30 @@ pub fn NetworkPanel() -> Element {
         wake.set(next);
     });
     use_hook(move || {
+        spawn(async move {
+            let mut ev = document::eval(r#"
+                if (!window.__topoUndoBound) {
+                    window.__topoUndoBound = true;
+                    window.addEventListener('keydown', (e) => {
+                        if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+                        const t = e.target;
+                        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+                        e.preventDefault();
+                        dioxus.send(true);
+                    });
+                }
+            "#);
+            while (ev.recv::<bool>().await).is_ok() {
+                if let Some((added, pair)) = history.write().pop() {
+                    let mut ew = edges.write();
+                    if added {
+                        ew.remove(&pair);
+                    } else {
+                        ew.insert(pair);
+                    }
+                }
+            }
+        });
         // Deterministic startup layout before the ticker takes over.
         {
             let view0 = GraphView::from_store(&store);
@@ -1310,7 +1336,9 @@ pub fn NetworkPanel() -> Element {
                                         oncontextmenu: move |e| {
                                             e.prevent_default();
                                             e.stop_propagation();
-                                            edges.write().remove(&raw);
+                                            if edges.write().remove(&raw) {
+                                                history.write().push((false, raw));
+                                            }
                                         },
                                         title { "右键删除连线" }
                                     }
@@ -1420,7 +1448,9 @@ pub fn NetworkPanel() -> Element {
                                                         let mut ew = edges.write();
                                                         for s in sources {
                                                             if let Some(pair) = normalize(s, key) {
-                                                                ew.insert(pair);
+                                                                if ew.insert(pair) {
+                                                                    history.write().push((true, pair));
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -1588,13 +1618,15 @@ pub fn NetworkPanel() -> Element {
                             // 导航钉在抽屉上，不随内容滚动
                             SectionNav { active: active_section() }
                             div {
-                                class: "h-full overflow-y-auto scroll-subtle p-3 pl-8",
+                                id: "ent-scroll",
+                                class: "h-full overflow-y-auto scroll-hidden p-3 pl-8",
                                 onscroll: move |_| {
                                     spawn(async move {
                                         let mut ev = document::eval(r#"
+                                            const cont = document.getElementById('ent-scroll');
                                             const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
-                                            if (!secs.length) return 0;
-                                            const top = secs[0].parentElement.getBoundingClientRect().top;
+                                            if (!cont || !secs.length) return 0;
+                                            const top = cont.getBoundingClientRect().top;
                                             let active = 0;
                                             secs.forEach((el, i) => {
                                                 if (el.getBoundingClientRect().top <= top + 48) active = i;
@@ -1849,9 +1881,12 @@ fn SectionNav(active: usize) -> Element {
         div { class: "pointer-events-none absolute bottom-3 left-2 top-1 z-20 w-5",
             div { class: "absolute bottom-0 left-[7px] top-0 w-px bg-zinc-800" }
             for (label, i) in items {
+                {
+                    let pcts = [15.0, 50.0, 85.0];
+                    rsx! {
                 button {
                     class: "group absolute left-0 flex items-center gap-2 text-left",
-                    style: "top: {i as f64 * 72.0 + 18.0}px",
+                    style: "top: calc({pcts[i]}% - 7px)",
                     onclick: move |_| {
                         let target = format!("ent-card-{i}");
                         let _ = document::eval(&format!(r#"
@@ -1872,6 +1907,8 @@ fn SectionNav(active: usize) -> Element {
                     }
                     span { class: "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100",
                         "{label}"
+                    }
+                }
                     }
                 }
             }

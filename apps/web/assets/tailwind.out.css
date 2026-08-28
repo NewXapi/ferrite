@@ -1536,6 +1536,12 @@
 .retro-glow {
   background: radial-gradient(closest-side, rgba(255, 255, 255, 0.13), transparent 70%);
 }
+.scroll-hidden {
+  scrollbar-width: none;
+}
+.scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;

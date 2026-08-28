@@ -13,7 +13,9 @@ pub fn EntitiesPanel() -> Element {
     let mut open = use_signal(|| [true, true, true]);
 
     rsx! {
-        div { class: "flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1",
+        // 滚动由外层容器（拓扑抽屉）负责，这里别自带 overflow，
+        // 否则锚点/滚动事件会对不上元素。
+        div { class: "flex flex-col gap-3",
             GroupsCard {
                 open: open()[0],
                 on_toggle: move |_| { let mut o = open(); o[0] = !o[0]; open.set(o); },
