@@ -668,10 +668,13 @@ pub fn NetworkPanel() -> Element {
                         const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
                         if (!secs.length) return;
                         const cr = cont.getBoundingClientRect();
+                        // active = 视口内可见面积最大的那张卡（人在看哪段就是哪段）
                         let active = 0;
-                        // active：顶部越过容器顶 48px 的最后一张卡
+                        let best = -1;
                         secs.forEach((el, i) => {
-                            if (el.getBoundingClientRect().top <= cr.top + 48) active = i;
+                            const r = el.getBoundingClientRect();
+                            const overlap = Math.min(r.bottom, cr.bottom) - Math.max(r.top, cr.top);
+                            if (overlap > best) { best = overlap; active = i; }
                         });
                         // fracs：各卡片在文档流里的纵向比例（决定圆点位置）
                         const fr = secs.map(el =>
