@@ -204,8 +204,7 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
             let xs: Vec<f64> = SEED_EDGES
                 .iter()
                 .filter_map(|&(u, lo)| {
-                    let folded = lo;
-                    if folded == k {
+                    if lo == k {
                         out.get(&u).map(|p| p.0)
                     } else {
                         None
@@ -220,11 +219,29 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
             placed.push((k, x));
         }
         placed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        let mut prev = f64::NEG_INFINITY;
-        for (k, x) in placed {
-            let x = x.max(prev + COL_GAP);
-            prev = x;
-            out.insert(k, (x, ROW_Y[l]));
+        // 抽屉打开时右侧可视宽度会变窄；限制每排节点数，避免整排
+        // 横跨到抽屉下面。调度模型多时自然拆成多排。
+        const MAX_PER_ROW: usize = 7;
+        let per_row = MAX_PER_ROW.min(placed.len()).max(1);
+        let row_count = (placed.len() + per_row - 1) / per_row;
+        for (chunk_i, chunk) in placed.chunks(per_row).enumerate() {
+            let row_y = ROW_Y[l]
+                + (chunk_i as f64 - (row_count.saturating_sub(1) as f64 / 2.0))
+                    * (NODE_H + 14.0);
+            let mut row: Vec<(NodeKey, f64)> = Vec::with_capacity(chunk.len());
+            let mut prev = f64::NEG_INFINITY;
+            for &(k, x) in chunk {
+                let x = x.max(prev + COL_GAP);
+                prev = x;
+                row.push((k, x));
+            }
+            // 保留 barycenter 的相对顺序，同时把每排重新居中，保证两侧
+            // 留出抽屉和画布边缘的安全区。
+            let mean = row.iter().map(|(_, x)| *x).sum::<f64>() / row.len() as f64;
+            let shift = VIEW_W / 2.0 - mean;
+            for (k, x) in row {
+                out.insert(k, ((x + shift).clamp(MARGIN, VIEW_W - MARGIN), row_y));
+            }
         }
     }
     out
@@ -239,6 +256,7 @@ fn settle_layout(
     positions: &mut HashMap<NodeKey, (f64, f64)>,
 ) {
     const ROW_MIN_GAP: f64 = NODE_W + 16.0;
+    // 折行后同层节点可以不在同一 y；barycenter 只看 x。
     for _ in 0..200 {
         let mut max_d = 0.0f64;
         for row in layers.iter() {
@@ -1647,6 +1665,7 @@ pub fn NetworkPanel() -> Element {
                 } else if let Some(node) = inspect() {
                     NodeInspector {
                         node: node,
+                        on_tab: move |t: DrawerTab| drawer_tab.set(t),
                         on_close: move |_| {
                             inspect.set(None);
                             if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
@@ -1970,6 +1989,7 @@ sk-…",
 #[component]
 fn NodeInspector(
     node: NodeKey,
+    on_tab: EventHandler<DrawerTab>,
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
     let title = node_title_from_store(node);
@@ -1987,7 +2007,7 @@ fn NodeInspector(
                 tab: DrawerTab::Node,
                 title: title.clone(),
                 subtitle: kind_label.to_string(),
-                on_tab: move |t: DrawerTab| { let _ = t; },
+                on_tab: move |t: DrawerTab| on_tab.call(t),
                 on_close: on_close,
             }
             // 类型色点行：补上视觉线索，不占正式空间
