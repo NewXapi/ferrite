@@ -1014,49 +1014,50 @@ pub fn NetworkPanel() -> Element {
 
     rsx! {
         div { class: "flex h-full min-h-[480px] flex-col",
-            div { class: "flex flex-wrap items-center gap-3 px-1 pb-3",
-                for (i, g) in view_now.groups.iter().enumerate() {
-                    span { class: "inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400",
-                        span { class: "h-2.5 w-2.5 rounded-full", style: "background: {GROUP_PALETTE[i % GROUP_PALETTE.len()]}" }
-                        "{g}"
+            // 画布与抽屉同层：抽屉 absolute 覆盖右侧，画布尺寸恒定，
+            // 开合不引起任何重排。图例与按钮都做 HUD 浮在画布上。
+            div { class: "relative min-h-0 flex-1",
+                // 左上：分组图例（浮层）
+                div { class: "pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2",
+                    for (i, g) in view_now.groups.iter().enumerate() {
+                        span { class: "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur",
+                            span { class: "h-2 w-2 rounded-full", style: "background: {GROUP_PALETTE[i % GROUP_PALETTE.len()]}" }
+                            "{g}"
+                        }
                     }
                 }
-                // HUD 按钮放在图例行尾部，设置/导入不再单独占顶部 tab
-                button {
-                    class: "ml-auto rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
-                    onclick: move |_| drawer_tab.set(DrawerTab::Settings),
-                    "设置"
+                // 右上：设置/导入/适配
+                div { class: "absolute right-3 top-3 z-10 flex items-center gap-1.5",
+                    button {
+                        class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                        onclick: move |_| drawer_tab.set(DrawerTab::Settings),
+                        "设置"
+                    }
+                    button {
+                        class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                        onclick: move |_| drawer_tab.set(DrawerTab::Import),
+                        "导入"
+                    }
+                    button {
+                        class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                        onclick: move |_| {
+                            let pts: Vec<(f64, f64)> = layers_fit
+                                .iter()
+                                .flatten()
+                                .filter_map(|k| positions.peek().get(k).copied())
+                                .collect();
+                            if pts.is_empty() {
+                                return;
+                            }
+                            let ((px, py), z) = fit_view(&pts);
+                            pan.set((px, py));
+                            zoom.set(z);
+                        },
+                        "适配"
+                    }
                 }
-                button {
-                    class: "rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
-                    onclick: move |_| drawer_tab.set(DrawerTab::Import),
-                    "导入"
-                }
-                button {
-                    class: "rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
-                    onclick: move |_| {
-                        // Zoom/pan so every visible node fits inside the viewBox.
-                        let pts: Vec<(f64, f64)> = layers_fit
-                            .iter()
-                            .flatten()
-                            .filter_map(|k| positions.peek().get(k).copied())
-                            .collect();
-                        if pts.is_empty() {
-                            return;
-                        }
-                        let ((px, py), z) = fit_view(&pts);
-                        pan.set((px, py));
-                        zoom.set(z);
-                    },
-                    "适配"
-                }
-                // w-full pins the hint to its own line: the legend row and the
-                // canvas below must never shift when the hint text changes.
-                span { class: "w-full text-right text-xs text-zinc-600 leading-4", "{hint}" }
-            }
-            // 画布与抽屉同层：抽屉 absolute 覆盖右侧，画布尺寸恒定，
-            // 开合不引起任何重排。
-            div { class: "relative min-h-0 flex-1",
+                // 右下：操作提示（绝对定位，不占布局）
+                span { class: "pointer-events-none absolute bottom-3 right-3 z-10 text-[11px] text-zinc-600", "{hint}" }
                 div { class: "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
                     view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
@@ -1133,30 +1134,41 @@ pub fn NetworkPanel() -> Element {
                             None => {}
                         }
                     },
+                    // 右键空白：退出焦点，还原全图
+                    oncontextmenu: move |e| {
+                        e.prevent_default();
+                        if focus_space.peek().is_none() {
+                            return;
+                        }
+                        selected.set(HashSet::new());
+                        inspect.set(None);
+                        if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
+                            let from = positions.peek().clone();
+                            let (to_pan, to_zoom) = (saved_pan, saved_zoom);
+                            let mut delay = HashMap::new();
+                            for (i, k) in saved.keys().enumerate() {
+                                delay.insert(*k, i as f64 * 0.06);
+                            }
+                            tween.set(Some(make_tween(
+                                from,
+                                saved,
+                                *pan.peek(),
+                                to_pan,
+                                *zoom.peek(),
+                                to_zoom,
+                                delay,
+                            )));
+                        }
+                        focus_space.set(None);
+                    },
                     onmouseup: move |_| {
                         let current = *drag.peek();
                         match current {
                             Some(Drag::Pan { moved: false, .. }) => {
+                                // 左键点空白：只清空选择，焦点留着；
+                                // 退出焦点交给右键（见下方 oncontextmenu）。
                                 selected.set(HashSet::new());
                                 inspect.set(None);
-                                if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
-                                    let from = positions.peek().clone();
-                                    let (to_pan, to_zoom) = (saved_pan, saved_zoom);
-                                    let mut delay = HashMap::new();
-                                    for (i, k) in saved.keys().enumerate() {
-                                        delay.insert(*k, i as f64 * 0.06);
-                                    }
-                                    tween.set(Some(make_tween(
-                                        from,
-                                        saved,
-                                        *pan.peek(),
-                                        to_pan,
-                                        *zoom.peek(),
-                                        to_zoom,
-                                        delay,
-                                    )));
-                                }
-                                focus_space.set(None);
                             }
                             Some(Drag::Select) => commit_select(),
                             _ => {}
