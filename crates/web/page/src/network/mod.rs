@@ -159,19 +159,19 @@ const SEED_EDGES: &[(NodeKey, NodeKey)] = &[
 
 const MARGIN: f64 = 110.0;
 const COL_GAP: f64 = 130.0;
-const ROW_Y: [f64; 3] = [100.0, 400.0, 700.0];
-/// Each layer roams freely inside its own horizontal band (±120 around row).
-const BAND_HALF: f64 = 120.0;
+// 三层收紧成地图式分层；横向空间留给节点本身，宽层再折行。
+const ROW_Y: [f64; 3] = [100.0, 330.0, 560.0];
+/// Each layer roams freely inside its own horizontal band (±90 around row).
+const BAND_HALF: f64 = 90.0;
 fn band_y(layer: u8) -> (f64, f64) {
     (
         ROW_Y[layer as usize] - BAND_HALF,
         ROW_Y[layer as usize] + BAND_HALF,
     )
 }
-// 视图宽度按最大列数留余量：调度模型从 store 读（数量可变），
-// 这里给 12 列的静态宽度即可，超出时靠缩放兜底。
-const VIEW_W: f64 = MARGIN * 2.0 + 12.0 * COL_GAP;
-const VIEW_H: f64 = 840.0;
+// 9 个调度模型按两排显示，避免用过宽 viewBox 把节点缩小。
+const VIEW_W: f64 = MARGIN * 2.0 + 7.0 * COL_GAP;
+const VIEW_H: f64 = 700.0;
 const NODE_W: f64 = 104.0;
 const NODE_H: f64 = 36.0;
 
@@ -219,9 +219,8 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
             placed.push((k, x));
         }
         placed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        // 抽屉打开时右侧可视宽度会变窄；限制每排节点数，避免整排
-        // 横跨到抽屉下面。调度模型多时自然拆成多排。
-        const MAX_PER_ROW: usize = 7;
+        // 每排限制为 5 个；多出来的节点叠到下一排，保持节点可读。
+        const MAX_PER_ROW: usize = 5;
         let per_row = MAX_PER_ROW.min(placed.len()).max(1);
         let row_count = (placed.len() + per_row - 1) / per_row;
         for (chunk_i, chunk) in placed.chunks(per_row).enumerate() {
@@ -247,77 +246,6 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
     out
 }
 
-/// Startup relaxation: pull every node toward the average x of its wired
-/// neighbors, then sweep each row left→right enforcing min gap. ~200 passes or
-/// until stable. Runs once before first paint; live physics takes over after.
-fn settle_layout(
-    layers: &[Vec<NodeKey>; 3],
-    edges: &[(NodeKey, NodeKey)],
-    positions: &mut HashMap<NodeKey, (f64, f64)>,
-) {
-    const ROW_MIN_GAP: f64 = NODE_W + 16.0;
-    // 折行后同层节点可以不在同一 y；barycenter 只看 x。
-    for _ in 0..200 {
-        let mut max_d = 0.0f64;
-        for row in layers.iter() {
-            for &k in row {
-                let (mut sum, mut n) = (0.0f64, 0.0f64);
-                for &(up, low) in edges {
-                    let other = if up == k {
-                        Some(low)
-                    } else if low == k {
-                        Some(up)
-                    } else {
-                        None
-                    };
-                    if let Some(o) = other {
-                        sum += positions.get(&o).map(|p| p.0).unwrap_or(0.0);
-                        n += 1.0;
-                    }
-                }
-                if n > 0.0 {
-                    let p = positions.get_mut(&k).unwrap();
-                    let d = (sum / n - p.0) * 0.2;
-                    p.0 += d;
-                    max_d = max_d.max(d.abs());
-                }
-            }
-        }
-        for row in layers.iter() {
-            let mut order = row.clone();
-            order.sort_by(|a, b| positions[a].0.partial_cmp(&positions[b].0).unwrap());
-            // Sweep is right-only; pin the row's mean so it can't drift off-canvas.
-            let mean0 = order.iter().map(|k| positions[k].0).sum::<f64>() / order.len() as f64;
-            let mut prev = f64::NEG_INFINITY;
-            for k in order.iter().copied() {
-                let p = positions.get_mut(&k).unwrap();
-                let need = prev + ROW_MIN_GAP - p.0;
-                if need > 0.0 {
-                    p.0 += need;
-                    max_d = max_d.max(need);
-                }
-                prev = p.0;
-            }
-            let shift =
-                order.iter().map(|k| positions[k].0).sum::<f64>() / order.len() as f64 - mean0;
-            for &k in &order {
-                positions.get_mut(&k).unwrap().0 -= shift;
-                max_d = max_d.max(shift.abs());
-            }
-        }
-        // Anchor the whole graph to the canvas centre each pass, otherwise the
-        // sweep's right-bias makes everything random-walk rightward.
-        let all: Vec<NodeKey> = layers.iter().flatten().copied().collect();
-        let mean = all.iter().map(|k| positions[k].0).sum::<f64>() / all.len() as f64;
-        let global_shift = mean - VIEW_W / 2.0;
-        for &k in &all {
-            positions.get_mut(&k).unwrap().0 -= global_shift;
-        }
-        if max_d < 0.2 {
-            break;
-        }
-    }
-}
 
 /// Node→node edge must span exactly one layer; channels are aggregates only.
 fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
@@ -721,17 +649,15 @@ pub fn NetworkPanel() -> Element {
         // Deterministic startup layout before the ticker takes over.
         {
             let view0 = GraphView::from_store(&store);
-            let mut p = initial_positions(&view0);
-            let layers = visible_layers_of(&view0);
-            let pairs = display_edge_pairs(&edges.peek());
-            let pairs_xy: Vec<(NodeKey, NodeKey)> = pairs.iter().map(|&(u, l, _)| (u, l)).collect();
-            settle_layout(&layers, &pairs_xy, &mut p);
+            let p = initial_positions(&view0);
+            // initial_positions already centers each wrapped row; relaxing all
+            // nodes as one logical layer would undo the stacked layout.
             *positions.write() = p;
         }
         spawn(async move {
             let mut velocities = HashMap::<NodeKey, (f64, f64)>::new();
             let mut seen_wake = *wake.peek();
-            let mut energy = f64::MAX;
+            let mut energy = 0.0;
             // Dodge easing keeps the ticker alive until curves converge.
             let mut dodge_active = false;
             loop {
@@ -1259,6 +1185,7 @@ pub fn NetworkPanel() -> Element {
                     // 1240807 那次改动误删了这三个标签，此处恢复并改用新术语。
                     for (label, y) in [("分组", ROW_Y[0]), ("模型别名", ROW_Y[1]), ("调度模型", ROW_Y[2])] {
                         text {
+                            class: "select-none",
                             x: "8",
                             y: "{y - 26.0:.0}",
                             fill: "#52525b",
@@ -1573,6 +1500,7 @@ pub fn NetworkPanel() -> Element {
                                                 stroke_width: if hov || legal || sel { sw_hov } else { sw },
                                             }
                                             text {
+                                                class: "select-none",
                                                 x: "{x:.0}",
                                                 y: "{title_y:.0}",
                                                 text_anchor: "middle",
@@ -1584,6 +1512,7 @@ pub fn NetworkPanel() -> Element {
                                             }
                                             if !sub_text.is_empty() {
                                                 text {
+                                                    class: "select-none",
                                                     x: "{x:.0}",
                                                     y: "{y + 12.0:.0}",
                                                     text_anchor: "middle",
