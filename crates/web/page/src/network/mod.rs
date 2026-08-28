@@ -1063,7 +1063,12 @@ pub fn NetworkPanel() -> Element {
                             if pts.is_empty() {
                                 return;
                             }
-                            let ((px, py), z) = fit_view(&pts);
+                            let in_focus = focus_space.peek().is_some();
+                            let ((px, py), z) = if in_focus {
+                                fit_view_into(&pts, *rect.peek(), true)
+                            } else {
+                                fit_view(&pts)
+                            };
                             pan.set((px, py));
                             zoom.set(z);
                         },
@@ -1837,19 +1842,8 @@ fn DrawerHeader(
 ) -> Element {
     rsx! {
         div { class: "shrink-0 border-b border-zinc-800",
-            div { class: "flex items-center gap-2 px-3 py-2",
-                div { class: "min-w-0 flex-1",
-                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
-                    p { class: "truncate text-[11px] text-zinc-500", "{subtitle}" }
-                }
-                button {
-                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
-                    title: "关闭",
-                    onclick: move |e| on_close.call(e),
-                    "✕"
-                }
-            }
-            div { class: "flex border-t border-zinc-800",
+            // 页签栏放在最顶部（保持不动，下面才是标题）
+            div { class: "flex",
                 for (t, label) in [(DrawerTab::Node, "节点"), (DrawerTab::Settings, "设置"), (DrawerTab::Import, "导入")] {
                     {
                         let active = t == tab;
@@ -1868,11 +1862,24 @@ fn DrawerHeader(
                     }
                 }
             }
+            div { class: "flex items-center gap-2 border-t border-zinc-800 px-3 py-2",
+                div { class: "min-w-0 flex-1",
+                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    p { class: "truncate text-[11px] text-zinc-500", "{subtitle}" }
+                }
+                button {
+                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    title: "关闭",
+                    onclick: move |e| on_close.call(e),
+                    "✕"
+                }
+            }
         }
     }
 }
 
-/// 导入占位：贴 JSON 文本，底下按钮校验后入库。现在还只是演示壳。
+/// 导入：凭 URL + Key 新增渠道。导入后进入设置页的候补池，
+/// 最终由用户在渠道里「加入调度」才会进入拓扑。
 /// 导入：凭 URL + Key 新增渠道。导入按钮拉取渠道可用模型并入候补池，
 /// 最终由用户在渠道里「加入调度」才会进入拓扑。
 #[component]
@@ -1887,9 +1894,12 @@ fn ImportPanel() -> Element {
 
     rsx! {
         div { class: "space-y-3",
-            div { class: "rounded-md border border-dashed border-zinc-800 bg-zinc-950 p-3",
-                p { class: "text-xs text-zinc-400", "从 URL + Key 导入一个新渠道" }
-                p { class: "mt-1 text-[11px] text-zinc-600", "导入后进入设置页的候补池，手动勾选进拓扑" }
+            div { class: "space-y-1.5",
+                label { class: "text-[11px] text-zinc-500", "从 URL + Key 导入一个新渠道" }
+                textarea {
+                    class: "min-h-[72px] w-full resize-none rounded-md border border-dashed border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
+                    placeholder: "也可以在这里粘贴 JSON 批量导入",
+                }
             }
             label { class: "block space-y-1.5",
                 span { class: "text-[11px] text-zinc-500", "渠道名（可选）" }
