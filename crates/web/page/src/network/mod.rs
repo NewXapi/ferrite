@@ -644,7 +644,7 @@ pub fn NetworkPanel() -> Element {
     let mut marquee = use_signal(|| None::<((f64, f64), (f64, f64))>);
     // Per-edge dodge curve factor, eased by the ticker (0 = straight).
     let mut dodge = use_signal(HashMap::<(NodeKey, NodeKey), f64>::new);
-    let mut positions = use_signal(|| HashMap::<NodeKey, (f64, f64)>::new());
+    let mut positions = use_signal(HashMap::<NodeKey, (f64, f64)>::new);
     // Live spring layout: a 16ms ticker integrates forces frame by frame.
     // Structure changes (wires / collapse) bump `wake`; the loop steps while
     // it's woken, while a node is being dragged, or while energy remains,
@@ -1707,6 +1707,7 @@ fn display_edge_pairs(
 /// them, nothing snaps back to any row. Two boids-style forces only:
 /// - rope spring on each link: zero while slack, tugs beyond REST length
 /// - all-pairs separation: overlapping nodes push apart like billiard balls
+/// 
 /// Returns max speed for the sleep decision; `held` follows the cursor.
 fn physics_step(
     layers: &[Vec<NodeKey>; 3],

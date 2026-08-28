@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use crate::auth::auth_drawer::AuthDrawer;
 use crate::components::{Section, SectionPill, TopNavMeter};
+use crate::leaderboard::LeaderboardPanel;
 use crate::model::ModelsPanel;
 use crate::network::NetworkPanel;
 use crate::overview::OverviewPanel;
@@ -19,7 +20,7 @@ pub enum Theme {
 pub fn HomePage() -> Element {
     let mut drawer_open = use_signal(|| false);
     let mut section = use_signal(|| Section::Dashboard);
-    // Dashboard top-tabs (总览 / 趋势), from the reference overview design.
+    // Dashboard top-tabs (总览 / 模型 / 排行榜), from the reference overview design.
     let mut dash_tab = use_signal(|| 0u8);
     let mut theme = use_signal(|| Theme::Dark);
     // 实体 store：拓扑画布/抽屉/设置共享同一份 mock 数据。
@@ -30,14 +31,15 @@ pub fn HomePage() -> Element {
     let close_drawer = move |_| drawer_open.set(false);
     let panel_header = if section() == Section::Dashboard {
         rsx! {
-            div { class: "flex h-full",
+            div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
                 TabItem { label: "总览", active: dash_tab() == 0, onclick: move |_| dash_tab.set(0) }
-                TabItem { label: "趋势", active: dash_tab() == 1, onclick: move |_| dash_tab.set(1) }
+                TabItem { label: "模型", active: dash_tab() == 1, onclick: move |_| dash_tab.set(1) }
+                TabItem { label: "排行榜", active: dash_tab() == 2, onclick: move |_| dash_tab.set(2) }
             }
         }
     } else {
         rsx! {
-            div { class: "flex h-full",
+            div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
                 TabItem { label: section().label(), active: true, onclick: move |_| {} }
             }
         }
@@ -101,7 +103,9 @@ pub fn HomePage() -> Element {
                         header: panel_header,
                         match (section(), dash_tab()) {
                             (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
-                            (Section::Dashboard, _) => rsx! { ModelsPanel {} },
+                            (Section::Dashboard, 1) => rsx! { ModelsPanel {} },
+                            (Section::Dashboard, 2) => rsx! { LeaderboardPanel {} },
+                            (Section::Dashboard, _) => rsx! { OverviewPanel {} },
                             (Section::Keys, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
                             (Section::Usage, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
                             (Section::Logs, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
