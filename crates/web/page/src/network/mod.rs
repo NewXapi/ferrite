@@ -1026,8 +1026,17 @@ pub fn NetworkPanel() -> Element {
                         }
                     }
                 }
-                // 右上：设置/导入/适配
-                div { class: "absolute right-3 top-3 z-10 flex items-center gap-1.5",
+                // 右上：设置/导入/适配；抽屉开着时向右让出 320px
+                {
+                    let hud_right = if drawer_tab() != DrawerTab::Node || inspect().is_some() {
+                        332
+                    } else {
+                        12
+                    };
+                    rsx! {
+                        div {
+                            class: "absolute top-3 z-10 flex items-center gap-1.5",
+                            style: "right: {hud_right}px",
                     button {
                         class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
                         onclick: move |_| drawer_tab.set(DrawerTab::Settings),
@@ -1054,6 +1063,8 @@ pub fn NetworkPanel() -> Element {
                             zoom.set(z);
                         },
                         "适配"
+                    }
+                }
                     }
                 }
                 // 右下：操作提示（绝对定位，不占布局）
@@ -1165,10 +1176,9 @@ pub fn NetworkPanel() -> Element {
                         let current = *drag.peek();
                         match current {
                             Some(Drag::Pan { moved: false, .. }) => {
-                                // 左键点空白：只清空选择，焦点留着；
-                                // 退出焦点交给右键（见下方 oncontextmenu）。
+                                // 左键点空白：只清选择；抽屉与焦点都保留。
+                                // 退出焦点走右键（oncontextmenu）或再点同节点。
                                 selected.set(HashSet::new());
-                                inspect.set(None);
                             }
                             Some(Drag::Select) => commit_select(),
                             _ => {}
