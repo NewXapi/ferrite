@@ -636,6 +636,8 @@ pub fn NetworkPanel() -> Element {
     let mut drawer_tab = use_signal(|| DrawerTab::Node);
     // 设置页滚动到哪个分区（导航圆点高亮）
     let mut active_section = use_signal(|| 0usize);
+    // 各分区在文档里的纵向比例（决定圆点在轨道上的位置）
+    let mut nav_fracs = use_signal(|| [0.05f64, 0.4, 0.85]);
     // 边的撤销栈：true=本次操作新增，false=本次操作删除
     let mut history = use_signal(Vec::<(bool, (NodeKey, NodeKey))>::new);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
@@ -665,12 +667,17 @@ pub fn NetworkPanel() -> Element {
                         if (!cont) return;
                         const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
                         if (!secs.length) return;
-                        const top = cont.getBoundingClientRect().top;
+                        const cr = cont.getBoundingClientRect();
                         let active = 0;
+                        // active：顶部越过容器顶 48px 的最后一张卡
                         secs.forEach((el, i) => {
-                            if (el.getBoundingClientRect().top <= top + 48) active = i;
+                            if (el.getBoundingClientRect().top <= cr.top + 48) active = i;
                         });
-                        dioxus.send(active);
+                        // fracs：各卡片在文档流里的纵向比例（决定圆点位置）
+                        const fr = secs.map(el =>
+                            (el.getBoundingClientRect().top - cr.top + cont.scrollTop) / cont.scrollHeight
+                        );
+                        dioxus.send([active, ...fr]);
                     };
                     window.addEventListener('scroll', (e) => {
                         if (e.target === document.getElementById('ent-scroll')) report();
@@ -678,8 +685,11 @@ pub fn NetworkPanel() -> Element {
                     setInterval(() => { if (document.getElementById('ent-scroll')) report(); }, 500);
                 }
             "#);
-            while let Ok(i) = ev2.recv::<usize>().await {
-                active_section.set(i);
+            while let Ok(v) = ev2.recv::<Vec<f64>>().await {
+                if v.len() == 4 {
+                    active_section.set(v[0] as usize);
+                    nav_fracs.set([v[1], v[2], v[3]]);
+                }
             }
         });
         spawn(async move {
@@ -1644,7 +1654,7 @@ pub fn NetworkPanel() -> Element {
                         }
                         div { class: "relative min-h-0 flex-1",
                             // 导航钉在抽屉上，不随内容滚动
-                            SectionNav { active: active_section() }
+                            SectionNav { active: active_section(), fracs: nav_fracs() }
                             div {
                                 id: "ent-scroll",
                                 class: "h-full overflow-y-auto scroll-hidden p-3 pl-8",
@@ -1883,18 +1893,19 @@ fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
 
 /// 设置页内的纵向路线导航：只用小点，hover 出文字，点击滚动到卡片
 #[component]
-fn SectionNav(active: usize) -> Element {
-    // 紧凑时间线导航：一条短线连三颗点，垂直居中浮在抽屉左缘；
-    // active 点高亮并常显标签，其余 hover 才出
+fn SectionNav(active: usize, fracs: [f64; 3]) -> Element {
+    // 顶部时间线导航：短线连三颗点，位置按各卡片在文档里的真实比例；
+    // active 点高亮，标签只在 hover 时短暂浮现
     let items = [("分组", 0usize), ("模型别名", 1usize), ("渠道", 2usize)];
     rsx! {
-        div { class: "pointer-events-none absolute left-2 top-1/2 z-20 -translate-y-1/2",
-            div { class: "relative flex flex-col items-start gap-5",
-                // 竖线只贯穿三颗点之间
-                div { class: "absolute bottom-[7px] left-[7px] top-[7px] w-px bg-zinc-800" }
+        div { class: "pointer-events-none absolute left-2 top-3 z-20 h-[38%]",
+            div { class: "relative h-full",
+                // 竖线铺满轨道
+                div { class: "absolute bottom-0 left-[7px] top-0 w-px bg-zinc-800" }
                 for (label, i) in items {
                     button {
-                        class: "group relative flex items-center gap-2 text-left",
+                        class: "group absolute left-0 flex items-center gap-2 text-left",
+                        style: "top: calc({fracs[i].clamp(0.02, 0.98) * 100.0}% - 7px)",
                         onclick: move |_| {
                             let target = format!("ent-card-{i}");
                             let _ = document::eval(&format!(r#"
@@ -1914,11 +1925,7 @@ fn SectionNav(active: usize) -> Element {
                                     span { class: if on { "h-1.5 w-1.5 rounded-full bg-zinc-100" } else { "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" } }
                                 }
                                 span {
-                                    class: if on {
-                                        "pointer-events-none whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-100 shadow-lg"
-                                    } else {
-                                        "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100"
-                                    },
+                                    class: "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100",
                                     "{label}"
                                 }
                             }
