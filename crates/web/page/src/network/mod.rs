@@ -477,7 +477,7 @@ fn layout_subgraph(
         for (i, &k) in row.iter().enumerate() {
             out.insert(k, (center - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]));
         }
-        // 上下层同宽的均摊看起来呆板：单层的位置往其邻居重心收一点。
+        // 往邻居重心收，但保持行内最小间距：同父节点聚集时不再叠一坨。
         let sub_edges: Vec<(NodeKey, NodeKey)> = edges
             .iter()
             .copied()
@@ -494,7 +494,6 @@ fn layout_subgraph(
                     None
                 };
                 if let Some(o) = other {
-                    // 只看更靠下的层已定位置的邻居（先铺下层再铺上层时用得上）
                     if let Some(op) = out.get(&o) {
                         sum += op.0;
                         cnt += 1.0;
@@ -504,6 +503,17 @@ fn layout_subgraph(
             if cnt > 0.0 {
                 let cur_x = out[&k].0;
                 out.insert(k, (cur_x + (sum / cnt - cur_x) * 0.45, ROW_Y[l]));
+            }
+        }
+        // 强制最小间距：按现在的次序重排，中心点按行重心对齐
+        let mut sorted: Vec<NodeKey> = row.clone();
+        sorted.sort_by(|a, b| out[a].0.partial_cmp(&out[b].0).unwrap());
+        let n = sorted.len();
+        if n > 1 {
+            let span = (n as f64 - 1.0) * COL_GAP;
+            let cx: f64 = sorted.iter().map(|k| out[k].0).sum::<f64>() / n as f64;
+            for (i, &k) in sorted.iter().enumerate() {
+                out.insert(k, (cx - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]));
             }
         }
     }
@@ -759,9 +769,9 @@ pub fn NetworkPanel() -> Element {
                 if !(dirty || held.is_some() || energy > 0.08 || dodge_active) {
                     continue;
                 }
-                // 焦点态下物理完全停摆：位置已经在排布时摆好，
-                // 绳簧/碰撞继续跑只会把好位置拽歪。只有拖拽仍走 held 分支。
-                if focus_space.peek().is_some() && held.is_none() {
+                if focus_space.peek().is_some() {
+                    // 焦点态下物理完全停摆，拖拽也别回滚——
+                    // positions 只在拖拽处理时手动改，ticker 不跑力学。
                     energy = 0.0;
                     dodge_active = false;
                     continue;
