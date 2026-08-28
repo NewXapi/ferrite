@@ -2247,6 +2247,7 @@ dependencies = [
  "chrono",
  "dioxus",
  "gloo-timers",
+ "manganis",
  "wasm-bindgen",
  "web-sys",
 ]
