@@ -436,7 +436,6 @@ fn CardPanel(
             button {
                 class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900",
                 onclick: move |e| on_toggle.call(e),
-                span { class: "text-zinc-500", if open { "▾" } else { "▸" } }
                 span { class: "text-sm font-medium text-zinc-100", "{title}" }
                 span { class: "rounded-full border border-zinc-700 px-1.5 text-[11px] text-zinc-400", "{count}" }
                 span { class: "truncate text-[11px] text-zinc-600", "{hint}" }

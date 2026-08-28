@@ -1627,7 +1627,7 @@ pub fn NetworkPanel() -> Element {
                             on_tab: move |t: DrawerTab| drawer_tab.set(t),
                             on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
                         }
-                        div { class: "min-h-0 flex-1 overflow-y-auto p-3",
+                        div { class: "min-h-0 flex-1 overflow-y-auto scroll-subtle p-3",
                             EntitiesPanel {}
                         }
                     }
@@ -1982,22 +1982,20 @@ fn NodeInspector(
 
     rsx! {
         aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
-            // 节点检视不显示页签 —— 检视内容本身就是节点详情
-            div { class: "shrink-0 flex items-center gap-2 border-b border-zinc-800 px-3 py-2",
-                span { class: "h-2.5 w-2.5 shrink-0 rounded-full", style: "background: {accent}" }
-                div { class: "min-w-0 flex-1",
-                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
-                    p { class: "truncate text-[11px] text-zinc-500", "{kind_label}" }
-                }
-                button {
-                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
-                    title: "退出焦点空间",
-                    onclick: move |e| on_close.call(e),
-                    "✕"
-                }
+            // 节点检视也有页签 —— 方便切到设置/导入
+            DrawerHeader {
+                tab: DrawerTab::Node,
+                title: title.clone(),
+                subtitle: kind_label.to_string(),
+                on_tab: move |t: DrawerTab| { let _ = t; },
+                on_close: on_close,
+            }
+            // 类型色点行：补上视觉线索，不占正式空间
+            div { class: "shrink-0 border-b border-zinc-800 px-3 py-1.5",
+                span { class: "h-2 w-2 rounded-full", style: "background: {accent}" }
             }
             // 主体
-            div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
+            div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto scroll-subtle p-3",
                 match node {
                     NodeKey::Group(i) => rsx! { GroupInspect { index: i } },
                     NodeKey::Mapping(i) => rsx! { AliasInspect { index: i } },
