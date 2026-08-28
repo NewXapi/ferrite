@@ -378,49 +378,46 @@ fn offset_bezier(a: (f64, f64), b: (f64, f64), frac: f64) -> String {
 
 /// Pan/zoom so all points sit inside the viewBox with padding. Returns (pan, zoom).
 /// 抽屉宽度（客户端 px），与 NodeInspector 的 `sm:w-[320px]` 一致。
-/// 焦点子图要排到抽屉左侧，必须知道被遮掉多少。
+/// 焦点子图要避开它。
 const DRAWER_W: f64 = 320.0;
 
-/// 可视画布区（viewBox 坐标）。抽屉覆盖的右侧不算可视区，
-/// 于是焦点子图才会完整落在左边而不是被压在抽屉底下。
-fn visible_box(rect: Option<(f64, f64, f64, f64)>, drawer: bool) -> (f64, f64, f64, f64) {
+/// 焦点适配：把点集缩放平移到画布上「抽屉左侧的可视区」正中心。
+/// 坐标先折成 CSS 像素再折算回 viewBox，就不会被 preserveAspectRatio
+/// 的 letterbox 横移骗到。
+fn fit_view_into(
+    pts: &[(f64, f64)],
+    rect: Option<(f64, f64, f64, f64)>,
+    drawer: bool,
+) -> ((f64, f64), f64) {
     let Some((_, _, rw, rh)) = rect else {
-        return (0.0, 0.0, VIEW_W, VIEW_H);
+        return ((0.0, 0.0), 1.0);
     };
     let s = (rw / VIEW_W).min(rh / VIEW_H);
     if s <= 0.0 {
-        return (0.0, 0.0, VIEW_W, VIEW_H);
+        return ((0.0, 0.0), 1.0);
     }
-    let ox = (rw - VIEW_W * s) / 2.0;
-    // 窄屏抽屉是全宽/底部抽屉，不预留横向空间，否则可视区会退化成 0。
-    let avail = if drawer && rw >= 640.0 {
-        (rw - DRAWER_W).max(240.0)
-    } else {
-        rw
-    };
-    let x0 = ((0.0 - ox) / s).max(0.0);
-    let x1 = ((avail - ox) / s).min(VIEW_W);
-    (x0, 0.0, (x1 - x0).max(120.0), VIEW_H)
-}
+    let ox = (rw - VIEW_W * s) / 2.0; // letterbox 左侧偏移（viewBox 像素）
+    let oy = (rh - VIEW_H * s) / 2.0;
 
-/// 把点集缩放平移进指定框（viewBox 坐标）。
-fn fit_view_into(pts: &[(f64, f64)], (bx, by, bw, bh): (f64, f64, f64, f64)) -> ((f64, f64), f64) {
-    let pad = NODE_W / 2.0 + 24.0;
+    // 抽屉占去的 CSS 宽；窄屏（抽屉是底部抽屉）不留边
+    let drawer_css = if drawer && rw >= 640.0 { DRAWER_W } else { 0.0 };
+    let avail = (rw - drawer_css).max(240.0);
+
     let (minx, maxx) = pts
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| {
-            (a.min(x), b.max(x))
-        });
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| (a.min(x), b.max(x)));
     let (miny, maxy) = pts
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| {
-            (a.min(y), b.max(y))
-        });
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| (a.min(y), b.max(y)));
     let (w, h) = ((maxx - minx).max(1.0), (maxy - miny).max(1.0));
-    let z = (((bw - 2.0 * pad) / w).min((bh - 2.0 * pad) / h)).clamp(0.35, 1.6);
-    let cy = (miny + maxy) / 2.0;
-    // x 左对齐：子图贴可视区左缘（即层标签旁边），不要居中把左侧空出一大块。
-    ((bx + pad - minx * z, by + bh / 2.0 - cy * z), z)
+    let pad_css = 48.0;
+    let z = (((avail - pad_css * 2.0) / (w * s)).min((rh - pad_css * 2.0) / (h * s)))
+        .clamp(0.35, 1.6);
+    let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
+    // css = ox + (pan + world * z) * s  →  pan = (target - ox)/s - world * z
+    let pan_x = (avail / 2.0 - ox) / s - cx * z;
+    let pan_y = (rh / 2.0 - oy) / s - cy * z;
+    ((pan_x, pan_y), z)
 }
 
 /// 连通锥：从起点向外扩散，每步必须**远离**起点所在层。
@@ -460,9 +457,7 @@ fn layout_subgraph(
     sub: &HashSet<NodeKey>,
     edges: &[(NodeKey, NodeKey)],
     cur: &HashMap<NodeKey, (f64, f64)>,
-    area: (f64, f64, f64, f64),
 ) -> HashMap<NodeKey, (f64, f64)> {
-    let (bx, _, bw, _) = area;
     let mut rows: [Vec<NodeKey>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for &k in sub {
         rows[k.layer() as usize].push(k);
@@ -474,10 +469,10 @@ fn layout_subgraph(
             let xb = cur.get(b).map(|p| p.0).unwrap_or(0.0);
             xa.partial_cmp(&xb).unwrap_or(std::cmp::Ordering::Equal)
         });
-        // 紧凑排布：实际宽度按节点数 × COL_GAP 围绕可视区中心铺开，
-        // 不再按可视框等分——2 个节点就贴成一小撮，不再「甩掉一行」。
+        // 围绕世界中心铺开，不要往可视框里算：位置是世界坐标，
+        // fit_view_into 负责再把世界框到可视框（两个变换叠加会偏）。
         let n = row.len();
-        let center = bx + bw / 2.0;
+        let center = VIEW_W / 2.0;
         let span = (n as f64 - 1.0).max(0.0) * COL_GAP;
         for (i, &k) in row.iter().enumerate() {
             out.insert(k, (center - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]));
@@ -583,7 +578,7 @@ fn make_tween(
         to_zoom,
         delay,
         started_ms: now_ms(),
-        duration_ms: 420.0,
+        duration_ms: 780.0,
         t: 0.0,
     }
 }
@@ -675,8 +670,6 @@ pub fn NetworkPanel() -> Element {
     // 焦点态下每个节点的目标位；退出时用来还原。
     let mut saved_positions =
         use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
-    // 面包屑：焦点空间内看过哪些节点（含起点），点击可回走。
-    let mut crumbs = use_signal(Vec::<NodeKey>::new);
     // 抽屉当前页别：HUD 按钮可直接切到设置/导入。
     let mut drawer_tab = use_signal(|| DrawerTab::Node);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
@@ -1154,8 +1147,6 @@ pub fn NetworkPanel() -> Element {
                                     )));
                                 }
                                 focus_space.set(None);
-                                crumbs.set(Vec::new());
-                                crumbs.set(Vec::new());
                             }
                             Some(Drag::Select) => commit_select(),
                             _ => {}
@@ -1468,9 +1459,6 @@ pub fn NetworkPanel() -> Element {
                                                                 // 顺手记到面包屑里便于回走。
                                                                 inspect.set(Some(key));
                                                                 drawer_tab.set(DrawerTab::Node);
-                                                                if crumbs.peek().last().copied() != Some(key) {
-                                                                    crumbs.write().push(key);
-                                                                }
                                                             } else {
                                                                 // 进入焦点空间：算连通锥 → 一次性排布 → 补间
                                                                 inspect.set(Some(key));
@@ -1479,12 +1467,12 @@ pub fn NetworkPanel() -> Element {
                                                                     all.iter().copied().collect();
                                                                 let cone = focus_cone(key, &ev);
                                                                 let cur = positions.peek().clone();
-                                                                let vb = visible_box(*rect.peek(), true);
                                                                 let target =
-                                                                    layout_subgraph(&cone, &ev, &cur, vb);
+                                                                    layout_subgraph(&cone, &ev, &cur);
                                                                 let pts: Vec<(f64, f64)> =
                                                                     target.values().copied().collect();
-                                                                let (to_pan, to_zoom) = fit_view_into(&pts, vb);
+                                                                let (to_pan, to_zoom) =
+                                                                    fit_view_into(&pts, *rect.peek(), true);
                                                                 saved_positions.set(Some((cur.clone(), *pan.peek(), *zoom.peek())));
                                                                 let delay = stagger_delay(key, &ev);
                                                                 tween.set(Some(make_tween(
@@ -1497,7 +1485,6 @@ pub fn NetworkPanel() -> Element {
                                                                     delay,
                                                                 )));
                                                                 focus_space.set(Some(cone));
-                                                                crumbs.set(vec![key]);
                                                             }
                                                         }
                                                     }
@@ -1614,16 +1601,6 @@ pub fn NetworkPanel() -> Element {
                 } else if let Some(node) = inspect() {
                     NodeInspector {
                         node: node,
-                        crumbs: crumbs(),
-                        on_tab: move |t: DrawerTab| drawer_tab.set(t),
-                        on_crumb: move |i: usize| {
-                            let trail = crumbs();
-                            if let Some(back) = trail.get(i).copied() {
-                                // 回到第 i 个：截断其后的记录
-                                crumbs.set(trail[..=i].to_vec());
-                                inspect.set(Some(back));
-                            }
-                        },
                         on_close: move |_| {
                             inspect.set(None);
                             if let Some((saved, saved_pan, saved_zoom)) = saved_positions.take() {
@@ -1889,9 +1866,6 @@ fn ImportPanel() -> Element {
 #[component]
 fn NodeInspector(
     node: NodeKey,
-    crumbs: Vec<NodeKey>,
-    on_crumb: EventHandler<usize>,
-    on_tab: EventHandler<DrawerTab>,
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
     let title = node_title_from_store(node);
@@ -1904,44 +1878,19 @@ fn NodeInspector(
 
     rsx! {
         aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
-            // 面包屑：焦点空间内浏览过哪些节点；点击回走，不改树。
-            if crumbs.len() > 1 {
-                div { class: "flex shrink-0 flex-wrap items-center gap-1 border-b border-zinc-800 px-3 py-1.5",
-                    for (i, crumb) in crumbs.iter().enumerate() {
-                        {
-                            let is_last = i == crumbs.len() - 1;
-                            let label = node_title_from_store(*crumb);
-                            let tone = if is_last {
-                                "text-zinc-200"
-                            } else {
-                                "text-zinc-500 hover:text-zinc-300"
-                            };
-                            rsx! {
-                                if i > 0 {
-                                    span { class: "text-[11px] text-zinc-700", "/" }
-                                }
-                                button {
-                                    class: "text-[11px] transition-colors {tone}",
-                                    disabled: is_last,
-                                    onclick: move |_| on_crumb.call(i),
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
+            // 节点检视不显示页签 —— 检视内容本身就是节点详情
+            div { class: "shrink-0 flex items-center gap-2 border-b border-zinc-800 px-3 py-2",
+                span { class: "h-2.5 w-2.5 shrink-0 rounded-full", style: "background: {accent}" }
+                div { class: "min-w-0 flex-1",
+                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    p { class: "truncate text-[11px] text-zinc-500", "{kind_label}" }
                 }
-            }
-            // 头部：标题 + 页签 + 关闭
-            DrawerHeader {
-                tab: DrawerTab::Node,
-                title: title.clone(),
-                subtitle: kind_label.to_string(),
-                on_tab: on_tab,
-                on_close: on_close,
-            }
-            // 标题前的小色点按节点类型
-            div { class: "flex items-center gap-2 border-b border-zinc-800 px-3 py-1.5",
-                span { class: "h-2 w-2 rounded-full", style: "background: {accent}" }
+                button {
+                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    title: "退出焦点空间",
+                    onclick: move |e| on_close.call(e),
+                    "✕"
+                }
             }
             // 主体
             div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
