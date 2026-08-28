@@ -657,6 +657,32 @@ pub fn NetworkPanel() -> Element {
     });
     use_hook(move || {
         spawn(async move {
+            let mut ev2 = document::eval(r#"
+                if (!window.__topoNavBound) {
+                    window.__topoNavBound = true;
+                    const report = () => {
+                        const cont = document.getElementById('ent-scroll');
+                        if (!cont) return;
+                        const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
+                        if (!secs.length) return;
+                        const top = cont.getBoundingClientRect().top;
+                        let active = 0;
+                        secs.forEach((el, i) => {
+                            if (el.getBoundingClientRect().top <= top + 48) active = i;
+                        });
+                        dioxus.send(active);
+                    };
+                    window.addEventListener('scroll', (e) => {
+                        if (e.target === document.getElementById('ent-scroll')) report();
+                    }, true);
+                    setInterval(() => { if (document.getElementById('ent-scroll')) report(); }, 500);
+                }
+            "#);
+            while let Ok(i) = ev2.recv::<usize>().await {
+                active_section.set(i);
+            }
+        });
+        spawn(async move {
             let mut ev = document::eval(r#"
                 if (!window.__topoUndoBound) {
                     window.__topoUndoBound = true;
@@ -669,7 +695,9 @@ pub fn NetworkPanel() -> Element {
                     });
                 }
             "#);
-            while (ev.recv::<bool>().await).is_ok() {
+            // undo 走 bool（true=执行一次撤销）
+            // 注意：不能在这里顺便收数字，单一 eval 流只保一种类型最稳
+            while let Ok(true) = ev.recv::<bool>().await {
                 if let Some((added, pair)) = history.write().pop() {
                     let mut ew = edges.write();
                     if added {
@@ -1620,24 +1648,6 @@ pub fn NetworkPanel() -> Element {
                             div {
                                 id: "ent-scroll",
                                 class: "h-full overflow-y-auto scroll-hidden p-3 pl-8",
-                                onscroll: move |_| {
-                                    spawn(async move {
-                                        let mut ev = document::eval(r#"
-                                            const cont = document.getElementById('ent-scroll');
-                                            const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
-                                            if (!cont || !secs.length) return 0;
-                                            const top = cont.getBoundingClientRect().top;
-                                            let active = 0;
-                                            secs.forEach((el, i) => {
-                                                if (el.getBoundingClientRect().top <= top + 48) active = i;
-                                            });
-                                            return active;
-                                        "#);
-                                        if let Ok(i) = ev.recv::<usize>().await {
-                                            active_section.set(i);
-                                        }
-                                    });
-                                },
                                 EntitiesPanel {}
                             }
                         }
@@ -1874,41 +1884,45 @@ fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
 /// 设置页内的纵向路线导航：只用小点，hover 出文字，点击滚动到卡片
 #[component]
 fn SectionNav(active: usize) -> Element {
-    // 时间线式分段导航：纵向线 + 圆点，hover 浮出名称，点击平滑滚动；
-    // active 圆点高亮，跟随滚动位置
+    // 紧凑时间线导航：一条短线连三颗点，垂直居中浮在抽屉左缘；
+    // active 点高亮并常显标签，其余 hover 才出
     let items = [("分组", 0usize), ("模型别名", 1usize), ("渠道", 2usize)];
     rsx! {
-        div { class: "pointer-events-none absolute bottom-3 left-2 top-1 z-20 w-5",
-            div { class: "absolute bottom-0 left-[7px] top-0 w-px bg-zinc-800" }
-            for (label, i) in items {
-                {
-                    let pcts = [15.0, 50.0, 85.0];
-                    rsx! {
-                button {
-                    class: "group absolute left-0 flex items-center gap-2 text-left",
-                    style: "top: calc({pcts[i]}% - 7px)",
-                    onclick: move |_| {
-                        let target = format!("ent-card-{i}");
-                        let _ = document::eval(&format!(r#"
-                            const el = document.getElementById("{target}");
-                            el?.scrollIntoView({{behavior:"smooth", block:"start"}});
-                        "#));
-                    },
-                    {
-                        let on = i == active;
-                        rsx! {
-                            span { class: if on { "pointer-events-auto flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-200 bg-zinc-800" } else { "pointer-events-auto flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 group-hover:border-zinc-300 group-hover:bg-zinc-800" },
-                                span { class: if on { "h-1.5 w-1.5 rounded-full bg-zinc-100" } else { "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" } }
-                            }
-                            span { class: if on { "pointer-events-none whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-100 shadow-lg" } else { "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100" },
-                                "{label}"
+        div { class: "pointer-events-none absolute left-2 top-1/2 z-20 -translate-y-1/2",
+            div { class: "relative flex flex-col items-start gap-5",
+                // 竖线只贯穿三颗点之间
+                div { class: "absolute bottom-[7px] left-[7px] top-[7px] w-px bg-zinc-800" }
+                for (label, i) in items {
+                    button {
+                        class: "group relative flex items-center gap-2 text-left",
+                        onclick: move |_| {
+                            let target = format!("ent-card-{i}");
+                            let _ = document::eval(&format!(r#"
+                                document.getElementById("{target}")
+                                    ?.scrollIntoView({{behavior:"smooth", block:"start"}});
+                            "#));
+                        },
+                        {
+                            let on = i == active;
+                            rsx! {
+                                span {
+                                    class: if on {
+                                        "pointer-events-auto relative z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-zinc-200 bg-zinc-800"
+                                    } else {
+                                        "pointer-events-auto relative z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 transition-colors group-hover:border-zinc-300 group-hover:bg-zinc-800"
+                                    },
+                                    span { class: if on { "h-1.5 w-1.5 rounded-full bg-zinc-100" } else { "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" } }
+                                }
+                                span {
+                                    class: if on {
+                                        "pointer-events-none whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-100 shadow-lg"
+                                    } else {
+                                        "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100"
+                                    },
+                                    "{label}"
+                                }
                             }
                         }
-                    }
-                    span { class: "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100",
-                        "{label}"
-                    }
-                }
                     }
                 }
             }
