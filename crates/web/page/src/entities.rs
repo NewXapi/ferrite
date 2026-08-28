@@ -63,6 +63,7 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
     rsx! {
         CardPanel {
+            section_index: 0,
             title: "分组",
             hint: "对模型别名分组；分组本身只有名字",
             count: groups.read().len(),
@@ -152,6 +153,7 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
     rsx! {
         CardPanel {
+            section_index: 1,
             title: "模型别名",
             hint: "对外暴露给用户的模型名；卡牌样式后续再做",
             count: aliases.read().len(),
@@ -220,6 +222,7 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
     rsx! {
         CardPanel {
+            section_index: 2,
             title: "渠道",
             hint: "URL + Key 是凭证容器；调度模型由候补池加入，名字不可改",
             count: channels.read().len(),
@@ -424,6 +427,7 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
 #[component]
 fn CardPanel(
+    section_index: usize,
     title: &'static str,
     hint: &'static str,
     count: usize,
@@ -431,8 +435,9 @@ fn CardPanel(
     on_toggle: EventHandler<MouseEvent>,
     children: Element,
 ) -> Element {
+    let id = format!("ent-card-{section_index}");
     rsx! {
-        section { class: "shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60",
+        section { id: "{id}", class: "shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60",
             button {
                 class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900",
                 onclick: move |e| on_toggle.call(e),

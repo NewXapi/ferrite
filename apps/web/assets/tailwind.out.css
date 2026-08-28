@@ -240,6 +240,9 @@
   .top-0 {
     top: 0;
   }
+  .top-1 {
+    top: var(--spacing);
+  }
   .top-1\/2 {
     top: calc(1 / 2 * 100%);
   }
@@ -261,11 +264,20 @@
   .bottom-3 {
     bottom: calc(var(--spacing) * 3);
   }
+  .left-0 {
+    left: 0;
+  }
   .left-1\/2 {
     left: calc(1 / 2 * 100%);
   }
+  .left-2 {
+    left: calc(var(--spacing) * 2);
+  }
   .left-3 {
     left: calc(var(--spacing) * 3);
+  }
+  .left-\[7px\] {
+    left: 7px;
   }
   .z-10 {
     z-index: 10;
@@ -391,6 +403,9 @@
   .min-h-screen {
     min-height: 100vh;
   }
+  .w-1\.5 {
+    width: calc(var(--spacing) * 1.5);
+  }
   .w-2 {
     width: calc(var(--spacing) * 2);
   }
@@ -448,6 +463,10 @@
   }
   .translate-x-0 {
     --tw-translate-x: 0;
+    translate: var(--tw-translate-x) var(--tw-translate-y);
+  }
+  .translate-x-1 {
+    --tw-translate-x: var(--spacing);
     translate: var(--tw-translate-x) var(--tw-translate-y);
   }
   .translate-x-full {
@@ -917,6 +936,9 @@
   .pl-3 {
     padding-left: calc(var(--spacing) * 3);
   }
+  .pl-8 {
+    padding-left: calc(var(--spacing) * 8);
+  }
   .text-left {
     text-align: left;
   }
@@ -965,6 +987,9 @@
     --tw-tracking: var(--tracking-wider);
     letter-spacing: var(--tracking-wider);
   }
+  .whitespace-nowrap {
+    white-space: nowrap;
+  }
   .text-emerald-300 {
     color: var(--color-emerald-300);
   }
@@ -1004,6 +1029,9 @@
   }
   .accent-zinc-100 {
     accent-color: var(--color-zinc-100);
+  }
+  .opacity-0 {
+    opacity: 0%;
   }
   .opacity-50 {
     opacity: 50%;
@@ -1105,6 +1133,42 @@
   .select-none {
     -webkit-user-select: none;
     user-select: none;
+  }
+  .group-hover\:translate-x-0 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        --tw-translate-x: 0;
+        translate: var(--tw-translate-x) var(--tw-translate-y);
+      }
+    }
+  }
+  .group-hover\:border-zinc-300 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        border-color: var(--color-zinc-300);
+      }
+    }
+  }
+  .group-hover\:bg-zinc-200 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        background-color: var(--color-zinc-200);
+      }
+    }
+  }
+  .group-hover\:bg-zinc-800 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        background-color: var(--color-zinc-800);
+      }
+    }
+  }
+  .group-hover\:opacity-100 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        opacity: 100%;
+      }
+    }
   }
   .placeholder\:text-zinc-600 {
     &::placeholder {

@@ -1567,15 +1567,16 @@ pub fn NetworkPanel() -> Element {
                 }
                 if drawer_tab() == DrawerTab::Settings {
                     aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
-                        DrawerHeader {
-                            tab: drawer_tab(),
-                            title: "设置".to_string(),
-                            subtitle: "分组 / 模型别名 / 渠道".to_string(),
+                        DrawerTabs {
+                            active: DrawerTab::Settings,
                             on_tab: move |t: DrawerTab| drawer_tab.set(t),
-                            on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
                         }
-                        div { class: "min-h-0 flex-1 overflow-y-auto scroll-subtle p-3",
-                            EntitiesPanel {}
+                        div { class: "relative min-h-0 flex-1",
+                            // 导航钉在抽屉上，不随内容滚动
+                            SectionNav {}
+                            div { class: "h-full overflow-y-auto scroll-subtle p-3 pl-8",
+                                EntitiesPanel {}
+                            }
                         }
                     }
                 } else if drawer_tab() == DrawerTab::Import {
@@ -1780,6 +1781,64 @@ fn store_view_color(node: NodeKey) -> &'static str {
 }
 
 /// 抽屉头：标题 + 三个页签（节点/设置/导入）+ 关闭。
+#[component]
+fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
+    rsx! {
+        div { class: "shrink-0 border-b border-zinc-800",
+            div { class: "flex",
+                for (t, label) in [(DrawerTab::Node, "节点"), (DrawerTab::Settings, "设置"), (DrawerTab::Import, "导入")] {
+                    {
+                        let active = t == active;
+                        let tone = if active {
+                            "border-b-2 border-zinc-100 text-zinc-100"
+                        } else {
+                            "border-b-2 border-transparent text-zinc-500 hover:text-zinc-300"
+                        };
+                        rsx! {
+                            button {
+                                class: "flex-1 py-1.5 text-xs font-medium transition-colors {tone}",
+                                onclick: move |_| on_tab.call(t),
+                                "{label}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 设置页内的纵向路线导航：只用小点，hover 出文字，点击滚动到卡片
+#[component]
+fn SectionNav() -> Element {
+    // 时间线式分段导航：纵向线 + 圆点，hover 浮出名称，点击平滑滚动
+    let items = [("分组", 0usize), ("模型别名", 1usize), ("渠道", 2usize)];
+    rsx! {
+        div { class: "pointer-events-none absolute bottom-3 left-2 top-1 z-20 w-5",
+            div { class: "absolute bottom-0 left-[7px] top-0 w-px bg-zinc-800" }
+            for (label, i) in items {
+                button {
+                    class: "group absolute left-0 flex items-center gap-2 text-left",
+                    style: "top: {i as f64 * 72.0 + 18.0}px",
+                    onclick: move |_| {
+                        let target = format!("ent-card-{i}");
+                        let _ = document::eval(&format!(r#"
+                            const el = document.getElementById("{target}");
+                            el?.scrollIntoView({{behavior:"smooth", block:"start"}});
+                        "#));
+                    },
+                    span { class: "pointer-events-auto flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 group-hover:border-zinc-300 group-hover:bg-zinc-800",
+                        span { class: "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" }
+                    }
+                    span { class: "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100",
+                        "{label}"
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn DrawerHeader(
     tab: DrawerTab,
