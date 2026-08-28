@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use dioxus::prelude::*;
 
+use crate::entities::EntitiesPanel;
 use crate::store::EntityStore;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
@@ -467,22 +468,19 @@ fn layout_subgraph(
         rows[k.layer() as usize].push(k);
     }
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
-    const PADDING: f64 = 40.0;
     for (l, row) in rows.iter_mut().enumerate() {
         row.sort_by(|a, b| {
             let xa = cur.get(a).map(|p| p.0).unwrap_or(0.0);
             let xb = cur.get(b).map(|p| p.0).unwrap_or(0.0);
             xa.partial_cmp(&xb).unwrap_or(std::cmp::Ordering::Equal)
         });
+        // 紧凑排布：实际宽度按节点数 × COL_GAP 围绕可视区中心铺开，
+        // 不再按可视框等分——2 个节点就贴成一小撮，不再「甩掉一行」。
         let n = row.len();
-        let usable = bw - PADDING * 2.0;
+        let center = bx + bw / 2.0;
+        let span = (n as f64 - 1.0).max(0.0) * COL_GAP;
         for (i, &k) in row.iter().enumerate() {
-            let frac = if n <= 1 {
-                0.5
-            } else {
-                i as f64 / (n - 1) as f64
-            };
-            out.insert(k, (bx + PADDING + frac * usable, ROW_Y[l]));
+            out.insert(k, (center - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]));
         }
         // 上下层同宽的均摊看起来呆板：单层的位置往其邻居重心收一点。
         let sub_edges: Vec<(NodeKey, NodeKey)> = edges
@@ -616,6 +614,14 @@ fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
     ((VIEW_W / 2.0 - cx * z, VIEW_H / 2.0 - cy * z), z)
 }
 
+/// 右侧抽屉的页别：节点检视是默认，设置/导入换成对应面板。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DrawerTab {
+    Node,
+    Settings,
+    Import,
+}
+
 #[derive(Clone, Copy)]
 enum Drag {
     /// Node body drag: reposition. sx/sy = start client coords.
@@ -671,6 +677,8 @@ pub fn NetworkPanel() -> Element {
         use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
     // 面包屑：焦点空间内看过哪些节点（含起点），点击可回走。
     let mut crumbs = use_signal(Vec::<NodeKey>::new);
+    // 抽屉当前页别：HUD 按钮可直接切到设置/导入。
+    let mut drawer_tab = use_signal(|| DrawerTab::Node);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -1010,8 +1018,19 @@ pub fn NetworkPanel() -> Element {
                         "{g}"
                     }
                 }
+                // HUD 按钮放在图例行尾部，设置/导入不再单独占顶部 tab
                 button {
                     class: "ml-auto rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                    onclick: move |_| drawer_tab.set(DrawerTab::Settings),
+                    "设置"
+                }
+                button {
+                    class: "rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                    onclick: move |_| drawer_tab.set(DrawerTab::Import),
+                    "导入"
+                }
+                button {
+                    class: "rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
                     onclick: move |_| {
                         // Zoom/pan so every visible node fits inside the viewBox.
                         let pts: Vec<(f64, f64)> = layers_fit
@@ -1448,6 +1467,7 @@ pub fn NetworkPanel() -> Element {
                                                                 // 焦点态内点其他节点：只换抽屉，树不变；
                                                                 // 顺手记到面包屑里便于回走。
                                                                 inspect.set(Some(key));
+                                                                drawer_tab.set(DrawerTab::Node);
                                                                 if crumbs.peek().last().copied() != Some(key) {
                                                                     crumbs.write().push(key);
                                                                 }
@@ -1565,10 +1585,37 @@ pub fn NetworkPanel() -> Element {
                     }
                 }
                 }
-                if let Some(node) = inspect() {
+                if drawer_tab() == DrawerTab::Settings {
+                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+                        DrawerHeader {
+                            tab: drawer_tab(),
+                            title: "设置".to_string(),
+                            subtitle: "分组 / 模型别名 / 渠道".to_string(),
+                            on_tab: move |t: DrawerTab| drawer_tab.set(t),
+                            on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
+                        }
+                        div { class: "min-h-0 flex-1 overflow-y-auto p-3",
+                            EntitiesPanel {}
+                        }
+                    }
+                } else if drawer_tab() == DrawerTab::Import {
+                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+                        DrawerHeader {
+                            tab: drawer_tab(),
+                            title: "导入".to_string(),
+                            subtitle: "把 JSON 包进来，一个渠道一个".to_string(),
+                            on_tab: move |t: DrawerTab| drawer_tab.set(t),
+                            on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
+                        }
+                        div { class: "min-h-0 flex-1 p-3",
+                            ImportPanel {}
+                        }
+                    }
+                } else if let Some(node) = inspect() {
                     NodeInspector {
                         node: node,
                         crumbs: crumbs(),
+                        on_tab: move |t: DrawerTab| drawer_tab.set(t),
                         on_crumb: move |i: usize| {
                             let trail = crumbs();
                             if let Some(back) = trail.get(i).copied() {
@@ -1761,6 +1808,76 @@ fn store_view_color(node: NodeKey) -> &'static str {
     }
 }
 
+/// 抽屉头：标题 + 三个页签（节点/设置/导入）+ 关闭。
+#[component]
+fn DrawerHeader(
+    tab: DrawerTab,
+    title: String,
+    subtitle: String,
+    on_tab: EventHandler<DrawerTab>,
+    on_close: EventHandler<MouseEvent>,
+) -> Element {
+    rsx! {
+        div { class: "shrink-0 border-b border-zinc-800",
+            div { class: "flex items-center gap-2 px-3 py-2",
+                div { class: "min-w-0 flex-1",
+                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    p { class: "truncate text-[11px] text-zinc-500", "{subtitle}" }
+                }
+                button {
+                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    title: "关闭",
+                    onclick: move |e| on_close.call(e),
+                    "✕"
+                }
+            }
+            div { class: "flex border-t border-zinc-800",
+                for (t, label) in [(DrawerTab::Node, "节点"), (DrawerTab::Settings, "设置"), (DrawerTab::Import, "导入")] {
+                    {
+                        let active = t == tab;
+                        let tone = if active {
+                            "border-b-2 border-zinc-100 text-zinc-100"
+                        } else {
+                            "border-b-2 border-transparent text-zinc-500 hover:text-zinc-300"
+                        };
+                        rsx! {
+                            button {
+                                class: "flex-1 py-1.5 text-xs font-medium transition-colors {tone}",
+                                onclick: move |_| on_tab.call(t),
+                                "{label}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 导入占位：贴 JSON 文本，底下按钮校验后入库。现在还只是演示壳。
+#[component]
+fn ImportPanel() -> Element {
+    rsx! {
+        div { class: "space-y-3",
+            div { class: "rounded-md border border-dashed border-zinc-800 bg-zinc-950 p-3",
+                p { class: "text-xs text-zinc-400", "粘贴一段 JSON 预览导入" }
+                p { class: "mt-1 text-[11px] text-zinc-600", "支持渠道 / 分组 / 模型别名的批量导入" }
+            }
+            div { class: "space-y-1.5",
+                label { class: "text-[11px] text-zinc-500", "JSON 内容" }
+                textarea {
+                    class: "min-h-[200px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
+                    placeholder: "粘贴 JSON（channels / groups / aliases）",
+                }
+            }
+            div { class: "flex gap-2",
+                button { class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200", "校验" }
+                button { class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300", "导入" }
+            }
+        }
+    }
+}
+
 /// 侧边抽屉：左键点节点后就地编辑该实体。
 ///
 /// `absolute` 覆盖画布右侧，画布尺寸恒定，开合不引起重排。
@@ -1774,6 +1891,7 @@ fn NodeInspector(
     node: NodeKey,
     crumbs: Vec<NodeKey>,
     on_crumb: EventHandler<usize>,
+    on_tab: EventHandler<DrawerTab>,
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
     let title = node_title_from_store(node);
@@ -1813,19 +1931,17 @@ fn NodeInspector(
                     }
                 }
             }
-            // 头部
-            div { class: "flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2",
-                span { class: "h-2.5 w-2.5 shrink-0 rounded-full", style: "background: {accent}" }
-                div { class: "min-w-0 flex-1",
-                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
-                    p { class: "text-[11px] text-zinc-500", "{kind_label}" }
-                }
-                button {
-                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
-                    title: "退出焦点空间",
-                    onclick: move |e| on_close.call(e),
-                    "✕"
-                }
+            // 头部：标题 + 页签 + 关闭
+            DrawerHeader {
+                tab: DrawerTab::Node,
+                title: title.clone(),
+                subtitle: kind_label.to_string(),
+                on_tab: on_tab,
+                on_close: on_close,
+            }
+            // 标题前的小色点按节点类型
+            div { class: "flex items-center gap-2 border-b border-zinc-800 px-3 py-1.5",
+                span { class: "h-2 w-2 rounded-full", style: "background: {accent}" }
             }
             // 主体
             div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto p-3",

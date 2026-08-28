@@ -1,7 +1,6 @@
 use dioxus::prelude::*;
 
 use crate::auth::auth_drawer::AuthDrawer;
-use crate::entities::EntitiesPanel;
 use crate::model::ModelsPanel;
 use crate::network::NetworkPanel;
 use crate::overview::OverviewPanel;
@@ -19,14 +18,6 @@ enum Section {
     Usage,
     Logs,
     Manage,
-}
-
-/// 管理页的面板顶部 tab：拓扑图 + 三层实体编辑 + 导入。
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ManageTab {
-    Topology,
-    Entities,
-    Import,
 }
 
 impl Section {
@@ -48,7 +39,6 @@ pub fn HomePage() -> Element {
     let mut section = use_signal(|| Section::Dashboard);
     // Dashboard top-tabs (总览 / 趋势), from the reference overview design.
     let mut dash_tab = use_signal(|| 0u8);
-    let mut manage_tab = use_signal(|| ManageTab::Topology);
     let mut theme = use_signal(|| Theme::Dark);
     // 实体 store：拓扑抽屉与「设置」tab 共享同一份 mock 数据。
     use_context_provider(crate::store::EntityStore::seed);
@@ -65,9 +55,7 @@ pub fn HomePage() -> Element {
         },
         Section::Manage => rsx! {
             div { class: "flex h-full",
-                TabItem { label: "拓扑", active: manage_tab() == ManageTab::Topology, onclick: move |_| manage_tab.set(ManageTab::Topology) }
-                TabItem { label: "设置", active: manage_tab() == ManageTab::Entities, onclick: move |_| manage_tab.set(ManageTab::Entities) }
-                TabItem { label: "导入", active: manage_tab() == ManageTab::Import, onclick: move |_| manage_tab.set(ManageTab::Import) }
+                TabItem { label: "拓扑", active: true, onclick: move |_| {} }
             }
         },
         _ => rsx! {
@@ -176,15 +164,13 @@ pub fn HomePage() -> Element {
                     // Frame — one shared panel keeps every page's chrome identical
                     ConsolePanel {
                         header: panel_header,
-                        match (section(), dash_tab(), manage_tab()) {
-                            (Section::Dashboard, 0, _) => rsx! { OverviewPanel {} },
-                            (Section::Dashboard, _, _) => rsx! { ModelsPanel {} },
-                            (Section::Keys, _, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
-                            (Section::Usage, _, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
-                            (Section::Logs, _, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
-                            (Section::Manage, _, ManageTab::Topology) => rsx! { NetworkPanel {} },
-                            (Section::Manage, _, ManageTab::Entities) => rsx! { EntitiesPanel {} },
-                            (Section::Manage, _, ManageTab::Import) => rsx! { PlaceholderPane { text: "导入拓扑配置（占位）" } },
+                        match (section(), dash_tab()) {
+                            (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
+                            (Section::Dashboard, _) => rsx! { ModelsPanel {} },
+                            (Section::Keys, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
+                            (Section::Usage, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
+                            (Section::Logs, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
+                            (Section::Manage, _) => rsx! { NetworkPanel {} },
                         }
                     }
                 }
