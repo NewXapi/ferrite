@@ -9,5 +9,6 @@ pub mod network;
 pub mod overview;
 pub mod retro;
 pub mod store;
+pub mod ui;
 
 pub use app::RootApp;

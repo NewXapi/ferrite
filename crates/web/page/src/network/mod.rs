@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use dioxus::prelude::*;
 
 use crate::entities::EntitiesPanel;
+use crate::ui::ScrollSpyNav;
 use crate::store::EntityStore;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
@@ -222,7 +223,7 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
         // 每排限制为 5 个；多出来的节点叠到下一排，保持节点可读。
         const MAX_PER_ROW: usize = 5;
         let per_row = MAX_PER_ROW.min(placed.len()).max(1);
-        let row_count = (placed.len() + per_row - 1) / per_row;
+        let row_count = placed.len().div_ceil(per_row);
         for (chunk_i, chunk) in placed.chunks(per_row).enumerate() {
             let row_y = ROW_Y[l]
                 + (chunk_i as f64 - (row_count.saturating_sub(1) as f64 / 2.0))
@@ -634,10 +635,6 @@ pub fn NetworkPanel() -> Element {
         use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
     // 抽屉当前页别：HUD 按钮可直接切到设置/导入。
     let mut drawer_tab = use_signal(|| DrawerTab::Node);
-    // 设置页滚动到哪个分区（导航圆点高亮）
-    let mut active_section = use_signal(|| 0usize);
-    // 各分区在文档里的纵向比例（决定圆点在轨道上的位置）
-    let mut nav_fracs = use_signal(|| [0.05f64, 0.4, 0.85]);
     // 边的撤销栈：true=本次操作新增，false=本次操作删除
     let mut history = use_signal(Vec::<(bool, (NodeKey, NodeKey))>::new);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
@@ -658,43 +655,6 @@ pub fn NetworkPanel() -> Element {
         wake.set(next);
     });
     use_hook(move || {
-        spawn(async move {
-            let mut ev2 = document::eval(r#"
-                if (!window.__topoNavBound) {
-                    window.__topoNavBound = true;
-                    const report = () => {
-                        const cont = document.getElementById('ent-scroll');
-                        if (!cont) return;
-                        const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
-                        if (!secs.length) return;
-                        const cr = cont.getBoundingClientRect();
-                        // active = 视口内可见面积最大的那张卡（人在看哪段就是哪段）
-                        let active = 0;
-                        let best = -1;
-                        secs.forEach((el, i) => {
-                            const r = el.getBoundingClientRect();
-                            const overlap = Math.min(r.bottom, cr.bottom) - Math.max(r.top, cr.top);
-                            if (overlap > best) { best = overlap; active = i; }
-                        });
-                        // fracs：各卡片在文档流里的纵向比例（决定圆点位置）
-                        const fr = secs.map(el =>
-                            (el.getBoundingClientRect().top - cr.top + cont.scrollTop) / cont.scrollHeight
-                        );
-                        dioxus.send([active, ...fr]);
-                    };
-                    window.addEventListener('scroll', (e) => {
-                        if (e.target === document.getElementById('ent-scroll')) report();
-                    }, true);
-                    setInterval(() => { if (document.getElementById('ent-scroll')) report(); }, 500);
-                }
-            "#);
-            while let Ok(v) = ev2.recv::<Vec<f64>>().await {
-                if v.len() == 4 {
-                    active_section.set(v[0] as usize);
-                    nav_fracs.set([v[1], v[2], v[3]]);
-                }
-            }
-        });
         spawn(async move {
             let mut ev = document::eval(r#"
                 if (!window.__topoUndoBound) {
@@ -1657,7 +1617,14 @@ pub fn NetworkPanel() -> Element {
                         }
                         div { class: "relative min-h-0 flex-1",
                             // 导航钉在抽屉上，不随内容滚动
-                            SectionNav { active: active_section(), fracs: nav_fracs() }
+                            ScrollSpyNav {
+                                container: "ent-scroll",
+                                items: vec![
+                                    ("分组".to_string(), "ent-card-0".to_string()),
+                                    ("模型别名".to_string(), "ent-card-1".to_string()),
+                                    ("渠道".to_string(), "ent-card-2".to_string()),
+                                ],
+                            }
                             div {
                                 id: "ent-scroll",
                                 class: "h-full overflow-y-auto scroll-hidden p-3 pl-8",
@@ -1717,7 +1684,6 @@ fn edges_read(edges: &Signal<HashSet<(NodeKey, NodeKey)>>) -> HashSet<(NodeKey, 
 
 /// 三层可见节点。调度模型全部平铺——不再有渠道聚合卡，
 /// 因为渠道是凭证容器（在设置页编辑），不是图上的节点。
-
 /// 待绘制的边。节点不再折叠，故显示边即存储边；第三元保留
 /// 原始边（删除时用），维持调用方签名不变。
 fn display_edge_pairs(
@@ -1895,51 +1861,6 @@ fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
 }
 
 /// 设置页内的纵向路线导航：只用小点，hover 出文字，点击滚动到卡片
-#[component]
-fn SectionNav(active: usize, fracs: [f64; 3]) -> Element {
-    // 顶部时间线导航：短线连三颗点，位置按各卡片在文档里的真实比例；
-    // active 点高亮，标签只在 hover 时短暂浮现
-    let items = [("分组", 0usize), ("模型别名", 1usize), ("渠道", 2usize)];
-    rsx! {
-        div { class: "pointer-events-none absolute left-2 top-3 z-20 h-[38%]",
-            div { class: "relative h-full",
-                // 竖线铺满轨道
-                div { class: "absolute bottom-0 left-[7px] top-0 w-px bg-zinc-800" }
-                for (label, i) in items {
-                    button {
-                        class: "group absolute left-0 flex items-center gap-2 text-left",
-                        style: "top: calc({fracs[i].clamp(0.02, 0.98) * 100.0}% - 7px)",
-                        onclick: move |_| {
-                            let target = format!("ent-card-{i}");
-                            let _ = document::eval(&format!(r#"
-                                document.getElementById("{target}")
-                                    ?.scrollIntoView({{behavior:"smooth", block:"start"}});
-                            "#));
-                        },
-                        {
-                            let on = i == active;
-                            rsx! {
-                                span {
-                                    class: if on {
-                                        "pointer-events-auto relative z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-zinc-200 bg-zinc-800"
-                                    } else {
-                                        "pointer-events-auto relative z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 transition-colors group-hover:border-zinc-300 group-hover:bg-zinc-800"
-                                    },
-                                    span { class: if on { "h-1.5 w-1.5 rounded-full bg-zinc-100" } else { "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" } }
-                                }
-                                span {
-                                    class: "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100",
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[component]
 fn DrawerHeader(
     tab: DrawerTab,
