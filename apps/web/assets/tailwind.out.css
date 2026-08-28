@@ -720,6 +720,9 @@
   .border-zinc-100 {
     border-color: var(--color-zinc-100);
   }
+  .border-zinc-200 {
+    border-color: var(--color-zinc-200);
+  }
   .border-zinc-600 {
     border-color: var(--color-zinc-600);
   }

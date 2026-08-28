@@ -417,49 +417,55 @@ fn layout_subgraph(
         });
         // 围绕世界中心铺开，不要往可视框里算：位置是世界坐标，
         // fit_view_into 负责再把世界框到可视框（两个变换叠加会偏）。
-        let n = row.len();
-        let center = VIEW_W / 2.0;
-        let span = (n as f64 - 1.0).max(0.0) * COL_GAP;
-        for (i, &k) in row.iter().enumerate() {
-            out.insert(k, (center - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]));
-        }
-        // 往邻居重心收，但保持行内最小间距：同父节点聚集时不再叠一坨。
+        // 一排超过 5 个就折行，和初始布局同一套规则。
+        const MAX_PER_ROW: usize = 5;
+        let per_row = MAX_PER_ROW.min(row.len()).max(1);
+        let row_count = row.len().div_ceil(per_row);
         let sub_edges: Vec<(NodeKey, NodeKey)> = edges
             .iter()
             .copied()
             .filter(|(u, lo)| sub.contains(u) && sub.contains(lo))
             .collect();
-        for k in row.iter().copied() {
-            let (mut sum, mut cnt) = (0.0f64, 0.0f64);
-            for &(u, lo) in &sub_edges {
-                let other = if u == k {
-                    Some(lo)
-                } else if lo == k {
-                    Some(u)
-                } else {
-                    None
-                };
-                if let Some(o) = other {
-                    if let Some(op) = out.get(&o) {
-                        sum += op.0;
-                        cnt += 1.0;
+        for (ci, chunk) in row.chunks(per_row).enumerate() {
+            let y = ROW_Y[l]
+                + (ci as f64 - (row_count.saturating_sub(1) as f64 / 2.0)) * (NODE_H + 14.0);
+            let n = chunk.len();
+            let center = VIEW_W / 2.0;
+            let span = (n as f64 - 1.0).max(0.0) * COL_GAP;
+            for (i, &k) in chunk.iter().enumerate() {
+                out.insert(k, (center - span / 2.0 + i as f64 * COL_GAP, y));
+            }
+            // 往邻居重心收，再按行重心强制最小间距，保证不叠一坨
+            for &k in chunk {
+                let (mut sum, mut cnt) = (0.0f64, 0.0f64);
+                for &(u, lo) in &sub_edges {
+                    let other = if u == k {
+                        Some(lo)
+                    } else if lo == k {
+                        Some(u)
+                    } else {
+                        None
+                    };
+                    if let Some(o) = other {
+                        if let Some(op) = out.get(&o) {
+                            sum += op.0;
+                            cnt += 1.0;
+                        }
                     }
                 }
+                if cnt > 0.0 {
+                    let cur_x = out[&k].0;
+                    out.insert(k, (cur_x + (sum / cnt - cur_x) * 0.45, y));
+                }
             }
-            if cnt > 0.0 {
-                let cur_x = out[&k].0;
-                out.insert(k, (cur_x + (sum / cnt - cur_x) * 0.45, ROW_Y[l]));
-            }
-        }
-        // 强制最小间距：按现在的次序重排，中心点按行重心对齐
-        let mut sorted: Vec<NodeKey> = row.clone();
-        sorted.sort_by(|a, b| out[a].0.partial_cmp(&out[b].0).unwrap());
-        let n = sorted.len();
-        if n > 1 {
-            let span = (n as f64 - 1.0) * COL_GAP;
-            let cx: f64 = sorted.iter().map(|k| out[k].0).sum::<f64>() / n as f64;
-            for (i, &k) in sorted.iter().enumerate() {
-                out.insert(k, (cx - span / 2.0 + i as f64 * COL_GAP, ROW_Y[l]));
+            let mut sorted: Vec<NodeKey> = chunk.to_vec();
+            sorted.sort_by(|a, b| out[a].0.partial_cmp(&out[b].0).unwrap());
+            if sorted.len() > 1 {
+                let span = (sorted.len() as f64 - 1.0) * COL_GAP;
+                let cx: f64 = sorted.iter().map(|k| out[k].0).sum::<f64>() / sorted.len() as f64;
+                for (i, &k) in sorted.iter().enumerate() {
+                    out.insert(k, (cx - span / 2.0 + i as f64 * COL_GAP, y));
+                }
             }
         }
     }
@@ -628,6 +634,8 @@ pub fn NetworkPanel() -> Element {
         use_signal(|| None::<(HashMap<NodeKey, (f64, f64)>, (f64, f64), f64)>);
     // 抽屉当前页别：HUD 按钮可直接切到设置/导入。
     let mut drawer_tab = use_signal(|| DrawerTab::Node);
+    // 设置页滚动到哪个分区（导航圆点高亮）
+    let mut active_section = use_signal(|| 0usize);
     // Group-move anchors: (node, world offset from cursor) for the whole selection.
     let mut moving = use_signal(Vec::<(NodeKey, f64, f64)>::new);
     // Marquee rect in viewBox coords while a Select drag is active.
@@ -1298,8 +1306,13 @@ pub fn NetworkPanel() -> Element {
                                         onmouseleave: move |_| {
                                             if *hover_wire.peek() == Some(raw) { hover_wire.set(None) }
                                         },
-                                        onclick: move |e| { e.stop_propagation(); edges.write().remove(&raw); },
-                                        title { "点击删除连线" }
+                                        // 左键留给框选/拖拽；右键才删线，防误点
+                                        oncontextmenu: move |e| {
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            edges.write().remove(&raw);
+                                        },
+                                        title { "右键删除连线" }
                                     }
                                 }
                             }
@@ -1573,8 +1586,26 @@ pub fn NetworkPanel() -> Element {
                         }
                         div { class: "relative min-h-0 flex-1",
                             // 导航钉在抽屉上，不随内容滚动
-                            SectionNav {}
-                            div { class: "h-full overflow-y-auto scroll-subtle p-3 pl-8",
+                            SectionNav { active: active_section() }
+                            div {
+                                class: "h-full overflow-y-auto scroll-subtle p-3 pl-8",
+                                onscroll: move |_| {
+                                    spawn(async move {
+                                        let mut ev = document::eval(r#"
+                                            const secs = [0,1,2].map(i => document.getElementById('ent-card-'+i)).filter(Boolean);
+                                            if (!secs.length) return 0;
+                                            const top = secs[0].parentElement.getBoundingClientRect().top;
+                                            let active = 0;
+                                            secs.forEach((el, i) => {
+                                                if (el.getBoundingClientRect().top <= top + 48) active = i;
+                                            });
+                                            return active;
+                                        "#);
+                                        if let Ok(i) = ev.recv::<usize>().await {
+                                            active_section.set(i);
+                                        }
+                                    });
+                                },
                                 EntitiesPanel {}
                             }
                         }
@@ -1810,8 +1841,9 @@ fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
 
 /// 设置页内的纵向路线导航：只用小点，hover 出文字，点击滚动到卡片
 #[component]
-fn SectionNav() -> Element {
-    // 时间线式分段导航：纵向线 + 圆点，hover 浮出名称，点击平滑滚动
+fn SectionNav(active: usize) -> Element {
+    // 时间线式分段导航：纵向线 + 圆点，hover 浮出名称，点击平滑滚动；
+    // active 圆点高亮，跟随滚动位置
     let items = [("分组", 0usize), ("模型别名", 1usize), ("渠道", 2usize)];
     rsx! {
         div { class: "pointer-events-none absolute bottom-3 left-2 top-1 z-20 w-5",
@@ -1827,8 +1859,16 @@ fn SectionNav() -> Element {
                             el?.scrollIntoView({{behavior:"smooth", block:"start"}});
                         "#));
                     },
-                    span { class: "pointer-events-auto flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 group-hover:border-zinc-300 group-hover:bg-zinc-800",
-                        span { class: "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" }
+                    {
+                        let on = i == active;
+                        rsx! {
+                            span { class: if on { "pointer-events-auto flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-200 bg-zinc-800" } else { "pointer-events-auto flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 group-hover:border-zinc-300 group-hover:bg-zinc-800" },
+                                span { class: if on { "h-1.5 w-1.5 rounded-full bg-zinc-100" } else { "h-1.5 w-1.5 rounded-full bg-zinc-500 group-hover:bg-zinc-200" } }
+                            }
+                            span { class: if on { "pointer-events-none whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-100 shadow-lg" } else { "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100" },
+                                "{label}"
+                            }
+                        }
                     }
                     span { class: "pointer-events-none translate-x-1 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100",
                         "{label}"
