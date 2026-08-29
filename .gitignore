@@ -7,3 +7,4 @@ todo/
 .codegraph/
 .code-review-graph/
 node_modules/
+.wt

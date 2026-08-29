@@ -1,6 +1,6 @@
 # New API — web-rs
 
-前端面板（`apps/web` + `crates/web/page`)，Dioxus 0.7 + Tailwind 4。
+前端面板（`apps/web` + `crates/page/*` + `crates/ui`），Dioxus 0.7 + Tailwind 4。
 
 ## 响应式布局约定
 
@@ -12,7 +12,7 @@
 | 平板（`md:`) | ≥ 768px | 3 栏 |
 | Web(`xl:`) | ≥ 1280px | 5 栏 |
 
-每层网格类（见 `crates/web/page/src/overview.rs` 的 `OverviewPanel`):
+每层网格类（见 `crates/page/overview/src/overview.rs` 的 `OverviewPanel`):
 
 ```
 grid grid-cols-1 gap-3 p-4 md:grid-cols-3 md:gap-4 md:p-6 xl:grid-cols-5
