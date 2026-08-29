@@ -1,0 +1,10 @@
+[package]
+name = "page-leaderboard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dioxus = { workspace = true }
+manganis = "0.7"

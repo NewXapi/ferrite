@@ -347,6 +347,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "client"
+version = "0.1.0"
+dependencies = [
+ "gloo-net",
+ "http",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2231,43 +2241,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "newapi-client"
-version = "0.1.0"
-dependencies = [
- "gloo-net",
- "http",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "newapi-page"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dioxus",
- "gloo-timers",
- "manganis",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "newapi-session"
-version = "0.1.0"
-dependencies = [
- "dioxus",
- "newapi-client",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "newapi-web-rs"
 version = "0.1.0"
 dependencies = [
+ "client",
  "dioxus",
- "newapi-page",
+ "page-admin",
+ "page-auth",
+ "page-leaderboard",
+ "page-models",
+ "page-overview",
+ "ui",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2372,6 +2358,49 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "page-admin"
+version = "0.1.0"
+dependencies = [
+ "client",
+ "dioxus",
+ "gloo-timers",
+ "ui",
+ "web-sys",
+]
+
+[[package]]
+name = "page-auth"
+version = "0.1.0"
+dependencies = [
+ "client",
+ "dioxus",
+ "ui",
+]
+
+[[package]]
+name = "page-leaderboard"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "manganis",
+]
+
+[[package]]
+name = "page-models"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+]
+
+[[package]]
+name = "page-overview"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dioxus",
+]
 
 [[package]]
 name = "parking"
@@ -3033,6 +3062,18 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "session"
+version = "0.1.0"
+dependencies = [
+ "client",
+ "dioxus",
+ "gloo-net",
+ "http",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3890,6 +3931,13 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "ui"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+]
 
 [[package]]
 name = "unicase"
