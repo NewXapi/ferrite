@@ -15,9 +15,7 @@ use page_admin::{NetworkPanel, state::EntityStore};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Dashboard,
-    Keys,
-    Usage,
-    Logs,
+    Console,
     Manage,
 }
 
@@ -25,19 +23,15 @@ impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::Dashboard => "总览",
-            Section::Keys => "密钥",
-            Section::Usage => "用量",
-            Section::Logs => "日志",
+            Section::Console => "控制台",
             Section::Manage => "管理",
         }
     }
 }
 
-pub const SECTIONS: [Section; 5] = [
+pub const SECTIONS: [Section; 3] = [
     Section::Dashboard,
-    Section::Keys,
-    Section::Usage,
-    Section::Logs,
+    Section::Console,
     Section::Manage,
 ];
 
@@ -185,6 +179,14 @@ pub fn HomePage() -> Element {
                 TabItem { label: "排行榜", active: dash_tab() == 2, onclick: move |_| dash_tab.set(2) }
             }
         }
+    } else if section() == Section::Console {
+        rsx! {
+            div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
+                TabItem { label: "密钥", active: dash_tab() == 0, onclick: move |_| dash_tab.set(0) }
+                TabItem { label: "用量", active: dash_tab() == 1, onclick: move |_| dash_tab.set(1) }
+                TabItem { label: "日志", active: dash_tab() == 2, onclick: move |_| dash_tab.set(2) }
+            }
+        }
     } else {
         rsx! {
             div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
@@ -243,9 +245,10 @@ pub fn HomePage() -> Element {
                         (Section::Dashboard, 1) => rsx! { ModelsPanel {} },
                         (Section::Dashboard, 2) => rsx! { LeaderboardPanel {} },
                         (Section::Dashboard, _) => rsx! { OverviewPanel {} },
-                        (Section::Keys, _) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
-                        (Section::Usage, _) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
-                        (Section::Logs, _) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
+                        (Section::Console, 0) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
+                        (Section::Console, 1) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
+                        (Section::Console, 2) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
+                        (Section::Console, _) => rsx! { PlaceholderPane { text: "控制台（占位）" } },
                         (Section::Manage, _) => rsx! { NetworkPanel {} },
                     }
                 }
