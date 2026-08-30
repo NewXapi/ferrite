@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# gate-managed hook — delegates to the gate binary
-exec gate pre-commit
