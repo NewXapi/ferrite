@@ -1,10 +1,11 @@
 [package]
-name = "page-models"
+name = "page-overview"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
+chrono = { workspace = true }
 dioxus = { workspace = true }
-mock = { path = "../../shared/mock" }
+mock = { path = "../mock" }

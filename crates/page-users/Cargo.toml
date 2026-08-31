@@ -7,5 +7,5 @@ publish.workspace = true
 
 [dependencies]
 dioxus = { workspace = true }
-ui = { path = "../../ui" }
-mock = { path = "../../shared/mock" }
+ui = { path = "../ui" }
+mock = { path = "../mock" }

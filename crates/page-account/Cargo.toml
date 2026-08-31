@@ -8,6 +8,6 @@ publish.workspace = true
 [dependencies]
 chrono = { workspace = true }
 dioxus = { workspace = true }
-ui = { path = "../../ui" }
-mock = { path = "../../shared/mock" }
+ui = { path = "../ui" }
+mock = { path = "../mock" }
 gloo-timers = { version = "0.3", features = ["futures"] }

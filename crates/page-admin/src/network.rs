@@ -2312,7 +2312,6 @@ mod tests {
     fn initial_layout_covers_all_visible_nodes_in_view() {
         let view = test_view();
         let pos = initial_positions(&view);
-        let pos = initial_positions(&view);
         for layer in visible_layers_of(&view) {
             for k in &layer {
                 let (x, y) = pos[k];
