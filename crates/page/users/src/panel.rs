@@ -15,6 +15,9 @@ enum Form {
 /// 用户管理面板 - 左侧 ScrollSpyNav + 统计 / 筛选 / 用户卡片三区
 #[component]
 pub fn UsersPanel() -> Element {
+    // —— 区段标题 ——
+    const SEC_STATS: &str = "用户概览";
+    const SEC_LIST: &str = "用户列表";
     let mut search = use_signal(String::new);
     let mut group_idx = use_signal(|| 0usize);
     let mut status_idx = use_signal(|| 0usize);
@@ -103,9 +106,9 @@ pub fn UsersPanel() -> Element {
             ScrollSpyNav {
                 container: "panel-scroll",
                 items: vec![
-                    ("用户概览".to_string(), "users-sec-stats".to_string()),
+                    ({SEC_STATS}.to_string(), "users-sec-stats".to_string()),
                     ("筛选".to_string(), "users-sec-filter".to_string()),
-                    ("用户列表".to_string(), "users-sec-list".to_string()),
+                    ({SEC_LIST}.to_string(), "users-sec-list".to_string()),
                 ],
             }
 
@@ -113,7 +116,7 @@ pub fn UsersPanel() -> Element {
 
                 // 1. 统计区
                 section { id: "users-sec-stats", class: "scroll-mt-8 space-y-3",
-                    h2 { class: "text-lg font-medium text-zinc-100", "用户概览" }
+                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                     // 宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏,每卡各占 1 栏。
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
                         for (value, label) in stats {
@@ -166,7 +169,7 @@ pub fn UsersPanel() -> Element {
                 // 3. 用户卡片网格
                 section { id: "users-sec-list", class: "scroll-mt-8 space-y-4",
                     div { class: "flex items-center justify-between",
-                        h2 { class: "text-lg font-medium text-zinc-100", "用户列表" }
+                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
                         span {
                             class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
                             "{filtered.len()} 人"
@@ -267,9 +270,12 @@ fn UserCard(
     };
 
     let (status_text, status_tone) = if user.status == 1 {
-        ("启用", "border-emerald-500/30 bg-emerald-500/20 text-emerald-400")
+        (
+            STATUS_ENABLED,
+            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
+        )
     } else {
-        ("禁用", "border-zinc-600 bg-zinc-800 text-zinc-400")
+        (STATUS_DISABLED, "border-zinc-600 bg-zinc-800 text-zinc-400")
     };
     let role_tone = match user.role {
         100 => "border-violet-500/30 bg-violet-500/20 text-violet-300",
@@ -341,12 +347,17 @@ fn UserCard(
                 }
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-amber-400 transition-colors hover:bg-zinc-800",
-                    if user.status == 1 { "禁用" } else { "启用" }
+                    if user.status == 1 { {STATUS_DISABLED} } else { {STATUS_ENABLED} }
                 }
             }
         }
     }
 }
+
+// —— 跨 component 共享文案 (UserCard / UserForm / TopUpForm / UsersPanel 都用) ——
+const BTN_CANCEL: &str = "取消";
+const STATUS_ENABLED: &str = "启用";
+const STATUS_DISABLED: &str = "禁用";
 
 /// 弹窗外壳:遮罩 + 居中卡 + 标题栏关闭按钮
 #[component]
@@ -393,8 +404,16 @@ fn UserForm(
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
-    let title = if editing { "编辑用户" } else { "新建用户" };
-    let submit_label = if editing { "保存修改" } else { "创建用户" };
+    let title = if editing {
+        "编辑用户"
+    } else {
+        "新建用户"
+    };
+    let submit_label = if editing {
+        "保存修改"
+    } else {
+        "创建用户"
+    };
     let quota_hint = quota()
         .trim()
         .parse::<i64>()
@@ -450,7 +469,7 @@ fn UserForm(
                 button {
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
-                    "取消"
+                    {BTN_CANCEL}
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
@@ -510,7 +529,7 @@ fn TopUpForm(
                 button {
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
-                    "取消"
+                    {BTN_CANCEL}
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",

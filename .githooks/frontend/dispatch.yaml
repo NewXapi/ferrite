@@ -1,0 +1,19 @@
+# dispatch.yaml — frontend 规范的钩子调度
+# 当前 gate 未接入, 本文件仅声明未来调度意图。
+
+pre-commit:
+  - frontend/structure
+  - frontend/shared_components
+  - frontend/copy_constants
+
+pre-push:
+  - frontend/structure
+  - frontend/shared_components
+  - frontend/copy_constants
+  - frontend/tests
+
+merge:
+  - frontend/structure
+  - frontend/shared_components
+  - frontend/copy_constants
+  - frontend/tests

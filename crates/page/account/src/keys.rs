@@ -7,6 +7,11 @@ use crate::api::{self, ApiKey};
 /// 遵循 admin/network.rs 参考用法，父容器 relative，内容区 pl-8 留位
 #[component]
 pub fn KeysPanel() -> Element {
+    // —— 区段标题 (ScrollSpyNav + h2 同用) ——
+    const SEC_STATS: &str = "个人数据";
+    const SEC_PROFILE: &str = "个人资料";
+    const SEC_KEYS: &str = "我的密钥";
+
     let mut show_new_form = use_signal(|| false);
     let mut new_name = use_signal(|| String::new());
     let new_group = use_signal(|| "default".to_string());
@@ -23,9 +28,9 @@ pub fn KeysPanel() -> Element {
             ScrollSpyNav {
                 container: "panel-scroll",
                 items: vec![
-                    ("个人数据".to_string(), "keys-sec-stats".to_string()),
-                    ("个人资料".to_string(), "keys-sec-profile".to_string()),
-                    ("我的密钥".to_string(), "keys-sec-keys".to_string()),
+                    ({SEC_STATS}.to_string(), "keys-sec-stats".to_string()),
+                    ({SEC_PROFILE}.to_string(), "keys-sec-profile".to_string()),
+                    ({SEC_KEYS}.to_string(), "keys-sec-keys".to_string()),
                 ],
             }
 
@@ -35,7 +40,7 @@ pub fn KeysPanel() -> Element {
                     section {
                         id: "keys-sec-stats",
                         class: "scroll-mt-8 space-y-3",
-                        h2 { class: "text-lg font-medium text-zinc-100", "个人数据" }
+                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                         // 宽度约定:总栅格 = 手机 1 栏 / 平板 3 栏 / Web 5 栏,所有卡片各占 1 栏。
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
                             for &(value, label) in stats {
@@ -48,7 +53,7 @@ pub fn KeysPanel() -> Element {
                     section {
                         id: "keys-sec-profile",
                         class: "scroll-mt-8 space-y-3",
-                        h2 { class: "text-lg font-medium text-zinc-100", "个人资料" }
+                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
                         div { class: "grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5",
                             // 个人资料卡 (占 3 栏)
                             div { class: "md:col-span-2 xl:col-span-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
@@ -93,7 +98,7 @@ pub fn KeysPanel() -> Element {
                         class: "scroll-mt-8",
                         div { class: "space-y-4",
                             div { class: "flex items-center justify-between",
-                                h2 { class: "text-lg font-medium text-zinc-100", "我的密钥" }
+                                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_KEYS}" }
                                 span { class: "text-xs px-3 py-1 rounded-full bg-zinc-800 text-zinc-400", "{keys.len()} 个" }
                             }
 

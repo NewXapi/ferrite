@@ -18,10 +18,14 @@ pub struct LoginResponse {
 
 pub async fn login(_req: LoginRequest) -> ApiResult<LoginResponse> {
     // TODO: replace with HTTP POST /api/auth/login
-    Ok(LoginResponse { token: "mock-token".into() })
+    Ok(LoginResponse {
+        token: "mock-token".into(),
+    })
 }
 
 pub async fn register(_username: String, _password: String) -> ApiResult<LoginResponse> {
     // TODO: replace with HTTP POST /api/auth/register
-    Ok(LoginResponse { token: "mock-token".into() })
+    Ok(LoginResponse {
+        token: "mock-token".into(),
+    })
 }

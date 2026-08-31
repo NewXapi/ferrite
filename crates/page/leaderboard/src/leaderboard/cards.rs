@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::{avg_norms, composite, dim_rank, dim_raw, key_stats, norms, ModelStat, DIMS};
+use crate::api::{DIMS, ModelStat, avg_norms, composite, dim_rank, dim_raw, key_stats, norms};
 
 /// 卡牌倾斜 hover 的通用几何: 返回 (rotateX, rotateY).
 /// ponytail: 卡片尺寸硬编码 (246x368 / 460x320), 只是演示用.
@@ -38,7 +38,10 @@ impl RadarGeo {
 
     fn pt(i: usize, v: f64) -> (f64, f64) {
         let a = -90f64.to_radians() + i as f64 * 60f64.to_radians();
-        (Self::CX + Self::R * v * a.cos(), Self::CY + Self::R * v * a.sin())
+        (
+            Self::CX + Self::R * v * a.cos(),
+            Self::CY + Self::R * v * a.sin(),
+        )
     }
 
     fn poly(vals: &[f64; 6]) -> String {
@@ -242,7 +245,11 @@ pub fn MiniRadarCard(
 ) -> Element {
     let mut flipped = use_signal(|| false);
     let mut tilt = use_signal(|| (0.0f64, 0.0f64));
-    let flip_cls = if flipped() { "poster-flip-inner is-flipped" } else { "poster-flip-inner" };
+    let flip_cls = if flipped() {
+        "poster-flip-inner is-flipped"
+    } else {
+        "poster-flip-inner"
+    };
     let initial = model.name.chars().next().unwrap_or('?');
     let raw = dim_raw(model);
     let score = composite(model);

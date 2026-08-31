@@ -1,8 +1,8 @@
 //! Auth page rendering and component composition.
 
-use dioxus::prelude::*;
-use crate::state::{AuthTab, auth_tab};
 use crate::form::{SignInForm, SignUpForm, TabButton};
+use crate::state::{AuthTab, auth_tab};
+use dioxus::prelude::*;
 
 #[component]
 pub fn AuthPage() -> Element {

@@ -1,0 +1,20 @@
+# FR-01 crate 分层与数据边界
+# page: crates/page/<name>/  共享: crates/shared/{client,session,mock}/  UI: crates/ui/
+
+ignore_paths:
+  - ".wt/"
+  - "target/"
+  - "node_modules/"
+
+forbidden_patterns:
+  # mock 数据只允许 api.rs 薄壳引用
+  - path_regex: '^crates/page/(?!.*api\.rs).*\.rs$'
+    pattern: 'use mock::|mock::'
+    reason: "面板禁止直接引用 mock crate, 数据经本页 api.rs 薄壳"
+    suggestion: "在 crates/page/<name>/src/api.rs 加 fetch_*() 转发"
+    severity: FAIL
+
+# api.rs 薄壳必须存在 (每个 page)
+expected_locations:
+  - file_pattern: '^api\.rs$'
+    expected_dir: "crates/page/*/src/"

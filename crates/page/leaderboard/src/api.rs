@@ -7,5 +7,5 @@
 
 // `key_stats` 返回的 `KeyStat` 面板只读字段、不点名类型,故不转出(否则一条 unused 警告)。
 pub use crate::leaderboard::data::{
-    avg_norms, composite, dim_rank, dim_raw, key_stats, norms, ModelStat, DIMS, MODELS,
+    DIMS, MODELS, ModelStat, avg_norms, composite, dim_rank, dim_raw, key_stats, norms,
 };

@@ -1,0 +1,25 @@
+# FR-03 文案常量(反硬编码)
+# 同一字面量复用 2+ 次 -> 抽 const; 位置按共享范围就近
+#   单组件内 -> 组件函数顶部; 同文件跨组件 -> 模块级; 跨 page -> crates/ui/
+# rsx 子节点表达式必须 {CONST}; 属性值可直接 CONST
+# 动态插值文案 ("折合 {var}") 不能抽 const
+
+ignore_paths:
+  - ".wt/"
+  - "target/"
+
+notes:
+  - "rsx 子节点裸常量会被解析为组件路径 -> 'Component<_> is not implemented for &str'"
+  - "if/else rsx 子节点: 两个分支体都要包花括号"
+  - "数据(人名/渠道名/mock 数值)不是文案, 留在 mock crate"
+
+detection:
+  # gate 接入时: 统计 rsx 内中文字面量出现次数, >=2 提示抽取
+  chinese_literal_pattern: '"[^"]*\\p{Han}[^"]*"'
+  paths_include: ["crates/page/**/src/**/*.rs"]
+  fail_threshold: 3
+  warn_threshold: 2
+  exemptions:
+    - "#[cfg(test)]"
+    - "//!"
+    - "///"

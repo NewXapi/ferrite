@@ -1,0 +1,16 @@
+# FR-02 共享组件归属
+# >=2 个 page 使用的组件必须在 crates/ui/src/, page 内禁止 ui.rs 子模块
+
+ignore_paths:
+  - ".wt/"
+  - "target/"
+
+forbidden_patterns:
+  - path_regex: '^crates/page/.+/src/ui\.rs$'
+    reason: "page crate 不应自带 ui 子模块; 共享组件放 crates/ui/"
+    suggestion: "git mv 到 crates/ui/src/<name>.rs 并在 lib.rs re-export"
+    severity: FAIL
+
+expected_locations:
+  - file_pattern: '^(scroll_spy|segmented|form)\.rs$'
+    expected_dir: "crates/ui/src/"

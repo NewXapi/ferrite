@@ -32,6 +32,12 @@ pub fn EntitiesPanel() -> Element {
     }
 }
 
+// —— 跨卡片共享文案 (GroupsCard / AliasesCard 同用) ——
+const FIELD_DISPLAY: &str = "展示名";
+const BTN_NEW: &str = "新增";
+const BTN_UPDATE: &str = "更新";
+const BTN_CANCEL: &str = "取消";
+
 // ============ 卡片 1：分组 ============
 
 #[component]
@@ -74,11 +80,11 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
             div { class: "flex flex-wrap items-end gap-2",
                 InputCell { label: "分组名", value: name, placeholder: "vip", grow: true }
-                InputCell { label: "展示名", value: display, placeholder: "默认分组（可选）", grow: true }
+                InputCell { label: FIELD_DISPLAY, value: display, placeholder: "默认分组（可选）", grow: true }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
-                    if editing().is_some() { "更新" } else { "新增" }
+                    if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
                 if editing().is_some() {
                     button {
@@ -88,7 +94,7 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                             name.set(String::new());
                             display.set(String::new());
                         },
-                        "取消"
+                        {BTN_CANCEL}
                     }
                 }
             }
@@ -164,11 +170,11 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
             div { class: "flex flex-wrap items-end gap-2",
                 InputCell { label: "别名", value: name, placeholder: "gpt-4o", grow: true }
-                InputCell { label: "展示名", value: display, placeholder: "GPT-4o（可选）", grow: true }
+                InputCell { label: FIELD_DISPLAY, value: display, placeholder: "GPT-4o（可选）", grow: true }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
-                    if editing().is_some() { "更新" } else { "新增" }
+                    if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
                 if editing().is_some() {
                     button {
@@ -178,7 +184,7 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                             name.set(String::new());
                             display.set(String::new());
                         },
-                        "取消"
+                        {BTN_CANCEL}
                     }
                 }
             }

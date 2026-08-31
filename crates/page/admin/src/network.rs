@@ -607,6 +607,15 @@ enum Drag {
     Select,
 }
 
+// —— 共享文案 (HUD 按钮 / 抽屉页签 / 节点层名) ——
+const LBL_GROUP: &str = "分组";
+const LBL_ALIAS: &str = "模型别名";
+const LBL_DISPATCH: &str = "调度模型";
+const LBL_NODES: &str = "节点";
+const BTN_IMPORT: &str = "导入";
+const BTN_SETTINGS: &str = "设置";
+const BTN_FIT: &str = "适配";
+
 #[component]
 pub fn NetworkPanel() -> Element {
     let store = use_context::<EntityStore>();
@@ -1029,12 +1038,12 @@ pub fn NetworkPanel() -> Element {
                     button {
                         class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
                         onclick: move |_| drawer_tab.set(DrawerTab::Settings),
-                        "设置"
+                        {BTN_SETTINGS}
                     }
                     button {
                         class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
                         onclick: move |_| drawer_tab.set(DrawerTab::Import),
-                        "导入"
+                        {BTN_IMPORT}
                     }
                     button {
                         class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
@@ -1056,7 +1065,7 @@ pub fn NetworkPanel() -> Element {
                             pan.set((px, py));
                             zoom.set(z);
                         },
-                        "适配"
+                        {BTN_FIT}
                     }
                 }
                     }
@@ -1223,7 +1232,7 @@ pub fn NetworkPanel() -> Element {
 
                     // 层标题留在屏幕空间（在 pan 组之外），缩放平移时不动。
                     // 1240807 那次改动误删了这三个标签，此处恢复并改用新术语。
-                    for (label, y) in [("分组", ROW_Y[0]), ("模型别名", ROW_Y[1]), ("调度模型", ROW_Y[2])] {
+                    for (label, y) in [(LBL_GROUP, ROW_Y[0]), (LBL_ALIAS, ROW_Y[1]), (LBL_DISPATCH, ROW_Y[2])] {
                         text {
                             class: "select-none",
                             x: "8",
@@ -1648,7 +1657,7 @@ pub fn NetworkPanel() -> Element {
                     aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
                         DrawerHeader {
                             tab: drawer_tab(),
-                            title: "导入".to_string(),
+                            title: BTN_IMPORT.to_string(),
                             subtitle: "把 JSON 包进来，一个渠道一个".to_string(),
                             on_tab: move |t: DrawerTab| drawer_tab.set(t),
                             on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
@@ -1850,7 +1859,7 @@ fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
     rsx! {
         div { class: "shrink-0 border-b border-zinc-800",
             div { class: "flex",
-                for (t, label) in [(DrawerTab::Node, "节点"), (DrawerTab::Settings, "设置"), (DrawerTab::Import, "导入")] {
+                for (t, label) in [(DrawerTab::Node, LBL_NODES), (DrawerTab::Settings, BTN_SETTINGS), (DrawerTab::Import, BTN_IMPORT)] {
                     {
                         let active = t == active;
                         let tone = if active {
@@ -1885,7 +1894,7 @@ fn DrawerHeader(
         div { class: "shrink-0 border-b border-zinc-800",
             // 页签栏放在最顶部（保持不动，下面才是标题）
             div { class: "flex",
-                for (t, label) in [(DrawerTab::Node, "节点"), (DrawerTab::Settings, "设置"), (DrawerTab::Import, "导入")] {
+                for (t, label) in [(DrawerTab::Node, LBL_NODES), (DrawerTab::Settings, BTN_SETTINGS), (DrawerTab::Import, BTN_IMPORT)] {
                     {
                         let active = t == tab;
                         let tone = if active {
@@ -2016,9 +2025,9 @@ fn NodeInspector(
 ) -> Element {
     let title = node_title_from_store(node);
     let kind_label = match node {
-        NodeKey::Group(_) => "分组",
-        NodeKey::Mapping(_) => "模型别名",
-        NodeKey::Dispatch(_) => "调度模型",
+        NodeKey::Group(_) => LBL_GROUP,
+        NodeKey::Mapping(_) => LBL_ALIAS,
+        NodeKey::Dispatch(_) => LBL_DISPATCH,
     };
     let accent = accent_color(node);
 
@@ -2276,5 +2285,114 @@ fn InspectList(title: &'static str, items: Vec<String>, empty: &'static str) -> 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 测试专用快照构造: 不经过 EntityStore (Signal 需要 Dioxus runtime),
+    // 直接摆数据 —— GraphView 是纯结构体, 可在裸测试环境里构造。
+    fn test_view() -> GraphView {
+        GraphView {
+            groups: vec!["default".into(), "claude".into(), "vip".into()],
+            aliases: vec!["gpt-4o".into(), "gpt-5".into(), "claude-sonnet-4".into()],
+            channels: vec!["OpenAI".into(), "Claude".into(), "OneAPI".into()],
+            dispatch: vec![
+                (0usize, "gpt-4o".to_string()),
+                (0, "gpt-5".to_string()),
+                (1, "claude-sonnet-4".to_string()),
+            ],
+        }
+    }
+
+    /// 落位要覆盖全部可见节点且不越出画布。
+    #[test]
+    fn initial_layout_covers_all_visible_nodes_in_view() {
+        let view = test_view();
+        let pos = initial_positions(&view);
+        let pos = initial_positions(&view);
+        for layer in visible_layers_of(&view) {
+            for k in &layer {
+                let (x, y) = pos[k];
+                assert!(
+                    x >= MARGIN && x <= VIEW_W - MARGIN,
+                    "{k:?} x={x} out of view"
+                );
+                assert!(y >= 0.0 && y <= VIEW_H, "{k:?} y={y} out of view");
+            }
+        }
+    }
+
+    #[test]
+    fn initial_layout_no_same_layer_overlap() {
+        let view = test_view();
+        let pos = initial_positions(&view);
+        let all: Vec<NodeKey> = visible_layers_of(&view).into_iter().flatten().collect();
+        for (i, a) in all.iter().enumerate() {
+            for b in &all[i + 1..] {
+                let (pa, pb) = (pos[a], pos[b]);
+                let clash = (pb.0 - pa.0).abs() < NODE_W && (pb.1 - pa.1).abs() < NODE_H;
+                assert!(!clash, "{a:?} {pa:?} overlaps {b:?} {pb:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn bezier_start_end_match_input() {
+        let a = (10.0, 20.0);
+        let b = (110.0, 220.0);
+        let d = bezier(a, b);
+        // "M 10 20 C ... 110 220" — 首尾坐标要出现在 path 里
+        assert!(d.starts_with("M 10 20"), "path: {d}");
+        assert!(d.ends_with("110 220"), "path: {d}");
+    }
+
+    #[test]
+    fn cubic_at_endpoints() {
+        let p0 = (0.0, 0.0);
+        let p3 = (1.0, 0.0);
+        let p1 = (0.0, 0.0);
+        let p2 = (1.0, 0.0);
+        assert_eq!(cubic_at(p0, p1, p2, p3, 0.0), p0);
+        assert_eq!(cubic_at(p0, p1, p2, p3, 1.0), p3);
+        let mid = cubic_at(p0, p1, p2, p3, 0.5);
+        assert!(mid.1.abs() < 1e-9, "零偏置 mid y 应为 0, got {}", mid.1);
+    }
+
+    #[test]
+    fn ease_out_quint_monotonic_endpoints() {
+        assert_eq!(ease_out_quint(0.0), 0.0);
+        assert!((ease_out_quint(1.0) - 1.0).abs() < 1e-9);
+        let samples: Vec<f64> = (0..=10).map(|i| ease_out_quint(i as f64 / 10.0)).collect();
+        for w in samples.windows(2) {
+            assert!(w[0] <= w[1], "ease_out_quint 必须单调递增");
+        }
+    }
+
+    #[test]
+    fn dodge_frac_zero_when_no_blockers() {
+        let a = (0.0, 0.0);
+        let b = (200.0, 0.0);
+        assert_eq!(dodge_frac(a, b, &[]), 0.0, "无遮挡时首候选 0.0 即无碰撞");
+    }
+
+    #[test]
+    fn fit_view_centers_point_set() {
+        let pts = vec![(0.0, 0.0), (100.0, 0.0), (50.0, 50.0)];
+        let ((cx, cy), _z) = fit_view(&pts);
+        let (sum_x, sum_y): (f64, f64) = pts.iter().fold((0.0, 0.0), |a, p| (a.0 + p.0, a.1 + p.1));
+        // 中心应接近点集质心(近似; 允许 zoom/pan 常数误差)
+        let expect_cx = sum_x / pts.len() as f64;
+        let expect_cy = sum_y / pts.len() as f64;
+        assert!(
+            (cx - expect_cx).abs() < VIEW_W,
+            "cx={cx} too far from {expect_cx}"
+        );
+        assert!(
+            (cy - expect_cy).abs() < VIEW_H,
+            "cy={cy} too far from {expect_cy}"
+        );
     }
 }

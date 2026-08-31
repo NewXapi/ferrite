@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::{composite, ModelStat, MODELS};
+use crate::api::{MODELS, ModelStat, composite};
 
 /// 综合排行: 按六维均值排序.
 #[component]
@@ -58,7 +58,11 @@ pub fn RidgeCard() -> Element {
                 let x = x as f64;
                 let y = 60.0 * (-(x - mu).powi(2) / (2.0 * sigma * sigma)).exp()
                     + 22.0 * (-(x - mu - 9.0).powi(2) / (2.0 * 5.0 * 5.0)).exp();
-                d.push_str(&format!(" L {:.1} {:.1}", 56.0 + x * 7.0, baseline - y * 0.28));
+                d.push_str(&format!(
+                    " L {:.1} {:.1}",
+                    56.0 + x * 7.0,
+                    baseline - y * 0.28
+                ));
             }
             d.push_str(&format!(" L {:.1} {baseline:.1} Z", 56.0 + N as f64 * 7.0));
             (m.name.to_string(), d, baseline)

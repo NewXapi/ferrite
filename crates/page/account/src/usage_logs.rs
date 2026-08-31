@@ -23,9 +23,22 @@ struct LogEntry {
 
 #[component]
 pub fn UsageLogsPanel() -> Element {
-    let mut selected_model = use_signal(|| "全部".to_string());
-    let mut selected_status = use_signal(|| "全部".to_string());
-    let mut selected_range = use_signal(|| "7天".to_string());
+    // —— 业务枚举 (显示 / 内部双套:对外标签是「近 7 天」/「近 30 天」, 内部 key 是「7天」/「30天」做 cutoff 计算) ——
+    const FILTER_ALL: &str = "全部";
+    const STATUS_SUCCESS: &str = "成功";
+    const STATUS_FAIL: &str = "失败";
+    const RANGE_TODAY: &str = "今天";
+    const RANGE_7D: &str = "7天";
+    const RANGE_30D: &str = "30天";
+    const LABEL_TODAY: &str = "今天";
+    const LABEL_7D: &str = "近 7 天";
+    const LABEL_30D: &str = "近 30 天";
+    const SEC_STATS: &str = "用量统计";
+    const SEC_LOGS: &str = "请求日志";
+
+    let mut selected_model = use_signal(|| FILTER_ALL.to_string());
+    let mut selected_status = use_signal(|| FILTER_ALL.to_string());
+    let mut selected_range = use_signal(|| RANGE_7D.to_string());
     let mut detail = use_signal(|| None::<LogEntry>);
     let mut visible_count = use_signal(|| 8usize);
 
@@ -36,18 +49,18 @@ pub fn UsageLogsPanel() -> Element {
     let filtered_logs = use_memo(move || {
         let now = Utc::now();
         let cutoff = match selected_range().as_str() {
-            "今天" => now - Duration::days(1),
-            "7天" => now - Duration::days(7),
+            RANGE_TODAY => now - Duration::days(1),
+            RANGE_7D => now - Duration::days(7),
             _ => now - Duration::days(30), // 30天
         };
 
         let status_filter = match selected_status().as_str() {
-            "成功" => Some(true),
-            "失败" => Some(false),
+            STATUS_SUCCESS => Some(true),
+            STATUS_FAIL => Some(false),
             _ => None,
         };
 
-        let model_filter = if selected_model() == "全部" {
+        let model_filter = if selected_model() == FILTER_ALL {
             None
         } else {
             Some(selected_model().clone())
@@ -106,16 +119,16 @@ pub fn UsageLogsPanel() -> Element {
             ScrollSpyNav {
                 container: "panel-scroll",
                 items: vec![
-                    ("用量统计".to_string(), "usage-sec-stats".to_string()),
+                    ({SEC_STATS}.to_string(), "usage-sec-stats".to_string()),
                     ("筛选".to_string(), "usage-sec-filter".to_string()),
-                    ("请求日志".to_string(), "usage-sec-logs".to_string()),
+                    ({SEC_LOGS}.to_string(), "usage-sec-logs".to_string()),
                 ],
             }
 
                 div { class: "flex flex-col gap-6",
             // 统计卡 - 1/3/5 grid
             section { id: "usage-sec-stats", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "用量统计" }
+                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
                 for &(value, label) in stats {
                     StatCard { value, label }
@@ -142,21 +155,21 @@ pub fn UsageLogsPanel() -> Element {
                         on_select: move |i: usize| selected_model.set(models[i].to_string()),
                     }
                     SegmentedCapsule {
-                        items: vec!["全部".to_string(), "成功".to_string(), "失败".to_string()],
-                        active: ["全部", "成功", "失败"].iter().position(|s| s == &selected_status().as_str()).unwrap_or(0),
-                        on_select: move |i: usize| selected_status.set(["全部", "成功", "失败"][i].to_string()),
+                        items: vec![FILTER_ALL.to_string(), STATUS_SUCCESS.to_string(), STATUS_FAIL.to_string()],
+                        active: [FILTER_ALL, STATUS_SUCCESS, STATUS_FAIL].iter().position(|s| s == &selected_status().as_str()).unwrap_or(0),
+                        on_select: move |i: usize| selected_status.set([FILTER_ALL, STATUS_SUCCESS, STATUS_FAIL][i].to_string()),
                     }
                     SegmentedCapsule {
-                        items: vec!["今天".to_string(), "近 7 天".to_string(), "近 30 天".to_string()],
-                        active: ["今天", "7天", "30天"].iter().position(|s| s == &selected_range().as_str()).unwrap_or(0),
-                        on_select: move |i: usize| selected_range.set(["今天", "7天", "30天"][i].to_string()),
+                        items: vec![LABEL_TODAY.to_string(), LABEL_7D.to_string(), LABEL_30D.to_string()],
+                        active: [RANGE_TODAY, RANGE_7D, RANGE_30D].iter().position(|s| s == &selected_range().as_str()).unwrap_or(0),
+                        on_select: move |i: usize| selected_range.set([RANGE_TODAY, RANGE_7D, RANGE_30D][i].to_string()),
                     }
                 }
             }
 
             // 日志卡片网格(宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏)
             section { id: "usage-sec-logs", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "请求日志" }
+                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LOGS}" }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
                     for log in displayed_logs {
                         LogCard {
