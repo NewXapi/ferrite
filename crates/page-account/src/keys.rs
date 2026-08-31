@@ -13,7 +13,7 @@ pub fn KeysPanel() -> Element {
     const SEC_KEYS: &str = "我的密钥";
 
     let mut show_new_form = use_signal(|| false);
-    let mut new_name = use_signal(|| String::new());
+    let mut new_name = use_signal(String::new);
     let new_group = use_signal(|| "default".to_string());
     let new_quota = use_signal(|| "5000000".to_string());
 

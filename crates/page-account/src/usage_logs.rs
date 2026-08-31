@@ -5,6 +5,10 @@ use ui::SegmentedCapsule;
 
 use crate::api;
 
+// —— 跨组件共享文案 (UsageLogsPanel / LogCard / LogDetailModal 同用) ——
+const STATUS_SUCCESS: &str = "成功";
+const STATUS_FAIL: &str = "失败";
+
 /// 面板内的日志视图模型:拥有所有权,可放进 signal 做详情弹窗。
 #[derive(Clone, PartialEq)]
 struct LogEntry {
@@ -24,9 +28,8 @@ struct LogEntry {
 #[component]
 pub fn UsageLogsPanel() -> Element {
     // —— 业务枚举 (显示 / 内部双套:对外标签是「近 7 天」/「近 30 天」, 内部 key 是「7天」/「30天」做 cutoff 计算) ——
+    //  STATUS_* 提升到模块级: LogCard / LogDetailModal 的状态徽标同用
     const FILTER_ALL: &str = "全部";
-    const STATUS_SUCCESS: &str = "成功";
-    const STATUS_FAIL: &str = "失败";
     const RANGE_TODAY: &str = "今天";
     const RANGE_7D: &str = "7天";
     const RANGE_30D: &str = "30天";
@@ -73,15 +76,15 @@ pub fn UsageLogsPanel() -> Element {
                 if log_time < cutoff {
                     return false;
                 }
-                if let Some(want_status) = status_filter {
-                    if entry.success != want_status {
-                        return false;
-                    }
+                if let Some(want_status) = status_filter
+                    && entry.success != want_status
+                {
+                    return false;
                 }
-                if let Some(want_model) = &model_filter {
-                    if entry.model != want_model {
-                        return false;
-                    }
+                if let Some(want_model) = &model_filter
+                    && entry.model != want_model
+                {
+                    return false;
                 }
                 true
             })
@@ -229,7 +232,7 @@ fn fmt_num(n: u32) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -297,7 +300,7 @@ fn LogCard(log: LogEntry, on_open: EventHandler<LogEntry>) -> Element {
                 span { class: "h-2.5 w-2.5 shrink-0 rounded-full {model_color}" }
                 span { class: "truncate font-mono text-sm text-zinc-200", "{log.model}" }
                 span { class: "shrink-0 rounded-full border px-2 py-0.5 text-xs {badge_class}",
-                    if log.status { "成功" } else { "失败" }
+                    if log.status { {STATUS_SUCCESS} } else { {STATUS_FAIL} }
                 }
             }
             div { class: "mt-2 flex items-baseline justify-between gap-2",
@@ -374,7 +377,7 @@ fn LogDetailModal(log: LogEntry, on_close: EventHandler<()>) -> Element {
                     div { class: "flex items-center gap-2",
                         h3 { class: "text-base font-semibold text-zinc-100", "日志详情" }
                         span { class: "rounded-full border px-2 py-0.5 text-xs {badge_class}",
-                            if log.status { "成功" } else { "失败" }
+                            if log.status { {STATUS_SUCCESS} } else { {STATUS_FAIL} }
                         }
                     }
                     button {

@@ -1,6 +1,6 @@
 use gloo_net::http::Request;
 use http::{Method, StatusCode};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -161,7 +161,7 @@ impl ApiClient {
         let builder = if let Some(extra) = headers {
             let mut b = builder;
             for (name, value) in extra {
-                b = b.header(name, *value);
+                b = b.header(name, value);
             }
             b
         } else {

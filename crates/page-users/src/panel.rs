@@ -83,14 +83,14 @@ pub fn UsersPanel() -> Element {
     };
 
     // 打开新建/编辑弹窗时预填字段
-    let mut open_new = move |_| {
+    let open_new = move |_| {
         f_username.set(String::new());
         f_email.set(String::new());
         f_quota.set("5000000".to_string());
         f_group.set("default".to_string());
         form.set(Form::New);
     };
-    let mut open_edit = move |id: u32| {
+    let open_edit = move |id: u32| {
         if let Some(u) = api::fetch_user(id) {
             f_username.set(u.username.to_string());
             f_email.set(u.email.to_string());
@@ -133,7 +133,7 @@ pub fn UsersPanel() -> Element {
                         h2 { class: "text-sm font-medium text-zinc-300", "筛选用户" }
                         button {
                             class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
-                            onclick: move |e| open_new(e),
+                            onclick: open_new,
                             "✚ 新建用户"
                         }
                     }
@@ -186,8 +186,8 @@ pub fn UsersPanel() -> Element {
                                 UserCard {
                                     key: "{user.id}",
                                     user: user,
-                                    on_edit: move |id| open_edit(id),
-                                    on_topup: move |id| topup.set(Some(id)),
+                                    on_edit: open_edit,
+                                    on_topup: move |id: u32| topup.set(Some(id)),
                                 }
                             }
                         }

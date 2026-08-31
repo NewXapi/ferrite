@@ -7,7 +7,7 @@ use crate::api::{self, Invitee, Recharge, RewardStat};
 #[component]
 pub fn RewardsPanel() -> Element {
     let mut show_copied = use_signal(|| false);
-    let mut redeem_code = use_signal(|| String::new());
+    let mut redeem_code = use_signal(String::new);
     let mut show_success = use_signal(|| false);
 
     let wallet = api::fetch_wallet();

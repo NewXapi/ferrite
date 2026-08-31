@@ -70,10 +70,10 @@ pub fn ScrollSpyNav(
                     "#
                 ));
                 while let Ok(v) = ev.recv::<Vec<f64>>().await {
-                    if let Some(a) = v.first() {
-                        if (*a as usize) < n {
-                            active.set(*a as usize);
-                        }
+                    if let Some(a) = v.first()
+                        && (*a as usize) < n
+                    {
+                        active.set(*a as usize);
                     }
                     if let Some(&c) = v.get(1) {
                         can_scroll.set(c > 0.5);

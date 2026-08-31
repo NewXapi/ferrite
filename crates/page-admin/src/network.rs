@@ -386,10 +386,10 @@ fn focus_cone(start: NodeKey, edges: &[(NodeKey, NodeKey)]) -> HashSet<NodeKey> 
             } else {
                 None
             };
-            if let Some(m) = next {
-                if seen.insert(m) {
-                    queue.push_back(m);
-                }
+            if let Some(m) = next
+                && seen.insert(m)
+            {
+                queue.push_back(m);
             }
         }
     }
@@ -449,11 +449,11 @@ fn layout_subgraph(
                     } else {
                         None
                     };
-                    if let Some(o) = other {
-                        if let Some(op) = out.get(&o) {
-                            sum += op.0;
-                            cnt += 1.0;
-                        }
+                    if let Some(o) = other
+                        && let Some(op) = out.get(&o)
+                    {
+                        sum += op.0;
+                        cnt += 1.0;
                     }
                 }
                 if cnt > 0.0 {
@@ -615,6 +615,8 @@ const LBL_NODES: &str = "节点";
 const BTN_IMPORT: &str = "导入";
 const BTN_SETTINGS: &str = "设置";
 const BTN_FIT: &str = "适配";
+const FIELD_DISPLAY: &str = "展示名";
+const EXAMPLE_CHANNEL: &str = "OpenAI 官方";
 
 #[component]
 pub fn NetworkPanel() -> Element {
@@ -655,7 +657,7 @@ pub fn NetworkPanel() -> Element {
     let mut marquee = use_signal(|| None::<((f64, f64), (f64, f64))>);
     // Per-edge dodge curve factor, eased by the ticker (0 = straight).
     let mut dodge = use_signal(HashMap::<(NodeKey, NodeKey), f64>::new);
-    let mut positions = use_signal(|| HashMap::<NodeKey, (f64, f64)>::new());
+    let mut positions = use_signal(HashMap::<NodeKey, (f64, f64)>::new);
     // Live spring layout: a 16ms ticker integrates forces frame by frame.
     // Structure changes (wires / collapse) bump `wake`; the loop steps while
     // it's woken, while a node is being dragged, or while energy remains,
@@ -897,10 +899,10 @@ pub fn NetworkPanel() -> Element {
                     } else {
                         None
                     };
-                    if let Some(m) = next {
-                        if seen.insert(m) {
-                            queue.push_back(m);
-                        }
+                    if let Some(m) = next
+                        && seen.insert(m)
+                    {
+                        queue.push_back(m);
                     }
                 }
             }
@@ -946,12 +948,11 @@ pub fn NetworkPanel() -> Element {
     let drag_now = drag();
     let hover_now = hover();
     let temp_end: (f64, f64) = (|| {
-        if let (Some(Drag::Wire { src }), Some(t)) = (drag_now, hover_now) {
-            if let Some(pair) = normalize(src, t) {
-                if !edges_read(&edges).contains(&pair) {
-                    return anchor(t, t.layer() == 0 || pair.0 == t);
-                }
-            }
+        if let (Some(Drag::Wire { src }), Some(t)) = (drag_now, hover_now)
+            && let Some(pair) = normalize(src, t)
+            && !edges_read(&edges).contains(&pair)
+        {
+            return anchor(t, t.layer() == 0 || pair.0 == t);
         }
         cursor_world()
     })();
@@ -1465,11 +1466,10 @@ pub fn NetworkPanel() -> Element {
                                                         {
                                                             let mut ew = edges.write();
                                                             for s in sources {
-                                                                if let Some(pair) = normalize(s, key) {
-                                                                    if ew.insert(pair) {
+                                                                if let Some(pair) = normalize(s, key)
+                                                                    && ew.insert(pair) {
                                                                         batch.push(pair);
                                                                     }
-                                                                }
                                                             }
                                                         }
                                                         if !batch.is_empty() {
@@ -1641,8 +1641,8 @@ pub fn NetworkPanel() -> Element {
                             ScrollSpyNav {
                                 container: "ent-scroll",
                                 items: vec![
-                                    ("分组".to_string(), "ent-card-0".to_string()),
-                                    ("模型别名".to_string(), "ent-card-1".to_string()),
+                                    ({LBL_GROUP}.to_string(), "ent-card-0".to_string()),
+                                    ({LBL_ALIAS}.to_string(), "ent-card-1".to_string()),
                                     ("渠道".to_string(), "ent-card-2".to_string()),
                                 ],
                             }
@@ -1718,6 +1718,7 @@ fn display_edge_pairs(
 /// them, nothing snaps back to any row. Two boids-style forces only:
 /// - rope spring on each link: zero while slack, tugs beyond REST length
 /// - all-pairs separation: overlapping nodes push apart like billiard balls
+///
 /// Returns max speed for the sleep decision; `held` follows the cursor.
 fn physics_step(
     layers: &[Vec<NodeKey>; 3],
@@ -1956,7 +1957,7 @@ fn ImportPanel() -> Element {
                 input {
                     class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                     value: "{alias.read()}",
-                    placeholder: "OpenAI 官方",
+                    placeholder: EXAMPLE_CHANNEL,
                     oninput: move |e| alias.set(e.value()),
                 }
             }
@@ -2092,7 +2093,7 @@ fn GroupInspect(index: usize) -> Element {
             on_change: move |v: String| store.groups.write()[index].name = v,
         }
         BoundField {
-            label: "展示名",
+            label: FIELD_DISPLAY,
             value: r.display,
             placeholder: "默认分组",
             on_change: move |v: String| store.groups.write()[index].display = v,
@@ -2135,7 +2136,7 @@ fn AliasInspect(index: usize) -> Element {
             on_change: move |v: String| store.aliases.write()[index].alias = v,
         }
         BoundField {
-            label: "展示名",
+            label: FIELD_DISPLAY,
             value: r.display,
             placeholder: "GPT-4o",
             on_change: move |v: String| store.aliases.write()[index].display = v,
@@ -2179,7 +2180,7 @@ fn DispatchInspect(index: usize) -> Element {
                 BoundField {
                     label: "渠道名称",
                     value: c.name,
-                    placeholder: "OpenAI 官方",
+                    placeholder: EXAMPLE_CHANNEL,
                     on_change: move |v: String| store.channels.write()[ci].name = v,
                 }
                 BoundField {
