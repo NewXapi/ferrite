@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use super::data::{avg_norms, composite, dim_rank, dim_raw, key_stats, norms, ModelStat, DIMS};
+use crate::api::{avg_norms, composite, dim_rank, dim_raw, key_stats, norms, ModelStat, DIMS};
 
 /// 卡牌倾斜 hover 的通用几何: 返回 (rotateX, rotateY).
 /// ponytail: 卡片尺寸硬编码 (246x368 / 460x320), 只是演示用.

@@ -1,44 +1,24 @@
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use dioxus::prelude::*;
 
+use crate::api;
+
 // Layout convention (共享给所有面板组件, 详见仓库 README.md):
 //   页面网格  `grid-cols-1 md:grid-cols-3 xl:grid-cols-5`  —— 手机 1 栏 / 平板 3 栏 / Web 5 栏。
 //   小卡片(统计卡)占 1 栏; 宽面板并排: 热力图类 `md:col-span-2 xl:col-span-3`,
 //   列表/分布类 `md:col-span-1 xl:col-span-2`; 手机端一律堆叠, 定宽内容用横向滚动。
-const STATS: [(&str, &str); 8] = [
-    ("38.42B", "TOKEN 总量"),
-    ("$31.86K", "总成本"),
-    ("312", "活跃天数"),
-    ("97", "当前连续天数"),
-    ("3,101h", "活跃时间"),
-    ("430.2M", "单日峰值"),
-    ("gpt-5.6-sol", "最常用模型"),
-    ("283.0K", "消息数"),
-];
-
-const TOOLS: [(&str, &str, f64); 4] = [
-    ("Codex", "24.96B", 65.0),
-    ("Claude Code", "9.84B", 25.6),
-    ("Hermes", "2.74B", 7.1),
-    ("Cursor", "880.0M", 2.3),
-];
-
-const MODELS: [(&str, &str, f64); 4] = [
-    ("gpt-5.6-sol", "15.80B", 41.1),
-    ("claude-fable-5", "10.92B", 28.4),
-    ("kimi-k3", "6.84B", 17.8),
-    ("glm-5.2", "4.86B", 12.7),
-];
 
 /// Overview canvas (总览): responsive odd-column grid — 2 cols on mobile,
 /// 3 on md, 5 on xl; wide sections span every column.
-/// All data is mocked; grayscale only.
+/// 数据经 `api` 取用;grayscale only.
 #[component]
 pub fn OverviewPanel() -> Element {
+    let stats = api::fetch_stats();
+
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-5",
-                for (value, label) in STATS {
+                for &(value, label) in stats {
                     StatCard { value, label }
                 }
             }
@@ -250,8 +230,8 @@ enum BreakdownTab {
 fn BreakdownTabs() -> Element {
     let mut tab = use_signal(|| BreakdownTab::Tools);
     let (title, items) = match tab() {
-        BreakdownTab::Tools => ("按工具", TOOLS.as_slice()),
-        BreakdownTab::Models => ("按模型", MODELS.as_slice()),
+        BreakdownTab::Tools => ("按工具", api::fetch_tools()),
+        BreakdownTab::Models => ("按模型", api::fetch_models()),
     };
     let tools_cls = tab_class(tab() == BreakdownTab::Tools);
     let models_cls = tab_class(tab() == BreakdownTab::Models);

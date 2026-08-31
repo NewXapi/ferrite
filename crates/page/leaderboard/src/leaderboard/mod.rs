@@ -1,13 +1,14 @@
 //! Restored leaderboard page: composition + cards + charts + data.
+//! 面板取数统一走 `crate::api`(它再指回本模块的 `data` 层)。
 pub mod data;
 mod cards;
 mod charts;
 
-pub use cards::{MiniRadarCard, PosterImageCard};
-pub use charts::{BubbleCard, RankListCard, RidgeCard};
-pub use data::{composite, ModelStat, MODELS};
-
 use dioxus::prelude::*;
+
+use crate::api::{composite, ModelStat, MODELS};
+use cards::{MiniRadarCard, PosterImageCard};
+use charts::{BubbleCard, RankListCard, RidgeCard};
 
 #[component]
 pub fn LeaderboardPanel() -> Element {

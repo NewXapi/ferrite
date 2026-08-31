@@ -2194,6 +2194,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock"
+version = "0.1.0"
+
+[[package]]
 name = "multer"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2246,11 +2250,13 @@ version = "0.1.0"
 dependencies = [
  "client",
  "dioxus",
+ "page-account",
  "page-admin",
  "page-auth",
  "page-leaderboard",
  "page-models",
  "page-overview",
+ "page-users",
  "ui",
  "wasm-bindgen",
  "web-sys",
@@ -2360,6 +2366,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "page-account"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dioxus",
+ "gloo-timers",
+ "mock",
+ "ui",
+]
+
+[[package]]
 name = "page-admin"
 version = "0.1.0"
 dependencies = [
@@ -2392,6 +2409,7 @@ name = "page-models"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "mock",
 ]
 
 [[package]]
@@ -2400,6 +2418,16 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dioxus",
+ "mock",
+]
+
+[[package]]
+name = "page-users"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "mock",
+ "ui",
 ]
 
 [[package]]

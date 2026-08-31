@@ -3,14 +3,17 @@ resolver = "2"
 members = [
     "apps/api",
     "apps/web",
+    "crates/shared/mock",
     "crates/shared/client",
     "crates/shared/session",
     "crates/ui",
     "crates/page/auth",
     "crates/page/overview",
+    "crates/page/account",
     "crates/page/models",
     "crates/page/leaderboard",
     "crates/page/admin",
+    "crates/page/users",
 ]
 
 [workspace.package]

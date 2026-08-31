@@ -6,8 +6,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::ChannelRow;
-use crate::state::EntityStore;
+use crate::state::{ChannelRow, EntityStore};
 
 #[component]
 pub fn EntitiesPanel() -> Element {
@@ -54,11 +53,9 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 groups.write()[i].name = n;
                 groups.write()[i].display = d;
             }
-            None => groups.write().push(crate::api::GroupRow {
+            None => groups.write().push(crate::state::GroupRow {
                 name: n,
                 display: d,
-                enabled: true,
-                description: String::new(),
             }),
         }
         name.set(String::new());
@@ -146,7 +143,7 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 aliases.write()[i].alias = n;
                 aliases.write()[i].display = d;
             }
-            None => aliases.write().push(crate::api::AliasRow {
+            None => aliases.write().push(crate::state::AliasRow {
                 alias: n,
                 display: d,
             }),
@@ -262,9 +259,6 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                             keys: String::new(),
                             candidates: vec![],
                             dispatch: vec![],
-                            enabled: true,
-                            groups: vec![],
-                            remark: String::new(),
                         });
                         let last = channels.read().len() - 1;
                         current.set(last);

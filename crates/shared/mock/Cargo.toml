@@ -1,10 +1,8 @@
 [package]
-name = "page-models"
+name = "mock"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[dependencies]
-dioxus = { workspace = true }
-mock = { path = "../../shared/mock" }
+# 纯静态数据,不引任何依赖

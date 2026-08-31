@@ -3,112 +3,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use dioxus::prelude::*;
 
 use crate::entities::EntitiesPanel;
-use crate::ui::ScrollSpyNav;
 use crate::state::EntityStore;
-
-/// 模型名的族前缀：第一个 `-` 之前的部分（`gpt-4o` → `gpt`）。
-// ponytail: 纯前缀切分，够用；真要族表再从后端下发
-fn family(name: &str) -> String {
-    name.split('-').next().unwrap_or(name).to_string()
-}
-
-/// 保序去重，族列表的下标就是 NodeKey 的下标。
-fn dedup_families(it: impl Iterator<Item = String>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for s in it {
-        if !out.contains(&s) {
-            out.push(s);
-        }
-    }
-    out
-}
-
-/// 可选层别：两条泳道各挑一种。`Mapping`（别名本体）不参选，
-/// 它只当 `walk_edges` 的中转跳点，所以 `kind_of` 对它返回 None。
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum KindSel {
-    Group,
-    AliasType,
-    Channel,
-    ChannelType,
-    Dispatch,
-}
-
-impl KindSel {
-    /// 左侧竖排按钮的顺序 = 规范链序。
-    const ALL: [KindSel; 5] = [
-        KindSel::Group,
-        KindSel::AliasType,
-        KindSel::Channel,
-        KindSel::ChannelType,
-        KindSel::Dispatch,
-    ];
-
-    fn label(self) -> &'static str {
-        match self {
-            KindSel::Group => "分组",
-            KindSel::AliasType => "别名族",
-            KindSel::Channel => "渠道",
-            KindSel::ChannelType => "模型族",
-            KindSel::Dispatch => "调度模型",
-        }
-    }
-
-    /// 与 `NodeKey::rank` 同一把尺子。
-    fn rank(self) -> u8 {
-        match self {
-            KindSel::Group => 0,
-            KindSel::AliasType => 1,
-            KindSel::Channel => 3,
-            KindSel::ChannelType => 4,
-            KindSel::Dispatch => 5,
-        }
-    }
-}
-
-/// 节点 → 层别。别名本体不是可选层，返回 None。
-fn kind_of(key: NodeKey) -> Option<KindSel> {
-    Some(match key {
-        NodeKey::Group(_) => KindSel::Group,
-        NodeKey::AliasType(_) => KindSel::AliasType,
-        NodeKey::Channel(_) => KindSel::Channel,
-        NodeKey::ChannelType(_) => KindSel::ChannelType,
-        NodeKey::Dispatch(_) => KindSel::Dispatch,
-        NodeKey::Mapping(_) => return None,
-    })
-}
-
-/// 某层别当前的全部节点。
-fn nodes_of_kind(view: &GraphView, kind: KindSel) -> Vec<NodeKey> {
-    match kind {
-        KindSel::Group => (0..view.groups.len()).map(NodeKey::Group).collect(),
-        KindSel::AliasType => (0..view.alias_types.len())
-            .map(NodeKey::AliasType)
-            .collect(),
-        KindSel::Channel => (0..view.channels.len()).map(NodeKey::Channel).collect(),
-        KindSel::ChannelType => (0..view.channel_types.len())
-            .map(NodeKey::ChannelType)
-            .collect(),
-        KindSel::Dispatch => (0..view.dispatch.len()).map(NodeKey::Dispatch).collect(),
-    }
-}
-
-/// 两条泳道的可见节点：上带 = sel.0，下带 = sel.1。
-fn visible_zones(view: &GraphView, sel: (KindSel, KindSel)) -> [Vec<NodeKey>; 2] {
-    [nodes_of_kind(view, sel.0), nodes_of_kind(view, sel.1)]
-}
-
-/// 节点落在哪条泳道；不属于当前两层则 None（不渲染、不受物理约束）。
-fn zone_of_key(sel: (KindSel, KindSel), key: NodeKey) -> Option<u8> {
-    let k = kind_of(key)?;
-    if k == sel.0 {
-        Some(0)
-    } else if k == sel.1 {
-        Some(1)
-    } else {
-        None
-    }
-}
+use ui::ScrollSpyNav;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
 /// 任一侧改名/增删，其他侧立即反映。
@@ -122,10 +18,6 @@ struct GraphView {
     channels: Vec<String>,
     /// 调度模型：(渠道序号, 模型名)，展开自每个渠道的 dispatch
     dispatch: Vec<(usize, String)>,
-    /// 别名族：`aliases` 按 `family()` 保序去重
-    alias_types: Vec<String>,
-    /// 调度模型族：`dispatch` 模型名按 `family()` 保序去重
-    channel_types: Vec<String>,
 }
 
 impl GraphView {
@@ -150,15 +42,11 @@ impl GraphView {
             .enumerate()
             .flat_map(|(ci, c)| c.dispatch.iter().map(move |m| (ci, m.clone())))
             .collect();
-        let alias_types = dedup_families(aliases.iter().map(|a| family(a)));
-        let channel_types = dedup_families(dispatch.iter().map(|(_, m)| family(m)));
         Self {
             groups,
             aliases,
             channels,
             dispatch,
-            alias_types,
-            channel_types,
         }
     }
 }
@@ -174,9 +62,7 @@ const ALIAS_PALETTE: &[&str] = &[
 fn view_color(_view: &GraphView, key: NodeKey) -> &'static str {
     match key {
         NodeKey::Group(i) => GROUP_PALETTE[i % GROUP_PALETTE.len()],
-        NodeKey::Mapping(i) | NodeKey::AliasType(i) => ALIAS_PALETTE[i % ALIAS_PALETTE.len()],
-        NodeKey::Channel(i) => GROUP_PALETTE[i % GROUP_PALETTE.len()],
-        NodeKey::ChannelType(i) => ALIAS_PALETTE[i % ALIAS_PALETTE.len()],
+        NodeKey::Mapping(i) => ALIAS_PALETTE[i % ALIAS_PALETTE.len()],
         NodeKey::Dispatch(_) => "#3f3f46",
     }
 }
@@ -185,9 +71,6 @@ fn view_title(view: &GraphView, key: NodeKey) -> String {
     match key {
         NodeKey::Group(i) => view.groups.get(i).cloned().unwrap_or_default(),
         NodeKey::Mapping(i) => view.aliases.get(i).cloned().unwrap_or_default(),
-        NodeKey::AliasType(i) => view.alias_types.get(i).cloned().unwrap_or_default(),
-        NodeKey::Channel(i) => view.channels.get(i).cloned().unwrap_or_default(),
-        NodeKey::ChannelType(i) => view.channel_types.get(i).cloned().unwrap_or_default(),
         NodeKey::Dispatch(i) => view
             .dispatch
             .get(i)
@@ -204,31 +87,17 @@ fn view_subtitle(view: &GraphView, key: NodeKey) -> String {
             .and_then(|(ci, _)| view.channels.get(*ci))
             .cloned()
             .unwrap_or_default(),
-        NodeKey::AliasType(i) => {
-            let fam = view.alias_types.get(i);
-            let n = fam
-                .map(|f| view.aliases.iter().filter(|a| &family(a) == f).count())
-                .unwrap_or(0);
-            format!("{n} 个别名")
-        }
-        NodeKey::ChannelType(i) => {
-            let fam = view.channel_types.get(i);
-            let n = fam
-                .map(|f| {
-                    view.dispatch
-                        .iter()
-                        .filter(|(_, m)| &family(m) == f)
-                        .count()
-                })
-                .unwrap_or(0);
-            format!("{n} 个模型")
-        }
-        NodeKey::Channel(i) => {
-            let n = view.dispatch.iter().filter(|(ci, _)| *ci == i).count();
-            format!("{n} 个调度")
-        }
         _ => String::new(),
     }
+}
+
+/// 按 GraphView 尺寸算出可见层。
+fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
+    [
+        (0..view.groups.len()).map(NodeKey::Group).collect(),
+        (0..view.aliases.len()).map(NodeKey::Mapping).collect(),
+        (0..view.dispatch.len()).map(NodeKey::Dispatch).collect(),
+    ]
 }
 
 /// 3-layer interactive routing editor, Mini-Metro flavored:
@@ -253,31 +122,18 @@ fn view_subtitle(view: &GraphView, key: NodeKey) -> String {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum NodeKey {
     Group(usize),
-    /// 模型别名本体。仍是 `edges` 账本的端点（分组↔别名、别名↔调度），
-    /// 但不再是可选泳道；`walk_edges` 把它当中转跳点。
     Mapping(usize),
-    /// 别名族（`GraphView::alias_types` 下标）
-    AliasType(usize),
-    /// 渠道（`GraphView::channels` 下标）
-    Channel(usize),
-    /// 调度模型族（`GraphView::channel_types` 下标）
-    ChannelType(usize),
     /// 调度模型：渠道下真实可用的上游模型。
     Dispatch(usize),
 }
 
 impl NodeKey {
-    /// 规范链序：分组 → 别名族 → 别名 → 渠道 → 模型族 → 调度模型。
-    /// 尺子只有 `KindSel::rank` 一把；别名本体不是可选层，单独占 2。
-    fn rank(self) -> u8 {
-        match self.kind() {
-            Some(k) => k.rank(),
-            None => 2, // NodeKey::Mapping
+    fn layer(self) -> u8 {
+        match self {
+            NodeKey::Group(_) => 0,
+            NodeKey::Mapping(_) => 1,
+            NodeKey::Dispatch(_) => 2,
         }
-    }
-
-    fn kind(self) -> Option<KindSel> {
-        kind_of(self)
     }
 }
 
@@ -304,16 +160,14 @@ const SEED_EDGES: &[(NodeKey, NodeKey)] = &[
 
 const MARGIN: f64 = 110.0;
 const COL_GAP: f64 = 130.0;
-// 两条泳道 + 一条中缝；横向空间留给节点本身，宽带再折行。
-const ZONE_Y: [f64; 2] = [160.0, 540.0];
-/// 每条泳道各自在 ±120 的横带里自由游走。
-const ZONE_HALF: f64 = 120.0;
-/// 中缝 y：两条泳道的正中间，也是分隔虚线的位置。
-const ZONE_MID: f64 = (ZONE_Y[0] + ZONE_Y[1]) / 2.0;
-fn zone_band(zone: u8) -> (f64, f64) {
+// 三层收紧成地图式分层；横向空间留给节点本身，宽层再折行。
+const ROW_Y: [f64; 3] = [100.0, 330.0, 560.0];
+/// Each layer roams freely inside its own horizontal band (±90 around row).
+const BAND_HALF: f64 = 90.0;
+fn band_y(layer: u8) -> (f64, f64) {
     (
-        ZONE_Y[zone as usize] - ZONE_HALF,
-        ZONE_Y[zone as usize] + ZONE_HALF,
+        ROW_Y[layer as usize] - BAND_HALF,
+        ROW_Y[layer as usize] + BAND_HALF,
     )
 }
 // 9 个调度模型按两排显示，避免用过宽 viewBox 把节点缩小。
@@ -322,99 +176,84 @@ const VIEW_H: f64 = 700.0;
 const NODE_W: f64 = 104.0;
 const NODE_H: f64 = 36.0;
 
-/// 一排的纵向间距。
-const ROW_PITCH: f64 = NODE_H + 14.0;
-
-/// 一条泳道的落位：按目标 x 排序 → 折行 → 每排按 COL_GAP 均匀铺开并居中。
-///
-/// 带高是**硬约束**：物理会把节点夹回 `zone_band`，排不进带内的行会被压
-/// 到边界上叠成一坨。所以排数先由带高定，装不下就让每排变长——横向溢出
-/// 靠平移/「适配」还能读，纵向重叠不能。
-fn place_zone(mut placed: Vec<(NodeKey, f64)>, y0: f64, out: &mut HashMap<NodeKey, (f64, f64)>) {
-    placed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    let n = placed.len();
-    if n == 0 {
-        return;
-    }
-    // 带内能放几排：首末排各留半个节点高，别贴边。
-    let rows_max = (((ZONE_HALF * 2.0 - NODE_H) / ROW_PITCH).floor() as usize).max(1);
-    let per_row = n.div_ceil(rows_max).max(1);
-    let row_count = n.div_ceil(per_row);
-    for (chunk_i, chunk) in placed.chunks(per_row).enumerate() {
-        let row_y =
-            y0 + (chunk_i as f64 - (row_count.saturating_sub(1) as f64 / 2.0)) * ROW_PITCH;
-        // 只保留 barycenter 给出的相对次序，间距一律 COL_GAP：
-        // 保序让视觉跳动最小，等距保证一定不重叠。
-        let span = (chunk.len() as f64 - 1.0).max(0.0) * COL_GAP;
-        for (i, &(k, _)) in chunk.iter().enumerate() {
-            out.insert(k, (VIEW_W / 2.0 - span / 2.0 + i as f64 * COL_GAP, row_y));
-        }
-    }
-}
-
 /// Deterministic startup layout, computed from the graph — no physics involved:
-/// 上带按序均匀铺开；下带落在它派生连线的上带邻居重心上。
-/// Physics then only handles collisions and user drags, so the graph no longer
-/// reels inward on open (the old grid was wider than the rope slack radius,
-/// so every link started taut and pulled everything toward the center).
-fn initial_positions(
-    view: &GraphView,
-    sel: (KindSel, KindSel),
-    edges: &HashSet<(NodeKey, NodeKey)>,
-) -> HashMap<NodeKey, (f64, f64)> {
-    let zones = visible_zones(view, sel);
+/// groups spread evenly; each mapping sits at the average x of the groups it
+/// links to; each channel/model sits at the average x of its linked mappings.
+/// Same-type spacing enforced with a left-to-right sweep. Physics then only
+/// handles collisions and user drags, so the graph no longer reels inward
+/// on open (the old grid was wider than the rope slack radius, so every link
+/// started taut and pulled everything toward the center).
+fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
+    let layers = visible_layers_of(view);
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
-    // 上带：绕画布中心按序均匀铺开
-    let n = zones[0].len();
-    let top: Vec<(NodeKey, f64)> = zones[0]
-        .iter()
-        .enumerate()
-        .map(|(i, &k)| (k, VIEW_W / 2.0 + (i as f64 - (n as f64 - 1.0) / 2.0) * COL_GAP))
-        .collect();
-    place_zone(top, ZONE_Y[0], &mut out);
-    // 下带：派生连线（walk_edges）里上带邻居的重心，无邻居则回落到中线
-    let derived = walk_edges(view, edges, sel);
-    let bottom: Vec<(NodeKey, f64)> = zones[1]
-        .iter()
-        .map(|&k| {
-            let xs: Vec<f64> = derived
+    // row 0: even spread around the canvas center
+    let n = layers[0].len();
+    for (i, &k) in layers[0].iter().enumerate() {
+        out.insert(
+            k,
+            (
+                VIEW_W / 2.0 + (i as f64 - (n as f64 - 1.0) / 2.0) * COL_GAP,
+                ROW_Y[0],
+            ),
+        );
+    }
+    // rows 1..2: barycenter of upper-layer neighbors (raw edges, folded onto
+    // channel cards when the channel is collapsed), fallback to even spread
+    for l in 1..3 {
+        let mut placed: Vec<(NodeKey, f64)> = Vec::new();
+        for &k in &layers[l] {
+            let xs: Vec<f64> = SEED_EDGES
                 .iter()
-                .filter(|&&(_, b)| b == k)
-                .filter_map(|&(a, _)| out.get(&a).map(|p| p.0))
+                .filter_map(|&(u, lo)| {
+                    if lo == k {
+                        out.get(&u).map(|p| p.0)
+                    } else {
+                        None
+                    }
+                })
                 .collect();
             let x = if xs.is_empty() {
                 VIEW_W / 2.0
             } else {
                 xs.iter().sum::<f64>() / xs.len() as f64
             };
-            (k, x)
-        })
-        .collect();
-    place_zone(bottom, ZONE_Y[1], &mut out);
+            placed.push((k, x));
+        }
+        placed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        // 每排限制为 5 个；多出来的节点叠到下一排，保持节点可读。
+        const MAX_PER_ROW: usize = 5;
+        let per_row = MAX_PER_ROW.min(placed.len()).max(1);
+        let row_count = placed.len().div_ceil(per_row);
+        for (chunk_i, chunk) in placed.chunks(per_row).enumerate() {
+            let row_y = ROW_Y[l]
+                + (chunk_i as f64 - (row_count.saturating_sub(1) as f64 / 2.0)) * (NODE_H + 14.0);
+            let mut row: Vec<(NodeKey, f64)> = Vec::with_capacity(chunk.len());
+            let mut prev = f64::NEG_INFINITY;
+            for &(k, x) in chunk {
+                let x = x.max(prev + COL_GAP);
+                prev = x;
+                row.push((k, x));
+            }
+            // 保留 barycenter 的相对顺序，同时把每排重新居中，保证两侧
+            // 留出抽屉和画布边缘的安全区。
+            let mean = row.iter().map(|(_, x)| *x).sum::<f64>() / row.len() as f64;
+            let shift = VIEW_W / 2.0 - mean;
+            for (k, x) in row {
+                out.insert(k, ((x + shift).clamp(MARGIN, VIEW_W - MARGIN), row_y));
+            }
+        }
+    }
     out
 }
 
-/// 图上唯一可编辑的语义连线：渠道 ↔ 调度模型。返回
-/// (渠道下标, 该调度模型在 `view.dispatch` 里的下标)；`None` 表示
-/// 这对节点连不了（其余组合都是派生连线，只显示不可改）。
-fn wire_dispatch(
-    store: &EntityStore,
-    view: &GraphView,
-    a: NodeKey,
-    b: NodeKey,
-) -> Option<(usize, usize)> {
-    let (ci, di) = match (a, b) {
-        (NodeKey::Channel(c), NodeKey::Dispatch(d)) | (NodeKey::Dispatch(d), NodeKey::Channel(c)) => {
-            (c, d)
-        }
-        _ => return None,
-    };
-    // 下标来自上一帧快照，越界就当这对无效，别 panic。
-    if ci >= store.channels.read().len() {
+/// Node→node edge must span exactly one layer; channels are aggregates only.
+fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
+    let la = a.layer() as i16;
+    let lb = b.layer() as i16;
+    if a == b || (la - lb).abs() != 1 {
         return None;
     }
-    view.dispatch.get(di)?;
-    Some((ci, di))
+    Some(if la < lb { (a, b) } else { (b, a) })
 }
 
 fn bezier(a: (f64, f64), b: (f64, f64)) -> String {
@@ -482,7 +321,12 @@ fn offset_bezier(a: (f64, f64), b: (f64, f64), frac: f64) -> String {
     path_str(a, (a.0 + frac * dist, mid), (b.0 + frac * dist, mid), b)
 }
 
-/// 焦点适配：把点集缩放平移到可视区正中心。
+/// Pan/zoom so all points sit inside the viewBox with padding. Returns (pan, zoom).
+/// 抽屉宽度（客户端 px），与 NodeInspector 的 `sm:w-[320px]` 一致。
+/// 焦点子图要避开它。
+const DRAWER_W: f64 = 320.0;
+
+/// 焦点适配：把点集缩放平移到画布上「抽屉左侧的可视区」正中心。
 /// 坐标先折成 CSS 像素再折算回 viewBox，就不会被 preserveAspectRatio
 /// 的 letterbox 横移骗到。
 fn fit_view_into(
@@ -500,22 +344,24 @@ fn fit_view_into(
     let ox = (rw - VIEW_W * s) / 2.0; // letterbox 左侧偏移（viewBox 像素）
     let oy = (rh - VIEW_H * s) / 2.0;
 
-    // 抽屉改成居中模态后不再挤画布，可视区就是整个 rect。
-    // `drawer` 参数保留只为调用方签名不变。
-    let _ = drawer;
-    let drawer_css = 0.0;
+    // 抽屉占去的 CSS 宽；窄屏（抽屉是底部抽屉）不留边
+    let drawer_css = if drawer && rw >= 640.0 { DRAWER_W } else { 0.0 };
     let avail = (rw - drawer_css).max(240.0);
 
     let (minx, maxx) = pts
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| (a.min(x), b.max(x)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| {
+            (a.min(x), b.max(x))
+        });
     let (miny, maxy) = pts
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| (a.min(y), b.max(y)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| {
+            (a.min(y), b.max(y))
+        });
     let (w, h) = ((maxx - minx).max(1.0), (maxy - miny).max(1.0));
     let pad_css = 48.0;
-    let z = (((avail - pad_css * 2.0) / (w * s)).min((rh - pad_css * 2.0) / (h * s)))
-        .clamp(0.35, 1.6);
+    let z =
+        (((avail - pad_css * 2.0) / (w * s)).min((rh - pad_css * 2.0) / (h * s))).clamp(0.35, 1.6);
     let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
     // css = ox + (pan + world * z) * s  →  pan = (target - ox)/s - world * z
     let pan_x = (avail / 2.0 - ox) / s - cx * z;
@@ -523,16 +369,12 @@ fn fit_view_into(
     ((pan_x, pan_y), z)
 }
 
-/// 连通锥：从起点向外扩散，每步必须**远离**起点的链上位次（rank）。
-/// 这样点别名族只拉出「它的分组 + 它的调度模型」，
-/// 而不会经由分组把整张图都拽进来。只保留当前两条泳道上的节点。
-fn focus_cone(
-    start: NodeKey,
-    edges: &[(NodeKey, NodeKey)],
-    sel: (KindSel, KindSel),
-) -> HashSet<NodeKey> {
-    let start_rank = start.rank() as i16;
-    let dist = |k: NodeKey| (k.rank() as i16 - start_rank).abs();
+/// 连通锥：从起点向外扩散，每步必须**远离**起点所在层。
+/// 这样点别名只拉出「它的分组 + 它的调度模型」，
+/// 而不会经由分组把整张图都拽进来。
+fn focus_cone(start: NodeKey, edges: &[(NodeKey, NodeKey)]) -> HashSet<NodeKey> {
+    let start_layer = start.layer() as i16;
+    let dist = |k: NodeKey| (k.layer() as i16 - start_layer).abs();
     let mut seen: HashSet<NodeKey> = HashSet::from([start]);
     let mut queue: VecDeque<NodeKey> = VecDeque::from([start]);
     while let Some(n) = queue.pop_front() {
@@ -551,7 +393,6 @@ fn focus_cone(
             }
         }
     }
-    seen.retain(|&k| zone_of_key(sel, k).is_some());
     seen
 }
 
@@ -566,26 +407,39 @@ fn layout_subgraph(
     edges: &[(NodeKey, NodeKey)],
     cur: &HashMap<NodeKey, (f64, f64)>,
 ) -> HashMap<NodeKey, (f64, f64)> {
-    // 泳道归属按当前 y 划：中缝以上算上带，以下算下带。焦点子图
-    // 不认层别（锥体可能同带两个节点），按几何分带最稳。
-    let mut rows: [Vec<NodeKey>; 2] = [Vec::new(), Vec::new()];
+    let mut rows: [Vec<NodeKey>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for &k in sub {
-        let y = cur.get(&k).map(|p| p.1).unwrap_or(ZONE_Y[0]);
-        rows[if y <= ZONE_MID { 0 } else { 1 }].push(k);
+        rows[k.layer() as usize].push(k);
     }
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
-    let sub_edges: Vec<(NodeKey, NodeKey)> = edges
-        .iter()
-        .copied()
-        .filter(|(u, lo)| sub.contains(u) && sub.contains(lo))
-        .collect();
-    for (l, row) in rows.iter().enumerate() {
-        // 目标 x 先取邻居重心（连线尽量垂直），无邻居则留在原处；
-        // 折行与等距铺开交给 place_zone，和初始布局同一套规则。
-        let bary: Vec<(NodeKey, f64)> = row
+    for (l, row) in rows.iter_mut().enumerate() {
+        row.sort_by(|a, b| {
+            let xa = cur.get(a).map(|p| p.0).unwrap_or(0.0);
+            let xb = cur.get(b).map(|p| p.0).unwrap_or(0.0);
+            xa.partial_cmp(&xb).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // 围绕世界中心铺开，不要往可视框里算：位置是世界坐标，
+        // fit_view_into 负责再把世界框到可视框（两个变换叠加会偏）。
+        // 一排超过 5 个就折行，和初始布局同一套规则。
+        const MAX_PER_ROW: usize = 5;
+        let per_row = MAX_PER_ROW.min(row.len()).max(1);
+        let row_count = row.len().div_ceil(per_row);
+        let sub_edges: Vec<(NodeKey, NodeKey)> = edges
             .iter()
-            .map(|&k| {
-                let here = cur.get(&k).map(|p| p.0).unwrap_or(VIEW_W / 2.0);
+            .copied()
+            .filter(|(u, lo)| sub.contains(u) && sub.contains(lo))
+            .collect();
+        for (ci, chunk) in row.chunks(per_row).enumerate() {
+            let y = ROW_Y[l]
+                + (ci as f64 - (row_count.saturating_sub(1) as f64 / 2.0)) * (NODE_H + 14.0);
+            let n = chunk.len();
+            let center = VIEW_W / 2.0;
+            let span = (n as f64 - 1.0).max(0.0) * COL_GAP;
+            for (i, &k) in chunk.iter().enumerate() {
+                out.insert(k, (center - span / 2.0 + i as f64 * COL_GAP, y));
+            }
+            // 往邻居重心收，再按行重心强制最小间距，保证不叠一坨
+            for &k in chunk {
                 let (mut sum, mut cnt) = (0.0f64, 0.0f64);
                 for &(u, lo) in &sub_edges {
                     let other = if u == k {
@@ -596,16 +450,27 @@ fn layout_subgraph(
                         None
                     };
                     if let Some(o) = other {
-                        if let Some(p) = cur.get(&o) {
-                            sum += p.0;
+                        if let Some(op) = out.get(&o) {
+                            sum += op.0;
                             cnt += 1.0;
                         }
                     }
                 }
-                (k, if cnt > 0.0 { here + (sum / cnt - here) * 0.45 } else { here })
-            })
-            .collect();
-        place_zone(bary, ZONE_Y[l], &mut out);
+                if cnt > 0.0 {
+                    let cur_x = out[&k].0;
+                    out.insert(k, (cur_x + (sum / cnt - cur_x) * 0.45, y));
+                }
+            }
+            let mut sorted: Vec<NodeKey> = chunk.to_vec();
+            sorted.sort_by(|a, b| out[a].0.partial_cmp(&out[b].0).unwrap());
+            if sorted.len() > 1 {
+                let span = (sorted.len() as f64 - 1.0) * COL_GAP;
+                let cx: f64 = sorted.iter().map(|k| out[k].0).sum::<f64>() / sorted.len() as f64;
+                for (i, &k) in sorted.iter().enumerate() {
+                    out.insert(k, (cx - span / 2.0 + i as f64 * COL_GAP, y));
+                }
+            }
+        }
     }
     out
 }
@@ -742,13 +607,6 @@ enum Drag {
     Select,
 }
 
-/// 居中模态的背板与卡片尺寸。走 inline style 而不是 Tailwind 工具类：
-/// `bg-black/55`、`w-[min(94vw,360px)]`、`max-h-[88vh]` 这类带透明度和
-/// 任意值的类名在本仓库的 `tailwind.out.css` 里没有产物（其 `@source`
-/// 指向不存在的 `crates/web/**`），挂上去就是无样式的空类。
-const MODAL_BACKDROP: &str = "background: rgba(0,0,0,0.55)";
-const MODAL_CARD: &str = "width: min(94vw, 360px); max-height: 88vh";
-
 #[component]
 pub fn NetworkPanel() -> Element {
     let store = use_context::<EntityStore>();
@@ -758,12 +616,6 @@ pub fn NetworkPanel() -> Element {
             .copied()
             .collect::<HashSet<(NodeKey, NodeKey)>>()
     });
-    // 两条泳道各选一种层别：上带 sel.0，下带 sel.1。左侧竖排按钮切换。
-    let mut sel = use_signal(|| (KindSel::AliasType, KindSel::Dispatch));
-    // 左栏拖拽中的源类型（HTML5 DnD；松手才提交，不做 hover 微交互）
-    let mut rail_drag = use_signal(|| None::<KindSel>);
-    // 右上孤立节点面板里点亮的节点（只有点亮的孤立节点上画布）
-    let mut show_isolates = use_signal(HashSet::<NodeKey>::new);
     let mut drag = use_signal(|| None::<Drag>);
     let mut hover_wire = use_signal(|| None::<(NodeKey, NodeKey)>);
     let mut hover = use_signal(|| None::<NodeKey>);
@@ -801,13 +653,14 @@ pub fn NetworkPanel() -> Element {
     // then sleeps. Dragged nodes are held; live neighbors dodge in real time.
     let mut wake = use_signal(|| 0u32);
     use_effect(move || {
-        let _ = (edges(), drag(), sel());
+        let _ = (edges(), drag());
         let next = wake.peek().wrapping_add(1);
         wake.set(next);
     });
     use_hook(move || {
         spawn(async move {
-            let mut ev = document::eval(r#"
+            let mut ev = document::eval(
+                r#"
                 if (!window.__topoUndoBound) {
                     window.__topoUndoBound = true;
                     window.addEventListener('keydown', (e) => {
@@ -818,7 +671,8 @@ pub fn NetworkPanel() -> Element {
                         dioxus.send(true);
                     });
                 }
-            "#);
+            "#,
+            );
             // undo 走 bool（true=执行一次撤销）
             // 注意：不能在这里顺便收数字，单一 eval 流只保一种类型最稳
             while let Ok(true) = ev.recv::<bool>().await {
@@ -837,9 +691,9 @@ pub fn NetworkPanel() -> Element {
         // Deterministic startup layout before the ticker takes over.
         {
             let view0 = GraphView::from_store(&store);
-            let p = initial_positions(&view0, *sel.peek(), &edges.peek());
+            let p = initial_positions(&view0);
             // initial_positions already centers each wrapped row; relaxing all
-            // nodes as one logical zone would undo the stacked layout.
+            // nodes as one logical layer would undo the stacked layout.
             *positions.write() = p;
         }
         spawn(async move {
@@ -909,19 +763,11 @@ pub fn NetworkPanel() -> Element {
                     continue;
                 }
                 let view_now = GraphView::from_store(&store);
-                let sel_now = *sel.peek();
-                let mut layers = visible_zones(&view_now, sel_now);
-                let pairs = display_edge_pairs(&view_now, &edges.peek(), sel_now);
-                // 孤立节点不参与物理，也不当 dodge 的隐形遮挡物
-                let conn_t: HashSet<NodeKey> = pairs.iter().flat_map(|&(u, l, _)| [u, l]).collect();
-                let shown_t = show_isolates.peek();
-                for row in layers.iter_mut() {
-                    row.retain(|k| conn_t.contains(k) || shown_t.contains(k));
-                }
+                let layers = visible_layers_of(&view_now);
+                let pairs = display_edge_pairs(&edges.peek());
                 let pairs_xy: Vec<(NodeKey, NodeKey)> =
                     pairs.iter().map(|&(u, l, _)| (u, l)).collect();
                 energy = physics_step(
-                    sel_now,
                     &layers,
                     &pairs_xy,
                     held,
@@ -987,26 +833,11 @@ pub fn NetworkPanel() -> Element {
     // 焦点态：无关节点直接不渲染（不是变暗），物理仍照全图跑，
     // 退出时才需要它们的位置。
     let view_now = GraphView::from_store(&store);
-    let sel_now = sel();
-    let mut layers = visible_zones(&view_now, sel_now);
+    let mut layers = visible_layers_of(&view_now);
     if let Some(cone) = &cone_now {
         for row in layers.iter_mut() {
             row.retain(|k| cone.contains(k));
         }
-    }
-    // 孤立节点（没有任何派生连线）默认不画；在右上面板点亮的才显示
-    let display_edges_full = display_edge_pairs(&view_now, &edges(), sel_now);
-    let connected: HashSet<NodeKey> =
-        display_edges_full.iter().flat_map(|&(u, l, _)| [u, l]).collect();
-    let shown_iso = show_isolates();
-    let isolates: Vec<NodeKey> = layers
-        .iter()
-        .flatten()
-        .copied()
-        .filter(|k| !connected.contains(k) && !shown_iso.contains(k))
-        .collect();
-    for row in layers.iter_mut() {
-        row.retain(|k| connected.contains(k) || shown_iso.contains(k));
     }
     let selection_now = selected();
     let layers_fit = layers.clone(); // owned copy for the 适配 button's handler
@@ -1016,22 +847,19 @@ pub fn NetworkPanel() -> Element {
         positions_now
             .get(&key)
             .copied()
-            .unwrap_or((
-                VIEW_W / 2.0,
-                ZONE_Y[zone_of_key(sel_now, key).unwrap_or(0) as usize],
-            ))
+            .unwrap_or((VIEW_W / 2.0, ROW_Y[key.layer() as usize]))
     };
-    // 唯一可编辑的层别组合：上带渠道、下带调度模型。
-    let wiring = sel_now == (KindSel::Channel, KindSel::Dispatch);
 
-
-    let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = match &cone_now {
-        Some(cone) => display_edges_full
-            .iter()
-            .copied()
-            .filter(|(u, l, _)| cone.contains(u) && cone.contains(l))
-            .collect(),
-        None => display_edges_full,
+    let view_now = GraphView::from_store(&store);
+    let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = {
+        let all = display_edge_pairs(&edges());
+        match &cone_now {
+            Some(cone) => all
+                .into_iter()
+                .filter(|(u, l, _)| cone.contains(u) && cone.contains(l))
+                .collect(),
+            None => all,
+        }
     };
     let dodge_now = dodge();
 
@@ -1047,8 +875,8 @@ pub fn NetworkPanel() -> Element {
     } else {
         let mut out = HashSet::new();
         for start in &selection_now {
-            let start_rank = start.rank() as i16;
-            let dist = |k: NodeKey| (k.rank() as i16 - start_rank).abs();
+            let start_layer = start.layer() as i16;
+            let dist = |k: NodeKey| (k.layer() as i16 - start_layer).abs();
             let mut seen: HashSet<NodeKey> = HashSet::from([*start]);
             let mut queue: VecDeque<NodeKey> = VecDeque::from([*start]);
             while let Some(n) = queue.pop_front() {
@@ -1110,10 +938,9 @@ pub fn NetworkPanel() -> Element {
     let hover_now = hover();
     let temp_end: (f64, f64) = (|| {
         if let (Some(Drag::Wire { src }), Some(t)) = (drag_now, hover_now) {
-            if wiring && src != t && t.kind() != src.kind() {
-                if let Some(z) = zone_of_key(sel_now, t) {
-                    // 上带节点接下沿，下带节点接上沿
-                    return anchor(t, z == 0);
+            if let Some(pair) = normalize(src, t) {
+                if !edges_read(&edges).contains(&pair) {
+                    return anchor(t, t.layer() == 0 || pair.0 == t);
                 }
             }
         }
@@ -1135,15 +962,7 @@ pub fn NetworkPanel() -> Element {
                 let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
                 let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
                 let view_m = GraphView::from_store(&store);
-                let sel_m = *sel.peek();
-                let mut layers = visible_zones(&view_m, sel_m);
-                let pairs_m = display_edge_pairs(&view_m, &edges.peek(), sel_m);
-                let conn_m: HashSet<NodeKey> =
-                    pairs_m.iter().flat_map(|&(u, l, _)| [u, l]).collect();
-                let shown_m = show_isolates.peek();
-                for row in layers.iter_mut() {
-                    row.retain(|k| conn_m.contains(k) || shown_m.contains(k));
-                }
+                let layers = visible_layers_of(&view_m);
                 let hit: HashSet<NodeKey> = layers
                     .iter()
                     .flatten()
@@ -1162,38 +981,47 @@ pub fn NetworkPanel() -> Element {
         marquee.set(None);
     };
 
-    // 只有「渠道 ↔ 调度模型」这一组是可编辑语义连线，才长端口点；
-    // 其余组合都是派生连线，只显示不可拖。
-    let port_of = move |key: NodeKey| -> &'static str {
-        if !wiring {
-            return "none";
-        }
-        match zone_of_key(sel_now, key) {
-            Some(0) => "bottom",
-            Some(_) => "top",
-            None => "none",
+    let port_of = |key: NodeKey| -> &'static str {
+        match key {
+            NodeKey::Group(_) => "bottom",
+            NodeKey::Mapping(_) => "both",
+            NodeKey::Dispatch(_) => "top",
         }
     };
 
     let hint = match drag_now {
-        _ if cone_now.is_some() => {
-            "焦点空间 · 左键节点切换 · 右键空白或再点同节点返回"
-        }
-        Some(Drag::Wire { .. }) => "拖到另一条泳道的节点松开连线",
+        _ if cone_now.is_some() => "焦点空间 · 左键节点切换 · 右键空白或再点同节点返回",
+        Some(Drag::Wire { .. }) => "拖到相邻层节点松开连线",
         Some(Drag::Move { .. }) => "松开落位",
         _ => "滚轮缩放 · 拖空白平移 · Shift拖空白框选 · Ctrl点选多个 · 拖节点摆位 · 拖圆点连线",
     };
 
-    // 抽屉改成居中模态，不再挤占画布右侧，HUD 一律靠边 12px。
-    let hint_right = 12;
+    let hint_right = if drawer_tab() != DrawerTab::Node || inspect().is_some() {
+        332
+    } else {
+        12
+    };
     rsx! {
         div { class: "flex h-full min-h-[480px] flex-col",
             // 画布与抽屉同层：抽屉 absolute 覆盖右侧，画布尺寸恒定，
             // 开合不引起任何重排。图例与按钮都做 HUD 浮在画布上。
             div { class: "relative min-h-0 flex-1",
-                // 右上：设置/导入/适配。抽屉已改居中模态，HUD 不再让位。
+                // 左上：分组图例（浮层）
+                div { class: "pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2",
+                    for (i, g) in view_now.groups.iter().enumerate() {
+                        span { class: "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur",
+                            span { class: "h-2 w-2 rounded-full", style: "background: {GROUP_PALETTE[i % GROUP_PALETTE.len()]}" }
+                            "{g}"
+                        }
+                    }
+                }
+                // 右上：设置/导入/适配；抽屉开着时向右让出 320px
                 {
-                    let hud_right = 12;
+                    let hud_right = if drawer_tab() != DrawerTab::Node || inspect().is_some() {
+                        332
+                    } else {
+                        12
+                    };
                     rsx! {
                         div {
                             class: "absolute top-3 z-10 flex items-center gap-1.5",
@@ -1221,7 +1049,7 @@ pub fn NetworkPanel() -> Element {
                             }
                             let in_focus = focus_space.peek().is_some();
                             let ((px, py), z) = if in_focus {
-                                fit_view_into(&pts, *rect.peek(), false)
+                                fit_view_into(&pts, *rect.peek(), true)
                             } else {
                                 fit_view(&pts)
                             };
@@ -1238,77 +1066,6 @@ pub fn NetworkPanel() -> Element {
                     class: "pointer-events-none absolute bottom-3 z-10 text-[11px] text-zinc-600",
                     style: "right: {hint_right}px",
                     "{hint}"
-                }
-                // 右上：孤立节点面板。两面性——只列「不在图上」的孤立节点，
-                // 点一个就把它放上画布（随后从面板消失）。
-                if !isolates.is_empty() {
-                    div { class: "absolute right-3 top-14 z-10 flex max-h-64 w-36 flex-col gap-0.5 overflow-y-auto scroll-hidden rounded-lg border border-zinc-800 bg-zinc-900/85 p-1 backdrop-blur",
-                        for key in isolates.iter().copied() {
-                            button {
-                                class: "flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200",
-                                onclick: move |_| {
-                                    show_isolates.write().insert(key);
-                                    let next = wake.peek().wrapping_add(1);
-                                    wake.set(next);
-                                },
-                                span { class: "h-2 w-2 shrink-0 rounded-full", style: "background: {view_color(&view_now, key)}" }
-                                span { class: "truncate", "{view_title(&view_now, key)}" }
-                            }
-                        }
-                    }
-                }
-                // 左中：层别竖排多选，拖拽换层别（拖到上/下格松手才换）。
-                // 恒定两个在选；上下由链路序(rank)固定，与拖拽方向无关。
-                div {
-                    class: "absolute left-3 z-10 flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900/85 p-1 backdrop-blur",
-                    style: "top: 50%; transform: translateY(-50%)",
-                    for kind in KindSel::ALL {
-                        {
-                            let badge = if kind == sel_now.0 {
-                                "上"
-                            } else if kind == sel_now.1 {
-                                "下"
-                            } else {
-                                ""
-                            };
-                            let tone = if badge.is_empty() {
-                                "border-transparent text-zinc-500 hover:text-zinc-300"
-                            } else {
-                                "border-zinc-600 bg-zinc-800 text-zinc-100"
-                            };
-                            rsx! {
-                                button {
-                                    class: "flex cursor-grab select-none items-center gap-1 rounded-md border px-2 py-1 text-left text-xs transition-colors {tone}",
-                                    // 拖拽换层别，松手才提交切换——不做 hover 微切换
-                                    draggable: "true",
-                                    ondragstart: move |_| rail_drag.set(Some(kind)),
-                                    ondragend: move |_| rail_drag.set(None),
-                                    ondragover: move |e| {
-                                        // 只有当前在选的上/下两格是投放目标
-                                        if !badge.is_empty() { e.prevent_default(); }
-                                    },
-                                    ondrop: move |e| {
-                                        e.prevent_default();
-                                        let Some(src) = rail_drag.take() else { return };
-                                        let (t, b) = *sel.peek();
-                                        if src == t || src == b {
-                                            return; // 已在选的拖回上/下格：不动
-                                        }
-                                        // 拖到上格换上带，拖到下格换下带；次序仍按链路序(rank)
-                                        let pair = if kind == t { (src, b) } else { (t, src) };
-                                        sel.set(if pair.0.rank() <= pair.1.rank() { pair } else { (pair.1, pair.0) });
-                                        // 唤醒物理：新层别的节点要落位、旧的要解除夹带
-                                        let next = wake.peek().wrapping_add(1);
-                                        wake.set(next);
-                                    },
-                                    span { "{kind.label()}" }
-                                    if !badge.is_empty() {
-                                        span { class: "rounded bg-zinc-700 px-1 text-[10px] text-zinc-200", "{badge}" }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
                 div { class: "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
                 svg {
@@ -1359,7 +1116,7 @@ pub fn NetworkPanel() -> Element {
                                 let moved_flag = (c.x - sx).abs() + (c.y - sy).abs() > 4.0;
                                 {
                                     let mut pos_w = positions.write();
-                                    let (kb0, kb1) = zone_band(zone_of_key(sel_now, key).unwrap_or(0));
+                                    let (kb0, kb1) = band_y(key.layer());
                                     // Leader always follows the cursor, even when flying solo.
                                     pos_w.insert(key, (world.0 + ox, (world.1 + oy).clamp(kb0, kb1)));
                                     // Group members keep their offsets when part of a selection.
@@ -1367,7 +1124,7 @@ pub fn NetworkPanel() -> Element {
                                         if k == key {
                                             continue;
                                         }
-                                        let (b0, b1) = zone_band(zone_of_key(sel_now, k).unwrap_or(0));
+                                        let (b0, b1) = band_y(k.layer());
                                         pos_w.insert(k, (world.0 + kox, (world.1 + koy).clamp(b0, b1)));
                                     }
                                 }
@@ -1464,35 +1221,21 @@ pub fn NetworkPanel() -> Element {
                         }
                     }
 
-                    g { transform: "translate({pan().0:.1} {pan().1:.1}) scale({zoom():.3})",
-
-                        // 泳道标题 + 中缝都在世界坐标里，随 pan/zoom 走——
-                        // 画在屏幕空间会与真正夹住节点的世界分界错位。
-                        for (label, y) in [
-                            (sel_now.0.label(), ZONE_Y[0] - ZONE_HALF - 12.0),
-                            (sel_now.1.label(), ZONE_Y[1] - ZONE_HALF - 12.0),
-                        ] {
-                            text {
-                                class: "select-none",
-                                x: "8",
-                                y: "{y:.0}",
-                                fill: "#52525b",
-                                font_size: "11",
-                                pointer_events: "none",
-                                "{label}"
-                            }
-                        }
-                        // 中缝：两条泳道之间的虚线分隔（横向铺满世界）
-                        line {
-                            x1: "-3000",
-                            y1: "{ZONE_MID:.0}",
-                            x2: "{VIEW_W + 3000.0:.0}",
-                            y2: "{ZONE_MID:.0}",
-                            stroke: "#27272a",
-                            stroke_width: "1",
-                            stroke_dasharray: "6 6",
+                    // 层标题留在屏幕空间（在 pan 组之外），缩放平移时不动。
+                    // 1240807 那次改动误删了这三个标签，此处恢复并改用新术语。
+                    for (label, y) in [("分组", ROW_Y[0]), ("模型别名", ROW_Y[1]), ("调度模型", ROW_Y[2])] {
+                        text {
+                            class: "select-none",
+                            x: "8",
+                            y: "{y - 26.0:.0}",
+                            fill: "#52525b",
+                            font_size: "11",
                             pointer_events: "none",
+                            "{label}"
                         }
+                    }
+
+                    g { transform: "translate({pan().0:.1} {pan().1:.1}) scale({zoom():.3})",
 
                         // World grid dots (RTS map feel)
                         defs {
@@ -1524,13 +1267,7 @@ pub fn NetworkPanel() -> Element {
                                     Some(_) => "0.10",
                                     None => "0.75",
                                 };
-                                let upper = du.rank() < dl.rank();
-                                // 右键可删的只有渠道↔调度模型；派生连线只读。
-                                let unwire: Option<(usize, String)> = wire_dispatch(&store, &view_now, du, dl)
-                                    .and_then(|(ci, di)| {
-                                        view_now.dispatch.get(di).map(|(_, m)| (ci, m.clone()))
-                                    });
-                                let can_unwire = unwire.is_some();
+                                let upper = du.layer() == 0;
                                 let hov_w = hover_wire() == Some(raw);
                                 let (sw, sw_hov) = if upper { (4.0, 6.5) } else { (2.5, 4.5) };
                                 let sw_now = if hov_w { sw_hov } else { sw };
@@ -1601,44 +1338,37 @@ pub fn NetworkPanel() -> Element {
                                         onmouseleave: move |_| {
                                             if *hover_wire.peek() == Some(raw) { hover_wire.set(None) }
                                         },
-                                        // 左键留给框选/拖拽；右键才删线，防误点。
-                                        // 只有渠道↔调度模型是真连线，其余是派生连线，右键无效。
+                                        // 左键留给框选/拖拽；右键才删线，防误点
                                         oncontextmenu: move |e| {
                                             e.prevent_default();
                                             e.stop_propagation();
-                                            let Some((ci, ref model)) = unwire else { return };
-                                            let mut st = store;
-                                            let mut cw = st.channels.write();
-                                            if let Some(c) = cw.get_mut(ci) {
-                                                c.dispatch.retain(|m| m != model);
+                                            if edges.write().remove(&raw) {
+                                                history.write().push((false, vec![raw]));
                                             }
                                         },
-                                        title { if can_unwire { "右键删除连线" } else { "派生连线，不可编辑" } }
+                                        title { "右键删除连线" }
                                     }
                                 }
                             }
                         }
 
                         // ---- Dangling wire ----
-                        // 只有可连线组合才画牵引线；派生连线组合下拖端口不成立。
                         if let Some(Drag::Wire { src }) = drag_now {
-                            if wiring {
-                                path {
-                                    d: "{bezier(anchor(src, true), temp_end)}",
-                                    fill: "none",
-                                    stroke: "{view_color(&view_now, src)}",
-                                    stroke_width: "3",
-                                    stroke_linecap: "round",
-                                    stroke_dasharray: "6 6",
-                                    opacity: "0.9",
-                                    pointer_events: "none",
-                                }
+                            path {
+                                d: "{bezier(anchor(src, true), temp_end)}",
+                                fill: "none",
+                                stroke: "{view_color(&view_now, src)}",
+                                stroke_width: "3",
+                                stroke_linecap: "round",
+                                stroke_dasharray: "6 6",
+                                opacity: "0.9",
+                                pointer_events: "none",
                             }
                         }
 
                         // ---- Nodes ----
-                        for z in 0..2usize {
-                            for key in layers[z].clone() {
+                        for layer in 0..3usize {
+                            for key in layers[layer].clone() {
                                 {
                                     let (x, y) = pos(key);
                                     let node_color = view_color(&view_now, key);
@@ -1650,26 +1380,21 @@ pub fn NetworkPanel() -> Element {
                                         Some(_) => "0.18",
                                         None => "1",
                                     };
-                                    // 只有渠道↔调度模型这一组能连；且目标必须是另一种层别、
-                                    // 且这条 dispatch 还不存在。
                                     let legal = matches!(drag_now, Some(Drag::Wire { src }) if {
-                                        wiring
-                                            && src != key
-                                            && src.kind() != key.kind()
-                                            && wire_dispatch(&store, &view_now, src, key).is_some()
+                                        src != key
+                                            && normalize(src, key).is_some()
+                                            && !edges_read(&edges).contains(&normalize(src, key).unwrap())
                                     });
                                     let hov = hover_now == Some(key);
                                     let sel = selection_now.contains(&key);
                                     let title_y = if sub_text.is_empty() { y + 4.5 } else { y - 0.5 };
-                                    // Per-kind look: 分组 = 柔和药丸；别名族/模型族/别名 = 方片；
-                                    // 渠道/调度模型 = 实心卡。任何状态下一眼可辨。
+                                    // Per-type look: group = soft tinted pill, mapping = square chip,
+                                    // channel/model = solid card. Distinct at a glance in any state.
                                     let (rx, fill, fill_op, sw, sw_hov, title_c): (&'static str, &'static str, &'static str, &'static str, &'static str, &'static str) =
-                                        match key {
-                                            NodeKey::Group(_) => ("18", node_color, "0.15", "2.5", "3.5", node_color),
-                                            NodeKey::AliasType(_) | NodeKey::ChannelType(_) | NodeKey::Mapping(_) =>
-                                                ("6", node_color, "0.08", "1.75", "2.75", node_color),
-                                            NodeKey::Dispatch(_) | NodeKey::Channel(_) =>
-                                                ("12", "#1c1c21", "1", "1.5", "2.5", "#e4e4e7"),
+                                        match key.layer() {
+                                            0 => ("18", node_color, "0.15", "2.5", "3.5", node_color),
+                                            1 => ("6", node_color, "0.08", "1.75", "2.75", node_color),
+                                            _ => ("12", "#1c1c21", "1", "1.5", "2.5", "#e4e4e7"),
                                         };
                                     rsx! {
                                         g {
@@ -1708,41 +1433,38 @@ pub fn NetworkPanel() -> Element {
                                                     // Releasing a marquee over a node must still commit
                                                     // (stop_propagation hides it from the canvas handler).
                                                     Some(Drag::Select) => commit_select(),
-                                                    // 连线只在「渠道 ↔ 调度模型」下成立；其余组合
-                                                    // 是派生连线，拖端口不产生任何变更。
-                                                    // ponytail: store 变更不入撤销栈，Ctrl+Z 只管账本边
-                                                    Some(Drag::Wire { src }) if wiring && src != key => {
-                                                        // 事件闭包不捕获 view_now（GraphView 非 Copy），当场重算一份。
-                                                        let vw = GraphView::from_store(&store);
-                                                        // Multi-wire: every same-kind selected source
-                                                        // with a legal pair to this target connects too.
+                                                    Some(Drag::Wire { src }) if src != key => {
+                                                        // Multi-wire: every same-layer selected source
+                                                        // with a legal edge to this target connects too.
                                                         let sources: Vec<NodeKey> = {
                                                             let sel = selected.read();
                                                             if sel.len() > 1 && sel.contains(&src) {
                                                                 sel.iter()
                                                                     .copied()
                                                                     .filter(|&s| {
-                                                                        s.kind() == src.kind()
-                                                                            && wire_dispatch(&store, &vw, s, key).is_some()
+                                                                        s.layer() == src.layer()
+                                                                            && normalize(s, key)
+                                                                                .is_some_and(|pair| !edges_read(&edges).contains(&pair))
                                                                     })
                                                                     .collect()
                                                             } else {
                                                                 vec![src]
                                                             }
                                                         };
-                                                        let mut st = store;
-                                                        let mut cw = st.channels.write();
-                                                        for s in sources {
-                                                            let Some((ci, di)) = wire_dispatch(&store, &vw, s, key) else {
-                                                                continue;
-                                                            };
-                                                            let Some((_, model)) = vw.dispatch.get(di).cloned() else {
-                                                                continue;
-                                                            };
-                                                            let Some(c) = cw.get_mut(ci) else { continue };
-                                                            if !c.dispatch.contains(&model) {
-                                                                c.dispatch.push(model);
+                                                        // 收集这次 gesture 实际插入的边，一次入栈
+                                                        let mut batch: Vec<(NodeKey, NodeKey)> = Vec::new();
+                                                        {
+                                                            let mut ew = edges.write();
+                                                            for s in sources {
+                                                                if let Some(pair) = normalize(s, key) {
+                                                                    if ew.insert(pair) {
+                                                                        batch.push(pair);
+                                                                    }
+                                                                }
                                                             }
+                                                        }
+                                                        if !batch.is_empty() {
+                                                            history.write().push((true, batch));
                                                         }
                                                     }
                                                     Some(Drag::Move { key: k, moved: false, .. }) if k == key => {
@@ -1787,20 +1509,17 @@ pub fn NetworkPanel() -> Element {
                                                             } else {
                                                                 // 进入焦点空间：算连通锥 → 一次性排布 → 补间
                                                                 inspect.set(Some(key));
-                                                                // 锥体走派生连线：只有当前两条泳道上的节点才可见
-                                                                let ev = walk_edges(
-                                                                    &GraphView::from_store(&store),
-                                                                    &edges_read(&edges),
-                                                                    sel_now,
-                                                                );
-                                                                let cone = focus_cone(key, &ev, sel_now);
+                                                                let all = edges_read(&edges);
+                                                                let ev: Vec<(NodeKey, NodeKey)> =
+                                                                    all.iter().copied().collect();
+                                                                let cone = focus_cone(key, &ev);
                                                                 let cur = positions.peek().clone();
                                                                 let target =
                                                                     layout_subgraph(&cone, &ev, &cur);
                                                                 let pts: Vec<(f64, f64)> =
                                                                     target.values().copied().collect();
                                                                 let (to_pan, to_zoom) =
-                                                                    fit_view_into(&pts, *rect.peek(), false);
+                                                                    fit_view_into(&pts, *rect.peek(), true);
                                                                 saved_positions.set(Some((cur.clone(), *pan.peek(), *zoom.peek())));
                                                                 let delay = stagger_delay(key, &ev);
                                                                 tween.set(Some(make_tween(
@@ -1859,10 +1578,8 @@ pub fn NetworkPanel() -> Element {
                                                     "{sub_text}"
                                                 }
                                             }
-                                            // Port dots (wire start). 必须正向判定：
-                                            // "none" 同时 != "top" 且 != "bottom"，
-                                            // 用否定式会给不可连线的层别画出两个端口。
-                                            if ports == "bottom" {
+                                            // Port dots (wire start)
+                                            if ports != "top" {
                                                 circle {
                                                     class: "cursor-crosshair",
                                                     cx: "{x:.0}",
@@ -1879,7 +1596,7 @@ pub fn NetworkPanel() -> Element {
                                                     },
                                                 }
                                             }
-                                            if ports == "top" {
+                                            if ports != "bottom" {
                                                 circle {
                                                     class: "cursor-crosshair",
                                                     cx: "{x:.0}",
@@ -1905,55 +1622,39 @@ pub fn NetworkPanel() -> Element {
                 }
                 }
                 if drawer_tab() == DrawerTab::Settings {
-                    div {
-                        class: "fixed inset-0 z-30 flex items-center justify-center",
-                        style: "{MODAL_BACKDROP}",
-                        onclick: move |_| drawer_tab.set(DrawerTab::Node),
-                        aside {
-                            class: "relative flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl",
-                            style: "{MODAL_CARD}",
-                            onclick: move |e| e.stop_propagation(),
-                            DrawerTabs {
-                                active: DrawerTab::Settings,
-                                on_tab: move |t: DrawerTab| drawer_tab.set(t),
+                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+                        DrawerTabs {
+                            active: DrawerTab::Settings,
+                            on_tab: move |t: DrawerTab| drawer_tab.set(t),
+                        }
+                        div { class: "relative min-h-0 flex-1",
+                            // 导航钉在抽屉上，不随内容滚动
+                            ScrollSpyNav {
+                                container: "ent-scroll",
+                                items: vec![
+                                    ("分组".to_string(), "ent-card-0".to_string()),
+                                    ("模型别名".to_string(), "ent-card-1".to_string()),
+                                    ("渠道".to_string(), "ent-card-2".to_string()),
+                                ],
                             }
-                            div { class: "relative min-h-0 flex-1",
-                                // 导航钉在卡片上，不随内容滚动
-                                ScrollSpyNav {
-                                    container: "ent-scroll",
-                                    items: vec![
-                                        ("分组".to_string(), "ent-card-0".to_string()),
-                                        ("模型别名".to_string(), "ent-card-1".to_string()),
-                                        ("渠道".to_string(), "ent-card-2".to_string()),
-                                    ],
-                                }
-                                div {
-                                    id: "ent-scroll",
-                                    class: "h-full overflow-y-auto scroll-hidden p-3 pl-8",
-                                    EntitiesPanel {}
-                                }
+                            div {
+                                id: "ent-scroll",
+                                class: "h-full overflow-y-auto scroll-hidden p-3 pl-8",
+                                EntitiesPanel {}
                             }
                         }
                     }
                 } else if drawer_tab() == DrawerTab::Import {
-                    div {
-                        class: "fixed inset-0 z-30 flex items-center justify-center",
-                        style: "{MODAL_BACKDROP}",
-                        onclick: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
-                        aside {
-                            class: "relative flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl",
-                            style: "{MODAL_CARD}",
-                            onclick: move |e| e.stop_propagation(),
-                            DrawerHeader {
-                                tab: drawer_tab(),
-                                title: "导入".to_string(),
-                                subtitle: "把 JSON 包进来，一个渠道一个".to_string(),
-                                on_tab: move |t: DrawerTab| drawer_tab.set(t),
-                                on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
-                            }
-                            div { class: "min-h-0 flex-1 overflow-y-auto scroll-subtle p-3",
-                                ImportPanel {}
-                            }
+                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+                        DrawerHeader {
+                            tab: drawer_tab(),
+                            title: "导入".to_string(),
+                            subtitle: "把 JSON 包进来，一个渠道一个".to_string(),
+                            on_tab: move |t: DrawerTab| drawer_tab.set(t),
+                            on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
+                        }
+                        div { class: "min-h-0 flex-1 p-3",
+                            ImportPanel {}
                         }
                     }
                 } else if let Some(node) = inspect() {
@@ -1993,143 +1694,14 @@ fn edges_read(edges: &Signal<HashSet<(NodeKey, NodeKey)>>) -> HashSet<(NodeKey, 
 }
 // ---- Layout ----
 
-/// 规范链上的一条**具体**路由：分组 → 模型别名 → 渠道 → 调度模型。
-/// 每段都可能缺位（账本没连上、名字对不上），缺位那段在投影时让对应
-/// 层别不可达。派生连线必须走具体路由：若顺着「渠道」这类聚合节点
-/// 做邻接 BFS，一个别名会经渠道漏到该渠道下**全部**模型，连线就炸。
-#[derive(Clone, Copy, Default)]
-struct Route {
-    group: Option<usize>,
-    alias: Option<usize>,
-    channel: Option<usize>,
-    dispatch: Option<usize>,
-}
-
-/// 名字 → 族下标。
-fn fam_index(types: &[String], name: &str) -> Option<usize> {
-    let f = family(name);
-    types.iter().position(|t| *t == f)
-}
-
-/// 把一条路由投影到某个层别上的节点。
-fn project(view: &GraphView, r: &Route, kind: KindSel) -> Option<NodeKey> {
-    Some(match kind {
-        KindSel::Group => NodeKey::Group(r.group?),
-        KindSel::AliasType => {
-            NodeKey::AliasType(fam_index(&view.alias_types, view.aliases.get(r.alias?)?)?)
-        }
-        KindSel::Channel => NodeKey::Channel(r.channel?),
-        KindSel::ChannelType => {
-            NodeKey::ChannelType(fam_index(&view.channel_types, &view.dispatch.get(r.dispatch?)?.1)?)
-        }
-        KindSel::Dispatch => NodeKey::Dispatch(r.dispatch?),
-    })
-}
-
-/// 枚举全部具体路由。链上各跳的事实来源：
-/// - 分组↔别名、别名↔调度模型：`edges` 账本
-/// - 别名→调度模型：账本之外还认「名字相同」（别名指向同名上游模型）
-/// - 渠道↔调度模型、族↔成员：由 `GraphView` 的归属关系直接决定
-fn chain_routes(view: &GraphView, edges: &HashSet<(NodeKey, NodeKey)>) -> Vec<Route> {
-    let mut groups_of_alias: Vec<Vec<usize>> = vec![Vec::new(); view.aliases.len()];
-    let mut ledger_dispatch: Vec<Vec<usize>> = vec![Vec::new(); view.aliases.len()];
-    for &(u, l) in edges {
-        match (u, l) {
-            (NodeKey::Group(g), NodeKey::Mapping(j)) | (NodeKey::Mapping(j), NodeKey::Group(g)) => {
-                if g >= view.groups.len() {
-                    continue;
-                }
-                if let Some(v) = groups_of_alias.get_mut(j) {
-                    if !v.contains(&g) {
-                        v.push(g);
-                    }
-                }
-            }
-            (NodeKey::Mapping(j), NodeKey::Dispatch(d))
-            | (NodeKey::Dispatch(d), NodeKey::Mapping(j)) => {
-                if d >= view.dispatch.len() {
-                    continue;
-                }
-                if let Some(v) = ledger_dispatch.get_mut(j) {
-                    if !v.contains(&d) {
-                        v.push(d);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    // 每个调度模型至少有「归属渠道」这一段事实，再按路由到它的别名展开。
-    let mut out: Vec<Route> = Vec::new();
-    let push_legs = |out: &mut Vec<Route>, alias: Option<usize>, tail: Route| {
-        let groups = alias.and_then(|j| groups_of_alias.get(j)).filter(|v| !v.is_empty());
-        match groups {
-            Some(gs) => out.extend(gs.iter().map(|&g| Route {
-                group: Some(g),
-                alias,
-                ..tail
-            })),
-            None => out.push(Route { alias, ..tail }),
-        }
-    };
-    for (d, (ci, model)) in view.dispatch.iter().enumerate() {
-        let tail = Route {
-            channel: Some(*ci),
-            dispatch: Some(d),
-            ..Default::default()
-        };
-        let routed: Vec<usize> = (0..view.aliases.len())
-            .filter(|&j| view.aliases[j] == *model || ledger_dispatch[j].contains(&d))
-            .collect();
-        if routed.is_empty() {
-            out.push(tail);
-            continue;
-        }
-        for j in routed {
-            push_legs(&mut out, Some(j), tail);
-        }
-    }
-    // 还没落到任何上游模型的别名：上游段缺位，但仍能与分组连。
-    for j in 0..view.aliases.len() {
-        push_legs(&mut out, Some(j), Route::default());
-    }
-    out
-}
-
-/// 两条泳道之间的派生连线：枚举链上具体路由，再把每条路由投影到
-/// 上/下两个层别。两端都投影得出才成一条边；重复的边合并。
-fn walk_edges(
-    view: &GraphView,
-    edges: &HashSet<(NodeKey, NodeKey)>,
-    sel: (KindSel, KindSel),
-) -> Vec<(NodeKey, NodeKey)> {
-    if sel.0 == sel.1 {
-        return Vec::new();
-    }
-    let mut seen: HashSet<(NodeKey, NodeKey)> = HashSet::new();
-    let mut out: Vec<(NodeKey, NodeKey)> = Vec::new();
-    for r in chain_routes(view, edges) {
-        let (Some(a), Some(b)) = (project(view, &r, sel.0), project(view, &r, sel.1)) else {
-            continue;
-        };
-        if seen.insert((a, b)) {
-            out.push((a, b));
-        }
-    }
-    out
-}
-
-/// 待绘制的边：全部由 `walk_edges` 派生。第三元保留原样，
-/// 维持调用方（dodge 缓存键、hover 键）的签名不变。
+/// 三层可见节点。调度模型全部平铺——不再有渠道聚合卡，
+/// 因为渠道是凭证容器（在设置页编辑），不是图上的节点。
+/// 待绘制的边。节点不再折叠，故显示边即存储边；第三元保留
+/// 原始边（删除时用），维持调用方签名不变。
 fn display_edge_pairs(
-    view: &GraphView,
     edges: &HashSet<(NodeKey, NodeKey)>,
-    sel: (KindSel, KindSel),
 ) -> Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> {
-    walk_edges(view, edges, sel)
-        .into_iter()
-        .map(|(u, l)| (u, l, (u, l)))
-        .collect()
+    edges.iter().map(|&(u, l)| (u, l, (u, l))).collect()
 }
 
 /// One physics frame for the layered graph. x only — y is pinned to the row.
@@ -2139,8 +1711,7 @@ fn display_edge_pairs(
 /// - all-pairs separation: overlapping nodes push apart like billiard balls
 /// Returns max speed for the sleep decision; `held` follows the cursor.
 fn physics_step(
-    sel: (KindSel, KindSel),
-    layers: &[Vec<NodeKey>; 2],
+    layers: &[Vec<NodeKey>; 3],
     edges: &[(NodeKey, NodeKey)],
     held: Option<NodeKey>,
     positions: &mut HashMap<NodeKey, (f64, f64)>,
@@ -2170,7 +1741,7 @@ fn physics_step(
             } else {
                 xs.iter().sum::<f64>() / xs.len() as f64
             };
-            positions.insert(k, (x, ZONE_Y[l]));
+            positions.insert(k, (x, ROW_Y[l]));
             velocities.insert(k, (0.0, 0.0));
         }
     }
@@ -2244,13 +1815,14 @@ fn physics_step(
             *v = (0.0, 0.0); // static friction: kill micro-drift
         }
         let p = positions.get_mut(&k).unwrap();
-        let (b0, b1) = zone_band(zone_of_key(sel, k).unwrap_or(0));
+        let (b0, b1) = band_y(k.layer());
         p.0 = (p.0 + v.0).max(60.0);
         p.1 = (p.1 + v.1).clamp(b0, b1);
         max_v = max_v.max(v.0.hypot(v.1));
     }
     max_v
 }
+
 /// 别名/分组标题都从 store 派生，读不到时回退为占位串（那说明 store 还没装上）。
 fn node_title_from_store(node: NodeKey) -> String {
     let store = use_context::<EntityStore>();
@@ -2263,11 +1835,13 @@ fn accent_color(node: NodeKey) -> &'static str {
     store_view_color(node)
 }
 
-/// view_color 的免费变量版本：直接读 store，配色规则只在 view_color 里写一遍。
+/// view_color 的免费变量版本：直接读 store。
 fn store_view_color(node: NodeKey) -> &'static str {
-    let store = use_context::<EntityStore>();
-    let view = GraphView::from_store(&store);
-    view_color(&view, node)
+    match node {
+        NodeKey::Group(i) => GROUP_PALETTE[i % GROUP_PALETTE.len()],
+        NodeKey::Mapping(i) => ALIAS_PALETTE[i % ALIAS_PALETTE.len()],
+        NodeKey::Dispatch(_) => "#3f3f46",
+    }
 }
 
 /// 抽屉头：标题 + 三个页签（节点/设置/导入）+ 关闭。
@@ -2392,7 +1966,7 @@ fn ImportPanel() -> Element {
                     class: "min-h-[96px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
                     value: "{key.read()}",
                     placeholder: "sk-…
-sk-…",
+    sk-…",
                     oninput: move |e| key.set(e.value()),
                 }
             }
@@ -2408,15 +1982,12 @@ sk-…",
                 onclick: move |_| {
                     let n = alias.peek().trim().to_string();
                     let name = if n.is_empty() { "新渠道".into() } else { n };
-                    store.channels.write().push(crate::api::ChannelRow {
+                    store.channels.write().push(crate::state::ChannelRow {
                         name,
                         url: url.peek().trim().to_string(),
                         keys: key.peek().trim().to_string(),
                         candidates: vec![],
                         dispatch: vec![],
-                        enabled: true,
-                        groups: vec![],
-                        remark: String::new(),
                     });
                     alias.set(String::new());
                     url.set(String::new());
@@ -2429,13 +2000,12 @@ sk-…",
     }
 }
 
-/// 节点检视：左键点节点后就地编辑该实体。
+/// 侧边抽屉：左键点节点后就地编辑该实体。
 ///
-/// 居中模态浮在画布上，画布尺寸恒定，开合不引起重排。
-/// 各层别的编辑内容不同：
-/// - 分组 / 模型别名：名字（可改）
-/// - 渠道：URL/Key（可改）+ 已加入调度的模型
-/// - 别名族 / 模型族：族内成员（只读，族是派生的）
+/// `absolute` 覆盖画布右侧，画布尺寸恒定，开合不引起重排。
+/// 三层的编辑内容不同：
+/// - 分组：名字（可改）
+/// - 模型别名：名字（可改）
 /// - 调度模型：模型名**只读**（来自上游，改了就路由不到），
 ///   附带展示所属渠道的 URL/Key，渠道本身在设置页改
 #[component]
@@ -2444,110 +2014,43 @@ fn NodeInspector(
     on_tab: EventHandler<DrawerTab>,
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
-    let store = use_context::<EntityStore>();
-    let view = GraphView::from_store(&store);
     let title = node_title_from_store(node);
     let kind_label = match node {
         NodeKey::Group(_) => "分组",
         NodeKey::Mapping(_) => "模型别名",
-        NodeKey::AliasType(_) => "别名族",
-        NodeKey::Channel(_) => "渠道",
-        NodeKey::ChannelType(_) => "模型族",
         NodeKey::Dispatch(_) => "调度模型",
     };
     let accent = accent_color(node);
 
     rsx! {
-        // 居中模态：背板点击即关闭，卡片本体吞掉点击
-        div {
-            class: "fixed inset-0 z-30 flex items-center justify-center",
-            style: "{MODAL_BACKDROP}",
-            onclick: move |e| on_close.call(e),
-            aside {
-                class: "relative flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl",
-                style: "{MODAL_CARD}",
-                onclick: move |e| e.stop_propagation(),
-                // 节点检视也有页签 —— 方便切到设置/导入
-                DrawerHeader {
-                    tab: DrawerTab::Node,
-                    title: title.clone(),
-                    subtitle: kind_label.to_string(),
-                    on_tab: move |t: DrawerTab| on_tab.call(t),
-                    on_close: on_close,
-                }
-                // 类型色点行：补上视觉线索，不占正式空间
-                div { class: "shrink-0 border-b border-zinc-800 px-3 py-1.5",
-                    span { class: "h-2 w-2 rounded-full", style: "background: {accent}" }
-                }
-                // 主体
-                div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto scroll-subtle p-3",
-                    match node {
-                        NodeKey::Group(i) => rsx! { GroupInspect { index: i } },
-                        NodeKey::Mapping(i) => rsx! { AliasInspect { index: i } },
-                        NodeKey::Dispatch(i) => rsx! { DispatchInspect { index: i } },
-                        NodeKey::Channel(i) => rsx! { ChannelInspect { index: i } },
-                        // 族是从名字派生的，没有独立实体可改：只列成员
-                        NodeKey::AliasType(i) => {
-                            let fam = view.alias_types.get(i).cloned().unwrap_or_default();
-                            let items: Vec<String> = view
-                                .aliases
-                                .iter()
-                                .filter(|a| family(a) == fam)
-                                .cloned()
-                                .collect();
-                            rsx! { InspectList { title: "族内模型别名", items: items, empty: "该族下没有别名" } }
-                        }
-                        NodeKey::ChannelType(i) => {
-                            let fam = view.channel_types.get(i).cloned().unwrap_or_default();
-                            let items: Vec<String> = view
-                                .dispatch
-                                .iter()
-                                .filter(|(_, m)| family(m) == fam)
-                                .map(|(_, m)| m.clone())
-                                .collect();
-                            rsx! { InspectList { title: "族内调度模型", items: items, empty: "该族下没有调度模型" } }
-                        }
-                    }
-                }
-                // 底部操作条
-                div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2",
-                    button { class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400", "删除" }
-                    span { class: "flex-1" }
-                    button { class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300", "保存" }
+        aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+            // 节点检视也有页签 —— 方便切到设置/导入
+            DrawerHeader {
+                tab: DrawerTab::Node,
+                title: title.clone(),
+                subtitle: kind_label.to_string(),
+                on_tab: move |t: DrawerTab| on_tab.call(t),
+                on_close: on_close,
+            }
+            // 类型色点行：补上视觉线索，不占正式空间
+            div { class: "shrink-0 border-b border-zinc-800 px-3 py-1.5",
+                span { class: "h-2 w-2 rounded-full", style: "background: {accent}" }
+            }
+            // 主体
+            div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto scroll-subtle p-3",
+                match node {
+                    NodeKey::Group(i) => rsx! { GroupInspect { index: i } },
+                    NodeKey::Mapping(i) => rsx! { AliasInspect { index: i } },
+                    NodeKey::Dispatch(i) => rsx! { DispatchInspect { index: i } },
                 }
             }
+            // 底部操作条
+            div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2",
+                button { class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400", "删除" }
+                span { class: "flex-1" }
+                button { class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300", "保存" }
+            }
         }
-    }
-}
-
-/// 渠道检视：凭证在这里改，调度模型列表只读展示（连线才是入口）。
-#[component]
-fn ChannelInspect(index: usize) -> Element {
-    let mut store = use_context::<EntityStore>();
-    let row = store.channels.read().get(index).cloned();
-    let Some(c) = row else {
-        return rsx! { p { class: "text-xs text-zinc-600", "该渠道不存在" } };
-    };
-    rsx! {
-        BoundField {
-            label: "渠道名称",
-            value: c.name,
-            placeholder: "OpenAI 官方",
-            on_change: move |v: String| store.channels.write()[index].name = v,
-        }
-        BoundField {
-            label: "Base URL",
-            value: c.url,
-            placeholder: "https://…",
-            on_change: move |v: String| store.channels.write()[index].url = v,
-        }
-        BoundArea {
-            label: "API Key（多 key 一行一个）",
-            value: c.keys,
-            placeholder: "sk-…\nsk-…",
-            on_change: move |v: String| store.channels.write()[index].keys = v,
-        }
-        InspectList { title: "已加入调度的模型", items: c.dispatch, empty: "拖端口连线以加入调度模型" }
     }
 }
 
@@ -2775,178 +2278,3 @@ fn InspectList(title: &'static str, items: Vec<String>, empty: &'static str) -> 
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 两个渠道各带几个调度模型，别名与其中两个同名。
-    fn view() -> GraphView {
-        let aliases = vec!["gpt-4o".to_string(), "claude-sonnet-4".to_string()];
-        let dispatch = vec![
-            (0, "gpt-4o".to_string()),
-            (0, "gpt-5".to_string()),
-            (1, "claude-sonnet-4".to_string()),
-        ];
-        GraphView {
-            groups: vec!["default".into()],
-            aliases: aliases.clone(),
-            channels: vec!["openai".into(), "anthropic".into()],
-            dispatch: dispatch.clone(),
-            alias_types: dedup_families(aliases.iter().map(|a| family(a))),
-            channel_types: dedup_families(dispatch.iter().map(|(_, m)| family(m))),
-        }
-    }
-
-    /// 真实 mock 规模（49 个调度模型）下的落位不变量：
-    /// 每个节点都在自己的带内，且两两不重叠。写死每排个数就会两条都破。
-    #[test]
-    fn initial_layout_stays_in_band_without_overlap() {
-        let d = crate::api::fetch_admin_data();
-        let aliases: Vec<String> = d.aliases.iter().map(|a| a.alias.clone()).collect();
-        let dispatch: Vec<(usize, String)> = d
-            .channels
-            .iter()
-            .enumerate()
-            .flat_map(|(ci, c)| c.dispatch.iter().map(move |m| (ci, m.clone())))
-            .collect();
-        let v = GraphView {
-            groups: d.groups.iter().map(|g| g.name.clone()).collect(),
-            aliases: aliases.clone(),
-            channels: d.channels.iter().map(|c| c.name.clone()).collect(),
-            dispatch: dispatch.clone(),
-            alias_types: dedup_families(aliases.iter().map(|a| family(a))),
-            channel_types: dedup_families(dispatch.iter().map(|(_, m)| family(m))),
-        };
-        let seed: HashSet<(NodeKey, NodeKey)> = SEED_EDGES.iter().copied().collect();
-        // 每种上下组合都要成立，不只默认那一对
-        for top in KindSel::ALL {
-            for bottom in KindSel::ALL {
-                if top == bottom {
-                    continue;
-                }
-                let sel = (top, bottom);
-                let pos = initial_positions(&v, sel, &seed);
-                let zones = visible_zones(&v, sel);
-                for (z, nodes) in zones.iter().enumerate() {
-                    let (b0, b1) = zone_band(z as u8);
-                    for &k in nodes {
-                        let p = pos[&k];
-                        assert!(
-                            p.1 >= b0 && p.1 <= b1,
-                            "{sel:?} {k:?} y={} out of band {b0}..{b1}",
-                            p.1
-                        );
-                    }
-                }
-                // 重叠判定用与物理同一套间隙常量
-                let all: Vec<NodeKey> = zones.iter().flatten().copied().collect();
-                for (i, &a) in all.iter().enumerate() {
-                    for &b in &all[i + 1..] {
-                        let (pa, pb) = (pos[&a], pos[&b]);
-                        let clash = (pb.0 - pa.0).abs() < NODE_W + 12.0
-                            && (pb.1 - pa.1).abs() < NODE_H + 8.0;
-                        assert!(!clash, "{sel:?} {a:?}{pa:?} overlaps {b:?}{pb:?}");
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn channel_to_dispatch_is_membership() {
-        let v = view();
-        let got = walk_edges(&v, &HashSet::new(), (KindSel::Channel, KindSel::Dispatch));
-        let want: HashSet<(NodeKey, NodeKey)> = HashSet::from([
-            (NodeKey::Channel(0), NodeKey::Dispatch(0)),
-            (NodeKey::Channel(0), NodeKey::Dispatch(1)),
-            (NodeKey::Channel(1), NodeKey::Dispatch(2)),
-        ]);
-        assert_eq!(got.into_iter().collect::<HashSet<_>>(), want);
-    }
-
-    #[test]
-    fn alias_type_reaches_dispatch_through_name_match() {
-        let v = view();
-        // 账本只连分组↔别名；别名→上游模型那一跳靠同名匹配补出来。
-        let ledger = HashSet::from([
-            (NodeKey::Group(0), NodeKey::Mapping(0)),
-            (NodeKey::Group(0), NodeKey::Mapping(1)),
-        ]);
-        let got: HashSet<(NodeKey, NodeKey)> =
-            walk_edges(&v, &ledger, (KindSel::AliasType, KindSel::Dispatch))
-                .into_iter()
-                .collect();
-        // 每个别名只落到与它同名的上游模型上
-        assert!(got.contains(&(NodeKey::AliasType(0), NodeKey::Dispatch(0))));
-        assert!(got.contains(&(NodeKey::AliasType(1), NodeKey::Dispatch(2))));
-        // gpt-5 没有任何别名路由到它 —— 不能因为同族就连过去
-        assert!(!got.contains(&(NodeKey::AliasType(0), NodeKey::Dispatch(1))));
-        // 也不能跨族串线
-        assert!(!got.contains(&(NodeKey::AliasType(1), NodeKey::Dispatch(0))));
-    }
-
-    #[test]
-    fn ledger_edge_routes_alias_to_unnamed_dispatch() {
-        let v = view();
-        // 账本显式把 gpt-4o 别名接到 gpt-5 这个上游模型
-        let ledger = HashSet::from([(NodeKey::Mapping(0), NodeKey::Dispatch(1))]);
-        let got: HashSet<(NodeKey, NodeKey)> =
-            walk_edges(&v, &ledger, (KindSel::AliasType, KindSel::Dispatch))
-                .into_iter()
-                .collect();
-        assert!(got.contains(&(NodeKey::AliasType(0), NodeKey::Dispatch(1))));
-    }
-
-    #[test]
-    fn group_reaches_only_its_aliases_dispatch() {
-        let v = view();
-        // g0 只接 gpt-4o；claude 那条链不该被拽进来
-        let ledger = HashSet::from([(NodeKey::Group(0), NodeKey::Mapping(0))]);
-        let got: HashSet<(NodeKey, NodeKey)> =
-            walk_edges(&v, &ledger, (KindSel::Group, KindSel::Dispatch))
-                .into_iter()
-                .collect();
-        assert_eq!(got, HashSet::from([(NodeKey::Group(0), NodeKey::Dispatch(0))]));
-    }
-
-    #[test]
-    fn reversed_selection_walks_backwards() {
-        let v = view();
-        let got: HashSet<(NodeKey, NodeKey)> =
-            walk_edges(&v, &HashSet::new(), (KindSel::Dispatch, KindSel::Channel))
-                .into_iter()
-                .collect();
-        assert_eq!(
-            got,
-            HashSet::from([
-                (NodeKey::Dispatch(0), NodeKey::Channel(0)),
-                (NodeKey::Dispatch(1), NodeKey::Channel(0)),
-                (NodeKey::Dispatch(2), NodeKey::Channel(1)),
-            ])
-        );
-    }
-
-    #[test]
-    fn same_kind_selection_has_no_edges() {
-        let v = view();
-        assert!(walk_edges(&v, &HashSet::new(), (KindSel::Dispatch, KindSel::Dispatch)).is_empty());
-    }
-
-    #[test]
-    fn zones_and_bands_follow_selection() {
-        let v = view();
-        let sel = (KindSel::Channel, KindSel::Dispatch);
-        let zones = visible_zones(&v, sel);
-        assert_eq!(zones[0].len(), 2);
-        assert_eq!(zones[1].len(), 3);
-        assert_eq!(zone_of_key(sel, NodeKey::Channel(0)), Some(0));
-        assert_eq!(zone_of_key(sel, NodeKey::Dispatch(2)), Some(1));
-        // 不在两条泳道上的层别不参与渲染/夹带
-        assert_eq!(zone_of_key(sel, NodeKey::Group(0)), None);
-        assert_eq!(zone_of_key(sel, NodeKey::Mapping(0)), None);
-        let (b0, b1) = zone_band(1);
-        assert!(b0 < ZONE_Y[1] && ZONE_Y[1] < b1);
-    }
-}
-
