@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 use page_overview::OverviewPanel;
 use page_models::ModelsPanel;
 use page_leaderboard::LeaderboardPanel;
-use page_admin::{NetworkPanel, state::EntityStore};
+use page_admin::{NetworkPanel, ChannelsPanel, ShowcasePanel, GroupsPanel, BillingPanel, SecurityPanel, SystemPanel, state::EntityStore};
 
 /// Top-level console sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,6 +34,8 @@ pub const SECTIONS: [Section; 3] = [
     Section::Console,
     Section::Manage,
 ];
+/// 管理 section 内的子 tab,顺序即页签顺序。
+const MANAGE_TABS: [&str; 7] = ["拓扑", "渠道", "模型", "分组", "计费", "安全", "系统"];
 
 /// Grayscale theme id; toggling flips a `light` class on the root wrapper.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -166,7 +168,7 @@ pub fn HomePage() -> Element {
     let mut section = use_signal(|| Section::Dashboard);
     let mut dash_tab = use_signal(|| 0u8);
     let mut theme = use_signal(|| Theme::Dark);
-    use_context_provider(EntityStore::seed);
+    use_context_provider(EntityStore::load);
     let is_light = theme() == Theme::Light;
 
     let open_drawer = move |_| drawer_open.set(true);
@@ -190,7 +192,14 @@ pub fn HomePage() -> Element {
     } else {
         rsx! {
             div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
-                TabItem { label: section().label(), active: true, onclick: move |_| {} }
+                for (i, label) in MANAGE_TABS.iter().enumerate() {
+                    TabItem {
+                        key: "{label}",
+                        label: label,
+                        active: dash_tab() == i as u8,
+                        onclick: move |_| dash_tab.set(i as u8),
+                    }
+                }
             }
         }
     };
@@ -215,7 +224,7 @@ pub fn HomePage() -> Element {
                         span { class: "text-lg font-semibold tracking-tight text-zinc-100", "New API" }
                         span { class: "hidden sm:inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500", "web-rs" }
                     }
-                    TopNavMeter { active: section(), on_select: move |s| section.set(s) }
+                    TopNavMeter { active: section(), on_select: move |s| { section.set(s); dash_tab.set(0); } }
                     button {
                         class: "rounded-full px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
                         onclick: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
@@ -228,7 +237,7 @@ pub fn HomePage() -> Element {
                     }
                 }
             }
-            SectionPill { active: section(), on_select: move |s| section.set(s) }
+            SectionPill { active: section(), on_select: move |s| { section.set(s); dash_tab.set(0); } }
             main { class: "flex min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "New API · 控制台" }
@@ -249,6 +258,13 @@ pub fn HomePage() -> Element {
                         (Section::Console, 1) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
                         (Section::Console, 2) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
                         (Section::Console, _) => rsx! { PlaceholderPane { text: "控制台（占位）" } },
+                        (Section::Manage, 0) => rsx! { NetworkPanel {} },
+                        (Section::Manage, 1) => rsx! { ChannelsPanel {} },
+                        (Section::Manage, 2) => rsx! { ShowcasePanel {} },
+                        (Section::Manage, 3) => rsx! { GroupsPanel {} },
+                        (Section::Manage, 4) => rsx! { BillingPanel {} },
+                        (Section::Manage, 5) => rsx! { SecurityPanel {} },
+                        (Section::Manage, 6) => rsx! { SystemPanel {} },
                         (Section::Manage, _) => rsx! { NetworkPanel {} },
                     }
                 }

@@ -1980,12 +1980,15 @@ sk-…",
                 onclick: move |_| {
                     let n = alias.peek().trim().to_string();
                     let name = if n.is_empty() { "新渠道".into() } else { n };
-                    store.channels.write().push(crate::state::ChannelRow {
+                    store.channels.write().push(crate::api::ChannelRow {
                         name,
                         url: url.peek().trim().to_string(),
                         keys: key.peek().trim().to_string(),
                         candidates: vec![],
                         dispatch: vec![],
+                        enabled: true,
+                        groups: vec![],
+                        remark: String::new(),
                     });
                     alias.set(String::new());
                     url.set(String::new());
