@@ -1219,9 +1219,8 @@ pub fn NetworkPanel() -> Element {
                     style: "right: {hint_right}px",
                     "{hint}"
                 }
-                // 左中：层别竖排多选。队列语义——恒定两个在选，
-                // 新点的进下带（sel.1），被挤出的是老的 sel.0；
-                // 点已选的那个则上下互换。
+                // 左中：层别竖排多选。恒定两个在选；上下由链路序(rank)决定，
+                // 与点击先后无关。点未选项顶掉最老的；点已选项无操作。
                 div {
                     class: "absolute left-3 z-10 flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900/85 p-1 backdrop-blur",
                     style: "top: 50%; transform: translateY(-50%)",
@@ -1244,8 +1243,12 @@ pub fn NetworkPanel() -> Element {
                                     class: "flex items-center gap-1 rounded-md border px-2 py-1 text-left text-xs transition-colors {tone}",
                                     onclick: move |_| {
                                         let (t, b) = *sel.peek();
-                                        // 已选 → 上下互换；未选 → 进下带，老的上带被挤出
-                                        sel.set(if kind == t || kind == b { (b, t) } else { (b, kind) });
+                                        if kind == t || kind == b {
+                                            return; // 已选不响应：上下次序由链路序(rank)定，不可互换
+                                        }
+                                        // 新类型顶掉最老的 sel.0，再按 rank 排定上下(小 rank 恒在上)
+                                        let pair = (b, kind);
+                                        sel.set(if pair.0.rank() <= pair.1.rank() { pair } else { (pair.1, pair.0) });
                                         // 唤醒物理：新层别的节点要落位、旧的要解除夹带
                                         let next = wake.peek().wrapping_add(1);
                                         wake.set(next);
@@ -1413,34 +1416,35 @@ pub fn NetworkPanel() -> Element {
                         }
                     }
 
-                    // 泳道标题留在屏幕空间（在 pan 组之外），缩放平移时不动。
-                    for (label, y) in [
-                        (sel_now.0.label(), ZONE_Y[0] - ZONE_HALF - 12.0),
-                        (sel_now.1.label(), ZONE_Y[1] - ZONE_HALF - 12.0),
-                    ] {
-                        text {
-                            class: "select-none",
-                            x: "8",
-                            y: "{y:.0}",
-                            fill: "#52525b",
-                            font_size: "11",
-                            pointer_events: "none",
-                            "{label}"
-                        }
-                    }
-                    // 中缝：两条泳道之间的虚线分隔
-                    line {
-                        x1: "0",
-                        y1: "{ZONE_MID:.0}",
-                        x2: "{VIEW_W:.0}",
-                        y2: "{ZONE_MID:.0}",
-                        stroke: "#27272a",
-                        stroke_width: "1",
-                        stroke_dasharray: "6 6",
-                        pointer_events: "none",
-                    }
-
                     g { transform: "translate({pan().0:.1} {pan().1:.1}) scale({zoom():.3})",
+
+                        // 泳道标题 + 中缝都在世界坐标里，随 pan/zoom 走——
+                        // 画在屏幕空间会与真正夹住节点的世界分界错位。
+                        for (label, y) in [
+                            (sel_now.0.label(), ZONE_Y[0] - ZONE_HALF - 12.0),
+                            (sel_now.1.label(), ZONE_Y[1] - ZONE_HALF - 12.0),
+                        ] {
+                            text {
+                                class: "select-none",
+                                x: "8",
+                                y: "{y:.0}",
+                                fill: "#52525b",
+                                font_size: "11",
+                                pointer_events: "none",
+                                "{label}"
+                            }
+                        }
+                        // 中缝：两条泳道之间的虚线分隔（横向铺满世界）
+                        line {
+                            x1: "-3000",
+                            y1: "{ZONE_MID:.0}",
+                            x2: "{VIEW_W + 3000.0:.0}",
+                            y2: "{ZONE_MID:.0}",
+                            stroke: "#27272a",
+                            stroke_width: "1",
+                            stroke_dasharray: "6 6",
+                            pointer_events: "none",
+                        }
 
                         // World grid dots (RTS map feel)
                         defs {
