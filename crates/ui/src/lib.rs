@@ -2,6 +2,11 @@
 //! visually compatible with the original auth page.
 
 use dioxus::prelude::*;
+mod scroll_spy;
+mod segmented;
+
+pub use scroll_spy::ScrollSpyNav;
+pub use segmented::SegmentedCapsule;
 
 const INPUT_CLASS: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-100 outline-none transition focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400";
 

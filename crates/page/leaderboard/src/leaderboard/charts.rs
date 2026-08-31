@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use super::data::{composite, ModelStat, MODELS};
+use crate::api::{composite, ModelStat, MODELS};
 
 /// 综合排行: 按六维均值排序.
 #[component]

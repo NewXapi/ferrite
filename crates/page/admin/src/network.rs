@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use dioxus::prelude::*;
 
 use crate::entities::EntitiesPanel;
-use crate::ui::ScrollSpyNav;
 use crate::state::EntityStore;
+use ui::ScrollSpyNav;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
 /// 任一侧改名/增删，其他侧立即反映。
@@ -226,8 +226,7 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
         let row_count = placed.len().div_ceil(per_row);
         for (chunk_i, chunk) in placed.chunks(per_row).enumerate() {
             let row_y = ROW_Y[l]
-                + (chunk_i as f64 - (row_count.saturating_sub(1) as f64 / 2.0))
-                    * (NODE_H + 14.0);
+                + (chunk_i as f64 - (row_count.saturating_sub(1) as f64 / 2.0)) * (NODE_H + 14.0);
             let mut row: Vec<(NodeKey, f64)> = Vec::with_capacity(chunk.len());
             let mut prev = f64::NEG_INFINITY;
             for &(k, x) in chunk {
@@ -246,7 +245,6 @@ fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
     }
     out
 }
-
 
 /// Node→node edge must span exactly one layer; channels are aggregates only.
 fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
@@ -352,14 +350,18 @@ fn fit_view_into(
 
     let (minx, maxx) = pts
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| (a.min(x), b.max(x)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(x, _)| {
+            (a.min(x), b.max(x))
+        });
     let (miny, maxy) = pts
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| (a.min(y), b.max(y)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, y)| {
+            (a.min(y), b.max(y))
+        });
     let (w, h) = ((maxx - minx).max(1.0), (maxy - miny).max(1.0));
     let pad_css = 48.0;
-    let z = (((avail - pad_css * 2.0) / (w * s)).min((rh - pad_css * 2.0) / (h * s)))
-        .clamp(0.35, 1.6);
+    let z =
+        (((avail - pad_css * 2.0) / (w * s)).min((rh - pad_css * 2.0) / (h * s))).clamp(0.35, 1.6);
     let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
     // css = ox + (pan + world * z) * s  →  pan = (target - ox)/s - world * z
     let pan_x = (avail / 2.0 - ox) / s - cx * z;
@@ -657,7 +659,8 @@ pub fn NetworkPanel() -> Element {
     });
     use_hook(move || {
         spawn(async move {
-            let mut ev = document::eval(r#"
+            let mut ev = document::eval(
+                r#"
                 if (!window.__topoUndoBound) {
                     window.__topoUndoBound = true;
                     window.addEventListener('keydown', (e) => {
@@ -668,7 +671,8 @@ pub fn NetworkPanel() -> Element {
                         dioxus.send(true);
                     });
                 }
-            "#);
+            "#,
+            );
             // undo 走 bool（true=执行一次撤销）
             // 注意：不能在这里顺便收数字，单一 eval 流只保一种类型最稳
             while let Ok(true) = ev.recv::<bool>().await {
@@ -986,9 +990,7 @@ pub fn NetworkPanel() -> Element {
     };
 
     let hint = match drag_now {
-        _ if cone_now.is_some() => {
-            "焦点空间 · 左键节点切换 · 右键空白或再点同节点返回"
-        }
+        _ if cone_now.is_some() => "焦点空间 · 左键节点切换 · 右键空白或再点同节点返回",
         Some(Drag::Wire { .. }) => "拖到相邻层节点松开连线",
         Some(Drag::Move { .. }) => "松开落位",
         _ => "滚轮缩放 · 拖空白平移 · Shift拖空白框选 · Ctrl点选多个 · 拖节点摆位 · 拖圆点连线",
@@ -1964,7 +1966,7 @@ fn ImportPanel() -> Element {
                     class: "min-h-[96px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
                     value: "{key.read()}",
                     placeholder: "sk-…
-sk-…",
+    sk-…",
                     oninput: move |e| key.set(e.value()),
                 }
             }

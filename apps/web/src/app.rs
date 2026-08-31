@@ -1,9 +1,9 @@
 //! Root application switcher.
-use dioxus::prelude::*;
 use super::HomePage;
 use crate::retro::RetroPage;
-use wasm_bindgen::prelude::*;
+use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 /// Root application: `#retro` selects the topology branch's experimental page;
 /// every other hash renders the regular console.
