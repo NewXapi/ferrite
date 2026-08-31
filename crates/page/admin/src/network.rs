@@ -760,6 +760,10 @@ pub fn NetworkPanel() -> Element {
     });
     // 两条泳道各选一种层别：上带 sel.0，下带 sel.1。左侧竖排按钮切换。
     let mut sel = use_signal(|| (KindSel::AliasType, KindSel::Dispatch));
+    // 左栏拖拽中的源类型（HTML5 DnD；松手才提交，不做 hover 微交互）
+    let mut rail_drag = use_signal(|| None::<KindSel>);
+    // 右上孤立节点面板里点亮的节点（只有点亮的孤立节点上画布）
+    let mut show_isolates = use_signal(HashSet::<NodeKey>::new);
     let mut drag = use_signal(|| None::<Drag>);
     let mut hover_wire = use_signal(|| None::<(NodeKey, NodeKey)>);
     let mut hover = use_signal(|| None::<NodeKey>);
@@ -906,8 +910,14 @@ pub fn NetworkPanel() -> Element {
                 }
                 let view_now = GraphView::from_store(&store);
                 let sel_now = *sel.peek();
-                let layers = visible_zones(&view_now, sel_now);
+                let mut layers = visible_zones(&view_now, sel_now);
                 let pairs = display_edge_pairs(&view_now, &edges.peek(), sel_now);
+                // 孤立节点不参与物理，也不当 dodge 的隐形遮挡物
+                let conn_t: HashSet<NodeKey> = pairs.iter().flat_map(|&(u, l, _)| [u, l]).collect();
+                let shown_t = show_isolates.peek();
+                for row in layers.iter_mut() {
+                    row.retain(|k| conn_t.contains(k) || shown_t.contains(k));
+                }
                 let pairs_xy: Vec<(NodeKey, NodeKey)> =
                     pairs.iter().map(|&(u, l, _)| (u, l)).collect();
                 energy = physics_step(
@@ -984,6 +994,20 @@ pub fn NetworkPanel() -> Element {
             row.retain(|k| cone.contains(k));
         }
     }
+    // 孤立节点（没有任何派生连线）默认不画；在右上面板点亮的才显示
+    let display_edges_full = display_edge_pairs(&view_now, &edges(), sel_now);
+    let connected: HashSet<NodeKey> =
+        display_edges_full.iter().flat_map(|&(u, l, _)| [u, l]).collect();
+    let shown_iso = show_isolates();
+    let isolates: Vec<NodeKey> = layers
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|k| !connected.contains(k) && !shown_iso.contains(k))
+        .collect();
+    for row in layers.iter_mut() {
+        row.retain(|k| connected.contains(k) || shown_iso.contains(k));
+    }
     let selection_now = selected();
     let layers_fit = layers.clone(); // owned copy for the 适配 button's handler
 
@@ -1001,16 +1025,13 @@ pub fn NetworkPanel() -> Element {
     let wiring = sel_now == (KindSel::Channel, KindSel::Dispatch);
 
 
-    let view_now = GraphView::from_store(&store);
-    let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = {
-        let all = display_edge_pairs(&view_now, &edges(), sel_now);
-        match &cone_now {
-            Some(cone) => all
-                .into_iter()
-                .filter(|(u, l, _)| cone.contains(u) && cone.contains(l))
-                .collect(),
-            None => all,
-        }
+    let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = match &cone_now {
+        Some(cone) => display_edges_full
+            .iter()
+            .copied()
+            .filter(|(u, l, _)| cone.contains(u) && cone.contains(l))
+            .collect(),
+        None => display_edges_full,
     };
     let dodge_now = dodge();
 
@@ -1114,7 +1135,15 @@ pub fn NetworkPanel() -> Element {
                 let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
                 let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
                 let view_m = GraphView::from_store(&store);
-                let layers = visible_zones(&view_m, *sel.peek());
+                let sel_m = *sel.peek();
+                let mut layers = visible_zones(&view_m, sel_m);
+                let pairs_m = display_edge_pairs(&view_m, &edges.peek(), sel_m);
+                let conn_m: HashSet<NodeKey> =
+                    pairs_m.iter().flat_map(|&(u, l, _)| [u, l]).collect();
+                let shown_m = show_isolates.peek();
+                for row in layers.iter_mut() {
+                    row.retain(|k| conn_m.contains(k) || shown_m.contains(k));
+                }
                 let hit: HashSet<NodeKey> = layers
                     .iter()
                     .flatten()
@@ -1162,15 +1191,6 @@ pub fn NetworkPanel() -> Element {
             // 画布与抽屉同层：抽屉 absolute 覆盖右侧，画布尺寸恒定，
             // 开合不引起任何重排。图例与按钮都做 HUD 浮在画布上。
             div { class: "relative min-h-0 flex-1",
-                // 左上：分组图例（浮层）
-                div { class: "pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2",
-                    for (i, g) in view_now.groups.iter().enumerate() {
-                        span { class: "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur",
-                            span { class: "h-2 w-2 rounded-full", style: "background: {GROUP_PALETTE[i % GROUP_PALETTE.len()]}" }
-                            "{g}"
-                        }
-                    }
-                }
                 // 右上：设置/导入/适配。抽屉已改居中模态，HUD 不再让位。
                 {
                     let hud_right = 12;
@@ -1219,8 +1239,26 @@ pub fn NetworkPanel() -> Element {
                     style: "right: {hint_right}px",
                     "{hint}"
                 }
-                // 左中：层别竖排多选。恒定两个在选；上下由链路序(rank)决定，
-                // 与点击先后无关。点未选项顶掉最老的；点已选项无操作。
+                // 右上：孤立节点面板。两面性——只列「不在图上」的孤立节点，
+                // 点一个就把它放上画布（随后从面板消失）。
+                if !isolates.is_empty() {
+                    div { class: "absolute right-3 top-14 z-10 flex max-h-64 w-36 flex-col gap-0.5 overflow-y-auto scroll-hidden rounded-lg border border-zinc-800 bg-zinc-900/85 p-1 backdrop-blur",
+                        for key in isolates.iter().copied() {
+                            button {
+                                class: "flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200",
+                                onclick: move |_| {
+                                    show_isolates.write().insert(key);
+                                    let next = wake.peek().wrapping_add(1);
+                                    wake.set(next);
+                                },
+                                span { class: "h-2 w-2 shrink-0 rounded-full", style: "background: {view_color(&view_now, key)}" }
+                                span { class: "truncate", "{view_title(&view_now, key)}" }
+                            }
+                        }
+                    }
+                }
+                // 左中：层别竖排多选，拖拽换层别（拖到上/下格松手才换）。
+                // 恒定两个在选；上下由链路序(rank)固定，与拖拽方向无关。
                 div {
                     class: "absolute left-3 z-10 flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900/85 p-1 backdrop-blur",
                     style: "top: 50%; transform: translateY(-50%)",
@@ -1240,14 +1278,24 @@ pub fn NetworkPanel() -> Element {
                             };
                             rsx! {
                                 button {
-                                    class: "flex items-center gap-1 rounded-md border px-2 py-1 text-left text-xs transition-colors {tone}",
-                                    onclick: move |_| {
+                                    class: "flex cursor-grab select-none items-center gap-1 rounded-md border px-2 py-1 text-left text-xs transition-colors {tone}",
+                                    // 拖拽换层别，松手才提交切换——不做 hover 微切换
+                                    draggable: "true",
+                                    ondragstart: move |_| rail_drag.set(Some(kind)),
+                                    ondragend: move |_| rail_drag.set(None),
+                                    ondragover: move |e| {
+                                        // 只有当前在选的上/下两格是投放目标
+                                        if !badge.is_empty() { e.prevent_default(); }
+                                    },
+                                    ondrop: move |e| {
+                                        e.prevent_default();
+                                        let Some(src) = rail_drag.take() else { return };
                                         let (t, b) = *sel.peek();
-                                        if kind == t || kind == b {
-                                            return; // 已选不响应：上下次序由链路序(rank)定，不可互换
+                                        if src == t || src == b {
+                                            return; // 已在选的拖回上/下格：不动
                                         }
-                                        // 新类型顶掉最老的 sel.0，再按 rank 排定上下(小 rank 恒在上)
-                                        let pair = (b, kind);
+                                        // 拖到上格换上带，拖到下格换下带；次序仍按链路序(rank)
+                                        let pair = if kind == t { (src, b) } else { (t, src) };
                                         sel.set(if pair.0.rank() <= pair.1.rank() { pair } else { (pair.1, pair.0) });
                                         // 唤醒物理：新层别的节点要落位、旧的要解除夹带
                                         let next = wake.peek().wrapping_add(1);
