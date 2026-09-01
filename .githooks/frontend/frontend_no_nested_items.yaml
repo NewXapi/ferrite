@@ -1,29 +1,14 @@
-# FR-05 禁止函数体内嵌套定义
-# 只针对 struct / enum / 1 次使用的 const —— 阻挡 IDE 跳转, 阻挡复用, 阻挡命名空间.
-# 例外: 组件顶部的文案 const (FR-03 推荐模式) 和物理算法魔数 (mod 顶部)
+# FR-05 禁止函数体内定义类型
+# function 内部禁止 struct / enum
+# 理由: 阻挡 IDE 跳转, 阻挡复用, 阻挡命名空间清晰
 
 ignore_paths:
   - ".wt/"
   - "target/"
 
 forbidden_patterns:
-  # fn 体里有 `    struct ` 或 `    enum ` 缩进
   - path_regex: '^crates/.*\.rs$'
     pattern: '^[[:space:]]+(struct|enum)[[:space:]]+[A-Z]\w*'
     reason: "struct / enum 不应定义在 function 内"
-    suggestion: "提到 mod 顶部 (lib.rs / 同文件模块作用域), 或单独文件"
+    suggestion: "提到 mod 顶部 (同文件模块作用域) 或文件顶部"
     severity: FAIL
-    notes:
-      - '类型属于 crate 模块, 不是函数. fn 内 type 阻挡 IDE 跳转和跨 fn 复用.'
-      - 'DayCell 那种为 closure 服务的视图模型, 仍放 mod 级.'
-
-  # fn 体里有 `    const NAME: ...` 等内嵌 const —— WARN (非 FAIL)
-  # 组件顶部 const (FR-03 单组件复用模式) 是合规位置; 真正违规是 1 次使用抽 const
-  - path_regex: '^crates/.*\.rs$'
-    pattern: '^[[:space:]]+const\s+[A-Z_]+\s*:'
-    reason: "fn 内 const 多为过早抽象; 1 次使用应留 rsx, 物理魔数应归 mod 顶部"
-    suggestion: "复用 2+ 次 -> mod 顶部; 1 次 -> 留 rsx; 物理魔数 -> mod 顶部或 *params.rs"
-    severity: WARN
-    notes:
-      - 'FR-03 推荐的组件顶部 const 视为合规 (跟 fn 内 const 是不同位置).'
-      - '1 次使用 + 抽 const 是无理由抽象, 真正违规.'

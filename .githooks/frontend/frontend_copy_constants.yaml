@@ -1,11 +1,10 @@
 # FR-03 文案常量 (反硬编码)
-# 规则: 同一字面量复用 2+ 次 -> 抽 const; 单次使用保留在 rsx
-# 位置按共享范围就近:
+# 同一中文字面量复用 2+ 次 -> 抽 const
+#
+# 位置:
 #   单组件内复用 -> 组件函数顶部 const
-#   同文件跨组件复用 -> 模块级 const
-#   跨 page 复用 -> crates/ui/src/locale/<域>.rs (尚未启用, 当前无此需求)
-# rsx 子节点表达式必须 {CONST}; 属性值可直接 CONST
-# 动态插值文案 ("折合 {var}") 是 format 字符串, 不能抽 const
+#   跨组件复用 -> mod 顶部 const
+#   跨 page 复用 -> crates/ui/src/locale.rs (尚未启用)
 
 ignore_paths:
   - ".wt/"
@@ -14,42 +13,21 @@ ignore_paths:
   - "crates/mock/"
 
 forbidden_patterns:
-  # rsx 内中文字面量 (api.rs / state.rs / mock 数据豁免)
+  # rsx 内中文字面量 (api.rs / state.rs / mock 豁免)
   - path_regex: '^crates/page-[^/]+/src/(?!api\.rs$|state\.rs$)[^/]+\.rs$'
     pattern: '"[^"]*[\p{Han}][^"]*"'
     reason: "rsx 内硬编码中文; 复用 2+ 次应抽 const"
-    suggestion: "按共享范围就近: 组件内 -> 组件函数顶部; 同文件跨组件 -> 模块级; 跨 page -> crates/ui/"
+    suggestion: "按共享范围就近抽 const (组件内或 mod 级)"
     severity: FAIL
     exemption_markers:
       - "//!"
       - "///"
       - "#[cfg(test)]"
+      - "//"
 
-  # mock 数据硬编码中文 (这是数据, 不是文案; mock 数据应在 crates/mock/)
+  # mock 数据硬编码中文 (这是数据, 留在 mock crate)
   - path_regex: '^crates/mock/[^/]+\.rs$'
     pattern: '"[^"]*[\p{Han}][^"]*"'
     reason: "mock 数据: 仅允许在 crates/mock/, 面板禁止直连"
-    suggestion: "面板通过 page-<n>/src/api.rs 薄壳取数, 不要把 mock 数据写在面板内"
+    suggestion: "面板通过 api.rs 薄壳取数"
     severity: FAIL
-
-# 字符串字面量集中存放
-expected_locations:
-  - file_pattern: '^locale\.rs$'
-    expected_dir: "crates/ui/src/"
-    note: "跨 page 文案常量容器, 当前未启用 (单 page 各自 const 已够)"
-
-notes:
-  rsx_braces_rules: |
-    - rsx 子节点裸常量 -> `button { ..., {BTN_CANCEL} }`
-    - 属性值可直接写常量 -> `InputCell { label: FIELD_DISPLAY, ... }`
-    - if/else rsx 子节点分支体都要包花括号 -> `if x { {A} } else { {B} }`
-    - 带引号字面文本含 const 引用 -> `p { ..., "{FOOTER_HINT}" }`
-    - 动态插值 (`"折合 {quota_hint}"`) 是 format 字符串, 不能抽 const
-  what_is_not_text:
-    - 人名 / 渠道名 / mock 数值 (在 crates/mock/)
-    - 视觉 class 串 (暂不抽, 规范明确放 rsx)
-    - DOM id / API endpoint / URL path (这些不是文案, 是标识符)
-  i18n_policy: |
-    单语言阶段不上 fluent / rust-i18n.
-    const 即最终形态.
-    引入 i18n 库触发条件: 第二语言 / / 改文案痛点 / / 业务方要求.

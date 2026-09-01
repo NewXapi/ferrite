@@ -1,24 +1,23 @@
 # FR-04 + FR-07 测试代码划分
-# 单元测试: 源文件内 #[cfg(test)] mod tests (私有函数 + 纯函数)
-# 集成测试: crates/<name>/tests/<topic>.rs (公共入口: api.rs / state.rs / pub 类型)
-# 单文件测试函数< 200 行; #[cfg(test)] mod 块< 500 行; 一文件一主题, 不大锅烩
+# 单元测试: 源文件内 #[cfg(test)] mod tests (私有函数)
+# 集成测试: crates/<name>/tests/<topic>.rs (公共入口: api.rs / state.rs)
 
 ignore_paths:
   - ".wt/"
   - "target/"
 
 forbidden_patterns:
-  # src/ 内独立测试文件 (违反 Rust 惯例)
+  # src/ 内独立测试文件违规
   - path_regex: '^crates/[^/]+/src/.*_test\.rs$'
-    reason: "src/ 内 _test.rs 违反 Rust 惯例 (惯例是 #[cfg(test)] mod 或 tests/ 目录)"
-    suggestion: "合并到源文件 #[cfg(test)] mod 或移到 tests/"
+    reason: "src/ 内 _test.rs 违反 Rust 惯例"
+    suggestion: "合并到源文件 #[cfg(test)] mod 或移到 tests/ 目录"
     severity: WARN
   - path_regex: '^crates/[^/]+/src/test_[^/]+\.rs$'
-    reason: "src/ 内 test_*.rs 同上"
+    reason: "src/ 内 test_*.rs 违反 Rust 惯例"
     suggestion: "同上"
     severity: WARN
 
-# 集成测试入口
+# 集成测试预期位置 (所有 page 必须有 tests/api_shapes.rs)
 expected_locations:
   - file_pattern: '^api_shapes\.rs$'
     expected_dir: "crates/page-account/tests/"
@@ -34,36 +33,3 @@ expected_locations:
     expected_dir: "crates/page-overview/tests/"
   - file_pattern: '^api_shapes\.rs$'
     expected_dir: "crates/page-users/tests/"
-
-notes:
-  layout_policy: |
-    单元测试 (#[cfg(test)] mod tests):
-      - 留 src/<file>.rs 末尾, 与被测 fn 同文件
-      - mod 块 < 500 行; 超出则拆出 src/<file>_tests.rs 或 tests/<topic>.rs
-      - 适用: 纯函数 (bezier / cubic_at / ease / fit_view / fmt_*)
-    集成测试 (tests/<topic>.rs):
-      - 一文件一主题: api_shapes.rs / network_smoke.rs / auth_flow.rs
-      - 不要 `tests/integration.rs` 大锅烩
-      - 单文件 < 200 行; 超出则按主题再拆
-      - 适用: pub fn fetch_* / pub struct / 跨模块集成
-    helpers / fixture:
-      - 放 tests/common/mod.rs (单 crate 共享) 或 tests/helpers/<name>.rs
-      - 当前未用到, 真实需求出现时再加
-
-  coverage_policy: |
-    必须覆盖:
-      - 数学 / 格式化 / 物理函数: 边界 + 单元
-      - api.rs 每个 pub fn fetch_*() / pub struct: 至少 1 个断言
-      - mock crate 数据: id 唯一 / 时间戳非零 / / 引用下标有效
-
-  dioxus_runtime_trap: |
-    Signal::new 需要 Dioxus runtime (thread_local 栈).
-    集成测试用 headless VirtualDom 包裹:
-        fn TestRoot() -> Element {
-            BODY.with(|s| if let Some(f) = *s.borrow() { f() });
-            rsx! { div {} }
-        }
-        let mut vdom = VirtualDom::new(TestRoot);
-        vdom.rebuild_in_place();
-    例子: crates/page-admin/tests/api_shapes.rs 的 with_runtime
-    当前 use_state 的 page-* 已有此 pattern, 新增测试复用即可.
