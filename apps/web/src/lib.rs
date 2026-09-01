@@ -6,16 +6,18 @@ pub use app::RootApp;
 use dioxus::prelude::*;
 
 // Page roots that implement each panel.
-use page_overview::OverviewPanel;
-use page_models::ModelsPanel;
-use page_leaderboard::LeaderboardPanel;
+use page_account::{KeysPanel, RewardsPanel, UsageLogsPanel};
+use page_users::UsersPanel;
 use page_admin::{NetworkPanel, state::EntityStore};
+use page_leaderboard::LeaderboardPanel;
+use page_models::ModelsPanel;
+use page_overview::OverviewPanel;
 
 /// Top-level console sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Dashboard,
-    Console,
+    Account,
     Manage,
 }
 
@@ -23,17 +25,13 @@ impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::Dashboard => "总览",
-            Section::Console => "控制台",
+            Section::Account => "账户",
             Section::Manage => "管理",
         }
     }
 }
 
-pub const SECTIONS: [Section; 3] = [
-    Section::Dashboard,
-    Section::Console,
-    Section::Manage,
-];
+pub const SECTIONS: [Section; 3] = [Section::Dashboard, Section::Account, Section::Manage];
 
 /// Grayscale theme id; toggling flips a `light` class on the root wrapper.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,8 +106,9 @@ pub fn TopNavMeter(active: Section, on_select: EventHandler<Section>) -> Element
     }
 }
 
+/// 面板头部文字 tab:激活项底部白色下划线(激活态用底部 0.5px 白色横条指示)
 #[component]
-pub fn TabItem(label: &'static str, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
+pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
     let tone = if active {
         "text-zinc-100"
     } else {
@@ -122,17 +121,6 @@ pub fn TabItem(label: &'static str, active: bool, onclick: EventHandler<MouseEve
             "{label}"
             if active {
                 span { class: "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 bg-zinc-100" }
-            }
-        }
-    }
-}
-
-#[component]
-pub fn PlaceholderPane(text: &'static str) -> Element {
-    rsx! {
-        div { class: "flex h-full items-center justify-center p-10",
-            div { class: "rounded-xl border border-dashed border-zinc-700 px-6 py-4 text-sm text-zinc-500",
-                "{text}"
             }
         }
     }
@@ -153,7 +141,7 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
                     }
                 }
             }
-            div { class: "min-h-0 flex-1 overflow-y-auto p-4 sm:p-6",
+            div { id: "panel-scroll", class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6",
                 {children}
             }
         }
@@ -171,26 +159,35 @@ pub fn HomePage() -> Element {
 
     let open_drawer = move |_| drawer_open.set(true);
     let close_drawer = move |_| drawer_open.set(false);
-    let panel_header = if section() == Section::Dashboard {
+    let panel_header = {
+        let labels: Vec<String> = match section() {
+            Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
+            Section::Account => vec!["密钥·资料".into(), "用量·日志".into(), "邀请·奖励".into()],
+            Section::Manage => vec!["网络".into(), "用户".into()],
+        };
+        let tab_count = labels.len() as i32;
         rsx! {
-            div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
-                TabItem { label: "总览", active: dash_tab() == 0, onclick: move |_| dash_tab.set(0) }
-                TabItem { label: "模型", active: dash_tab() == 1, onclick: move |_| dash_tab.set(1) }
-                TabItem { label: "排行榜", active: dash_tab() == 2, onclick: move |_| dash_tab.set(2) }
-            }
-        }
-    } else if section() == Section::Console {
-        rsx! {
-            div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
-                TabItem { label: "密钥", active: dash_tab() == 0, onclick: move |_| dash_tab.set(0) }
-                TabItem { label: "用量", active: dash_tab() == 1, onclick: move |_| dash_tab.set(1) }
-                TabItem { label: "日志", active: dash_tab() == 2, onclick: move |_| dash_tab.set(2) }
-            }
-        }
-    } else {
-        rsx! {
-            div { class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
-                TabItem { label: section().label(), active: true, onclick: move |_| {} }
+            div {
+                class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
+                onwheel: move |e: WheelEvent| {
+                    e.prevent_default();
+                    use dioxus::html::geometry::WheelDelta;
+                    let dy = match e.delta() {
+                        WheelDelta::Pixels(v) => v.y,
+                        WheelDelta::Lines(v) => v.y,
+                        WheelDelta::Pages(v) => v.y,
+                    };
+                    let next = (dash_tab() as i32 + if dy > 0.0 { 1 } else { -1 }).rem_euclid(tab_count);
+                    dash_tab.set(next as u8);
+                },
+                for (i, label) in labels.iter().enumerate() {
+                    TabItem {
+                        key: "{i}",
+                        label: label.clone(),
+                        active: dash_tab() as usize == i,
+                        onclick: move |_| dash_tab.set(i as u8),
+                    }
+                }
             }
         }
     };
@@ -204,7 +201,7 @@ pub fn HomePage() -> Element {
             }
         }
         div {
-            class: "flex min-h-screen bg-zinc-950 text-zinc-100 transition-all duration-300",
+            class: "flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
             class: if drawer_open() { "brightness-75" } else { "" },
             class: if is_light { "light" } else { "" },
             "aria-hidden": drawer_open(),
@@ -229,7 +226,7 @@ pub fn HomePage() -> Element {
                 }
             }
             SectionPill { active: section(), on_select: move |s| section.set(s) }
-            main { class: "flex min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
+            main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "New API · 控制台" }
                     button {
@@ -245,11 +242,12 @@ pub fn HomePage() -> Element {
                         (Section::Dashboard, 1) => rsx! { ModelsPanel {} },
                         (Section::Dashboard, 2) => rsx! { LeaderboardPanel {} },
                         (Section::Dashboard, _) => rsx! { OverviewPanel {} },
-                        (Section::Console, 0) => rsx! { PlaceholderPane { text: "API 密钥：列表 + 详情抽屉（占位）" } },
-                        (Section::Console, 1) => rsx! { PlaceholderPane { text: "用量明细（占位）" } },
-                        (Section::Console, 2) => rsx! { PlaceholderPane { text: "日志流（占位）" } },
-                        (Section::Console, _) => rsx! { PlaceholderPane { text: "控制台（占位）" } },
-                        (Section::Manage, _) => rsx! { NetworkPanel {} },
+                        (Section::Account, 0) => rsx! { KeysPanel {} },
+                        (Section::Account, 1) => rsx! { UsageLogsPanel {} },
+                        (Section::Account, 2) => rsx! { RewardsPanel {} },
+                        (Section::Account, _) => rsx! { KeysPanel {} },
+                        (Section::Manage, 0) => rsx! { NetworkPanel {} },
+                        (Section::Manage, _) => rsx! { UsersPanel {} },
                     }
                 }
             }
@@ -266,7 +264,11 @@ pub fn AuthPageContent() -> Element {
 /// Right-side auth drawer.
 #[component]
 pub fn AuthDrawer(open: bool, light: bool, on_close: EventHandler<MouseEvent>) -> Element {
-    let drawer_class = if open { "translate-x-0" } else { "translate-x-full pointer-events-none" };
+    let drawer_class = if open {
+        "translate-x-0"
+    } else {
+        "translate-x-full pointer-events-none"
+    };
     rsx! {
         aside {
             class: "fixed top-0 right-0 z-50 h-full w-full max-w-sm border-l border-zinc-800 bg-zinc-950 shadow-lg transition-transform duration-300 ease-out {drawer_class}",

@@ -1,7 +1,8 @@
 /* Tailwind CSS v4 entry — scans Dioxus rsx! class attributes in Rust sources. */
 @import "tailwindcss";
 
-@source "../../../crates/web/**/*.rs";
+@source "../../../crates/page/**/*.rs";
+@source "../../../crates/ui/**/*.rs";
 
 /* Light theme overrides (unlayered — beats @layer utilities) */
 .light { color-scheme: light; }
@@ -171,3 +172,7 @@
         radial-gradient(52% 34% at 98% 98%, rgba(0, 0, 0, 0.40) 0%, rgba(0, 0, 0, 0.15) 48%, transparent 72%),
         radial-gradient(125% 72% at -2% 102%, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.30) 44%, transparent 80%);
 }
+
+/* 全局隐藏滚动条:页面锁定视口,仅 #panel-scroll 内部纵向滚动 */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
