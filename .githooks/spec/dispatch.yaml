@@ -1,0 +1,8 @@
+pre-commit:
+  - checklist
+
+pre-push:
+  - checklist
+
+merge:
+  - checklist
