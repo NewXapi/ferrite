@@ -1,0 +1,15 @@
+pre-commit:
+  - workspace
+  - code
+  - checklist
+
+pre-push:
+  - workspace
+  - code
+  - checklist
+
+merge:
+  - github/pull_requests
+  - github/reviews
+  - cleanup
+  - checklist
