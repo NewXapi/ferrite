@@ -12,21 +12,21 @@ pub fn RankListCard() -> Element {
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
+        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
             h2 { class: "mb-4 text-sm font-medium text-zinc-300", "综合排行" }
             div { class: "space-y-3",
                 for (i, (m, score)) in ranked.iter().enumerate() {
                     {
-                        let num_cls = if i == 0 { "text-zinc-100" } else { "text-zinc-500" };
-                        let bar_cls = if i == 0 { "bg-zinc-200" } else { "bg-zinc-500" };
+                        let num_cls = if i == 0 { "text-zinc-100 font-bold" } else { "text-zinc-500" };
+                        let bar_cls = if i == 0 { "bg-zinc-100" } else if i < 3 { "bg-zinc-300" } else { "bg-zinc-500" };
                         rsx! {
-                        div { class: "grid grid-cols-[auto_1fr_auto] items-center gap-3",
-                            span { class: "w-5 text-right text-sm font-semibold {num_cls}", "{i + 1}" }
-                            span { class: "truncate text-sm text-zinc-300", "{m.name}" }
-                            span { class: "text-sm text-zinc-400", "{score:.1}" }
+                        div { class: "group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg -mx-2 px-2 py-1 transition-all hover:bg-zinc-800/50 cursor-default",
+                            span { class: "w-5 text-right text-sm {num_cls} transition-transform group-hover:scale-110", "{i + 1}" }
+                            span { class: "truncate text-sm text-zinc-300 transition-colors group-hover:text-zinc-100 font-medium", "{m.name}" }
+                            span { class: "text-sm text-zinc-400 font-mono transition-colors group-hover:text-zinc-200", "{score:.1}" }
                             div { class: "col-span-2 col-start-2 h-1.5 overflow-hidden rounded-full bg-zinc-800",
                                 div {
-                                    class: "h-full rounded-full {bar_cls}",
+                                    class: "h-full rounded-full {bar_cls} transition-all duration-500 ease-out group-hover:brightness-125",
                                     style: "width: {score:.1}%",
                                 }
                             }
@@ -71,24 +71,26 @@ pub fn RidgeCard() -> Element {
     let height = 30.0 + MODELS.len() as f64 * ROW + 6.0;
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 md:col-span-2 xl:col-span-3",
+        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 md:col-span-2 xl:col-span-3 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
             h2 { class: "mb-4 text-sm font-medium text-zinc-300", "延迟分布 · 山脊图" }
             svg { class: "w-full overflow-visible", view_box: "-62 -6 {W + 64.0} {height + 10.0}",
                 for (name, d, baseline) in &rows {
-                    path {
-                        d: "{d}",
-                        fill: "rgba(161,161,170,0.10)",
-                        stroke: "#d4d4d8", stroke_width: "0.8",
-                    }
-                    text {
-                        x: "50", y: "{baseline - 2.0:.1}",
-                        text_anchor: "end",
-                        class: "fill-zinc-500 text-[8.5px]",
-                        "{name}"
+                    g { class: "group transition-all duration-200 cursor-pointer",
+                        path {
+                            d: "{d}",
+                            class: "fill-zinc-400/10 stroke-zinc-400 transition-all duration-200 group-hover:fill-zinc-300/30 group-hover:stroke-zinc-100 group-hover:stroke-[1.5]",
+                            stroke_width: "0.8",
+                        }
+                        text {
+                            x: "50", y: "{baseline - 2.0:.1}",
+                            text_anchor: "end",
+                            class: "fill-zinc-500 text-[8.5px] transition-all duration-200 group-hover:fill-zinc-200 group-hover:font-semibold",
+                            "{name}"
+                        }
                     }
                 }
             }
-            div { class: "mt-1 flex justify-between pl-14 text-xs text-zinc-600",
+            div { class: "mt-1 flex justify-between pl-14 text-xs text-zinc-500",
                 span { "快" }
                 span { "P50 延迟 (相对)" }
                 span { "慢" }
@@ -107,30 +109,32 @@ pub fn BubbleCard() -> Element {
     let max_req = MODELS.iter().map(|m| m.daily_req).fold(0.0, f64::max);
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
+        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
             h2 { class: "mb-4 text-sm font-medium text-zinc-300", "性价比定位 · 气泡图" }
             svg { class: "w-full overflow-visible", view_box: "-4 -4 352 232",
-                line { x1: "44", y1: "16", x2: "44", y2: "192", stroke: "#27272a" }
-                line { x1: "44", y1: "192", x2: "336", y2: "192", stroke: "#27272a" }
-                text { x: "44", y: "212", text_anchor: "start", class: "fill-zinc-600 text-[9px]", "低价" }
-                text { x: "336", y: "212", text_anchor: "end", class: "fill-zinc-600 text-[9px]", "高价 ($/1M)" }
-                text { x: "8", y: "20", text_anchor: "start", class: "fill-zinc-600 text-[9px]", "tok/s" }
+                line { x1: "44", y1: "16", x2: "44", y2: "192", stroke: "#3f3f46", stroke_width: "1" }
+                line { x1: "44", y1: "192", x2: "336", y2: "192", stroke: "#3f3f46", stroke_width: "1" }
+                text { x: "44", y: "212", text_anchor: "start", class: "fill-zinc-500 text-[9px]", "低价" }
+                text { x: "336", y: "212", text_anchor: "end", class: "fill-zinc-500 text-[9px]", "高价 ($/1M)" }
+                text { x: "8", y: "20", text_anchor: "start", class: "fill-zinc-500 text-[9px]", "tok/s" }
                 for m in MODELS {
                     {
                         let bx = to_x(m.price);
                         let by = to_y(m.speed);
                         let r = 4.0 + (m.daily_req / max_req).sqrt() * 9.0;
                         rsx! {
-                            circle {
-                                cx: "{bx:.1}", cy: "{by:.1}", r: "{r:.1}",
-                                fill: "rgba(161,161,170,0.18)",
-                                stroke: "#a1a1aa", stroke_width: "0.8",
-                            }
-                            text {
-                                x: "{bx:.1}", y: "{by + r + 10.0:.1}",
-                                text_anchor: "middle",
-                                class: "fill-zinc-500 text-[8.5px]",
-                                "{m.name}"
+                            g { class: "group cursor-pointer",
+                                circle {
+                                    cx: "{bx:.1}", cy: "{by:.1}", r: "{r:.1}",
+                                    class: "fill-zinc-700/60 stroke-zinc-400 transition-all duration-300 group-hover:fill-zinc-300/80 group-hover:stroke-white group-hover:r-[{r + 2.0:.1}] group-hover:filter group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]",
+                                    stroke_width: "1",
+                                }
+                                text {
+                                    x: "{bx:.1}", y: "{by - r - 3.0:.1}",
+                                    text_anchor: "middle",
+                                    class: "fill-zinc-400 text-[8px] opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-hover:fill-zinc-100 font-medium pointer-events-none",
+                                    "{m.name}"
+                                }
                             }
                         }
                     }

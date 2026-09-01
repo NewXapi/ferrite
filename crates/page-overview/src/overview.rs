@@ -43,16 +43,19 @@ pub fn OverviewPanel() -> Element {
             // Top 10 breakdowns
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
                 // Top 10 Models
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col",
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 group",
+                    div { class: "border-b border-zinc-800/50 bg-zinc-900/50 px-4 py-3 transition-colors group-hover:bg-zinc-800/20",
+                        h3 { class: "text-sm font-medium text-zinc-100", "消耗前十模型" }
+                    }
                     div { class: "p-4 space-y-3 flex-1",
                         for (i, &(name, amount, pct)) in model_stats.iter().enumerate() {
-                            div { class: "flex items-center gap-3",
-                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800 text-[10px] font-medium text-zinc-400", "{i + 1}" }
+                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
+                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
-                                    span { class: "truncate text-sm font-medium text-zinc-200", "{name}" }
+                                    span { class: "truncate text-sm font-medium text-zinc-300 transition-colors hover:text-zinc-100", "{name}" }
                                     div { class: "flex items-center gap-3",
-                                        span { class: "text-xs font-mono text-zinc-400", "{amount}" }
-                                        span { class: "w-10 text-right text-xs text-zinc-500", "{pct:.1}%" }
+                                        span { class: "text-xs font-mono text-zinc-500 transition-colors hover:text-zinc-300", "{amount}" }
+                                        span { class: "w-10 text-right text-xs text-zinc-500 font-medium", "{pct:.1}%" }
                                     }
                                 }
                             }
@@ -61,16 +64,19 @@ pub fn OverviewPanel() -> Element {
                 }
                 
                 // Top 10 Users
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col",
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 group",
+                    div { class: "border-b border-zinc-800/50 bg-zinc-900/50 px-4 py-3 transition-colors group-hover:bg-zinc-800/20",
+                        h3 { class: "text-sm font-medium text-zinc-100", "消耗前十用户" }
+                    }
                     div { class: "p-4 space-y-3 flex-1",
                         for (i, &(name, amount, pct)) in user_stats.iter().enumerate() {
-                            div { class: "flex items-center gap-3",
-                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800 text-[10px] font-medium text-zinc-400", "{i + 1}" }
+                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
+                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
-                                    span { class: "truncate text-sm font-medium text-zinc-200", "{name}" }
+                                    span { class: "truncate text-sm font-medium text-zinc-300 transition-colors hover:text-zinc-100", "{name}" }
                                     div { class: "flex items-center gap-3",
-                                        span { class: "text-xs font-mono text-zinc-400", "{amount}" }
-                                        span { class: "w-10 text-right text-xs text-zinc-500", "{pct:.1}%" }
+                                        span { class: "text-xs font-mono text-zinc-500 transition-colors hover:text-zinc-300", "{amount}" }
+                                        span { class: "w-10 text-right text-xs text-zinc-500 font-medium", "{pct:.1}%" }
                                     }
                                 }
                             }
@@ -92,15 +98,12 @@ pub fn OverviewPanel() -> Element {
 #[component]
 fn StatCard(value: &'static str, label: &'static str) -> Element {
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3",
-            p { class: "truncate text-base font-semibold text-zinc-100 md:text-lg", "{value}" }
-            p { class: "mt-0.5 truncate text-xs text-zinc-500", "{label}" }
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/20 group cursor-default",
+            p { class: "truncate text-base font-semibold text-zinc-100 transition-colors group-hover:text-white md:text-lg", "{value}" }
+            p { class: "mt-0.5 truncate text-xs text-zinc-500 transition-colors group-hover:text-zinc-400", "{label}" }
         }
     }
 }
-
-/// 热力图日内单元格:日模计算 (level, 显示 tokens/cost) + 是否落在选定范围
-#[derive(Clone)]
 struct DayCell {
     in_range: bool,
     level: u8,
@@ -195,7 +198,7 @@ fn ActivityGrid() -> Element {
                                             let cost = day.cost.clone();
                                             rsx! {
                                                 div {
-                                                    class: "aspect-square w-full cursor-default rounded-[2px] transition-shadow hover:ring-1 hover:ring-zinc-400 {heat_shade(day.level)}",
+                                                    class: "relative aspect-square w-full cursor-pointer rounded-[2px] transition-all duration-300 hover:ring-2 hover:ring-zinc-400 hover:scale-[1.2] hover:z-20 {heat_shade(day.level)}",
                                                     onmouseenter: move |evt| {
                                                         let p = evt.data.client_coordinates();
                                                         tip.set(Some((p.x, p.y, date.clone(), tokens.clone(), cost.clone())));
@@ -205,7 +208,7 @@ fn ActivityGrid() -> Element {
                                             }
                                         }
                                     } else {
-                                        div { class: "aspect-square w-full" }
+                                        div { class: "aspect-square w-full opacity-0" }
                                     }
                                 }
                             }
