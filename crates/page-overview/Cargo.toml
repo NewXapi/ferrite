@@ -8,4 +8,5 @@ publish.workspace = true
 [dependencies]
 chrono = { workspace = true }
 dioxus = { workspace = true }
+manganis = "0.7"
 mock = { path = "../mock" }

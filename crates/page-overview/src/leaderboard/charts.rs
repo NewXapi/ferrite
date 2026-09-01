@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::{MODELS, ModelStat, composite};
+use crate::api::leaderboard::{MODELS, ModelStat, composite};
 
 /// 综合排行: 按六维均值排序.
 #[component]
