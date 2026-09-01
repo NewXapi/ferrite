@@ -8,6 +8,8 @@ publish.workspace = true
 # 上游转发 — 协议适配 + 流式管道。转发是纯 IO, 不做业务判断。
 
 [dependencies]
+dispatch = { path = "../dispatch" }
+protocol = { path = "../../protocol" }
 contract = { path = "../../contract" }
 serde    = { workspace = true }
 serde_json = { workspace = true }

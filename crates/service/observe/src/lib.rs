@@ -3,22 +3,29 @@
 //! 原则: **edge 产生原始事件, center 只做聚合**。
 //! usage_logs (分区原始表) 由 store 域持有; 本 crate 消费它产出四类视图:
 //!
-//! | 聚合物 | 粒度 | 参考 |
-//! |--------|------|------|
-//! | usage_hourly | (user, model, group, channel) × 小时: quota/tokens/请求数 | new-api store_usedata.go |
-//! | model_rankings | 周期 (日/周/月): 模型 token 份额 + 与上期对比 | new-api rank_usage.go |
-//! | perf_metrics | (model, group) × 时间桶: 请求数/成功率/延迟/TTFT | new-api record_perf.go |
-//! | monitor_rollup | (probe, model) × 日: 可用率/延迟分布 | sub2api channel_monitor_daily_rollup |
+//! | 模块 | 聚合物 | 参考 |
+//! |------|--------|------|
+//! | [`hourly`]   | usage_hourly: (user, model, group, channel) × 小时 | new-api store_usedata.go |
+//! | [`rankings`] | model_rankings: 周期份额 + 环比 | new-api rank_usage.go |
+//! | [`perf`]     | perf_metrics: 请求数/成功率/TTFT/延迟 | new-api record_perf.go |
+//! | [`monitor`]  | 探活历史 + 日聚合 (monitor_rollup) | sub2api channel_monitor |
+//! | [`retention`]| 分区 drop / 批量清理 / vacuum | wildtoken (丢日志优于阻塞) |
 //!
-//! ## 聚合纪律 (来自 wildtoken 的取舍)
-//!
-//! - 原始 usage_logs 按**月分区**, 保留 N 个月后物理删除 (分区 drop, 非 DELETE);
-//! - 聚合写入用 upsert (ON CONFLICT DO UPDATE), 幂等 — 重复上报不翻倍;
-//! - 查询侧必须返回 as_of/新鲜度标记, 不伪造实时 (设计文档原则 7)。
-//!
-//! TODO(#700): 四张聚合表的 DDL 进 store/migrations; 水位线推进策略
-//! (对齐 sub2api: watermark 只在成功后前进) 与回填策略 (首启回填 30 天)。
-//!
-//! TODO(#701): token 估算器的归属 — new-api 把 estimate_tokens 放 usage;
-//! 我们放在 metering (请求侧近因) 还是这里 (离线补算)? 倾向 metering,
-//! 本 crate 只消费已结算事件。定夺时同步 metering 注释。
+//! 聚合纪律: upsert 幂等 (重复上报不翻倍); 查询响应必须带 as_of 标记,
+//! 不伪造实时 (设计文档原则 7)。
+
+pub mod hourly;
+pub mod monitor;
+pub mod perf;
+pub mod rankings;
+pub mod retention;
+
+/// 查询响应统一携带新鲜度 (原则 7)。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Freshness {
+    /// 数据截止时刻。
+    pub as_of: chrono::DateTime<chrono::Utc>,
+    /// 覆盖的节点/分区 (partial 提示)。
+    pub partial: bool,
+}

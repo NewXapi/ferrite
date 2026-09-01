@@ -44,6 +44,7 @@ pub fn fixture_channel() -> ChannelRecord {
         max_concurrency: 10,
         status: 1,
         groups: vec!["default".into()],
+        settings: serde_json::json!({}),
     }
 }
 

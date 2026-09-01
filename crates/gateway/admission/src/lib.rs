@@ -1,19 +1,32 @@
 //! # admission — 网关准入闸 (热路径第 1 步)
 //!
-//! 职责: 在 `/v1/*` 请求进入 dispatch 之前完成**全部本地检查**, 零跨网络调用:
+//! 职责: 在 `/v1/*` 请求进入 dispatch 之前完成**全部本地检查**, 零跨网络调用。
 //!
-//! 1. **鉴权**: sk-xxx → SHA-256 → 在本地 token 快照 (ArcSwap) 中查找;
-//! 2. **状态门**: token/user/channel 未禁用、未过期;
-//! 3. **配额闸**: 余额足够覆盖预估成本 (预扣由 metering 执行, 这里只判断);
-//! 4. **并发闸**: 该渠道/该 key 的本地 Semaphore 尚有空位。
+//! ## 模块地图 (四道闸, 一次调用全部过完)
 //!
-//! 数据来源: `service/sync` 拉取的 identity/catalog 快照 → 由 apps/gateway
-//! 组装成 [`TokenSnapshot`] 后 `ArcSwap::store`, 本模块只读。
+//! | 模块 | 闸门 | 失败码 |
+//! |------|------|--------|
+//! | [`auth`]          | ① key 哈希查找 + token/user 状态 | INVALID_API_KEY / TOKEN_EXPIRED |
+//! | [`quota`]         | ② 余额 vs 预估成本 | INSUFFICIENT_QUOTA |
+//! | [`concurrency`]   | ③ 渠道/单 key 本地并发槽 | BUSY |
+//! | [`snapshot`]      | (数据源) identity 快照的持有与原子替换 | CATALOG_NOT_READY |
+//!
+//! 模型白名单校验在 ①② 之间: token 组 / 用户组的 allowed_models。
+//! (V2: 子网/CIDR 闸 — one-api token.Subnet)
 //!
 //! ```text
-//! 请求 → admission.authenticate → (metering.prehold) → dispatch.select
-//!              ↑本地内存                ↑本地内存            ↑本地内存
+//! 请求 → auth → 模型白名单 → quota → concurrency → (hold 交给 metering) → dispatch
+//!          ↑ 全部查本地内存快照, 零跨网络调用
 //! ```
+
+pub mod auth;
+pub mod concurrency;
+pub mod error;
+pub mod quota;
+pub mod snapshot;
+
+pub use error::Rejection;
+pub use snapshot::TokenSnapshot;
 
 use contract::records::{TokenRecord, UserRecord};
 
@@ -22,45 +35,21 @@ use contract::records::{TokenRecord, UserRecord};
 pub struct Admitted {
     pub token: TokenRecord,
     pub user: UserRecord,
-    /// token 所属分组 (计费倍率/可见模型以此为准)。
+    /// 生效分组 = token.group.unwrap_or(user.group)。
     pub group: String,
-    /// 预扣成功的凭据 (metering 层发放), 转发结束后必须 settle 或 release。
+    /// 并发槽凭据 (concurrency 模块发放), 请求结束必须 release (幂等)。
     pub hold_id: u64,
 }
 
-/// 拒绝原因 — 会映射到 OpenAI 风格的 4xx 错误体 (由 apps/gateway 完成)。
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum Rejection {
-    /// 无效 key (快照中不存在此 hash)。
-    #[error("invalid api key")]
-    InvalidKey,
-    /// key 存在但被禁用/过期。携带人类可读原因。
-    #[error("token unavailable: {0}")]
-    TokenUnavailable(String),
-    /// 余额不足。预估成本 (内部单位) 放在字段里供错误信息展示。
-    #[error("insufficient quota: need {estimated}, have {available}")]
-    InsufficientQuota { estimated: i64, available: i64 },
-    /// 该 key 的分组无权访问请求的模型。
-    #[error("model {model} not allowed for group {group}")]
-    ModelForbidden { model: String, group: String },
-    /// 并发已满 — 返回 429, 客户端应退避重试。
-    #[error("channel busy")]
-    Busy,
-}
-
-/// 准入闸 trait。apps/gateway 里用本地快照实现; 测试用内存假实现。
+/// 准入闸 trait — apps/gateway 用本地快照实现; 测试用内存假实现。
 ///
-/// TODO(#300): trait 拆分粒度 — authenticate 与 acquire 是否拆开? 当前合并,
-/// 因为热路径希望一次调用完成全部检查, 减少 ArcSwap 读放大。
+/// TODO(#300): authenticate 与 acquire 合并为一次调用的取舍已定 (减少 ArcSwap
+/// 读放大); 若未来配额检查需要远程数据, 再拆两段。
 pub trait Admit: Send + Sync {
-    /// 完整准入流程。`raw_key` 是请求头里的明文 sk-key。
-    ///
-    /// # 错误
-    /// 任何 [`Rejection`] 都应直接终止请求, 不重试 (4xx 语义)。
+    /// 完整准入流程。`raw_key` = 请求头明文 sk-key; `model` = 公开模型别名。
     fn admit(
         &self,
         raw_key: &str,
-        // 请求的公开模型别名, 用于分组白名单校验。
         model: &str,
     ) -> impl Future<Output = Result<Admitted, Rejection>> + Send;
 
