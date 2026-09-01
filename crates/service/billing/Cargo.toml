@@ -1,0 +1,18 @@
+[package]
+name = "billing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 商业化域 — 支付/订阅/兑换码/签到 (center 控制面)。
+# 参考: new-api internal/billing (open_billing_session/resolve_funding_source/
+# store_subscription/topup_api/store_redemption/do_checkin),
+# sub2api ent/schema/{subscription_plan,payment_order,redeem_code,user_subscription}。
+
+[dependencies]
+contract = { path = "../../contract" }
+store    = { path = "../store" }
+serde    = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
