@@ -22,6 +22,27 @@ pub fn ScrollSpyNav(
     // 页面不需要滚动时隐藏导航
     let mut can_scroll = use_signal(|| true);
 
+    // 守卫键按容器 id 区分;`ConsolePanel` 的 `panel-scroll` 是所有面板共用的
+    // 稳定 id,所以卸载必须自己收尾 —— 靠"容器还在不在"判断活没活是错的。
+    let guard = format!("__spy_{}", container.replace('-', "_"));
+
+    // 卸载时拆掉 JS 侧的 interval + scroll 监听。少了这一步,切到别的面板后
+    // 定时器仍在跑并对着已丢弃的 eval 通道 `dioxus.send`,泄漏一路累积。
+    use_drop({
+        let guard = guard.clone();
+        move || {
+            let _ = document::eval(&format!(
+                r#"
+                if (window.{guard}) {{
+                    clearInterval(window.{guard}.timer);
+                    window.removeEventListener('scroll', window.{guard}.fn, true);
+                    delete window.{guard};
+                }}
+                "#
+            ));
+        }
+    });
+
     use_hook({
         let items = items.clone();
         move || {
@@ -30,7 +51,6 @@ pub fn ScrollSpyNav(
                 .map(|(_, id)| format!("'{id}'"))
                 .collect::<Vec<_>>()
                 .join(",");
-            let guard = format!("__spy_{}", container.replace('-', "_"));
             let n = items.len();
             spawn(async move {
                 let mut ev = document::eval(&format!(
