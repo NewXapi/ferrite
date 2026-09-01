@@ -1,20 +1,48 @@
 # FR-01 crate 分层与数据边界
-# page: crates/page/<name>/  共享: crates/shared/{client,session,mock}/  UI: crates/ui/
+# 平铺布局 (commit bb0b45d / 9d015ff):
+#   crates/page-<name>/  页面 (admin/auth/overview/models/leaderboard/account/users)
+#   crates/<shared>/     client / session / mock / ui
+#   apps/{api,web}       二进制壳
+# 数据流: mock -> page 的 api.rs -> panel; 接真后端只改 api.rs, panel 零改动
 
 ignore_paths:
   - ".wt/"
   - "target/"
   - "node_modules/"
+  - ".githooks/"
 
 forbidden_patterns:
-  # mock 数据只允许 api.rs 薄壳引用
-  - path_regex: '^crates/page/(?!.*api\.rs).*\.rs$'
-    pattern: 'use mock::|mock::'
-    reason: "面板禁止直接引用 mock crate, 数据经本页 api.rs 薄壳"
-    suggestion: "在 crates/page/<name>/src/api.rs 加 fetch_*() 转发"
+  # 面板直接 use mock (api.rs / mock 自身除外)
+  - path_regex: '^crates/page-[^/]+/src/(?!api\.rs$)[^/]+\.rs$'
+    pattern: '\buse\s+mock\b'
+    reason: "面板禁止直接 use mock, 数据经本页 api.rs 薄壳"
+    suggestion: "在 crates/page-<name>/src/api.rs 加 fetch_*() 转发"
+    severity: FAIL
+  # 旧嵌套路径存在 (历史遗留)
+  - path_regex: '^crates/page/[^/]+/'
+    reason: "page crate 必须平铺到 crates/page-<name>/"
+    suggestion: "git mv crates/page/<n> crates/page-<n>"
+    severity: FAIL
+  - path_regex: '^crates/shared/[^/]+/'
+    reason: "共享基建必须平铺到 crates/<name>/"
+    suggestion: "git mv crates/shared/<n> crates/<n>"
     severity: FAIL
 
-# api.rs 薄壳必须存在 (每个 page)
+# api.rs 存在性: 接 mock 的 page 必须有 (admin 例外 — 走 state.rs / entities API)
 expected_locations:
   - file_pattern: '^api\.rs$'
-    expected_dir: "crates/page/*/src/"
+    expected_dir: "crates/page-account/src/"
+  - file_pattern: '^api\.rs$'
+    expected_dir: "crates/page-auth/src/"
+  - file_pattern: '^api\.rs$'
+    expected_dir: "crates/page-leaderboard/src/"
+  - file_pattern: '^api\.rs$'
+    expected_dir: "crates/page-models/src/"
+  - file_pattern: '^api\.rs$'
+    expected_dir: "crates/page-overview/src/"
+  - file_pattern: '^api\.rs$'
+    expected_dir: "crates/page-users/src/"
+
+# api.rs 必须是 pub mod (集成测试要访问)
+notes:
+  api_module_visibility: "lib.rs 中 api 必须是 `pub mod api;`, 集成测试用 `use page_<name>::api;`"

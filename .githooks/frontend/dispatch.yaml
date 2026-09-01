@@ -1,19 +1,25 @@
 # dispatch.yaml — frontend 规范的钩子调度
-# 当前 gate 未接入, 本文件仅声明未来调度意图。
+# 当前 gate 未接入, 本文件仅声明未来调度意图.
+# 接入: omenic gate 二进制读取本文件, 按 hook 挂载 frontend 主题检查.
 
 pre-commit:
-  - frontend/structure
-  - frontend/shared_components
-  - frontend/copy_constants
+  - frontend/structure             # FR-01
+  - frontend/shared_components     # FR-02
+  - frontend/copy_constants        # FR-03
+  - frontend/no_nested_items       # FR-05
 
 pre-push:
   - frontend/structure
   - frontend/shared_components
   - frontend/copy_constants
-  - frontend/tests
+  - frontend/no_nested_items
+  - frontend/tests                 # FR-04 + FR-07
+  - frontend/constants_layers      # FR-06 (策略性, gate 实际不执行)
 
 merge:
   - frontend/structure
   - frontend/shared_components
   - frontend/copy_constants
+  - frontend/no_nested_items
   - frontend/tests
+  - frontend/constants_layers

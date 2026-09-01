@@ -1,16 +1,24 @@
 # FR-02 共享组件归属
-# >=2 个 page 使用的组件必须在 crates/ui/src/, page 内禁止 ui.rs 子模块
+# >=2 个 page 使用的组件必须放 crates/ui/src/<name>.rs, lib.rs re-export
+# page 内禁止 src/ui.rs 子模块
+# 当前 ui/src 真有: lib.rs (Field/CodeField/SubmitButton), scroll_spy.rs, segmented.rs
 
 ignore_paths:
   - ".wt/"
   - "target/"
 
 forbidden_patterns:
-  - path_regex: '^crates/page/.+/src/ui\.rs$'
+  - path_regex: '^crates/page-[^/]+/src/ui\.rs$'
     reason: "page crate 不应自带 ui 子模块; 共享组件放 crates/ui/"
-    suggestion: "git mv 到 crates/ui/src/<name>.rs 并在 lib.rs re-export"
+    suggestion: "git mv 到 crates/ui/src/<name>.rs 并在 lib.rs re-export; page 改 use ui::<Name>"
     severity: FAIL
 
 expected_locations:
-  - file_pattern: '^(scroll_spy|segmented|form)\.rs$'
+  - file_pattern: '^(scroll_spy|segmented)\.rs$'
     expected_dir: "crates/ui/src/"
+  - file_pattern: '^lib\.rs$'
+    expected_dir: "crates/ui/src/"
+
+notes:
+  cross_page_threshold: "当前跨 page 共享组件: ScrollSpyNav (admin/account 复用); SegmentedCapsule (account 复用)"
+  ui_module_layout: "lib.rs re-export 形式: `pub use scroll_spy::ScrollSpyNav; pub use segmented::SegmentedCapsule;`"

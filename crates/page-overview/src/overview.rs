@@ -42,13 +42,23 @@ fn StatCard(value: &'static str, label: &'static str) -> Element {
     }
 }
 
+/// 热力图日内单元格:日模计算 (level, 显示 tokens/cost) + 是否落在选定范围
+#[derive(Clone)]
+struct DayCell {
+    in_range: bool,
+    level: u8,
+    date: String,
+    tokens: String,
+    cost: String,
+}
+
 /// Token activity heatmap: GitHub-style calendar, responsive (no scrollbar).
 /// Cells are square via aspect-square, week columns flex-1 to fill the panel.
 /// Range tabs (全年 / 半年 / 近3月) sit centered under the month labels; the
 /// panel's grid span shrinks with the range (xl: 3栏 → 2栏 → 1栏).
 #[component]
 fn ActivityGrid() -> Element {
-    const GAP: i32 = 3;
+
     let mut range = use_signal(|| 0u8);
 
     let today = Local::now().date_naive();
@@ -69,14 +79,6 @@ fn ActivityGrid() -> Element {
         _ => "xl:col-span-1",
     };
 
-    #[derive(Clone)]
-    struct DayCell {
-        in_range: bool,
-        level: u8,
-        date: String,
-        tokens: String,
-        cost: String,
-    }
     let weeks: Vec<Vec<DayCell>> = (0..n_weeks)
         .map(|w| {
             (0..7)
@@ -125,9 +127,9 @@ fn ActivityGrid() -> Element {
             h2 { class: "mb-4 text-sm font-medium text-zinc-300", "Token \u{6D3B}\u{52A8}" }
             div { class: "relative",
                 div {
-                    div { class: "flex", style: "gap: {GAP}px",
+                    div { class: "flex", style: "gap: 3px",
                         for week in weeks {
-                            div { class: "flex flex-1 flex-col", style: "gap: {GAP}px",
+                            div { class: "flex flex-1 flex-col", style: "gap: 3px",
                                 for day in week {
                                     if day.in_range {
                                         {
