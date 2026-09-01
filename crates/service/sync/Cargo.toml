@@ -1,0 +1,16 @@
+[package]
+name = "sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# center ↔ edge 同步引擎。契约格式在 contract::mutations, 本 crate 只管机制:
+# 轮询/推送/重试/snapshot 兜底, 不解析业务字段。
+
+[dependencies]
+contract = { path = "../../contract" }
+store    = { path = "../../service/store" }
+serde    = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }

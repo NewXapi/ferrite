@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "admission"
+version = "0.1.0"
+dependencies = [
+ "contract",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -246,6 +256,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "catalog"
+version = "0.1.0"
+dependencies = [
+ "contract",
+ "serde",
+ "serde_json",
+ "store",
+]
+
+[[package]]
 name = "cc"
 version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -448,6 +468,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc14a88e1463ddd193906285abe5c360c7e8564e05ccc5d501755f7fbc9ca9c"
 dependencies = [
  "charset",
+]
+
+[[package]]
+name = "contract"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]
@@ -1142,6 +1173,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispatch"
+version = "0.1.0"
+dependencies = [
+ "contract",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1294,6 +1335,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "forward"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "contract",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -2164,6 +2218,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "metering"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "contract",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -3448,6 +3514,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "store"
+version = "0.1.0"
+dependencies = [
+ "contract",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3518,6 +3594,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sync"
+version = "0.1.0"
+dependencies = [
+ "contract",
+ "serde",
+ "serde_json",
+ "store",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4049,7 +4136,9 @@ version = "1.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9"
 dependencies = [
+ "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

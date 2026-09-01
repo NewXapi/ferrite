@@ -14,6 +14,14 @@ members = [
     "crates/page-leaderboard",
     "crates/page-admin",
     "crates/page-users",
+    "crates/contract",
+    "crates/gateway/admission",
+    "crates/gateway/dispatch",
+    "crates/gateway/forward",
+    "crates/gateway/metering",
+    "crates/service/store",
+    "crates/service/catalog",
+    "crates/service/sync",
 ]
 
 [workspace.package]
@@ -46,6 +54,7 @@ tracing-log = "0.2"
 dioxus      = { version = "=0.7.9", features = ["router"] }
 gloo-net   = { version = "0.6", features = ["json"] }
 http        = "1"
+uuid        = { version = "1", features = ["serde", "v7"] }
 
 [profile.release]
 lto           = "fat"

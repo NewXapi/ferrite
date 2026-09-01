@@ -1,0 +1,22 @@
+[package]
+name = "contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 契约层 — 全 workspace 依赖底部。
+# 依赖纪律: 只允许 serde / uuid / chrono / thiserror 这类纯数据与纯序列化依赖。
+# 禁止 tokio / sqlx / axum / reqwest / dioxus — 本 crate 要在 wasm32 上编译,
+# 任何 native-only 依赖都会立刻破坏 web 端构建 (这就是越界的机器检查)。
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+chrono     = { workspace = true }
+thiserror  = { workspace = true }
+uuid       = { workspace = true }
+
+# wasm 随机源: uuid v7 需要 getrandom 的 js 后端 (见 05 拓扑文档 §5)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
