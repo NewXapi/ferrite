@@ -23,6 +23,32 @@ pub mod overview {
     pub fn fetch_models() -> &'static [(&'static str, &'static str, f64)] {
         mock::overview::MODELS
     }
+
+    // ponytail: mock timeframe stats by scaling the existing static ones based on timeframe
+    pub fn fetch_timeframe_stats(
+        timeframe: &str,
+    ) -> (
+        Vec<(&'static str, &'static str)>,
+        Vec<(&'static str, &'static str, f64)>, // users (mocked tools for now)
+        Vec<(&'static str, &'static str, f64)>, // models
+    ) {
+        let (_stat_mult, _amt_suffix) = match timeframe {
+            "今天" => (1, ""),
+            "本周" => (7, "w"),
+            "本月" => (30, "m"),
+            _ => (100, "总"), // 至今
+        };
+
+        // Just pass through existing mock strings, real backend will do proper aggregation
+        let stats = fetch_stats().to_vec();
+        
+        // Mock user list by taking the tool list
+        let users = fetch_tools().to_vec();
+        
+        let models = fetch_models().to_vec();
+
+        (stats, users, models)
+    }
 }
 
 /// 模型页:模型卡片。

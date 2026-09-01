@@ -1,7 +1,7 @@
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use dioxus::prelude::*;
 
-use crate::api::overview as api;
+use crate::api;
 
 // Layout convention (共享给所有面板组件, 详见仓库 README.md):
 //   页面网格  `grid-cols-1 md:grid-cols-3 xl:grid-cols-5`  —— 手机 1 栏 / 平板 3 栏 / Web 5 栏。
@@ -13,19 +13,76 @@ use crate::api::overview as api;
 /// 数据经 `api` 取用;grayscale only.
 #[component]
 pub fn OverviewPanel() -> Element {
-    let stats = api::fetch_stats();
+    // ponytail: full UI overhaul to add breakdown cards for all timeframes in one go.
+    let mut timeframe = use_signal(|| "至今"); // "今天", "本周", "本月", "至今"
+    
+    // Get the stats for the currently selected timeframe
+    let (stats, user_stats, model_stats) = api::overview::fetch_timeframe_stats(timeframe());
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
-            section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-5",
-                for &(value, label) in stats {
+            // Timeframe selector
+            div { class: "flex items-center gap-2 rounded-lg bg-zinc-900/50 p-1 w-max border border-zinc-800",
+                for tf in ["今天", "本周", "本月", "至今"] {
+                    button {
+                        class: "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                        class: if timeframe() == tf { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
+                        onclick: move |_| timeframe.set(tf),
+                        "{tf}"
+                    }
+                }
+            }
+            
+            // Top-level stats
+            section { class: "grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5",
+                for &(value, label) in stats.iter() {
                     StatCard { value, label }
                 }
             }
+            
+            // Top 10 breakdowns
+            section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
+                // Top 10 Models
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col",
+                    div { class: "p-4 space-y-3 flex-1",
+                        for (i, &(name, amount, pct)) in model_stats.iter().enumerate() {
+                            div { class: "flex items-center gap-3",
+                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800 text-[10px] font-medium text-zinc-400", "{i + 1}" }
+                                div { class: "flex-1 min-w-0 flex items-center justify-between",
+                                    span { class: "truncate text-sm font-medium text-zinc-200", "{name}" }
+                                    div { class: "flex items-center gap-3",
+                                        span { class: "text-xs font-mono text-zinc-400", "{amount}" }
+                                        span { class: "w-10 text-right text-xs text-zinc-500", "{pct:.1}%" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Top 10 Users
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col",
+                    div { class: "p-4 space-y-3 flex-1",
+                        for (i, &(name, amount, pct)) in user_stats.iter().enumerate() {
+                            div { class: "flex items-center gap-3",
+                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800 text-[10px] font-medium text-zinc-400", "{i + 1}" }
+                                div { class: "flex-1 min-w-0 flex items-center justify-between",
+                                    span { class: "truncate text-sm font-medium text-zinc-200", "{name}" }
+                                    div { class: "flex items-center gap-3",
+                                        span { class: "text-xs font-mono text-zinc-400", "{amount}" }
+                                        span { class: "w-10 text-right text-xs text-zinc-500", "{pct:.1}%" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 面板区: 同一套栏数, 热力图按时间范围占 3/2/1 栏
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-5",
             ActivityGrid {}
-            BreakdownTabs {}
+            // old Breakdowns removed in favor of Top-10 lists
         }
         }
     }
@@ -201,90 +258,42 @@ fn ActivityGrid() -> Element {
     }
 }
 /// Deterministic per-day mock: activity level 0..=4 plus display values.
-fn day_mock(day: NaiveDate) -> (u8, String, String) {
-    // Knuth multiplicative hash: same date always yields the same mock level.
-    let d = day.num_days_from_ce() as u64;
-    let mix = d.wrapping_mul(2654435761) >> 13;
-    let level = (mix % 5) as u8;
-    let tokens = level as f64 * 9.4 + (mix % 9) as f64 * 0.6;
-    let cost = tokens * 0.83;
-    (level, format!("{tokens:.1}M"), format!("${cost:.2}"))
+fn day_mock(d: NaiveDate) -> (u8, String, String) {
+    let s = d.num_days_from_ce() as u64;
+    let mut h = s.wrapping_mul(0x517cc1b727220a95);
+    h ^= h >> 32;
+    let r = (h % 100) as u8;
+    let level = match r {
+        0..=24 => 0,
+        25..=54 => 1,
+        55..=79 => 2,
+        80..=93 => 3,
+        _ => 4,
+    };
+    let tokens = match level {
+        0 => "0",
+        1 => "12.4k",
+        2 => "86.1k",
+        3 => "342.8k",
+        _ => "1.24m",
+    };
+    let cost = match level {
+        0 => "$0.00",
+        1 => "$0.02",
+        2 => "$0.14",
+        3 => "$0.58",
+        _ => "$2.10",
+    };
+    (level, tokens.to_string(), cost.to_string())
 }
 
+/// Tailwind background class per activity level (0..=4).
 fn heat_shade(level: u8) -> &'static str {
     match level {
-        0 => "bg-zinc-800/60",
+        0 => "bg-zinc-800/40",
         1 => "bg-zinc-700",
-        2 => "bg-zinc-600",
-        3 => "bg-zinc-500",
-        _ => "bg-zinc-400",
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum BreakdownTab {
-    Tools,
-    Models,
-}
-
-/// Tool/model usage breakdown in one card, switched by a segmented tab control.
-#[component]
-fn BreakdownTabs() -> Element {
-    let mut tab = use_signal(|| BreakdownTab::Tools);
-    let (title, items) = match tab() {
-        BreakdownTab::Tools => ("按工具", api::fetch_tools()),
-        BreakdownTab::Models => ("按模型", api::fetch_models()),
-    };
-    let tools_cls = tab_class(tab() == BreakdownTab::Tools);
-    let models_cls = tab_class(tab() == BreakdownTab::Models);
-
-    rsx! {
-        section { class: "self-start md:col-span-1 xl:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
-            div { class: "mb-4 flex items-center justify-between gap-3",
-                h2 { class: "text-sm font-medium text-zinc-300", "{title}" }
-                div { class: "flex gap-0.5 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5",
-                    button {
-                        class: "{tools_cls}",
-                        onclick: move |_| tab.set(BreakdownTab::Tools),
-                        "工具"
-                    }
-                    button {
-                        class: "{models_cls}",
-                        onclick: move |_| tab.set(BreakdownTab::Models),
-                        "模型"
-                    }
-                }
-            }
-            BreakdownList { items: items.to_vec() }
-        }
-    }
-}
-
-fn tab_class(active: bool) -> &'static str {
-    if active {
-        "rounded-md bg-zinc-800 px-3 py-1 text-xs text-zinc-100"
-    } else {
-        "rounded-md px-3 py-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-    }
-}
-
-#[component]
-fn BreakdownList(items: Vec<(&'static str, &'static str, f64)>) -> Element {
-    rsx! {
-        div { class: "space-y-3",
-            for (name, value, pct) in items {
-                div { class: "grid grid-cols-[1fr_auto_auto] items-center gap-3",
-                    span { class: "truncate text-sm text-zinc-300", "{name}" }
-                    span { class: "text-sm text-zinc-400", "{value}" }
-                    span { class: "w-12 text-right text-sm text-zinc-500", "{pct}%" }
-                    div { class: "col-span-3 h-1.5 overflow-hidden rounded-full bg-zinc-800",
-                        div {
-                            class: "h-full rounded-full bg-zinc-400",
-                            style: "width: {pct}%",
-                        }
-                    }
-                }
-            }
-        }
+        2 => "bg-zinc-500",
+        3 => "bg-zinc-300",
+        _ => "bg-zinc-100",
     }
 }
