@@ -27,6 +27,7 @@
 .light .bg-zinc-900\/75 { background-color: color-mix(in oklab, var(--color-zinc-100) 75%, transparent); }
 .light .bg-zinc-800\/50 { background-color: color-mix(in oklab, var(--color-zinc-200) 50%, transparent); }
 .light .bg-zinc-800\/60 { background-color: color-mix(in oklab, var(--color-zinc-200) 60%, transparent); }
+.light .hover\:bg-zinc-800\/60:hover { background-color: color-mix(in oklab, var(--color-zinc-200) 60%, transparent); }
 
 /* Border zinc inversions */
 .light .border-zinc-800 { border-color: var(--color-zinc-200); }
@@ -173,3 +174,7 @@
         radial-gradient(52% 34% at 98% 98%, rgba(0, 0, 0, 0.40) 0%, rgba(0, 0, 0, 0.15) 48%, transparent 72%),
         radial-gradient(125% 72% at -2% 102%, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.30) 44%, transparent 80%);
 }
+
+/* 全局隐藏滚动条:页面锁定视口,仅 #panel-scroll 内部纵向滚动 */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }

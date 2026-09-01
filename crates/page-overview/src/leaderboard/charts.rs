@@ -5,28 +5,62 @@ use dioxus::prelude::*;
 
 use crate::api::leaderboard::{MODELS, ModelStat, composite};
 
-/// 综合排行: 按六维均值排序.
+/// 综合排行: 按六维均值排序, 可按时间窗切换.
 #[component]
 pub fn RankListCard() -> Element {
-    let mut ranked: Vec<(&ModelStat, f64)> = MODELS.iter().map(|m| (m, composite(m))).collect();
+    // 时间窗只作用于本卡, 不外泄给面板.
+    let mut timeframe = use_signal(|| "至今");
+
+    // ponytail: 数据层还是静态 mock, 用 growth 当"近期势头"权重伪造窗口差异;
+    // 接上真实后端时把这段换成按窗口取数即可.
+    let momentum = match timeframe() {
+        "今天" => 0.30,
+        "本周" => 0.20,
+        "本月" => 0.10,
+        _ => 0.0,
+    };
+    let mut ranked: Vec<(&ModelStat, f64)> = MODELS
+        .iter()
+        .map(|m| {
+            let recent = (m.growth / 20.0).min(1.0) * 100.0;
+            (m, composite(m) * (1.0 - momentum) + recent * momentum)
+        })
+        .collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
-            h2 { class: "mb-4 text-sm font-medium text-zinc-300", "综合排行" }
+        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
+            // 标题与切换器同行: 不额外占高, 卡片尺寸不变.
+            div { class: "mb-4 flex items-center justify-between gap-3",
+                h2 { class: "text-sm font-medium text-zinc-300", "综合排行" }
+                div { class: "flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5",
+                    for tf in ["今天", "本周", "本月", "至今"] {
+                        button {
+                            key: "{tf}",
+                            class: "rounded px-1.5 py-0.5 text-[11px] leading-4 transition-colors",
+                            class: if timeframe() == tf { "bg-zinc-800 text-zinc-100" } else { "text-zinc-500 hover:text-zinc-300" },
+                            onclick: move |_| timeframe.set(tf),
+                            "{tf}"
+                        }
+                    }
+                }
+            }
             div { class: "space-y-3",
                 for (i, (m, score)) in ranked.iter().enumerate() {
                     {
-                        let num_cls = if i == 0 { "text-zinc-100 font-bold" } else { "text-zinc-500" };
-                        let bar_cls = if i == 0 { "bg-zinc-100" } else if i < 3 { "bg-zinc-300" } else { "bg-zinc-500" };
+                        let num_cls = if i == 0 { "text-zinc-100" } else { "text-zinc-500" };
+                        let bar_cls = if i == 0 { "bg-zinc-200" } else { "bg-zinc-500" };
                         rsx! {
-                        div { class: "group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg -mx-2 px-2 py-1 transition-all hover:bg-zinc-800/50 cursor-default",
-                            span { class: "w-5 text-right text-sm {num_cls} transition-transform group-hover:scale-110", "{i + 1}" }
-                            span { class: "truncate text-sm text-zinc-300 transition-colors group-hover:text-zinc-100 font-medium", "{m.name}" }
-                            span { class: "text-sm text-zinc-400 font-mono transition-colors group-hover:text-zinc-200", "{score:.1}" }
+                        // 负外边距抵掉内边距: 悬停有命中区, 行宽行高不变.
+                        div {
+                            key: "{m.name}",
+                            class: "-mx-2 -my-1 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-zinc-800/60 cursor-default",
+                            span { class: "w-5 text-right text-sm font-semibold {num_cls}", "{i + 1}" }
+                            span { class: "truncate text-sm text-zinc-300", "{m.name}" }
+                            span { class: "text-sm text-zinc-400", "{score:.1}" }
                             div { class: "col-span-2 col-start-2 h-1.5 overflow-hidden rounded-full bg-zinc-800",
                                 div {
-                                    class: "h-full rounded-full {bar_cls} transition-all duration-500 ease-out group-hover:brightness-125",
+                                    class: "h-full rounded-full {bar_cls}",
                                     style: "width: {score:.1}%",
                                 }
                             }
@@ -71,26 +105,24 @@ pub fn RidgeCard() -> Element {
     let height = 30.0 + MODELS.len() as f64 * ROW + 6.0;
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 md:col-span-2 xl:col-span-3 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
+        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 md:col-span-2 xl:col-span-3",
             h2 { class: "mb-4 text-sm font-medium text-zinc-300", "延迟分布 · 山脊图" }
             svg { class: "w-full overflow-visible", view_box: "-62 -6 {W + 64.0} {height + 10.0}",
                 for (name, d, baseline) in &rows {
-                    g { class: "group transition-all duration-200 cursor-pointer",
-                        path {
-                            d: "{d}",
-                            class: "fill-zinc-400/10 stroke-zinc-400 transition-all duration-200 group-hover:fill-zinc-300/30 group-hover:stroke-zinc-100 group-hover:stroke-[1.5]",
-                            stroke_width: "0.8",
-                        }
-                        text {
-                            x: "50", y: "{baseline - 2.0:.1}",
-                            text_anchor: "end",
-                            class: "fill-zinc-500 text-[8.5px] transition-all duration-200 group-hover:fill-zinc-200 group-hover:font-semibold",
-                            "{name}"
-                        }
+                    path {
+                        d: "{d}",
+                        fill: "rgba(161,161,170,0.10)",
+                        stroke: "#d4d4d8", stroke_width: "0.8",
+                    }
+                    text {
+                        x: "50", y: "{baseline - 2.0:.1}",
+                        text_anchor: "end",
+                        class: "fill-zinc-500 text-[8.5px]",
+                        "{name}"
                     }
                 }
             }
-            div { class: "mt-1 flex justify-between pl-14 text-xs text-zinc-500",
+            div { class: "mt-1 flex justify-between pl-14 text-xs text-zinc-600",
                 span { "快" }
                 span { "P50 延迟 (相对)" }
                 span { "慢" }
@@ -109,32 +141,30 @@ pub fn BubbleCard() -> Element {
     let max_req = MODELS.iter().map(|m| m.daily_req).fold(0.0, f64::max);
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
+        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
             h2 { class: "mb-4 text-sm font-medium text-zinc-300", "性价比定位 · 气泡图" }
             svg { class: "w-full overflow-visible", view_box: "-4 -4 352 232",
-                line { x1: "44", y1: "16", x2: "44", y2: "192", stroke: "#3f3f46", stroke_width: "1" }
-                line { x1: "44", y1: "192", x2: "336", y2: "192", stroke: "#3f3f46", stroke_width: "1" }
-                text { x: "44", y: "212", text_anchor: "start", class: "fill-zinc-500 text-[9px]", "低价" }
-                text { x: "336", y: "212", text_anchor: "end", class: "fill-zinc-500 text-[9px]", "高价 ($/1M)" }
-                text { x: "8", y: "20", text_anchor: "start", class: "fill-zinc-500 text-[9px]", "tok/s" }
+                line { x1: "44", y1: "16", x2: "44", y2: "192", stroke: "#27272a" }
+                line { x1: "44", y1: "192", x2: "336", y2: "192", stroke: "#27272a" }
+                text { x: "44", y: "212", text_anchor: "start", class: "fill-zinc-600 text-[9px]", "低价" }
+                text { x: "336", y: "212", text_anchor: "end", class: "fill-zinc-600 text-[9px]", "高价 ($/1M)" }
+                text { x: "8", y: "20", text_anchor: "start", class: "fill-zinc-600 text-[9px]", "tok/s" }
                 for m in MODELS {
                     {
                         let bx = to_x(m.price);
                         let by = to_y(m.speed);
                         let r = 4.0 + (m.daily_req / max_req).sqrt() * 9.0;
                         rsx! {
-                            g { class: "group cursor-pointer",
-                                circle {
-                                    cx: "{bx:.1}", cy: "{by:.1}", r: "{r:.1}",
-                                    class: "fill-zinc-700/60 stroke-zinc-400 transition-all duration-300 group-hover:fill-zinc-300/80 group-hover:stroke-white group-hover:r-[{r + 2.0:.1}] group-hover:filter group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]",
-                                    stroke_width: "1",
-                                }
-                                text {
-                                    x: "{bx:.1}", y: "{by - r - 3.0:.1}",
-                                    text_anchor: "middle",
-                                    class: "fill-zinc-400 text-[8px] opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-hover:fill-zinc-100 font-medium pointer-events-none",
-                                    "{m.name}"
-                                }
+                            circle {
+                                cx: "{bx:.1}", cy: "{by:.1}", r: "{r:.1}",
+                                fill: "rgba(161,161,170,0.18)",
+                                stroke: "#a1a1aa", stroke_width: "0.8",
+                            }
+                            text {
+                                x: "{bx:.1}", y: "{by + r + 10.0:.1}",
+                                text_anchor: "middle",
+                                class: "fill-zinc-500 text-[8.5px]",
+                                "{m.name}"
                             }
                         }
                     }
