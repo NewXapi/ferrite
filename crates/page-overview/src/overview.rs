@@ -327,11 +327,11 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                             div { class: "flex flex-col gap-2.5",
                                 for (name, color, v) in rows.iter() {
                                     div { class: "flex items-center justify-between gap-6 text-xs",
-                                        div { class: "flex items-center gap-2 min-w-0",
-                                            span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                        div { class: "flex items-center min-w-0",
+                                            span { class: "h-2 w-2 shrink-0 rounded-[2px] mr-2.5", style: "background: {color}" }
                                             span { class: "truncate text-zinc-300", "{name}" }
                                         }
-                                        span { class: "shrink-0 font-mono font-medium text-zinc-100", "{fmt_tokens(*v)}" }
+                                        span { class: "shrink-0 font-mono font-medium text-zinc-100 pl-4", "{fmt_tokens(*v)}" }
                                     }
                                 }
                             }
@@ -340,11 +340,11 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                     TrendTip::Segment(x, y, label, name, color, v) => rsx! {
                         TrendTooltipContainer { x, y, label,
                             div { class: "flex w-full items-center justify-between gap-8 py-1 text-xs",
-                                div { class: "flex items-center gap-2 min-w-0",
-                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                div { class: "flex items-center min-w-0",
+                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px] mr-3", style: "background: {color}" }
                                     span { class: "truncate text-zinc-300 font-medium", "{name}" }
                                 }
-                                span { class: "shrink-0 font-mono font-bold text-zinc-100 pl-4", "{fmt_tokens(v)}" }
+                                span { class: "shrink-0 font-mono font-bold text-zinc-100 pl-5", "{fmt_tokens(v)}" }
                             }
                         }
                     },
