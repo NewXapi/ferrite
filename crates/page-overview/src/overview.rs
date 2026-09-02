@@ -320,15 +320,15 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                 match t {
                     TrendTip::Column(x, y, label, rows, total) => rsx! {
                         TrendTooltipContainer { x, y, label,
-                            div { class: "mb-3 flex items-center justify-between border-b border-zinc-800 pb-2 text-xs text-zinc-400",
+                            div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800/80 pb-2 text-xs text-zinc-400",
                                 span { "总计 :" }
                                 span { class: "font-mono font-semibold text-zinc-100", "{fmt_tokens(total)}" }
                             }
-                            div { class: "flex flex-col gap-2.5",
+                            div { class: "flex flex-col gap-2",
                                 for (name, color, v) in rows.iter() {
                                     div { class: "flex items-center justify-between gap-6 text-xs",
-                                        div { class: "flex items-center min-w-0",
-                                            span { class: "h-2 w-2 shrink-0 rounded-[2px] mr-2.5", style: "background: {color}" }
+                                        div { class: "flex items-center gap-2 min-w-0",
+                                            span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
                                             span { class: "truncate text-zinc-300", "{name}" }
                                         }
                                         span { class: "shrink-0 font-mono font-medium text-zinc-100 pl-4", "{fmt_tokens(*v)}" }
@@ -339,12 +339,12 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                     },
                     TrendTip::Segment(x, y, label, name, color, v) => rsx! {
                         TrendTooltipContainer { x, y, label,
-                            div { class: "flex items-center justify-between gap-6 text-xs leading-normal",
-                                div { class: "flex items-center gap-2.5",
-                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
+                            div { class: "flex items-center justify-between gap-6 text-xs",
+                                div { class: "flex items-center gap-2 min-w-0",
+                                    span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
                                     span { class: "font-medium text-zinc-200", "{name}" }
                                 }
-                                span { class: "font-mono font-semibold text-zinc-100 pl-2", "{fmt_tokens(v)}" }
+                                span { class: "shrink-0 font-mono font-semibold text-zinc-100 pl-4", "{fmt_tokens(v)}" }
                             }
                         }
                     },
