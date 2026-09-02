@@ -218,7 +218,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                             },
                                             onmouseleave: move |_| tip.set(None),
                                             div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
-                                            div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200",
+                                            div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
                                                 style: "height: {hpct:.1}%",
                                                 for (i, v) in b.per_model.iter().enumerate() {
                                                     {
@@ -229,9 +229,8 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                         // cloned values for inner handlers
                                                         rsx! {
                                                             div {
-                                                                class: "w-full cursor-pointer hover:brightness-125 transition-all",
+                                                                class: "w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
                                                                 style: "height: {(v / b.total * 100.0):.1}%; background: {seg_color}",
-                                                                // 色块模式: 拦截并展示单模型详情
                                                                 onmouseenter: move |evt| {
                                                                     evt.stop_propagation();
                                                                     let p = evt.data.client_coordinates();
