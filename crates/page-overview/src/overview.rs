@@ -357,12 +357,8 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 /// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
-    // 精确吸附：以鼠标指针为锚点，浮窗跟随在鼠标指针右上方（如果在右半屏则翻转到左上方）
-    let transform = if x > 600.0 {
-        "translate(calc(-100% - 14px), -100%)"
-    } else {
-        "translate(14px, -100%)"
-    };
+    // 居中吸附：以鼠标指针为锚点，浮窗始终在鼠标正上方居中对齐，留出少量间隙避免遮挡
+    let transform = "translate(-50%, -100%) translateY(-12px)";
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
