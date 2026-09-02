@@ -41,11 +41,12 @@ const BTN_CANCEL: &str = "取消";
 // ============ 卡片 1：分组 ============
 
 #[component]
-fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
+pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let store = use_context::<EntityStore>();
     let mut groups = store.groups;
     let mut name = use_signal(String::new);
     let mut display = use_signal(String::new);
+    let mut mult = use_signal(String::new);
     let mut editing = use_signal(|| None::<usize>);
 
     let commit = move |_| {
@@ -58,14 +59,17 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             Some(i) => {
                 groups.write()[i].name = n;
                 groups.write()[i].display = d;
+                groups.write()[i].multiplier = parse_mult(&mult.peek());
             }
             None => groups.write().push(crate::state::GroupRow {
                 name: n,
                 display: d,
+                multiplier: parse_mult(&mult.peek()),
             }),
         }
         name.set(String::new());
         display.set(String::new());
+        mult.set(String::new());
         editing.set(None);
     };
 
@@ -81,6 +85,7 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             div { class: "flex flex-wrap items-end gap-2",
                 InputCell { label: "分组名", value: name, placeholder: "vip", grow: true }
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: "默认分组（可选）", grow: true }
+                InputCell { label: "倍率", value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
@@ -93,6 +98,7 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                             editing.set(None);
                             name.set(String::new());
                             display.set(String::new());
+                            mult.set(String::new());
                         },
                         {BTN_CANCEL}
                     }
@@ -113,6 +119,7 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                     let r = groups.read()[i].clone();
                                     name.set(r.name);
                                     display.set(r.display);
+                                    mult.set(format!("{}", r.multiplier));
                                     editing.set(Some(i));
                                 },
                                 on_remove: move |_| {
@@ -131,11 +138,14 @@ fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 // ============ 卡片 2：模型别名 ============
 
 #[component]
-fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
+pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let store = use_context::<EntityStore>();
     let mut aliases = store.aliases;
     let mut name = use_signal(String::new);
     let mut display = use_signal(String::new);
+    let mut input_rate = use_signal(String::new);
+    let mut output_rate = use_signal(String::new);
+    let mut mult = use_signal(String::new);
     let mut editing = use_signal(|| None::<usize>);
 
     let commit = move |_| {
@@ -148,14 +158,23 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             Some(i) => {
                 aliases.write()[i].alias = n;
                 aliases.write()[i].display = d;
+                aliases.write()[i].input_per_1k = parse_nonneg(&input_rate.peek());
+                aliases.write()[i].output_per_1k = parse_nonneg(&output_rate.peek());
+                aliases.write()[i].multiplier = parse_mult(&mult.peek());
             }
             None => aliases.write().push(crate::state::AliasRow {
                 alias: n,
                 display: d,
+                input_per_1k: parse_nonneg(&input_rate.peek()),
+                output_per_1k: parse_nonneg(&output_rate.peek()),
+                multiplier: parse_mult(&mult.peek()),
             }),
         }
         name.set(String::new());
         display.set(String::new());
+        input_rate.set(String::new());
+        output_rate.set(String::new());
+        mult.set(String::new());
         editing.set(None);
     };
 
@@ -171,6 +190,9 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             div { class: "flex flex-wrap items-end gap-2",
                 InputCell { label: "别名", value: name, placeholder: "gpt-4o", grow: true }
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: "GPT-4o（可选）", grow: true }
+                InputCell { label: "输入价 ¥/1k", value: input_rate, placeholder: "0.0175" }
+                InputCell { label: "输出价 ¥/1k", value: output_rate, placeholder: "0.07" }
+                InputCell { label: "倍率", value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
@@ -183,6 +205,9 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                             editing.set(None);
                             name.set(String::new());
                             display.set(String::new());
+                            input_rate.set(String::new());
+                            output_rate.set(String::new());
+                            mult.set(String::new());
                         },
                         {BTN_CANCEL}
                     }
@@ -203,6 +228,9 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                     let r = aliases.read()[i].clone();
                                     name.set(r.alias);
                                     display.set(r.display);
+                                    input_rate.set(format!("{}", r.input_per_1k));
+                                    output_rate.set(format!("{}", r.output_per_1k));
+                                    mult.set(format!("{}", r.multiplier));
                                     editing.set(Some(i));
                                 },
                                 on_remove: move |_| {
@@ -218,10 +246,20 @@ fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     }
 }
 
+/// 非负单价解析:空/非法回退 0,负数归零
+fn parse_nonneg(s: &str) -> f64 {
+    s.trim().parse::<f64>().unwrap_or(0.0).max(0.0)
+}
+
+/// 倍率解析:空/非法回退 1.0,负数归零
+fn parse_mult(s: &str) -> f64 {
+    s.trim().parse::<f64>().unwrap_or(1.0).max(0.0)
+}
+
 // ============ 卡片 3：渠道 ============
 
 #[component]
-fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
+pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let store = use_context::<EntityStore>();
     let mut channels = store.channels;
     let mut current = use_signal(|| 0usize);
@@ -261,8 +299,12 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                     onclick: move |_| {
                         channels.write().push(ChannelRow {
                             name: "新渠道".into(),
+                            ctype: "openai".into(),
                             url: String::new(),
                             keys: String::new(),
+                            status: 1,
+                            group: "default".into(),
+                            latency_ms: None,
                             candidates: vec![],
                             dispatch: vec![],
                         });
@@ -284,12 +326,18 @@ fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             }
 
             if let Some(c) = row {
-                div { class: "grid grid-cols-1 gap-2 sm:grid-cols-3",
+                div { class: "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4",
                     TextCell {
                         label: "渠道名称",
                         value: c.name.clone(),
                         placeholder: "OpenAI 官方",
                         oninput: move |v: String| channels.write()[idx].name = v,
+                    }
+                    SelectCell {
+                        label: "类型",
+                        value: c.ctype.clone(),
+                        options: crate::state::CHANNEL_TYPES,
+                        oninput: move |v: String| channels.write()[idx].ctype = v,
                     }
                     TextCell {
                         label: "Base URL",
@@ -468,7 +516,7 @@ fn NodeArea(children: Element) -> Element {
 }
 
 #[component]
-fn EmptyHint(text: &'static str) -> Element {
+pub(crate) fn EmptyHint(text: &'static str) -> Element {
     rsx! {
         div { class: "flex h-full min-h-[72px] items-center justify-center",
             span { class: "text-[11px] text-zinc-600", "{text}" }
@@ -477,7 +525,7 @@ fn EmptyHint(text: &'static str) -> Element {
 }
 
 #[component]
-fn EntityChip(
+pub(crate) fn EntityChip(
     label: String,
     sub: String,
     active: bool,
@@ -514,7 +562,7 @@ fn EntityChip(
 }
 
 #[component]
-fn InputCell(
+pub(crate) fn InputCell(
     label: &'static str,
     value: Signal<String>,
     placeholder: &'static str,
@@ -534,8 +582,31 @@ fn InputCell(
     }
 }
 
+/// 原生下拉(移动端友好;样式与 InputCell/TextCell 一致)
 #[component]
-fn TextCell(
+pub(crate) fn SelectCell(
+    label: &'static str,
+    value: String,
+    options: &'static [&'static str],
+    oninput: EventHandler<String>,
+) -> Element {
+    rsx! {
+        label { class: "block space-y-1",
+            span { class: "text-[11px] text-zinc-500", "{label}" }
+            select {
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors focus:border-zinc-500",
+                value: "{value}",
+                oninput: move |e| oninput.call(e.value()),
+                for opt in options {
+                    option { value: "{opt}", selected: *opt == value, "{opt}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub(crate) fn TextCell(
     label: &'static str,
     value: String,
     placeholder: &'static str,

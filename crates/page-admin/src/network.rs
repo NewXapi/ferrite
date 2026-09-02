@@ -574,7 +574,7 @@ fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
     ((VIEW_W / 2.0 - cx * z, VIEW_H / 2.0 - cy * z), z)
 }
 
-/// 右侧抽屉的页别：节点检视是默认，设置/导入换成对应面板。
+/// 右侧抽屉的页别:节点检视是默认,设置/导入换成对应面板。
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DrawerTab {
     Node,
@@ -1996,6 +1996,10 @@ fn ImportPanel() -> Element {
                         name,
                         url: url.peek().trim().to_string(),
                         keys: key.peek().trim().to_string(),
+                        ctype: "openai".into(),
+                        status: 1,
+                        group: "default".into(),
+                        latency_ms: None,
                         candidates: vec![],
                         dispatch: vec![],
                     });
