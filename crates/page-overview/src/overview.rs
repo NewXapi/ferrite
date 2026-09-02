@@ -339,12 +339,12 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                     },
                     TrendTip::Segment(x, y, label, name, color, v) => rsx! {
                         TrendTooltipContainer { x, y, label,
-                            div { class: "flex items-center justify-between gap-5 text-xs leading-none",
-                                div { class: "flex items-center gap-2",
-                                    span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
+                            div { class: "flex items-center justify-between gap-6 text-xs leading-normal",
+                                div { class: "flex items-center gap-2.5",
+                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
                                     span { class: "font-medium text-zinc-200", "{name}" }
                                 }
-                                span { class: "font-mono font-semibold text-zinc-100", "{fmt_tokens(v)}" }
+                                span { class: "font-mono font-semibold text-zinc-100 pl-2", "{fmt_tokens(v)}" }
                             }
                         }
                     },
@@ -366,9 +366,9 @@ fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> El
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[160px] whitespace-nowrap rounded-lg bg-zinc-900/95 py-2.5 px-3.5 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class}",
+            class: "pointer-events-none fixed z-50 min-w-[180px] whitespace-nowrap rounded-xl bg-zinc-900/95 py-3 px-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class}",
             style: "left: {x}px; top: {y}px; transform: {transform}",
-            p { class: "mb-2 text-xs font-semibold text-zinc-200", "{label}" }
+            p { class: "mb-2 text-xs font-semibold text-zinc-400", "{label}" }
             {children}
         }
     }
