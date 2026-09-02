@@ -226,8 +226,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                         let seg_name = names[i].to_string();
                                                         let seg_color = MODEL_COLORS[i % MODEL_COLORS.len()];
                                                         let seg_val = *v;
-                                                        let col_label = label.clone();
-                                                        let col_rows_clone = col_rows.clone();
+                                                        // cloned values for inner handlers
                                                         rsx! {
                                                             div {
                                                                 class: "w-full cursor-pointer hover:brightness-125 transition-all",
@@ -241,8 +240,8 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                                 onmousemove: move |evt| {
                                                                     evt.stop_propagation();
                                                                 },
-                                                                onmouseleave: move |evt| {
-                                                                    evt.stop_propagation();
+                                                                onmouseleave: move |_| {
+                                                                    // Let it clear or naturally bubble out
                                                                 },
                                                             }
                                                         }
@@ -333,13 +332,13 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                             div {
                                 class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
                                 style: "left: {x}px; top: {y}px; transform: {transform}",
-                                p { class: "mb-2.5 text-sm font-semibold text-zinc-100", "{label}" }
-                                div { class: "flex items-center justify-between gap-6 text-xs",
-                                    div { class: "flex items-center gap-2.5 min-w-0",
-                                        span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                        span { class: "truncate font-medium text-zinc-300", "{name}" }
+                                p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
+                                div { class: "flex items-center justify-between gap-6",
+                                    div { class: "flex items-center gap-2",
+                                        span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                        span { class: "text-xs font-medium text-zinc-300", "{name}" }
                                     }
-                                    span { class: "shrink-0 font-mono text-sm font-bold text-zinc-100", "{fmt_tokens(v)}" }
+                                    span { class: "font-mono text-sm font-bold text-zinc-100", "{fmt_tokens(v)}" }
                                 }
                             }
                         }
