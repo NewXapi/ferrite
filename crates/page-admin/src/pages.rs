@@ -14,6 +14,16 @@ use dioxus::prelude::*;
 use crate::entities::{EntityChip, InputCell, SelectCell, TextCell};
 use crate::state::{CHANNEL_TYPES, EntityStore, PlanRow, RedRow};
 
+// ============ 文案常量 (>=2 次复用) ============
+const BTN_SAVE: &str = "保存";
+const BTN_CANCEL: &str = "取消";
+const STATUS_DISABLED: &str = "停用";
+const KEY_ANNOUNCEMENT: &str = "站点公告";
+const KEY_SIGNIN_BONUS: &str = "签到奖励";
+const KEY_SENSITIVE_WORDS: &str = "敏感词";
+const KEY_NOTICE: &str = "公告";
+const DEFAULT_GROUP: &str = "默认分组";
+
 // ============ 页面骨架 ============
 
 /// 1/3/5 栏响应式网格(手机 1 / 平板 3 / 桌面 5)。
@@ -93,14 +103,14 @@ fn channel_status_label(status: u8) -> &'static str {
     match status {
         1 => "启用",
         2 => "自动停用",
-        _ => "停用",
+        _ => STATUS_DISABLED,
     }
 }
 
 /// 兑换码状态文字(1 未用 / 2 停用 / 3 已用)。
 fn redemption_status_label(status: u8) -> &'static str {
     match status {
-        2 => "停用",
+        2 => STATUS_DISABLED,
         3 => "已用",
         _ => "未用",
     }
@@ -481,12 +491,12 @@ pub fn AliasesPage() -> Element {
                     InputCell { label: "倍率", value: mult, placeholder: "1.0" }
                     div { class: "flex gap-2 pt-1",
                         PushBtn {
-                            label: "保存",
+                            label: BTN_SAVE,
                             on_click: commit,
                         }
                         if editing().is_some() {
                             GhostBtn {
-                                label: "取消",
+                                label: BTN_CANCEL,
                                 on_click: move |_| {
                                     editing.set(None);
                                     name.set(String::new());
@@ -657,10 +667,10 @@ pub fn SubscriptionsPage() -> Element {
                     }
                     InputCell { label: "每人限购(0=不限)", value: max_per_user, placeholder: "0" }
                     div { class: "flex gap-2 pt-1",
-                        PushBtn { label: "保存", on_click: commit }
+                        PushBtn { label: BTN_SAVE, on_click: commit }
                         if editing().is_some() {
                             GhostBtn {
-                                label: "取消",
+                                label: BTN_CANCEL,
                                 on_click: move |_| {
                                     editing.set(None);
                                     title.set(String::new());
@@ -834,10 +844,10 @@ pub fn SystemPage() -> Element {
     let groups = store.groups;
     let mut toggles = use_signal(|| {
         let mut m = std::collections::HashMap::<&'static str, bool>::new();
-        m.insert("站点公告", true);
-        m.insert("签到奖励", true);
+        m.insert(KEY_ANNOUNCEMENT, true);
+        m.insert(KEY_SIGNIN_BONUS, true);
         m.insert("全局模型配置", true);
-        m.insert("敏感词", true);
+        m.insert(KEY_SENSITIVE_WORDS, true);
         m
     });
     let site_name = use_signal(|| "New API".to_string());
@@ -846,14 +856,17 @@ pub fn SystemPage() -> Element {
     let mut def_group = use_signal(|| "default".to_string());
 
     const THEMES: [(&str, &[&str]); 6] = [
-        ("站点", &["站点公告", "页头导航", "货币与展示"]),
+        ("站点", &[KEY_ANNOUNCEMENT, "页头导航", "货币与展示"]),
         (
             "认证",
             &["基础认证", "OAuth 集成", "自定义 OAuth", "Passkey"],
         ),
-        ("计费", &["支付网关", "签到奖励", "路由单位"]),
-        ("安全", &["机器人防护", "频率限制", "敏感词", "SSRF 防护"]),
-        ("内容", &["公告", "FAQ", "绘画", "侧边栏模块"]),
+        ("计费", &["支付网关", KEY_SIGNIN_BONUS, "路由单位"]),
+        (
+            "安全",
+            &["机器人防护", "频率限制", KEY_SENSITIVE_WORDS, "SSRF 防护"],
+        ),
+        ("内容", &[KEY_NOTICE, "FAQ", "绘画", "侧边栏模块"]),
         ("运维", &["日志维护", "监控告警", "性能", "Worker 代理"]),
     ];
 
@@ -894,9 +907,9 @@ pub fn SystemPage() -> Element {
                 hint: "示例文本设置;保存只闪提示",
                 div { class: "space-y-2",
                     InputCell { label: "站点名", value: site_name, placeholder: "New API", grow: true }
-                    InputCell { label: "公告", value: announcement, placeholder: "…", grow: true }
+                    InputCell { label: KEY_NOTICE, value: announcement, placeholder: "…", grow: true }
                     PushBtn {
-                        label: "保存",
+                        label: BTN_SAVE,
                         on_click: move |_| {
                             save_flash.set(true);
                             spawn(async move {
@@ -912,10 +925,10 @@ pub fn SystemPage() -> Element {
             }
 
             Panel {
-                title: "默认分组",
+                title: DEFAULT_GROUP,
                 hint: "新用户注册落入的分组(示例)",
                 label { class: "block space-y-1",
-                    span { class: "text-[11px] text-zinc-500", "默认分组" }
+                    span { class: "text-[11px] text-zinc-500", "{DEFAULT_GROUP}" }
                     select {
                         class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500",
                         value: "{def_group()}",

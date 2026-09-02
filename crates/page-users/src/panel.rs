@@ -327,7 +327,7 @@ fn UserCard(
             // 额度进度条
             div { class: "mt-3 space-y-1.5",
                 div { class: "flex justify-between gap-2 text-[11px]",
-                    span { class: "text-zinc-400", "额度" }
+                    span { class: "text-zinc-400", "{LBL_QUOTA}" }
                     span { class: "whitespace-nowrap font-medium text-zinc-200",
                         "{fmt_cny(user.used_quota)} / {fmt_cny(user.quota)}"
                     }
@@ -390,6 +390,8 @@ fn UserCard(
 const BTN_CANCEL: &str = "取消";
 const STATUS_ENABLED: &str = "启用";
 const STATUS_DISABLED: &str = "禁用";
+const LBL_EMAIL: &str = "邮箱";
+const LBL_QUOTA: &str = "额度";
 
 /// 弹窗外壳:遮罩 + 居中卡 + 标题栏关闭按钮
 #[component]
@@ -456,7 +458,7 @@ fn UserForm(
     let mut tab = use_signal(|| FormTab::Basic);
     const TABS: [(FormTab, &str); 4] = [
         (FormTab::Basic, "基本"),
-        (FormTab::Quota, "额度"),
+        (FormTab::Quota, LBL_QUOTA),
         (FormTab::Remark, "备注"),
         (FormTab::Binding, "绑定"),
     ];
@@ -469,7 +471,7 @@ fn UserForm(
             ("OIDC", u.bindings.oidc.unwrap_or("-")),
             ("WeChat", u.bindings.wechat.unwrap_or("-")),
             ("Telegram", u.bindings.telegram.unwrap_or("-")),
-            ("邮箱", if u.email.is_empty() { "-" } else { u.email }),
+            (LBL_EMAIL, if u.email.is_empty() { "-" } else { u.email }),
         ],
         None => [
             ("GitHub", "-"),
@@ -477,7 +479,7 @@ fn UserForm(
             ("OIDC", "-"),
             ("WeChat", "-"),
             ("Telegram", "-"),
-            ("邮箱", "-"),
+            (LBL_EMAIL, "-"),
         ],
     };
 
@@ -494,7 +496,7 @@ fn UserForm(
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "邮箱" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "{LBL_EMAIL}" }
                     input {
                         class: MODAL_INPUT,
                         r#type: "email",

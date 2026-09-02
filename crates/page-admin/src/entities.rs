@@ -34,6 +34,7 @@ pub fn EntitiesPanel() -> Element {
 
 // —— 跨卡片共享文案 (GroupsCard / AliasesCard 同用) ——
 const FIELD_DISPLAY: &str = "展示名";
+const LBL_MULTIPLIER: &str = "倍率";
 const BTN_NEW: &str = "新增";
 const BTN_UPDATE: &str = "更新";
 const BTN_CANCEL: &str = "取消";
@@ -85,7 +86,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             div { class: "flex flex-wrap items-end gap-2",
                 InputCell { label: "分组名", value: name, placeholder: "vip", grow: true }
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: "默认分组（可选）", grow: true }
-                InputCell { label: "倍率", value: mult, placeholder: "1.0" }
+                InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
@@ -192,7 +193,7 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: "GPT-4o（可选）", grow: true }
                 InputCell { label: "输入价 ¥/1k", value: input_rate, placeholder: "0.0175" }
                 InputCell { label: "输出价 ¥/1k", value: output_rate, placeholder: "0.07" }
-                InputCell { label: "倍率", value: mult, placeholder: "1.0" }
+                InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     onclick: commit,
