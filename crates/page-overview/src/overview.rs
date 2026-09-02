@@ -215,10 +215,9 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                 let p = evt.data.client_coordinates();
                                                 tip.set(Some(TrendTip::Column(p.x, p.y, label.clone(), col_rows.clone(), col_total)));
                                             },
-                                            onmouseleave: move |_| tip.set(None),
                                             // 悬停整列: 全高背景带(参考图2)
-                                            div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-white/[0.08]" }
-                                            div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-sm transition-all duration-200",
+                                            div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
+                                            div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200",
                                                 style: "height: {hpct:.1}%",
                                                 for (i, v) in b.per_model.iter().enumerate() {
                                                     {
