@@ -330,50 +330,52 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
             // 悬浮卡: 整列全模型分解 / 单段位详情(fixed 定位, 不被裁剪)
             if let Some(t) = tip() {
                 match t {
-                    TrendTip::Column(x, y, label, rows, total) => {
-                        let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
-                        rsx! {
-                            div {
-                                class: "pointer-events-none fixed z-50 min-w-[240px] whitespace-nowrap rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md",
-                                style: "left: {x}px; top: {y}px; transform: {transform}",
-                                p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
-                                div { class: "mb-3 flex items-center justify-between border-b border-zinc-800 pb-2 text-xs text-zinc-400",
-                                    span { "总计 :" }
-                                    span { class: "font-mono font-semibold text-zinc-100", "{fmt_tokens(total)}" }
-                                }
-                                div { class: "flex flex-col gap-2",
-                                    for (name, color, v) in rows.iter() {
-                                        div { class: "flex items-center justify-between gap-4 text-xs",
-                                            div { class: "flex items-center gap-2.5 min-w-0",
-                                                span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                                span { class: "truncate text-zinc-400", "{name}" }
-                                            }
-                                            span { class: "shrink-0 font-mono font-medium text-zinc-100", "{fmt_tokens(*v)}" }
+                    TrendTip::Column(x, y, label, rows, total) => rsx! {
+                        TrendTooltipContainer { x, y, label,
+                            div { class: "mb-3 flex items-center justify-between border-b border-zinc-800 pb-2 text-xs text-zinc-400",
+                                span { "总计 :" }
+                                span { class: "font-mono font-semibold text-zinc-100", "{fmt_tokens(total)}" }
+                            }
+                            div { class: "flex flex-col gap-2",
+                                for (name, color, v) in rows.iter() {
+                                    div { class: "flex items-center justify-between gap-4 text-xs",
+                                        div { class: "flex items-center gap-2.5 min-w-0",
+                                            span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                            span { class: "truncate text-zinc-400", "{name}" }
                                         }
+                                        span { class: "shrink-0 font-mono font-medium text-zinc-100", "{fmt_tokens(*v)}" }
                                     }
                                 }
                             }
                         }
                     },
-                    TrendTip::Segment(x, y, label, name, color, v) => {
-                        let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
-                        rsx! {
-                            div {
-                                class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
-                                style: "left: {x}px; top: {y}px; transform: {transform}",
-                                p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
-                                div { class: "flex items-center justify-between gap-6",
-                                    div { class: "flex items-center gap-2",
-                                        span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                        span { class: "text-xs font-medium text-zinc-300", "{name}" }
-                                    }
-                                    span { class: "font-mono text-sm font-bold text-zinc-100", "{fmt_tokens(v)}" }
+                    TrendTip::Segment(x, y, label, name, color, v) => rsx! {
+                        TrendTooltipContainer { x, y, label,
+                            div { class: "flex items-center justify-between gap-6 py-0.5",
+                                div { class: "flex items-center gap-2.5 min-w-0",
+                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                    span { class: "text-xs font-medium text-zinc-300", "{name}" }
                                 }
+                                span { class: "shrink-0 font-mono text-sm font-bold text-zinc-100", "{fmt_tokens(v)}" }
                             }
                         }
                     },
                 }
             }
+        }
+    }
+}
+
+/// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
+#[component]
+fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
+    let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
+    rsx! {
+        div {
+            class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
+            style: "left: {x}px; top: {y}px; transform: {transform}",
+            p { class: "mb-2.5 text-sm font-semibold text-zinc-100", "{label}" }
+            {children}
         }
     }
 }
