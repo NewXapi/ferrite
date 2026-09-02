@@ -312,18 +312,18 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                         let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
                         rsx! {
                             div {
-                                class: "pointer-events-none fixed z-50 min-w-[220px] whitespace-nowrap rounded-lg border border-zinc-700/80 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
+                                class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-lg border border-zinc-700/80 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
                                 style: "left: {x}px; top: {y}px; transform: {transform}",
                                 p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
-                                div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800 pb-2 text-[11px] text-zinc-400",
+                                div { class: "mb-2 flex items-center justify-between border-b border-zinc-700/50 pb-2 text-[11px] text-zinc-400",
                                     span { "总计 :" }
                                     span { class: "font-mono font-semibold text-zinc-100", "{fmt_tokens(total)}" }
                                 }
-                                div { class: "flex flex-col gap-2",
+                                div { class: "flex flex-col gap-1.5",
                                     for (name, color, v) in rows.iter() {
-                                        div { class: "flex items-center gap-2.5",
+                                        div { class: "flex items-center gap-2",
                                             span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                            span { class: "w-32 truncate text-[11px] text-zinc-400", "{name}" }
+                                            span { class: "w-28 truncate text-[11px] text-zinc-400", "{name}" }
                                             span { class: "ml-auto text-right font-mono text-[11px] font-medium text-zinc-100", "{fmt_tokens(*v)}" }
                                         }
                                     }
