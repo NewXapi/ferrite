@@ -270,7 +270,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                     }
                 }
                 // 右: 数据位 + Top3 图例
-                div { class: "flex flex-col justify-between gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-4",
+                div { class: "flex flex-col justify-between gap-5 rounded-2xl bg-zinc-900/40 p-6 shadow-sm border border-zinc-800/30",
                     div { class: "grid grid-cols-2 gap-3",
                         div {
                             p { class: "text-[11px] text-zinc-600", "峰值桶" }
