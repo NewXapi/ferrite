@@ -339,12 +339,12 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                     },
                     TrendTip::Segment(x, y, label, name, color, v) => rsx! {
                         TrendTooltipContainer { x, y, label,
-                            div { class: "flex items-center justify-between gap-8 py-1 text-xs",
-                                div { class: "flex items-center gap-3 min-w-0",
-                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                    span { class: "text-zinc-300 font-medium", "{name}" }
+                            div { class: "flex w-full items-center justify-between gap-10 py-1 text-xs",
+                                div { class: "flex items-center gap-2.5 min-w-0",
+                                    span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                    span { class: "truncate text-zinc-300 font-medium", "{name}" }
                                 }
-                                span { class: "shrink-0 font-mono font-bold text-zinc-100", "{fmt_tokens(v)}" }
+                                span { class: "shrink-0 font-mono font-bold text-zinc-100 pl-4", "{fmt_tokens(v)}" }
                             }
                         }
                     },
