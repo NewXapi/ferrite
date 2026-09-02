@@ -327,9 +327,9 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                             div { class: "flex flex-col gap-2.5",
                                 for (name, color, v) in rows.iter() {
                                     div { class: "flex items-center justify-between gap-6 text-xs",
-                                        div { class: "flex items-center gap-3 min-w-0",
+                                        div { class: "flex items-center gap-3.5 min-w-0",
                                             span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                            span { class: "truncate text-zinc-300", "{name}" }
+                                            span { class: "truncate text-zinc-300 pl-1", "{name}" }
                                         }
                                         span { class: "shrink-0 font-mono font-medium text-zinc-100", "{fmt_tokens(*v)}" }
                                     }
@@ -339,10 +339,10 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                     },
                     TrendTip::Segment(x, y, label, name, color, v) => rsx! {
                         TrendTooltipContainer { x, y, label,
-                            div { class: "flex w-full items-center justify-between gap-10 py-1 text-xs",
-                                div { class: "flex items-center gap-2.5 min-w-0",
+                            div { class: "flex w-full items-center justify-between gap-8 py-1 text-xs",
+                                div { class: "flex items-center gap-3.5 min-w-0",
                                     span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                    span { class: "truncate text-zinc-300 font-medium", "{name}" }
+                                    span { class: "truncate text-zinc-300 font-medium pl-1", "{name}" }
                                 }
                                 span { class: "shrink-0 font-mono font-bold text-zinc-100 pl-4", "{fmt_tokens(v)}" }
                             }
@@ -364,7 +364,7 @@ fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> El
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[220px] whitespace-nowrap rounded-xl bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-200 ease-out {opacity_class}",
+            class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-200 ease-out {opacity_class}",
             style: "left: {x}px; top: {y}px; transform: {transform}",
             p { class: "mb-3 text-sm font-semibold text-zinc-100", "{label}" }
             {children}
