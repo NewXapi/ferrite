@@ -180,9 +180,10 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
             }
             div { class: "grid grid-cols-1 gap-5 xl:grid-cols-3",
                 // 左: 累加直方图(带横向虚网格 + 两级悬浮卡)
-                div { class: "xl:col-span-2",
+                div {
+                    class: "xl:col-span-2",
+                    onmouseleave: move |_| tip.set(None),
                     div { class: "relative",
-                        // 横向虚网格 0/25/50/75/100%
                         div { class: "pointer-events-none absolute inset-0 flex flex-col justify-between py-0", aria_hidden: "true",
                             for frac in [1.0f64, 0.75, 0.5, 0.25] {
                                 div { class: "relative w-full border-t border-dashed border-zinc-800",
@@ -215,7 +216,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                 let p = evt.data.client_coordinates();
                                                 tip.set(Some(TrendTip::Column(p.x, p.y, label.clone(), col_rows.clone(), col_total)));
                                             },
-                                            // 悬停整列: 全高背景带(参考图2)
+                                            onmouseleave: move |_| tip.set(None),
                                             div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
                                             div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200",
                                                 style: "height: {hpct:.1}%",
@@ -240,14 +241,8 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                                 onmousemove: move |evt| {
                                                                     evt.stop_propagation();
                                                                 },
-                                                                onmouseleave: {
-                                                                    let c_rows = col_rows_clone.clone();
-                                                                    let c_label = col_label.clone();
-                                                                    move |evt| {
-                                                                        evt.stop_propagation();
-                                                                        let p = evt.data.client_coordinates();
-                                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
-                                                                    }
+                                                                onmouseleave: move |evt| {
+                                                                    evt.stop_propagation();
                                                                 },
                                                             }
                                                         }
@@ -268,8 +263,8 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                         }
                     }
                 }
-                // 右: 数据位 + Top3 图例 (无边框, 自然融入面板)
-                div { class: "flex flex-col justify-between gap-5 p-2",
+                // 右: 数据位 + Top3 图例 (标准深灰弱边框)
+                div { class: "flex flex-col justify-between gap-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5",
                     div { class: "grid grid-cols-2 gap-3",
                         div {
                             p { class: "text-[11px] text-zinc-600", "峰值桶" }
@@ -336,15 +331,15 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                         let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
                         rsx! {
                             div {
-                                class: "pointer-events-none fixed z-50 min-w-[180px] whitespace-nowrap rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
+                                class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl border border-zinc-700/60 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
                                 style: "left: {x}px; top: {y}px; transform: {transform}",
-                                p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
-                                div { class: "flex items-center justify-between gap-4 text-xs",
+                                p { class: "mb-2.5 text-sm font-semibold text-zinc-100", "{label}" }
+                                div { class: "flex items-center justify-between gap-6 text-xs",
                                     div { class: "flex items-center gap-2.5 min-w-0",
                                         span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                        span { class: "truncate text-zinc-300", "{name}" }
+                                        span { class: "truncate font-medium text-zinc-300", "{name}" }
                                     }
-                                    span { class: "shrink-0 font-mono font-semibold text-zinc-100", "{fmt_tokens(v)}" }
+                                    span { class: "shrink-0 font-mono text-sm font-bold text-zinc-100", "{fmt_tokens(v)}" }
                                 }
                             }
                         }
