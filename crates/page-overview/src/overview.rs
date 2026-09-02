@@ -212,7 +212,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                     rsx! {
                                         div {
                                             class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
-                                            // 整列鼠标控制
+                                            // 整列鼠标控制：基于柱子本身或光标位置做居中计算
                                             onmouseenter: {
                                                 let c_label = label.clone();
                                                 let c_rows = col_rows.clone();
@@ -221,19 +221,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                     tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
                                                 }
                                             },
-                                            onmousemove: {
-                                                let c_label = label.clone();
-                                                let c_rows = col_rows.clone();
-                                                move |evt| {
-                                                    // Only update position for Column tip, ignore if a Segment tip is active
-                                                    if matches!(*tip.read(), Some(TrendTip::Column(..))) {
-                                                        let p = evt.data.client_coordinates();
-                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
-                                                    }
-                                                }
-                                            },
                                             onmouseleave: move |_| tip.set(None),
-                                            
                                             // 悬停整列: 通顶全高半透明背景光柱
                                             div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
                                             
@@ -369,11 +357,12 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 /// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
-    // 屏幕宽度自适应：在窄屏/右侧边缘时自动向左翻转，避免被裁剪或溢出
-    let transform = if x > 400.0 {
-        "translate(calc(-100% - 20px), -50%)"
+    // 视口安全判定：动态防止在窄屏或屏幕右侧被切除
+    // 当 x 坐标超过 280px 时（对于手机和 iPad 宽度），统一在鼠标左侧显示；否则在右侧显示
+    let transform = if x > 280.0 {
+        "translate(calc(-100% - 16px), -50%)"
     } else {
-        "translate(20px, -50%)"
+        "translate(16px, -50%)"
     };
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
