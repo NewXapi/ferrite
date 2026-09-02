@@ -16,13 +16,13 @@ mod overview {
     }
 
     #[test]
-    fn tools_shares_sum_to_reasonable() {
-        let tools = api::fetch_tools();
-        assert!(!tools.is_empty(), "工具分布非空");
-        // (名称, 用量, 占比%): 占比 0..=100
-        for (name, _usage, pct) in tools {
-            assert!(!name.is_empty(), "工具名非空");
-            assert!((0.0..=100.0).contains(pct), "工具 {name} 占比 {pct} 超界");
+    fn users_shares_sum_to_reasonable() {
+        let users = api::fetch_users();
+        assert!(!users.is_empty(), "用户分布非空");
+        // (名称, 消耗量, 占比%): 占比 0..=100
+        for (name, _usage, pct) in users {
+            assert!(!name.is_empty(), "用户名非空");
+            assert!((0.0..=100.0).contains(pct), "用户 {name} 占比 {pct} 超界");
         }
     }
 
