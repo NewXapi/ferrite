@@ -14,24 +14,15 @@ use crate::api;
 #[component]
 pub fn OverviewPanel() -> Element {
     // ponytail: full UI overhaul to add breakdown cards for all timeframes in one go.
-    let mut timeframe = use_signal(|| "至今"); // "今天", "本周", "本月", "至今"
+    let timeframe = use_signal(|| "今天"); // "今天", "本周", "本月", "今年"
     
     // Get the stats for the currently selected timeframe
     let (stats, user_stats, model_stats) = api::overview::fetch_timeframe_stats(timeframe());
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
-            // Timeframe selector
-            div { class: "flex items-center gap-2 rounded-lg bg-zinc-900/50 p-1 w-max border border-zinc-800",
-                for tf in ["今天", "本周", "本月", "至今"] {
-                    button {
-                        class: "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                        class: if timeframe() == tf { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
-                        onclick: move |_| timeframe.set(tf),
-                        "{tf}"
-                    }
-                }
-            }
+            // 用量趋势大面板(含时间窗切换)
+            TrendPanel { timeframe }
             
             // Top-level stats
             section { class: "grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5",
@@ -104,6 +95,150 @@ fn StatCard(value: &'static str, label: &'static str) -> Element {
         }
     }
 }
+
+/// 模型配色(内联 hex, 不走 Tailwind 扫描, 避免 @source 漏扫隐形)
+const MODEL_COLORS: [&str; 10] = [
+    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500",
+    "#34d399", "#22d3ee", "#f472b6", "#a3e635", "#a1a1aa",
+];
+
+/// 百万 tokens → 显示串
+fn fmt_tokens(millions: f64) -> String {
+    if millions >= 1000.0 {
+        format!("{:.1}B", millions / 1000.0)
+    } else {
+        format!("{:.0}M", millions)
+    }
+}
+
+/// 用量趋势大面板: 左侧累加直方图(按模型堆叠) + 右侧数据位。
+/// 时间窗: 今天(24h)/本周(7d)/本月(30d)/今年(12mo)。
+#[component]
+fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
+    let tf = timeframe();
+    let buckets = api::overview::fetch_trend(tf);
+    let models = api::overview::fetch_models();
+    let names: Vec<&str> = models.iter().map(|m| m.0).collect();
+
+    let total_all: f64 = buckets.iter().map(|b| b.total).sum();
+    let max_total = buckets.iter().map(|b| b.total).fold(0.0f64, f64::max).max(1.0);
+    let avg = total_all / buckets.len().max(1) as f64;
+    let peak = buckets.iter().max_by(|a, b| a.total.partial_cmp(&b.total).unwrap()).unwrap();
+
+    let mut per_model_tot = vec![0.0f64; names.len()];
+    for b in &buckets {
+        for (i, v) in b.per_model.iter().enumerate() {
+            per_model_tot[i] += v;
+        }
+    }
+    let mut order: Vec<usize> = (0..names.len()).collect();
+    order.sort_by(|&a, &b| per_model_tot[b].partial_cmp(&per_model_tot[a]).unwrap());
+    order.truncate(3);
+
+    rsx! {
+        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-all duration-300 hover:border-zinc-700",
+            div { class: "mb-4 flex flex-wrap items-center justify-between gap-3",
+                div {
+                    h2 { class: "text-sm font-medium text-zinc-300", "热门模型 · 用量趋势" }
+                    p { class: "mt-0.5 text-xs text-zinc-600",
+                        match tf {
+                            "今天" => "过去24小时内各模型的逐小时 Token 用量",
+                            "本周" => "最近7天内各模型的每日 Token 用量",
+                            "本月" => "过去一个月内各模型的每日 Token 用量",
+                            _ => "今年各模型逐月 Token 用量",
+                        }
+                    }
+                }
+                div { class: "flex items-center gap-4",
+                    div { class: "text-right",
+                        p { class: "text-2xl font-semibold leading-none text-zinc-100", "{fmt_tokens(total_all)}" }
+                        p { class: "mt-1 text-[11px] text-zinc-600", "令牌(合计)" }
+                    }
+                    div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
+                        for t in ["今天", "本周", "本月", "今年"] {
+                            button {
+                                class: "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                                class: if tf == t { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
+                                onclick: move |_| timeframe.set(t),
+                                "{t}"
+                            }
+                        }
+                    }
+                }
+            }
+            div { class: "grid grid-cols-1 gap-5 xl:grid-cols-3",
+                // 左: 累加直方图
+                div { class: "xl:col-span-2",
+                    div { class: "flex h-56 items-end", style: "gap: 3px",
+                        for b in buckets.iter() {
+                            {
+                                let hpct = (b.total / max_total * 100.0).max(3.0);
+                                rsx! {
+                                    div {
+                                        class: "group flex h-full flex-1 cursor-default flex-col justify-end",
+                                        title: "{b.label} · {fmt_tokens(b.total)}",
+                                        div { class: "flex w-full flex-col-reverse overflow-hidden rounded-sm transition-all duration-200 group-hover:brightness-125 group-hover:ring-1 group-hover:ring-zinc-500",
+                                            style: "height: {hpct:.1}%",
+                                            for (i, v) in b.per_model.iter().enumerate() {
+                                                div {
+                                                    class: "w-full",
+                                                    style: "height: {(v / b.total * 100.0):.1}%; background: {MODEL_COLORS[i % MODEL_COLORS.len()]}",
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div { class: "mt-2 flex text-[10px] text-zinc-600", style: "gap: 3px",
+                        for b in buckets.iter() {
+                            span { class: "flex-1 truncate text-center",
+                                if b.show_label { "{b.label}" }
+                            }
+                        }
+                    }
+                }
+                // 右: 数据位 + Top3 图例
+                div { class: "flex flex-col justify-between gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-4",
+                    div { class: "grid grid-cols-2 gap-3",
+                        div {
+                            p { class: "text-[11px] text-zinc-600", "峰值桶" }
+                            p { class: "mt-1 truncate text-sm font-semibold text-zinc-100", "{peak.label}" }
+                            p { class: "text-xs font-mono text-zinc-500", "{fmt_tokens(peak.total)}" }
+                        }
+                        div {
+                            p { class: "text-[11px] text-zinc-600", "平均每桶" }
+                            p { class: "mt-1 text-sm font-semibold text-zinc-100", "{fmt_tokens(avg)}" }
+                            p { class: "text-xs font-mono text-zinc-500", "均值" }
+                        }
+                        div {
+                            p { class: "text-[11px] text-zinc-600", "活跃模型" }
+                            p { class: "mt-1 text-sm font-semibold text-zinc-100", "{names.len()} 个" }
+                            p { class: "text-xs font-mono text-zinc-500", "均有产出" }
+                        }
+                        div {
+                            p { class: "text-[11px] text-zinc-600", "区间总量" }
+                            p { class: "mt-1 text-sm font-semibold text-zinc-100", "{fmt_tokens(total_all)}" }
+                            p { class: "text-xs font-mono text-zinc-500", "tokens" }
+                        }
+                    }
+                    div { class: "border-t border-zinc-800/80 pt-3",
+                        p { class: "mb-2 text-[11px] font-medium text-zinc-500", "主力模型 Top3" }
+                        for &i in order.iter() {
+                            div { class: "flex items-center gap-2 py-1 text-xs",
+                                span { class: "h-2 w-2 shrink-0 rounded-sm", style: "background: {MODEL_COLORS[i % MODEL_COLORS.len()]}" }
+                                span { class: "flex-1 truncate text-zinc-300", "{names[i]}" }
+                                span { class: "font-mono text-zinc-500", "{per_model_tot[i] / total_all * 100.0:.1}%" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct DayCell {
     in_range: bool,
     level: u8,
