@@ -359,11 +359,8 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
     // 视口安全判定：动态防止在窄屏或屏幕右侧被切除
     // 当 x 坐标超过 280px 时（对于手机和 iPad 宽度），统一在鼠标左侧显示；否则在右侧显示
-    let transform = if x > 280.0 {
-        "translate(calc(-100% - 16px), -50%)"
-    } else {
-        "translate(16px, -50%)"
-    };
+    // 屏幕宽度自适应居中定位：在移动端或大屏上，默认水平居中对齐，避免偏到屏幕外被切断
+    let transform = "translate(-50%, -100%) translateY(-12px)";
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
