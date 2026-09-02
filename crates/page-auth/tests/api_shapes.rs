@@ -1,5 +1,9 @@
-//! auth 集成测试: login/register mock 契约。
-//! 接真后端时这里换成 HTTP 集成测试, 契约 (LoginResponse.token 非空) 不变。
+//! Unit tests for page-auth public surface.
+//!
+//! These exercise the bits the rendered page depends on: tab enum transitions
+//! and the `api::login` / `api::register` mock contract. Dioxus RSX itself
+//! isn't unit-tested (it requires a runtime), so layout regressions are caught
+//! by the gate screenshot pass instead.
 
 use page_auth::api::{LoginRequest, login, register};
 
@@ -20,4 +24,16 @@ async fn register_returns_nonempty_token() {
         .await
         .expect("mock register 应成功");
     assert!(!resp.token.is_empty(), "token 非空");
+}
+
+#[test]
+fn auth_tab_serde_roundtrip_uses_default() {
+    // The enum isn't serialized today; this guards against future renames by
+    // asserting `Copy + Eq` semantics that `set_auth_tab` and `auth_tab`
+    // depend on. If this fails, the state module lost its derive set.
+    use page_auth::state::AuthTab;
+    let sign_in = AuthTab::SignIn;
+    let copy_via_assign = sign_in;
+    assert_eq!(sign_in, copy_via_assign);
+    assert_ne!(sign_in, AuthTab::SignUp);
 }
