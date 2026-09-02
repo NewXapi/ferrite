@@ -8,13 +8,13 @@ mod segmented;
 pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
 
-const INPUT_CLASS: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-100 outline-none transition focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400";
+const INPUT_CLASS: &str = "w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none transition-all duration-200 hover:border-zinc-700 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/20 focus:bg-zinc-900";
 
 #[component]
 pub fn Field(label: String, name: String, r#type: String, placeholder: String) -> Element {
     rsx! {
-        label { class: "block space-y-2",
-            span { class: "text-sm text-zinc-300", "{label}" }
+        label { class: "block space-y-1.5",
+            span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
             input {
                 class: INPUT_CLASS,
                 name: "{name}",
@@ -29,8 +29,8 @@ pub fn Field(label: String, name: String, r#type: String, placeholder: String) -
 #[component]
 pub fn CodeField(label: String, name: String, placeholder: String) -> Element {
     rsx! {
-        label { class: "block space-y-2",
-            span { class: "text-sm text-zinc-300", "{label}" }
+        label { class: "block space-y-1.5",
+            span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
             div { class: "flex gap-2",
                 input {
                     class: INPUT_CLASS,
@@ -40,7 +40,7 @@ pub fn CodeField(label: String, name: String, placeholder: String) -> Element {
                     autocomplete: "one-time-code",
                 }
                 button {
-                    class: "shrink-0 rounded-xl border border-zinc-700 px-4 py-3 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800",
+                    class: "shrink-0 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5 text-xs font-medium text-zinc-300 transition-all hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 active:scale-95",
                     r#type: "button",
                     "Send code"
                 }
@@ -53,7 +53,7 @@ pub fn CodeField(label: String, name: String, placeholder: String) -> Element {
 pub fn SubmitButton(label: String) -> Element {
     rsx! {
         button {
-            class: "w-full rounded-xl bg-zinc-100 px-4 py-3 font-semibold text-zinc-900 transition hover:bg-zinc-300",
+            class: "w-full rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:bg-zinc-200 hover:shadow-lg hover:shadow-zinc-100/10 active:scale-[0.98] active:bg-zinc-300",
             r#type: "button",
             "{label}"
         }
