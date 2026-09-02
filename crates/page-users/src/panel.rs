@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use ui::{ScrollSpyNav, SegmentedCapsule};
 
-use crate::api::{self, THIS_MONTH, User};
+use crate::api::current_month_prefix;
+use crate::api::{self, User};
 use crate::data::*;
 
 /// 弹窗状态:关闭 / 新建 / 编辑某用户
@@ -50,7 +51,7 @@ pub fn UsersPanel() -> Element {
     let enabled = users.iter().filter(|u| u.status == 1).count();
     let new_this_month = users
         .iter()
-        .filter(|u| u.created.starts_with(THIS_MONTH))
+        .filter(|u| u.created.starts_with(&current_month_prefix()))
         .count();
     let granted: i64 = users.iter().map(|u| u.quota).sum();
     let consumed: i64 = users.iter().map(|u| u.used_quota).sum();

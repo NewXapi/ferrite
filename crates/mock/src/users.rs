@@ -50,7 +50,8 @@ pub const BINDINGS_NONE: Bindings = Bindings {
     telegram: None,
 };
 
-/// 本月新增判定:mock 数据以 created 前缀比对当月
+/// 之前给"本月新增"统计当月前缀(2026-08),现在 page-users::api::current_month_prefix 走运行时。
+/// 本常量已无消费者,保留以便测试 fixture 使用。
 pub const THIS_MONTH: &str = "2026-08";
 
 /// (标签, group 值);空值表示不过滤
@@ -234,11 +235,11 @@ pub const USERS: &[User] = &[
         aff_count: 1,
         status: 1,
         role: 1,
-        created: "2026-08-24",
+        created: "2026-09-01",
         inviter: Some("sunqi"),
         aff_income: 0,
-        created_at: "2026-08-24 23:58:04",
-        last_login_at: "2026-08-31 23:12:51",
+        created_at: "2026-09-01 23:58:04",
+        last_login_at: "2026-09-02 08:15:30",
         remark: "",
         bindings: BINDINGS_NONE,
     },

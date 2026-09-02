@@ -4,7 +4,7 @@
 //! 只改本文件 —— 换成 `crates/shared/client` 的请求,必要时把签名改成 async,
 //! `panel.rs` 与 `data.rs` 的格式化助手都不用动。
 
-pub use mock::users::{THIS_MONTH, User};
+pub use mock::users::User;
 
 pub fn fetch_users() -> &'static [User] {
     mock::users::USERS
@@ -27,4 +27,10 @@ pub fn fetch_statuses() -> &'static [(&'static str, u8)] {
 /// 角色筛选项:(标签, role 值);0 表示不过滤
 pub fn fetch_roles() -> &'static [(&'static str, u16)] {
     mock::users::ROLES
+}
+
+/// 返回运行时当月前缀 ("YYYY-MM"),用 UTC。
+/// 原 `THIS_MONTH` 写死 2026-08,9 月时仍显示 8 月数据,现已改运行时。
+pub fn current_month_prefix() -> String {
+    chrono::Utc::now().format("%Y-%m").to_string()
 }
