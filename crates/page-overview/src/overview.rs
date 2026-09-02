@@ -212,6 +212,7 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                     rsx! {
                                         div {
                                             class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
+                                            // 整列鼠标控制
                                             onmouseenter: {
                                                 let c_label = label.clone();
                                                 let c_rows = col_rows.clone();
@@ -220,39 +221,56 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                     tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
                                                 }
                                             },
+                                            onmousemove: {
+                                                let c_label = label.clone();
+                                                let c_rows = col_rows.clone();
+                                                move |evt| {
+                                                    // Only update position for Column tip, ignore if a Segment tip is active
+                                                    if matches!(*tip.read(), Some(TrendTip::Column(..))) {
+                                                        let p = evt.data.client_coordinates();
+                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
+                                                    }
+                                                }
+                                            },
                                             onmouseleave: move |_| tip.set(None),
-                                            // 悬停整列: 全高背景带(参考图2)
+                                            
+                                            // 悬停整列: 通顶全高半透明背景光柱
                                             div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
-                                            // 实体直方图(堆叠色块区域)
+                                            
+                                            // 直方图容器
                                             div {
-                                                class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
+                                                class: "pointer-events-none relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
                                                 style: "height: {hpct:.1}%",
                                                 for (i, v) in b.per_model.iter().enumerate() {
                                                     {
-                                                        let seg_label = b.label.clone();
-                                                        let seg_name = names[i].to_string();
+                                                        let seg_label_1 = b.label.clone();
+                                                        let seg_name_1 = names[i].to_string();
+                                                        let seg_label_2 = b.label.clone();
+                                                        let seg_name_2 = names[i].to_string();
                                                         let seg_color = MODEL_COLORS[i % MODEL_COLORS.len()];
                                                         let seg_val = *v;
-                                                        let col_label = label.clone();
-                                                        let col_rows_clone = col_rows.clone();
+                                                        let col_label_restore = label.clone();
+                                                        let col_rows_restore = col_rows.clone();
+                                                        
                                                         rsx! {
                                                             div {
-                                                                class: "w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
+                                                                class: "pointer-events-auto w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
                                                                 style: "height: {(v / b.total * 100.0):.1}%; background: {seg_color}",
-                                                                // 色块模式: 精确触发展示单模型详情
+                                                                // 精确单色块模式: 悬停时只显示该单一模型
                                                                 onmouseenter: move |evt| {
                                                                     evt.stop_propagation();
                                                                     let p = evt.data.client_coordinates();
-                                                                    tip.set(Some(TrendTip::Segment(p.x, p.y, seg_label.clone(), seg_name.clone(), seg_color, seg_val)));
+                                                                    tip.set(Some(TrendTip::Segment(p.x, p.y, seg_label_1.clone(), seg_name_1.clone(), seg_color, seg_val)));
                                                                 },
-                                                                onmouseleave: {
-                                                                    let c_rows = col_rows_clone.clone();
-                                                                    let c_label = col_label.clone();
-                                                                    move |evt| {
-                                                                        evt.stop_propagation();
-                                                                        let p = evt.data.client_coordinates();
-                                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
-                                                                    }
+                                                                onmousemove: move |evt| {
+                                                                    evt.stop_propagation();
+                                                                    let p = evt.data.client_coordinates();
+                                                                    tip.set(Some(TrendTip::Segment(p.x, p.y, seg_label_2.clone(), seg_name_2.clone(), seg_color, seg_val)));
+                                                                },
+                                                                onmouseleave: move |evt| {
+                                                                    evt.stop_propagation();
+                                                                    let p = evt.data.client_coordinates();
+                                                                    tip.set(Some(TrendTip::Column(p.x, p.y, col_label_restore.clone(), col_rows_restore.clone(), col_total)));
                                                                 },
                                                             }
                                                         }
