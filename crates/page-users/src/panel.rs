@@ -11,6 +11,14 @@ enum Form {
     New,
     Edit(u32),
 }
+/// 编辑弹窗内的页签:基本 / 额度 / 备注 / 绑定
+#[derive(Clone, Copy, PartialEq)]
+enum FormTab {
+    Basic,
+    Quota,
+    Remark,
+    Binding,
+}
 
 /// 用户管理面板 - 左侧 ScrollSpyNav + 统计 / 筛选 / 用户卡片三区
 #[component]
@@ -31,6 +39,7 @@ pub fn UsersPanel() -> Element {
     let mut f_email = use_signal(String::new);
     let mut f_quota = use_signal(|| "5000000".to_string());
     let mut f_group = use_signal(|| "default".to_string());
+    let mut f_remark = use_signal(String::new);
 
     let users = api::fetch_users();
     let groups = api::fetch_groups();
@@ -88,6 +97,7 @@ pub fn UsersPanel() -> Element {
         f_email.set(String::new());
         f_quota.set("5000000".to_string());
         f_group.set("default".to_string());
+        f_remark.set(String::new());
         form.set(Form::New);
     };
     let open_edit = move |id: u32| {
@@ -96,6 +106,7 @@ pub fn UsersPanel() -> Element {
             f_email.set(u.email.to_string());
             f_quota.set(u.quota.to_string());
             f_group.set(u.group.to_string());
+            f_remark.set(u.remark.to_string());
             form.set(Form::Edit(id));
         }
     };
@@ -203,6 +214,11 @@ pub fn UsersPanel() -> Element {
                     email: f_email,
                     quota: f_quota,
                     group: f_group,
+                    remark: f_remark,
+                    user: match form() {
+                        Form::Edit(id) => api::fetch_user(id),
+                        _ => None,
+                    },
                     on_cancel: move |_| form.set(Form::Closed),
                     on_submit: move |_| form.set(Form::Closed),
                 }
@@ -269,6 +285,8 @@ fn UserCard(
         "bg-emerald-500"
     };
 
+    let inviter_label = user.inviter.unwrap_or("无");
+    let last_login_day = user.last_login_at.get(..10).unwrap_or(user.last_login_at);
     let (status_text, status_tone) = if user.status == 1 {
         (
             STATUS_ENABLED,
@@ -298,8 +316,6 @@ fn UserCard(
                     p { class: "mt-0.5 truncate text-[11px] text-zinc-500", "{user.display_name}" }
                 }
             }
-            p { class: "mt-2 truncate font-mono text-[11px] text-zinc-500", "{user.email}" }
-
             // 徽标行
             div { class: "mt-3 flex flex-wrap gap-1.5",
                 Badge { text: group_label(user.group).to_string(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
@@ -318,7 +334,6 @@ fn UserCard(
                 div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                     div { class: "h-full rounded-full {bar_tone}", style: "width: {pct}%" }
                 }
-                p { class: "text-right text-[11px] text-zinc-500", "已用 {pct}%" }
             }
 
             // 计数行
@@ -330,6 +345,22 @@ fn UserCard(
                 div { class: "flex justify-between gap-2",
                     span { class: "shrink-0 text-zinc-400", "邀请数" }
                     span { class: "font-medium text-zinc-200", "{user.aff_count}" }
+                }
+                div { class: "flex justify-between gap-2",
+                    span { class: "shrink-0 text-zinc-400", "邀请收入" }
+                    span { class: "font-medium text-zinc-200", "{fmt_cny(user.aff_income)}" }
+                }
+                div { class: "flex justify-between gap-2",
+                    span { class: "shrink-0 text-zinc-400", "邀请人" }
+                    span { class: "font-medium text-zinc-200", "{inviter_label}" }
+                }
+                div { class: "flex justify-between gap-2",
+                    span { class: "shrink-0 text-zinc-400", "创建" }
+                    span { class: "font-medium text-zinc-200", title: "{user.created_at}", "{user.created}" }
+                }
+                div { class: "flex justify-between gap-2",
+                    span { class: "shrink-0 text-zinc-400", "最后登录" }
+                    span { class: "font-medium text-zinc-200", title: "{user.last_login_at}", "{last_login_day}" }
                 }
             }
 
@@ -401,6 +432,8 @@ fn UserForm(
     email: Signal<String>,
     quota: Signal<String>,
     group: Signal<String>,
+    remark: Signal<String>,
+    user: Option<&'static User>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -419,9 +452,36 @@ fn UserForm(
         .parse::<i64>()
         .map(fmt_cny)
         .unwrap_or_else(|_| "—".to_string());
+    let mut tab = use_signal(|| FormTab::Basic);
+    const TABS: [(FormTab, &str); 4] = [
+        (FormTab::Basic, "基本"),
+        (FormTab::Quota, "额度"),
+        (FormTab::Remark, "备注"),
+        (FormTab::Binding, "绑定"),
+    ];
 
-    rsx! {
-        Modal { title: title.to_string(), on_close: move |_| on_cancel.call(()),
+    // 绑定页只读行:第三方 + 邮箱;无用户(新建)时全显示 "-"
+    let bind_rows: [(&str, &str); 6] = match user {
+        Some(u) => [
+            ("GitHub", u.bindings.github.unwrap_or("-")),
+            ("Discord", u.bindings.discord.unwrap_or("-")),
+            ("OIDC", u.bindings.oidc.unwrap_or("-")),
+            ("WeChat", u.bindings.wechat.unwrap_or("-")),
+            ("Telegram", u.bindings.telegram.unwrap_or("-")),
+            ("邮箱", if u.email.is_empty() { "-" } else { u.email }),
+        ],
+        None => [
+            ("GitHub", "-"),
+            ("Discord", "-"),
+            ("OIDC", "-"),
+            ("WeChat", "-"),
+            ("Telegram", "-"),
+            ("邮箱", "-"),
+        ],
+    };
+
+    let body = match tab() {
+        FormTab::Basic => rsx! {
             div { class: "space-y-4",
                 div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "用户名" }
@@ -443,16 +503,6 @@ fn UserForm(
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "初始额度 (quota)" }
-                    input {
-                        class: "{MODAL_INPUT} font-mono",
-                        r#type: "text",
-                        value: "{quota}",
-                        oninput: move |e| quota.set(e.value()),
-                    }
-                    p { class: "mt-1 text-xs text-zinc-500", "折合 {quota_hint}" }
-                }
-                div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "分组" }
                     select {
                         class: MODAL_INPUT,
@@ -464,6 +514,83 @@ fn UserForm(
                     }
                 }
             }
+        },
+        FormTab::Quota => rsx! {
+            div { class: "space-y-4",
+                div {
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "剩余额度 (quota)" }
+                    input {
+                        class: "{MODAL_INPUT} font-mono",
+                        r#type: "text",
+                        value: "{quota}",
+                        oninput: move |e| quota.set(e.value()),
+                    }
+                    p { class: "mt-1 text-xs text-zinc-500", "折合 {quota_hint}" }
+                }
+                if let Some(u) = user {
+                    div { class: "space-y-1.5 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
+                        div { class: "flex justify-between gap-2",
+                            span { class: "text-zinc-400", "当前剩余" }
+                            span { class: "font-medium text-zinc-200", "{fmt_cny(u.quota)}" }
+                        }
+                        div { class: "flex justify-between gap-2",
+                            span { class: "text-zinc-400", "已使用" }
+                            span { class: "font-medium text-zinc-200", "{fmt_cny(u.used_quota)}" }
+                        }
+                    }
+                }
+            }
+        },
+        FormTab::Remark => rsx! {
+            div {
+                label { class: "mb-1.5 block text-xs text-zinc-400", "管理员备注(仅管理员可见)" }
+                textarea {
+                    class: "{MODAL_INPUT} h-28 resize-none",
+                    placeholder: "例如: 连续 30 天无登录,待清退",
+                    value: "{remark}",
+                    oninput: move |e| remark.set(e.value()),
+                }
+            }
+        },
+        FormTab::Binding => rsx! {
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
+                p { class: "mb-2 text-[11px] text-zinc-500", "第三方账号绑定(只读,用户在个人资料里管理)" }
+                div { class: "space-y-1.5",
+                    for (label, value) in bind_rows {
+                        div { class: "flex justify-between gap-2",
+                            span { class: "text-zinc-400", "{label}" }
+                            span { class: "font-medium text-zinc-200", "{value}" }
+                        }
+                    }
+                }
+            }
+        },
+    };
+
+    rsx! {
+        Modal { title: title.to_string(), on_close: move |_| on_cancel.call(()),
+            // 页签行:弹窗顶部,手机端自动折行
+            div { class: "mb-4 flex flex-wrap gap-1.5",
+                for (t, label) in TABS {
+                    {
+                        let on = tab() == t;
+                        let tone = if on {
+                            "border-zinc-100 bg-zinc-100 text-zinc-900"
+                        } else {
+                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                        };
+                        rsx! {
+                            button {
+                                class: "rounded-full border px-3 py-1 text-xs font-medium transition-colors {tone}",
+                                onclick: move |_| tab.set(t),
+                                "{label}"
+                            }
+                        }
+                    }
+                }
+            }
+
+            {body}
 
             div { class: "mt-6 flex gap-3",
                 button {
