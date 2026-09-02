@@ -357,16 +357,18 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 /// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
-    // 视口安全判定：动态防止在窄屏或屏幕右侧被切除
-    // 当 x 坐标超过 280px 时（对于手机和 iPad 宽度），统一在鼠标左侧显示；否则在右侧显示
-    // 屏幕宽度自适应居中定位：在移动端或大屏上，默认水平居中对齐，避免偏到屏幕外被切断
-    let transform = "translate(-50%, -100%) translateY(-12px)";
+    // 精确吸附：以鼠标指针为锚点，浮窗跟随在鼠标指针右上方（如果在右半屏则翻转到左上方）
+    let transform = if x > 600.0 {
+        "translate(calc(-100% - 14px), -100%)"
+    } else {
+        "translate(14px, -100%)"
+    };
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[170px] whitespace-nowrap rounded-lg bg-zinc-900/95 py-2.5 px-3.5 text-xs shadow-2xl backdrop-blur-md transition-all duration-200 ease-out {opacity_class}",
-            style: "left: {x}px; top: {y}px; transform: {transform}",
-            p { class: "mb-1.5 text-sm font-semibold text-zinc-100", "{label}" }
+            class: "pointer-events-none fixed z-50 min-w-[160px] whitespace-nowrap rounded-lg bg-zinc-900/95 py-2 px-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class}",
+            style: "left: {x}px; top: {y - 6.0}px; transform: {transform}",
+            p { class: "mb-1 text-xs font-semibold text-zinc-300", "{label}" }
             {children}
         }
     }
