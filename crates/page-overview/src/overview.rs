@@ -369,10 +369,15 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 /// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
-    let transform = if x > 650.0 { "translate(calc(-100% - 20px), -50%)" } else { "translate(20px, -50%)" };
+    // 屏幕宽度自适应：在窄屏/右侧边缘时自动向左翻转，避免被裁剪或溢出
+    let transform = if x > 360.0 {
+        "translate(calc(-100% - 16px), -50%)"
+    } else {
+        "translate(16px, -50%)"
+    };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[220px] whitespace-nowrap rounded-xl border border-transparent bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out",
+            class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out",
             style: "left: {x}px; top: {y}px; transform: {transform}",
             p { class: "mb-3 text-sm font-semibold text-zinc-100", "{label}" }
             {children}
