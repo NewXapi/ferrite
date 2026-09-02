@@ -212,13 +212,20 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                     rsx! {
                                         div {
                                             class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
-                                            onmouseenter: move |evt| {
-                                                let p = evt.data.client_coordinates();
-                                                tip.set(Some(TrendTip::Column(p.x, p.y, label.clone(), col_rows.clone(), col_total)));
+                                            onmouseenter: {
+                                                let c_label = label.clone();
+                                                let c_rows = col_rows.clone();
+                                                move |evt| {
+                                                    let p = evt.data.client_coordinates();
+                                                    tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
+                                                }
                                             },
                                             onmouseleave: move |_| tip.set(None),
+                                            // 悬停整列: 全高背景带(参考图2)
                                             div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
-                                            div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
+                                            // 实体直方图(堆叠色块区域)
+                                            div {
+                                                class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
                                                 style: "height: {hpct:.1}%",
                                                 for (i, v) in b.per_model.iter().enumerate() {
                                                     {
@@ -226,21 +233,26 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                         let seg_name = names[i].to_string();
                                                         let seg_color = MODEL_COLORS[i % MODEL_COLORS.len()];
                                                         let seg_val = *v;
-                                                        // cloned values for inner handlers
+                                                        let col_label = label.clone();
+                                                        let col_rows_clone = col_rows.clone();
                                                         rsx! {
                                                             div {
                                                                 class: "w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
                                                                 style: "height: {(v / b.total * 100.0):.1}%; background: {seg_color}",
+                                                                // 色块模式: 精确触发展示单模型详情
                                                                 onmouseenter: move |evt| {
                                                                     evt.stop_propagation();
                                                                     let p = evt.data.client_coordinates();
                                                                     tip.set(Some(TrendTip::Segment(p.x, p.y, seg_label.clone(), seg_name.clone(), seg_color, seg_val)));
                                                                 },
-                                                                onmousemove: move |evt| {
-                                                                    evt.stop_propagation();
-                                                                },
-                                                                onmouseleave: move |_| {
-                                                                    // Let it clear or naturally bubble out
+                                                                onmouseleave: {
+                                                                    let c_rows = col_rows_clone.clone();
+                                                                    let c_label = col_label.clone();
+                                                                    move |evt| {
+                                                                        evt.stop_propagation();
+                                                                        let p = evt.data.client_coordinates();
+                                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
+                                                                    }
                                                                 },
                                                             }
                                                         }
