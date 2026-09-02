@@ -38,7 +38,7 @@ pub fn AuthPage() -> Element {
 
     rsx! {
         div {
-            class: "relative min-h-screen overflow-hidden bg-zinc-950 text-zinc-100",
+            class: "relative min-h-screen overflow-x-hidden bg-zinc-950 text-zinc-100",
 
             // Background: dim grid (hairline)
             svg {
