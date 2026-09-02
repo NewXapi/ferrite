@@ -9,3 +9,4 @@ publish.workspace = true
 dioxus = { workspace = true }
 ui = { path = "../ui" }
 mock = { path = "../mock" }
+chrono = { workspace = true }

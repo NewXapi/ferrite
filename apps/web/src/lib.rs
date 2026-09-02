@@ -7,11 +7,14 @@ use dioxus::prelude::*;
 
 // Page roots that implement each panel.
 use page_account::{KeysPanel, RewardsPanel, UsageLogsPanel};
-use page_users::UsersPanel;
-use page_admin::{NetworkPanel, state::EntityStore};
+use page_admin::{
+    AliasesPage, ChannelsPage, GroupsPage, NetworkPanel, RedemptionsPage, SubscriptionsPage,
+    SystemPage, state::EntityStore,
+};
 use page_leaderboard::LeaderboardPanel;
 use page_models::ModelsPanel;
 use page_overview::OverviewPanel;
+use page_users::UsersPanel;
 
 /// Top-level console sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -159,12 +162,25 @@ pub fn HomePage() -> Element {
 
     let open_drawer = move |_| drawer_open.set(true);
     let close_drawer = move |_| drawer_open.set(false);
+    // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
+    let labels: Vec<String> = match section() {
+        Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
+        Section::Account => vec!["密钥·资料".into(), "用量·日志".into(), "邀请·奖励".into()],
+        Section::Manage => vec![
+            "网络".into(),
+            "用户".into(),
+            "分组".into(),
+            "别名".into(),
+            "渠道".into(),
+            "订阅".into(),
+            "兑换".into(),
+            "系统".into(),
+        ],
+    };
+    // 越界的 dash_tab clamp 到当前 section 的末位 tab,保证选中态与内容一致
+    let active_tab = (dash_tab() as usize).min(labels.len() - 1) as u8;
     let panel_header = {
-        let labels: Vec<String> = match section() {
-            Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
-            Section::Account => vec!["密钥·资料".into(), "用量·日志".into(), "邀请·奖励".into()],
-            Section::Manage => vec!["网络".into(), "用户".into()],
-        };
+        let labels = labels.clone();
         let tab_count = labels.len() as i32;
         rsx! {
             div {
@@ -184,7 +200,7 @@ pub fn HomePage() -> Element {
                     TabItem {
                         key: "{i}",
                         label: label.clone(),
-                        active: dash_tab() as usize == i,
+                        active: active_tab as usize == i,
                         onclick: move |_| dash_tab.set(i as u8),
                     }
                 }
@@ -237,7 +253,7 @@ pub fn HomePage() -> Element {
                 }
                 ConsolePanel {
                     header: panel_header,
-                    match (section(), dash_tab()) {
+                    match (section(), active_tab) {
                         (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
                         (Section::Dashboard, 1) => rsx! { ModelsPanel {} },
                         (Section::Dashboard, 2) => rsx! { LeaderboardPanel {} },
@@ -247,7 +263,20 @@ pub fn HomePage() -> Element {
                         (Section::Account, 2) => rsx! { RewardsPanel {} },
                         (Section::Account, _) => rsx! { KeysPanel {} },
                         (Section::Manage, 0) => rsx! { NetworkPanel {} },
-                        (Section::Manage, _) => rsx! { UsersPanel {} },
+                        (Section::Manage, 1) => rsx! { UsersPanel {} },
+                        (Section::Manage, 2) => rsx! {
+                            GroupsPage {}
+                        },
+                        (Section::Manage, 3) => rsx! {
+                            AliasesPage {}
+                        },
+                        (Section::Manage, 4) => rsx! {
+                            ChannelsPage {}
+                        },
+                        (Section::Manage, 5) => rsx! { SubscriptionsPage {} },
+                        (Section::Manage, 6) => rsx! { RedemptionsPage {} },
+                        (Section::Manage, 7) => rsx! { SystemPage {} },
+                        (Section::Manage, _) => rsx! { NetworkPanel {} },
                     }
                 }
             }
