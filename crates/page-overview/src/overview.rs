@@ -370,14 +370,15 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
     // 屏幕宽度自适应：在窄屏/右侧边缘时自动向左翻转，避免被裁剪或溢出
-    let transform = if x > 360.0 {
-        "translate(calc(-100% - 16px), -50%)"
+    let transform = if x > 400.0 {
+        "translate(calc(-100% - 20px), -50%)"
     } else {
-        "translate(16px, -50%)"
+        "translate(20px, -50%)"
     };
+    let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-xl bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out",
+            class: "pointer-events-none fixed z-50 min-w-[220px] whitespace-nowrap rounded-xl bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-200 ease-out {opacity_class}",
             style: "left: {x}px; top: {y}px; transform: {transform}",
             p { class: "mb-3 text-sm font-semibold text-zinc-100", "{label}" }
             {children}
