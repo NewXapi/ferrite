@@ -357,14 +357,18 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 /// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
-    // 居中吸附：以鼠标指针为锚点，浮窗始终在鼠标正上方居中对齐，留出少量间隙避免遮挡
-    let transform = "translate(-50%, -100%) translateY(-12px)";
+    // 精确吸附：以鼠标指针为基准，默认在指针右侧居中弹出（如果太靠右侧则往左侧弹出）
+    let transform = if x > 550.0 {
+        "translate(calc(-100% - 14px), -50%)"
+    } else {
+        "translate(14px, -50%)"
+    };
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[160px] whitespace-nowrap rounded-lg bg-zinc-900/95 py-2 px-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class}",
-            style: "left: {x}px; top: {y - 6.0}px; transform: {transform}",
-            p { class: "mb-1 text-xs font-semibold text-zinc-300", "{label}" }
+            class: "pointer-events-none fixed z-50 min-w-[160px] whitespace-nowrap rounded-lg bg-zinc-900/95 py-2.5 px-3.5 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class}",
+            style: "left: {x}px; top: {y}px; transform: {transform}",
+            p { class: "mb-2 text-xs font-semibold text-zinc-200", "{label}" }
             {children}
         }
     }
