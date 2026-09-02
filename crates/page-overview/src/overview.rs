@@ -372,7 +372,7 @@ fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> El
     let transform = if x > 650.0 { "translate(calc(-100% - 20px), -50%)" } else { "translate(20px, -50%)" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 min-w-[220px] whitespace-nowrap rounded-xl border border-transparent bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md",
+            class: "pointer-events-none fixed z-50 min-w-[220px] whitespace-nowrap rounded-xl border border-transparent bg-zinc-900/95 p-4 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out",
             style: "left: {x}px; top: {y}px; transform: {transform}",
             p { class: "mb-3 text-sm font-semibold text-zinc-100", "{label}" }
             {children}
