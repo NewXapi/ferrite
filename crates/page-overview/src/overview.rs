@@ -152,14 +152,6 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
             div { class: "mb-4 flex flex-wrap items-center justify-between gap-3",
                 div {
                     h2 { class: "text-sm font-medium text-zinc-300", "热门模型 · 用量趋势" }
-                    p { class: "mt-0.5 text-xs text-zinc-600",
-                        match tf {
-                            "今天" => "过去24小时内各模型的逐小时 Token 用量",
-                            "本周" => "最近7天内各模型的每日 Token 用量",
-                            "本月" => "过去一个月内各模型的每日 Token 用量",
-                            _ => "今年各模型逐月 Token 用量",
-                        }
-                    }
                 }
                 div { class: "flex items-center gap-4",
                     div { class: "text-right",
