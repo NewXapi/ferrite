@@ -1,8 +1,14 @@
 # 自定义约定: 测试代码必须统一放 tests/ 目录, 严禁留在 src/
 # 为什么: 多 crate 架构下, src/ 留测试容易乱, tests/ 集中管理更好找
-# grep 模式, 零 LLM
-# 检测 1: 扫描 src/**/*.rs 中出现 #[cfg(test)] 或 #[test]
-# 检测 2: 扫描 src/ 下名为 *_test.rs 或 test_*.rs 的文件
+#
+# 扫描范围限定在"本次 commit/staged 改了哪些 .rs",而不是全工作区:
+# - pre-commit 阶段: 看 staged + unstaged 变化(git diff)
+# - pre-push 阶段: 看 HEAD~1..HEAD diff(刚 commit 的)
+# - merge 阶段: 同上,看 PR 包含的 commit diff
+# 这样:
+# 1) worktree 里未 commit 的其他改动不会被误报
+# 2) baseline 已存在的 src/ 内的 #[cfg(test)] 不会被 PR 提交者背负
+# 3) 真要修 baseline 那批需要单独 PR
 enabled: true
 hooks: [pre-commit, pre-push, merge]
 fail_severity: FAIL
@@ -16,19 +22,51 @@ harness:
     - "-c"
     - |
       ROOT=$(git rev-parse --show-toplevel)
-      # 1. 找文件内容里的测试宏
-      matches=$(grep -rEn '#\[cfg\(test\)|#\[test\]' "$ROOT"/crates/*/src/ "$ROOT"/bin/*/src/ --include='*.rs' 2>/dev/null | head -20)
-      # 2. 找测试文件散落
-      files=$(find "$ROOT"/crates/*/src/ "$ROOT"/bin/*/src/ -name '*_test.rs' -o -name 'test_*.rs' -o -name 'tests.rs' 2>/dev/null | head -20)
-      out=""
-      if [ -n "$matches" ]; then out="$matches"; fi
-      if [ -n "$files" ]; then
-        for f in $files; do out="$out\n$f:1:测试文件必须放 crate/tests/ 目录"; done
+      # 决定扫描范围:本次提交相关的 .rs 文件
+      # 优先级:工作树未提交 -> staged -> HEAD~1
+      files=$(git -C "$ROOT" diff --name-only --diff-filter=ACMR HEAD 2>/dev/null | grep -E '\.rs$')
+      if [ -z "$files" ]; then
+        # merge 阶段或无 diff 时退回到 staged + last commit
+        files=$(git -C "$ROOT" diff --name-only --cached 2>/dev/null | grep -E '\.rs$')
       fi
-      if [ -z "$out" ] || [ "$out" = "\n" ]; then
+      if [ -z "$files" ]; then
+        echo '[]'
+        exit 0
+      fi
+      # 只看 src/ 下的 .rs
+      src_files=$(echo "$files" | grep -E '(^|/)src/.*\.rs$' || true)
+      if [ -z "$src_files" ]; then
+        echo '[]'
+        exit 0
+      fi
+      matches=""
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        [ -f "$ROOT/$f" ] || continue
+        case "$f" in
+          *target/*|*.wt/*) continue ;;
+        esac
+        # 在文件内找 #[cfg(test)] / #[test]
+        h=$(grep -nE '#\[cfg\(test\)|#\[test\]' "$ROOT/$f" 2>/dev/null) || true
+        if [ -n "$h" ]; then
+          while IFS= read -r line; do
+            ln=${line%%:*}
+            rest=${line#*:}
+            matches="${matches}${f}:${ln}:${rest}\n"
+          done <<< "$h"
+        fi
+        # 找名为 *_test.rs / test_*.rs / tests.rs
+        base=$(basename "$f")
+        case "$base" in
+          *_test.rs|test_*.rs|tests.rs)
+            matches="${matches}${f}:1:测试文件必须放 crate/tests/ 目录\n"
+            ;;
+        esac
+      done <<< "$src_files"
+      if [ -z "$matches" ]; then
         echo '[]'
       else
-        printf '%b' "$out" | jq -R -s '
+        printf '%b' "$matches" | jq -R -s '
           split("\n")
           | map(select(length > 0))
           | map(capture("^(?<path>.+):(?<line>[0-9]+):(?<rest>.*)$"))
