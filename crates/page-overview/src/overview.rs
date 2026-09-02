@@ -111,6 +111,15 @@ fn fmt_tokens(millions: f64) -> String {
     }
 }
 
+/// 趋势图悬浮卡: 整列分解 / 单色块详情
+#[derive(Clone)]
+enum TrendTip {
+    /// x, y, 桶标签, 明细(名称, 颜色, 值), 桶总量
+    Column(f64, f64, String, Vec<(String, &'static str, f64)>, f64),
+    /// x, y, 桶标签, 模型名, 颜色, 值
+    Segment(f64, f64, String, String, &'static str, f64),
+}
+
 /// 用量趋势大面板: 左侧累加直方图(按模型堆叠) + 右侧数据位。
 /// 时间窗: 今天(24h)/本周(7d)/本月(30d)/今年(12mo)。
 #[component]
@@ -134,6 +143,9 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
     let mut order: Vec<usize> = (0..names.len()).collect();
     order.sort_by(|&a, &b| per_model_tot[b].partial_cmp(&per_model_tot[a]).unwrap());
     order.truncate(3);
+
+    // 共享悬浮卡: 整列模式列明细, 色块模式列单模型。fixed 定位不受滚动影响。
+    let mut tip = use_signal(|| None::<TrendTip>);
 
     rsx! {
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-all duration-300 hover:border-zinc-700",
@@ -167,22 +179,80 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                 }
             }
             div { class: "grid grid-cols-1 gap-5 xl:grid-cols-3",
-                // 左: 累加直方图
+                // 左: 累加直方图(带横向虚网格 + 两级悬浮卡)
                 div { class: "xl:col-span-2",
-                    div { class: "flex h-56 items-end", style: "gap: 3px",
-                        for b in buckets.iter() {
-                            {
-                                let hpct = (b.total / max_total * 100.0).max(3.0);
-                                rsx! {
-                                    div {
-                                        class: "group flex h-full flex-1 cursor-default flex-col justify-end",
-                                        title: "{b.label} · {fmt_tokens(b.total)}",
-                                        div { class: "flex w-full flex-col-reverse overflow-hidden rounded-sm transition-all duration-200 group-hover:brightness-125 group-hover:ring-1 group-hover:ring-zinc-500",
-                                            style: "height: {hpct:.1}%",
-                                            for (i, v) in b.per_model.iter().enumerate() {
-                                                div {
-                                                    class: "w-full",
-                                                    style: "height: {(v / b.total * 100.0):.1}%; background: {MODEL_COLORS[i % MODEL_COLORS.len()]}",
+                    div { class: "relative",
+                        // 横向虚网格 0/25/50/75/100%
+                        div { class: "pointer-events-none absolute inset-0 flex flex-col justify-between py-0", aria_hidden: "true",
+                            for frac in [1.0f64, 0.75, 0.5, 0.25] {
+                                div { class: "relative w-full border-t border-dashed border-zinc-800",
+                                    span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_tokens(max_total * frac)}" }
+                                }
+                            }
+                            div { class: "relative w-full border-t border-dashed border-zinc-800",
+                                span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "0" }
+                            }
+                        }
+                        div { class: "relative flex h-56 items-end", style: "gap: 3px",
+                            for b in buckets.iter() {
+                                {
+                                    let hpct = (b.total / max_total * 100.0).max(3.0);
+                                    let label = b.label.clone();
+                                    // 列模式明细: 非零模型按量降序
+                                    let mut col_rows: Vec<(String, &'static str, f64)> = b
+                                        .per_model
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, v)| **v > 0.01)
+                                        .map(|(i, &v)| (names[i].to_string(), MODEL_COLORS[i % MODEL_COLORS.len()], v))
+                                        .collect();
+                                    col_rows.sort_by(|a, z| z.2.partial_cmp(&a.2).unwrap());
+                                    let col_total = b.total;
+                                    rsx! {
+                                        div {
+                                            class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
+                                            onmouseenter: move |evt| {
+                                                let p = evt.data.client_coordinates();
+                                                tip.set(Some(TrendTip::Column(p.x, p.y, label.clone(), col_rows.clone(), col_total)));
+                                            },
+                                            onmouseleave: move |_| tip.set(None),
+                                            // 悬停整列: 全高背景带(参考图2)
+                                            div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-white/[0.08]" }
+                                            div { class: "relative flex w-full flex-col-reverse overflow-hidden rounded-sm transition-all duration-200",
+                                                style: "height: {hpct:.1}%",
+                                                for (i, v) in b.per_model.iter().enumerate() {
+                                                    {
+                                                        let seg_label = b.label.clone();
+                                                        let seg_name = names[i].to_string();
+                                                        let seg_color = MODEL_COLORS[i % MODEL_COLORS.len()];
+                                                        let seg_val = *v;
+                                                        let col_label = label.clone();
+                                                        let col_rows_clone = col_rows.clone();
+                                                        rsx! {
+                                                            div {
+                                                                class: "w-full cursor-pointer hover:brightness-125 transition-all",
+                                                                style: "height: {(v / b.total * 100.0):.1}%; background: {seg_color}",
+                                                                // 色块模式: 拦截并展示单模型详情
+                                                                onmouseenter: move |evt| {
+                                                                    evt.stop_propagation();
+                                                                    let p = evt.data.client_coordinates();
+                                                                    tip.set(Some(TrendTip::Segment(p.x, p.y, seg_label.clone(), seg_name.clone(), seg_color, seg_val)));
+                                                                },
+                                                                onmousemove: move |evt| {
+                                                                    evt.stop_propagation();
+                                                                },
+                                                                onmouseleave: {
+                                                                    let c_rows = col_rows_clone.clone();
+                                                                    let c_label = col_label.clone();
+                                                                    move |evt| {
+                                                                        evt.stop_propagation();
+                                                                        let p = evt.data.client_coordinates();
+                                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
+                                                                    }
+                                                                },
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -233,6 +303,49 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                             }
                         }
                     }
+                }
+            }
+            // 悬浮卡: 整列全模型分解 / 单段位详情(fixed 定位, 不被裁剪)
+            if let Some(t) = tip() {
+                match t {
+                    TrendTip::Column(x, y, label, rows, total) => {
+                        let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
+                        rsx! {
+                            div {
+                                class: "pointer-events-none fixed z-50 min-w-[200px] whitespace-nowrap rounded-lg border border-zinc-700/80 bg-zinc-900/95 p-3.5 text-xs shadow-2xl backdrop-blur-md",
+                                style: "left: {x}px; top: {y}px; transform: {transform}",
+                                p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
+                                div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800 pb-2 text-[11px] text-zinc-400",
+                                    span { "总计 :" }
+                                    span { class: "font-mono font-semibold text-zinc-100", "{fmt_tokens(total)}" }
+                                }
+                                div { class: "flex flex-col gap-1.5",
+                                    for (name, color, v) in rows.iter() {
+                                        div { class: "flex items-center gap-2",
+                                            span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                            span { class: "w-28 truncate text-[11px] text-zinc-400", "{name}" }
+                                            span { class: "ml-auto text-right font-mono text-[11px] font-medium text-zinc-100", "{fmt_tokens(*v)}" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    TrendTip::Segment(x, y, label, name, color, v) => {
+                        let transform = if x > 650.0 { "translate(calc(-100% - 16px), -50%)" } else { "translate(16px, -50%)" };
+                        rsx! {
+                            div {
+                                class: "pointer-events-none fixed z-50 min-w-[160px] whitespace-nowrap rounded-lg border border-zinc-700/80 bg-zinc-900/95 p-3 text-xs shadow-2xl backdrop-blur-md",
+                                style: "left: {x}px; top: {y}px; transform: {transform}",
+                                p { class: "mb-2 text-sm font-semibold text-zinc-100", "{label}" }
+                                div { class: "flex items-center gap-2.5",
+                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                    span { class: "text-xs font-medium text-zinc-300", "{name}" }
+                                    span { class: "ml-auto font-mono text-xs font-bold text-zinc-100", "{fmt_tokens(v)}" }
+                                }
+                            }
+                        }
+                    },
                 }
             }
         }
