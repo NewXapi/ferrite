@@ -94,6 +94,11 @@ impl ToolId {
                 "tool.native_name_empty: tool native name cannot be empty".to_string(),
             ));
         }
+        if native_name.contains(TOOL_ID_SEPARATOR) {
+            return Err(ToolError::InvalidData(format!(
+                "tool.native_name_invalid: tool native name `{native_name}` must not contain `{TOOL_ID_SEPARATOR}`"
+            )));
+        }
 
         Ok(Self(format!(
             "{}{TOOL_ID_SEPARATOR}{native_name}",
@@ -103,12 +108,11 @@ impl ToolId {
 
     pub fn parse(raw: impl Into<String>) -> Result<Self, ToolError> {
         let raw = raw.into();
-        let (provider_id, native_name) =
-            raw.split_once(TOOL_ID_SEPARATOR).ok_or_else(|| {
-                ToolError::InvalidData(format!(
-                    "tool.id_invalid: tool id `{raw}` must contain a provider and native name"
-                ))
-            })?;
+        let (provider_id, native_name) = raw.split_once(TOOL_ID_SEPARATOR).ok_or_else(|| {
+            ToolError::InvalidData(format!(
+                "tool.id_invalid: tool id `{raw}` must contain a provider and native name"
+            ))
+        })?;
         let provider_id = ToolProviderId::parse(provider_id.to_string())?;
         Self::new(&provider_id, native_name)
     }
@@ -222,6 +226,19 @@ impl ToolBinding {
         if model_alias.is_empty() {
             return Err(ToolError::InvalidData(format!(
                 "tool.snapshot_alias_empty: tool `{}` has an empty model alias",
+                descriptor.id
+            )));
+        }
+        // OpenAI function names allow 1–64 chars from `[A-Za-z0-9_-]`. Anything
+        // else (spaces, colons, unicode, …) must be rejected up front so the
+        // wire payload never carries an invalid identifier.
+        if model_alias.len() > 64
+            || !model_alias
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err(ToolError::InvalidData(format!(
+                "tool.snapshot_alias_invalid: tool `{}` model alias `{model_alias}` must match ^[A-Za-z0-9_-]{{1,64}}$",
                 descriptor.id
             )));
         }
@@ -399,10 +416,7 @@ pub struct ToolTurnContract {
 }
 
 impl ToolTurnContract {
-    pub fn all(
-        snapshot: &InvocationToolSnapshot,
-        choice: ToolChoice,
-    ) -> Result<Self, ToolError> {
+    pub fn all(snapshot: &InvocationToolSnapshot, choice: ToolChoice) -> Result<Self, ToolError> {
         let tools = snapshot
             .bindings()
             .iter()

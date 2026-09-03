@@ -3,7 +3,7 @@
 //! 整文件照抄自 TauriTavern
 //! `tt-application/src/services/tool_request_gate.rs:1-113`。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use thiserror::Error;
 
@@ -15,6 +15,11 @@ use crate::spec::{
 pub struct ToolRequestGate {
     total_calls: usize,
     calls_per_tool: HashMap<ToolId, usize>,
+    // call ids already authorized by `authorize_and_reserve`. Reservations are
+    // idempotent: replaying the same `call_id` returns success without
+    // consuming extra budget, and a *failed* call never inserts into this set
+    // so subsequent legal calls with the same id still succeed.
+    reserved_calls: HashSet<String>,
 }
 
 impl ToolRequestGate {
@@ -53,6 +58,10 @@ impl ToolRequestGate {
             ToolChoice::Auto | ToolChoice::Required | ToolChoice::Specific(_) => {}
         }
 
+        if self.reserved_calls.contains(&invocation.call_id) {
+            return Ok(());
+        }
+
         let max_calls = snapshot.max_calls_per_invocation();
         if self.total_calls >= max_calls {
             return Err(ToolRequestGateError::InvocationBudgetExhausted { max_calls });
@@ -72,6 +81,7 @@ impl ToolRequestGate {
             });
         }
 
+        self.reserved_calls.insert(invocation.call_id.clone());
         self.total_calls += 1;
         *self
             .calls_per_tool
