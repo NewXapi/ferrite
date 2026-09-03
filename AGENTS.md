@@ -6,7 +6,7 @@
 2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
 3. 读自己功能 crate 的 `README.md`，按文件实现列表工作，按其验收命令验证后提交 conventional commit。
 
-本文件按阅读优先级排布：开工动作 → 域边界 → 参考知识 → 安全约定 → 编排流程 → 硬约束。
+本文件按阅读优先级排布：开工动作 → 开发方式 → 域边界 → 参考知识 → 安全约定 → 编排流程 → 硬约束。
 
 ## 开发方式
 
@@ -14,12 +14,14 @@
 - 默认 **PR-only**：不开 issue，worktree 起手就开 draft PR，任务清单与验收登记在 PR body；用户 prompt 明确要求时才建 issue。
 - 合并一律 **squash merge**（`gh pr merge --squash`），不用 merge commit / rebase merge；PR 标题就是 squash 后的 conventional commit message，必须规范。
 - 首次 clone 后 `cp config/config.toml.example config/config.toml`（本地配置不入库）。
+- 提交前用 `cargo check` 验证编译（本地环境没有 LSP，check 就是类型错误的兜底）；CPU-heavy 套 cpulimit（见下）。
 
 ## 域目录并发与越界
 
 - `crates/<domain>/` 是高内聚的开发单元：一个会话接手某域目录即**独占**它——其他会话不会来干扰，它也**不准越界**改动其他域目录下的任何 crate。
 - 唯一例外是重构开发需要跨域时：开工前在 PR 报备涉及的域目录清单，确认无在跑会话冲突再动。
 - 跨域共享只有 `crates/contract`（共享 API 契约）：需要新 DTO 先声明变更，由一个会话统一修改。
+- 粒度分层：域目录 = 大功能；域内 crate = 大功能开发单元；每个文件 = 小功能开发。`lib.rs` 尽量只放共用结构体和 trait，实现在各文件里。
 
 ## 目录术语（参考）
 
@@ -32,7 +34,7 @@ crates/<domain>/<feature>/
 | **域目录** | `crates/<domain>/` | 业务能力集合，只放 `README.md` 和功能 crate 目录；自身不是 crate。例：`gateway`、`admin-api`、`admin-web`、`tavern-api`、`tavern-web`、`harness`。 |
 | **功能 crate** | `crates/<domain>/<feature>/` | 有 `Cargo.toml` 和 `src/lib.rs` 的 library crate。例：`tavern-api/chats`、`gateway/dispatch`、`harness/tools`。提需求时可直接说"做 `tavern-api/chats`"。 |
 | **共享 crate** | `crates/<name>/` | 跨域共享的独立 crate。当前只有 `crates/contract`。 |
-| **应用** | `apps/<name>/` | 有 `main.rs` 的可执行程序，负责配置、状态和路由组装。例：`apps/api`、`apps/admin-web`、`apps/tavern-web`。 |
+| **应用** | `apps/<name>/` | 有 `main.rs` 的可执行程序，负责配置、状态和路由组装；应用是入口，功能开发发生在域目录的 crate 里。例：`apps/api`、`apps/admin-web`、`apps/tavern-web`。 |
 | **模块** | `src/<name>.rs` 或 `src/<name>/` | 功能 crate 内部实现文件，不单独进 workspace。 |
 
 ## 依赖和组装（参考）
@@ -81,6 +83,12 @@ crates/<domain>/<feature>/
 - gate 会检查 GitHub 侧规范（issue 关联、PR 结构）；`gh` 操作前先跑对应检查，不要等 push 才发现。
 - 占位用 Rust 原生宏：未实现的函数/trait 写 `todo!("TODO(#<issue>): 说明")` 或 `unimplemented!(...)`；TODO/FIXME 注释必须带 issue 号（`TODO(#123): ...`），这是 `rust_todo_needs_issue` 检查项。
 
+### Rust 编码风格
+
+- 函数命名讲究动宾结构，见名知目的：`parse_channel_config` 而不是 `do_config`；类型/结构体名说清角色。
+- 公共 API 必须写 rust doc（`///`）：用途、参数语义、错误情况、示例；模块头写 `//!` 说明职责。写注释是交付的一部分，不是可选装饰。
+- OCR 是**截图工具**（图片识别）；`ocr` 命令是**代码审查工具**（OpenCodeReview）。审查语境下说的是后者，别混淆。
+
 ### 调查与审查工具
 
 - 调查代码先用 `code-review-graph update` 建增量图谱，再查调用关系与全局结构；不要直接逐文件翻。
@@ -106,12 +114,13 @@ crates/<domain>/<feature>/
 - 从目标 base 拉 `<branch>`，工作树放 `.wt/<branch>`；不在仓库根目录改。
 - 开 draft PR：conventional title，body 含目标 / 范围 / 任务清单 checklist / 验收命令。
 - 开工前查最近 24h 内相关在跑 PR / 会话；工作面重叠时停下问用户。
+- 用 `todo` / `goal` slash command 登记开发目标与阶段，主控和子代理全程对照确认，偏航即纠正；PR body 任务清单与之同步。
 - 记录 `base_sha`，后续 CRG / diff review 用 `--base <base_sha>`，不要写死 `main`。
 
 #### 1. scope
 
 - 跑一次 `code-review-graph update` / 取图谱。
-- 修改导出符号前必须 LSP references。
+- 修改导出符号前必须查引用（用 codegraph 图谱查调用方，本地没有 LSP）。
 - 找到本次要动的模块、调用方、被调用方、相邻边界。
 - 输出：suspect area（写进 PR body）、风险点、可能波及的文件清单。
 
@@ -119,6 +128,7 @@ crates/<domain>/<feature>/
 
 - 先按文件拆；同文件内再按修改范围拆；仍然太大就按主题 / 调用链 / 测试拆。
 - 每个子任务必须写清：全局绝对路径 cwd、允许修改的文件、禁止触碰的文件、goal、非目标、验收命令（哪条命令跑通 = 完成）。
+- **开发必须带测试**：新功能/修复的同一 PR 里补测试，尽可能覆盖完整场景（正常路径、边界、错误输入、并发/重入）；当前无法覆盖的场景用占位宏 `todo!("TODO(#N): 场景说明")` 显式声明纰漏。测试代码同样要写注释：说明测的是什么行为、为什么是这个预期。
 - 不相信子代理会自动完成：每个子任务都要有主控可复验的 diff 边界和验收证据。
 - 子任务太大、文件边界不清、或需要跨模块协调 → 继续拆；禁止"一个子代理干完半个模块"。
 - 子任务登记到 PR body 任务清单，方便后续 closeout 勾回。
@@ -145,7 +155,7 @@ loop1:
 #### 5. tool review
 
 - 先 CRG（结构层）：`code-review-graph detect-changes --base <base_sha>`。
-- 再 ocr（规范层）：`ocr review --from <base_sha> --to <ref>`；**按模块、按 PR diff 分块喂**，不要一次性 send all（限流）。
+- 再 ocr（规范层）：`ocr review --from <base_sha> --to <ref>`（OpenCodeReview 代码审查，非截图 OCR）；**按模块、按 PR diff 分块喂**，不要一次性 send all（限流）。
 - 发现 bug / problem → 回 loop1 修复 → 重新 review，直到干净。
 - 每轮（review + fix）→ 1 条 PR comment（含每轮发现、修复 commit、验证命令）。
 
@@ -157,8 +167,9 @@ loop1:
 
 #### 7. tidy
 
+- **gate 复检**：跑 `gate pre-commit` / `gate pre-push` 全量规范检查，作为 tidy 的第一道清单；FAIL 清零再进下面各项。
 - **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么 `gio trash`、要么加 `.gitignore`。
-- **code**：测试代码没放 `tests/` 的挪过去；`cargo fmt` / `prettier` / 项目对应 formatter 跑一遍；无调试 log、commented-out code、调试 surrogate；formatter 如修改文件，必须重跑最小验收命令、tool review、smoke，并更新 PR comment。
+- **code**：测试代码没放 `tests/` 的挪过去；`cargo fmt` / `prettier` / 项目对应 formatter 跑一遍；无调试 log、commented-out code、调试 surrogate；rust doc 与实现不一致的更新掉；formatter 如修改文件，必须重跑最小验收命令、tool review、smoke，并更新 PR comment。
 - **docs**：同步改动的代码注释、`AGENTS.md` / `README.md` / `docs/` 里过期的段落，引用跟新增要一致。
 
 #### 8. report
