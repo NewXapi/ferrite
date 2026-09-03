@@ -2,7 +2,7 @@
 //!
 //! 直连 sqlx::PgPool，不走 store trait。
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -97,9 +97,14 @@ pub struct AuthService {
 }
 
 impl AuthService {
+    /// `jwt_secret` 必须 >= 32 字节 (HS256 安全下限)。
     pub fn new(pool: PgPool, jwt_secret: Vec<u8>) -> Self {
-        // refresh secret = HMAC(secret, "refresh") — 与 jwt secret 解耦，
-        // 即便 jwt 密钥轮换，存库的 refresh_hash 仍稳定。
+        assert!(
+            jwt_secret.len() >= 32,
+            "jwt secret must be >= 32 bytes for HS256"
+        );
+        // refresh_secret 由 jwt_secret 派生: 轮换 jwt secret 会使全部 refresh 失效
+        // (预期行为 — 换密钥 = 强制全员重新登录)。
         let mut mac = HmacSha256::new_from_slice(&jwt_secret)
             .expect("HMAC accepts any key length");
         mac.update(b"refresh");
@@ -163,8 +168,24 @@ impl AuthService {
         .fetch_optional(&self.pool)
         .await?;
 
-        let row = match row {
-            Some(r) if r.status == 1 && password::verify(password_plain, &r.password_hash) => r,
+        // 防用户枚举: 用户不存在时也对 dummy hash 跑一次 argon2 verify,
+        // 让"不存在"与"密码错"耗时一致。
+        let (row, verified) = match row {
+            Some(r) => {
+                let ok = r.status == 1 && password::verify(password_plain, &r.password_hash);
+                (Some(r), ok)
+            }
+            None => {
+                let _ = password::verify(
+                    password_plain,
+                    "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHRzb21lc2FsdA$Zm9vYmFyYmF6cXV1eGZvb2Jhcg",
+                );
+                (None, false)
+            }
+        };
+
+        let row = match (row, verified) {
+            (Some(r), true) => r,
             _ => return Err(AuthError::InvalidCredentials),
         };
 
@@ -202,11 +223,13 @@ impl AuthService {
         .await;
 
         if let Err(e) = res {
-            // 23505 unique_violation
+            // 23505 unique_violation — 按约束名区分 (auth_users_username_key /
+            // auth_users_email_key), 避免 email 有值时误报 EmailTaken。
             if let sqlx::Error::Database(db) = &e
                 && db.code().as_deref() == Some("23505")
             {
-                return Err(if email.is_some() {
+                let constraint = db.constraint().unwrap_or_default();
+                return Err(if constraint.contains("email") {
                     AuthError::EmailTaken
                 } else {
                     AuthError::UsernameTaken
@@ -242,14 +265,20 @@ impl AuthService {
             return Err(AuthError::InvalidToken);
         }
 
-        // revoke old
-        sqlx::query(
+        let revoked = sqlx::query(
             r#"UPDATE auth_refresh_tokens
                SET revoked_at = now() WHERE sid = $1 AND revoked_at IS NULL"#,
         )
         .bind(sid)
         .execute(&self.pool)
-        .await?;
+        .await?
+        .rows_affected();
+
+        // 并发 refresh 竞争: 另一个请求已经吊销了这个 sid → 本次拒绝。
+        // 客户端拿到新 refresh 后旧的重放会走到这里 (new-api RotateUserSessionRefresh 语义)。
+        if revoked == 0 {
+            return Err(AuthError::InvalidToken);
+        }
 
         // 新 refresh — 调 issue_session 需要 UserRow，从 DB 拉
         let user: UserRow = sqlx::query_as::<_, UserRow>(
@@ -265,8 +294,10 @@ impl AuthService {
             return Err(AuthError::UserDisabled);
         }
 
-        // 旋转后 auth_version 应一致；改了密则全 refresh 失效
-        let _ = auth_version; // 已通过 SELECT 校验存在；当前 row.auth_version 再走 access JWT 即可
+        // 会话创建后用户改过密码 (auth_version 变了) → 全 refresh 失效
+        if user.auth_version != auth_version {
+            return Err(AuthError::InvalidToken);
+        }
 
         let login = self.issue_session(user, user_agent, ip).await?;
         Ok(RefreshResult {
@@ -378,8 +409,3 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-// quiet unused
-#[allow(dead_code)]
-fn _unused() -> Option<SystemTime> {
-    SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|_| SystemTime::now())
-}
