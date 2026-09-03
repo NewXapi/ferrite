@@ -183,3 +183,91 @@ async fn disabled_user_cannot_login_or_refresh() {
     let bad_refresh = svc.refresh(&login.refresh_token, "ua", "ip").await;
     assert!(matches!(bad_refresh, Err(auth::AuthError::UserDisabled)));
 }
+
+#[tokio::test]
+#[ignore]
+async fn update_self_password_bumps_version() {
+    let svc = make_service().await;
+    let username = unique_user("hank");
+    svc.register(&username, "hunter2hunter", None).await.expect("register");
+    let login = svc.login(&username, "hunter2hunter", "ua", "ip").await.expect("login");
+    let key = uuid::Uuid::parse_str(&login.user.key).unwrap();
+
+    // 错的原密码
+    let bad = svc.update_self(key, None, Some("wrong-pass"), Some("newpassword1")).await;
+    assert!(matches!(bad, Err(auth::AuthError::InvalidCredentials)));
+
+    // 对的原密码 → 改密成功
+    svc.update_self(key, Some("Hank"), Some("hunter2hunter"), Some("newpassword1"))
+        .await
+        .expect("update");
+
+    // 旧 access 失效
+    assert!(matches!(
+        svc.self_by_access(&login.access_token).await,
+        Err(auth::AuthError::InvalidToken)
+    ));
+    // 旧 refresh 失效
+    assert!(matches!(
+        svc.refresh(&login.refresh_token, "ua", "ip").await,
+        Err(auth::AuthError::InvalidToken)
+    ));
+    // 新密码可登录, display_name 生效
+    let relogin = svc.login(&username, "newpassword1", "ua", "ip").await.expect("relogin");
+    assert_eq!(relogin.user.display_name, "Hank");
+}
+
+#[tokio::test]
+#[ignore]
+async fn admin_user_management_flow() {
+    let svc = make_service().await;
+    let admin_name = unique_user("root");
+    let user_name = unique_user("mallory");
+
+    let admin = svc.register(&admin_name, "hunter2hunter", None).await.unwrap();
+    let user = svc.register(&user_name, "hunter2hunter", None).await.unwrap();
+    let admin_key = uuid::Uuid::parse_str(&admin.key).unwrap();
+    let user_key = uuid::Uuid::parse_str(&user.key).unwrap();
+
+    // 提权 admin → role 100
+    let promoted = svc.manage_user(admin_key, "set_role", Some("100")).await.unwrap();
+    assert_eq!(promoted.role, 100);
+
+    // (admin 调 list 需要走路由层鉴权; service 层直接测 list + manage)
+    let (users, total) = svc.list_users(Some(&user_name), 1, 20).await.unwrap();
+    assert!(total >= 1);
+    assert!(users.iter().any(|u| u.key == user.key));
+
+    // 禁用
+    let disabled = svc.manage_user(user_key, "disable", None).await.unwrap();
+    assert_eq!(disabled.status, 2);
+    // 禁用后登录拒
+    assert!(matches!(
+        svc.login(&user_name, "hunter2hunter", "ua", "ip").await,
+        Err(auth::AuthError::InvalidCredentials)
+    ));
+
+    // 调额度
+    let charged = svc.manage_user(user_key, "adjust_quota", Some("500000")).await.unwrap();
+    assert_eq!(charged.quota, 500000);
+
+    // admin 重置密码 → 旧 refresh 全失效
+    let user_login = {
+        svc.manage_user(user_key, "enable", None).await.unwrap();
+        svc.login(&user_name, "hunter2hunter", "ua", "ip").await.unwrap()
+    };
+    svc.manage_user(user_key, "reset_password", Some("brandnew99")).await.unwrap();
+    assert!(matches!(
+        svc.refresh(&user_login.refresh_token, "ua", "ip").await,
+        Err(auth::AuthError::InvalidToken)
+    ));
+    let after_reset = svc.login(&user_name, "brandnew99", "ua", "ip").await.unwrap();
+    assert!(after_reset.user.auth_version > user.auth_version);
+
+    // 删除
+    svc.delete_user(user_key).await.unwrap();
+    assert!(matches!(
+        svc.login(&user_name, "brandnew99", "ua", "ip").await,
+        Err(auth::AuthError::InvalidCredentials)
+    ));
+}

@@ -1,17 +1,487 @@
-//! 令牌生命周期 — 创建 (一次性明文) / 吊销。
+//! 令牌生命周期 — 单机版平表实现 (api_tokens)。
+//!
+//! 替代原 store-trait 骨架 (sync/outbox 设计推迟)。
+//! 参考: new-api controller/token.go + wildtoken api_tokens (hash + preview + 一次性明文)。
+//!
+//! - 明文 key = "sk-" + 64 hex (32B random), 只在创建响应出现一次
+//! - 库存 sha256(明文) hex; 查表 (gateway identity) 用 key_hash
+//! - preview = "sk-ab****ef" 列表展示用
 
-use store::StoreError;
+use axum::http::HeaderMap;
+use chrono::{DateTime, Utc};
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use sqlx::{FromRow, PgPool};
+use uuid::Uuid;
 
-/// 生成新令牌: 明文 = "sk-" + 48 位随机 base62。
-///
-/// 返回 (record_with_hash, plaintext_once)。
-/// 参考: wildtoken api_tokens (token_hash + preview + 一次性明文)。
-/// TODO(#427): 随机源 (rand::thread_rng) + 哈希 (sha256) + preview 生成。
-pub fn generate_token(_user_key: &str, _name: &str) -> (contract::records::TokenRecord, String) {
-    todo!("TODO(#427): 生成明文/哈希/预览")
+use auth::error::AuthError;
+use auth::routes::bearer_user;
+use auth::service::AuthService;
+
+pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
+    const DDL: &str = r#"
+CREATE TABLE IF NOT EXISTS api_tokens (
+    key             UUID PRIMARY KEY,
+    user_key        UUID NOT NULL,
+    name            TEXT NOT NULL,
+    key_hash        TEXT UNIQUE NOT NULL,
+    key_preview     TEXT NOT NULL DEFAULT '',
+    group_id        TEXT,
+    quota           BIGINT NOT NULL DEFAULT 0,
+    unlimited_quota BOOLEAN NOT NULL DEFAULT false,
+    used_quota      BIGINT NOT NULL DEFAULT 0,
+    expires_at      TIMESTAMPTZ,
+    status          SMALLINT NOT NULL DEFAULT 1,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user_key ON api_tokens(user_key);
+"#;
+    sqlx::raw_sql(DDL).execute(pool).await?;
+    Ok(())
 }
 
-/// 吊销: status → 2 (保留记录, 审计需要)。
-pub async fn revoke(_key: &str) -> Result<(), StoreError> {
-    todo!("TODO(#427): UPDATE status + outbox mutation")
+#[derive(Debug, Clone, FromRow, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenView {
+    pub key: String,
+    pub user_key: String,
+    pub name: String,
+    pub key_preview: String,
+    pub group: Option<String>,
+    pub quota: i64,
+    pub unlimited_quota: bool,
+    pub used_quota: i64,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub status: i16,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTokenResult {
+    /// 明文 key — 只在创建响应出现一次
+    pub plaintext: String,
+    pub token: TokenView,
+}
+
+pub struct TokenService {
+    pool: PgPool,
+}
+
+impl TokenService {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn create(
+        &self,
+        user_key: Uuid,
+        name: &str,
+        group: Option<String>,
+        quota: i64,
+        unlimited_quota: bool,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<CreateTokenResult, AuthError> {
+        if name.trim().is_empty() {
+            return Err(AuthError::BadRequest("token name required".into()));
+        }
+        let mut buf = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut buf);
+        let plaintext = format!("sk-{}", hex::encode(buf));
+        let key_hash = sha256_hex(&plaintext);
+        let key_preview = preview(&plaintext);
+        let key = Uuid::new_v4();
+
+        sqlx::query(
+            r#"INSERT INTO api_tokens
+               (key, user_key, name, key_hash, key_preview, group_id,
+                quota, unlimited_quota, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
+        )
+        .bind(key)
+        .bind(user_key)
+        .bind(name.trim())
+        .bind(&key_hash)
+        .bind(key_preview)
+        .bind(group)
+        .bind(quota)
+        .bind(unlimited_quota)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(CreateTokenResult {
+            plaintext,
+            token: self.get(user_key, key, true).await?,
+        })
+    }
+
+    /// admin_all=true 时跨用户列出 (admin), 否则只看自己的。
+    pub async fn list(&self, user_key: Uuid, admin_all: bool) -> Result<Vec<TokenView>, AuthError> {
+        let rows: Vec<TokenRow> = if admin_all {
+            sqlx::query_as(
+                r#"SELECT key, user_key, name, key_preview, group_id, quota,
+                          unlimited_quota, used_quota, expires_at, status, created_at
+                   FROM api_tokens ORDER BY created_at DESC"#,
+            )
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"SELECT key, user_key, name, key_preview, group_id, quota,
+                          unlimited_quota, used_quota, expires_at, status, created_at
+                   FROM api_tokens WHERE user_key = $1 ORDER BY created_at DESC"#,
+            )
+            .bind(user_key)
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    pub async fn search(
+        &self,
+        user_key: Uuid,
+        admin_all: bool,
+        keyword: &str,
+    ) -> Result<Vec<TokenView>, AuthError> {
+        let pattern = format!("%{}%", keyword.trim());
+        let rows: Vec<TokenRow> = if admin_all {
+            sqlx::query_as(
+                r#"SELECT key, user_key, name, key_preview, group_id, quota,
+                          unlimited_quota, used_quota, expires_at, status, created_at
+                   FROM api_tokens WHERE name ILIKE $1 ORDER BY created_at DESC"#,
+            )
+            .bind(&pattern)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"SELECT key, user_key, name, key_preview, group_id, quota,
+                          unlimited_quota, used_quota, expires_at, status, created_at
+                   FROM api_tokens WHERE user_key = $1 AND name ILIKE $2
+                   ORDER BY created_at DESC"#,
+            )
+            .bind(user_key)
+            .bind(&pattern)
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    pub async fn get(
+        &self,
+        user_key: Uuid,
+        token_key: Uuid,
+        admin_all: bool,
+    ) -> Result<TokenView, AuthError> {
+        let row: TokenRow = if admin_all {
+            sqlx::query_as(
+                r#"SELECT key, user_key, name, key_preview, group_id, quota,
+                          unlimited_quota, used_quota, expires_at, status, created_at
+                   FROM api_tokens WHERE key = $1"#,
+            )
+            .bind(token_key)
+            .fetch_optional(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"SELECT key, user_key, name, key_preview, group_id, quota,
+                          unlimited_quota, used_quota, expires_at, status, created_at
+                   FROM api_tokens WHERE key = $1 AND user_key = $2"#,
+            )
+            .bind(token_key)
+            .bind(user_key)
+            .fetch_optional(&self.pool)
+            .await?
+        }
+        .ok_or(AuthError::UserNotFound)?;
+        Ok(row.into())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update(
+        &self,
+        user_key: Uuid,
+        token_key: Uuid,
+        admin_all: bool,
+        name: Option<&str>,
+        group: Option<Option<String>>,
+        quota: Option<i64>,
+        unlimited_quota: Option<bool>,
+        expires_at: Option<Option<DateTime<Utc>>>,
+        status: Option<i16>,
+    ) -> Result<TokenView, AuthError> {
+        // 归属校验 (owner or admin)
+        self.get(user_key, token_key, admin_all).await?;
+
+        if let Some(name) = name {
+            if name.trim().is_empty() {
+                return Err(AuthError::BadRequest("token name required".into()));
+            }
+            sqlx::query("UPDATE api_tokens SET name = $2, updated_at = now() WHERE key = $1")
+                .bind(token_key)
+                .bind(name.trim())
+                .execute(&self.pool)
+                .await?;
+        }
+        if let Some(g) = group {
+            sqlx::query("UPDATE api_tokens SET group_id = $2, updated_at = now() WHERE key = $1")
+                .bind(token_key)
+                .bind(g)
+                .execute(&self.pool)
+                .await?;
+        }
+        if let Some(q) = quota {
+            sqlx::query("UPDATE api_tokens SET quota = $2, updated_at = now() WHERE key = $1")
+                .bind(token_key)
+                .bind(q)
+                .execute(&self.pool)
+                .await?;
+        }
+        if let Some(u) = unlimited_quota {
+            sqlx::query("UPDATE api_tokens SET unlimited_quota = $2, updated_at = now() WHERE key = $1")
+                .bind(token_key)
+                .bind(u)
+                .execute(&self.pool)
+                .await?;
+        }
+        if let Some(e) = expires_at {
+            sqlx::query("UPDATE api_tokens SET expires_at = $2, updated_at = now() WHERE key = $1")
+                .bind(token_key)
+                .bind(e)
+                .execute(&self.pool)
+                .await?;
+        }
+        if let Some(s) = status {
+            if ![1, 2].contains(&s) {
+                return Err(AuthError::BadRequest("status must be 1|2".into()));
+            }
+            sqlx::query("UPDATE api_tokens SET status = $2, updated_at = now() WHERE key = $1")
+                .bind(token_key)
+                .bind(s)
+                .execute(&self.pool)
+                .await?;
+        }
+        self.get(user_key, token_key, admin_all).await
+    }
+
+    pub async fn delete(
+        &self,
+        user_key: Uuid,
+        token_key: Uuid,
+        admin_all: bool,
+    ) -> Result<(), AuthError> {
+        // 归属校验 (owner or admin)
+        self.get(user_key, token_key, admin_all).await?;
+        sqlx::query("DELETE FROM api_tokens WHERE key = $1")
+            .bind(token_key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+}
+
+fn sha256_hex(s: &str) -> String {
+    let mut h = Sha256::new();
+    h.update(s.as_bytes());
+    hex::encode(h.finalize())
+}
+
+fn preview(plaintext: &str) -> String {
+    let body = plaintext.strip_prefix("sk-").unwrap_or(plaintext);
+    let (head, tail) = (&body[..4], &body[body.len().saturating_sub(4)..]);
+    format!("sk-{head}****{tail}")
+}
+
+#[derive(Debug, FromRow)]
+struct TokenRow {
+    key: Uuid,
+    user_key: Uuid,
+    name: String,
+    key_preview: String,
+    group_id: Option<String>,
+    quota: i64,
+    unlimited_quota: bool,
+    used_quota: i64,
+    expires_at: Option<DateTime<Utc>>,
+    status: i16,
+    created_at: DateTime<Utc>,
+}
+
+impl From<TokenRow> for TokenView {
+    fn from(r: TokenRow) -> Self {
+        Self {
+            key: r.key.to_string(),
+            user_key: r.user_key.to_string(),
+            name: r.name,
+            key_preview: r.key_preview,
+            group: r.group_id,
+            quota: r.quota,
+            unlimited_quota: r.unlimited_quota,
+            used_quota: r.used_quota,
+            expires_at: r.expires_at,
+            status: r.status,
+            created_at: r.created_at,
+        }
+    }
+}
+
+// ---------- axum 路由 ----------
+
+#[derive(Clone)]
+pub struct TokenAppState {
+    pub svc: std::sync::Arc<TokenService>,
+    pub auth: std::sync::Arc<AuthService>,
+}
+
+pub fn router(state: TokenAppState) -> axum::Router {
+    use axum::routing::{get, put};
+    axum::Router::new()
+        .route("/api/token", get(list).post(create))
+        .route("/api/token/search", get(search))
+        .route("/api/token/{key}", put(update).delete(remove))
+        .with_state(state)
+}
+
+async fn current_admin(
+    auth: &AuthService,
+    headers: &HeaderMap,
+) -> Result<(Uuid, bool), AuthError> {
+    let user = bearer_user(auth, headers).await?;
+    let key = Uuid::parse_str(&user.key).map_err(|_| AuthError::InvalidToken)?;
+    Ok((key, user.role >= 10))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateTokenRequest {
+    name: String,
+    group: Option<String>,
+    #[serde(default)]
+    quota: i64,
+    #[serde(default)]
+    unlimited_quota: bool,
+    expires_at: Option<DateTime<Utc>>,
+}
+
+async fn create(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<CreateTokenRequest>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+    let (user_key, _) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+    match state
+        .svc
+        .create(user_key, &req.name, req.group, req.quota, req.unlimited_quota, req.expires_at)
+        .await
+    {
+        Ok(r) => Ok(axum::Json(serde_json::json!(r))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ListQuery {
+    #[serde(default)]
+    all: bool,
+    keyword: Option<String>,
+}
+
+async fn list(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+    // all=true 需要 admin
+    if q.all && !is_admin {
+        return Err(err_json(AuthError::Forbidden));
+    }
+    match state.svc.list(user_key, q.all && is_admin).await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+async fn search(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+    let keyword = q.keyword.unwrap_or_default();
+    if q.all && !is_admin {
+        return Err(err_json(AuthError::Forbidden));
+    }
+    match state.svc.search(user_key, q.all && is_admin, &keyword).await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateTokenRequest {
+    name: Option<String>,
+    /// None = 不改; Some(inner) = 改 (inner None = 跟随用户组)
+    group: Option<Option<String>>,
+    quota: Option<i64>,
+    unlimited_quota: Option<bool>,
+    expires_at: Option<Option<DateTime<Utc>>>,
+    status: Option<i16>,
+}
+
+async fn update(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    axum::Json(req): axum::Json<UpdateTokenRequest>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+    let token_key = Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
+    match state
+        .svc
+        .update(
+            user_key,
+            token_key,
+            is_admin,
+            req.name.as_deref(),
+            req.group,
+            req.quota,
+            req.unlimited_quota,
+            req.expires_at,
+            req.status,
+        )
+        .await
+    {
+        Ok(t) => Ok(axum::Json(serde_json::json!(t))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+async fn remove(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+    let token_key = Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
+    match state.svc.delete(user_key, token_key, is_admin).await {
+        Ok(()) => Ok(axum::Json(serde_json::json!({"success": true}))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+fn err_json(e: AuthError) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    (
+        e.status(),
+        axum::Json(serde_json::json!({
+            "code": e.code(),
+            "message": e.to_string(),
+        })),
+    )
 }

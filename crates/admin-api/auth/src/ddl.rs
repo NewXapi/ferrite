@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS auth_users (
     used_quota    BIGINT  NOT NULL DEFAULT 0,
     group_id      TEXT    NOT NULL DEFAULT 'default',
     auth_version  BIGINT  NOT NULL DEFAULT 1,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS auth_refresh_tokens (

@@ -21,14 +21,20 @@ pub struct AppState {
 pub fn router(pool: PgPool) -> Result<Router, AuthError> {
     let secret = std::env::var("FERRITE_JWT_SECRET").map_err(|_| AuthError::MissingSecret)?;
     let svc = Arc::new(AuthService::new(pool, secret.into_bytes()));
-    let state = AppState { svc };
+    router_with_svc(svc)
+}
+
+/// 共享 AuthService 的组装入口 — admin-api-router 聚合多个子域时用。
+pub fn router_with_svc(svc: Arc<AuthService>) -> Result<Router, AuthError> {
     Ok(Router::new()
         .route("/api/user/login", post(login))
         .route("/api/user/register", post(register))
         .route("/api/user/refresh", post(refresh))
         .route("/api/user/logout", post(logout))
-        .route("/api/user/self", get(self_view))
-        .with_state(state))
+        .route("/api/user/self", get(self_view).put(update_self).delete(delete_self))
+        .route("/api/user", get(list_users))
+        .route("/api/user/manage", post(manage_user))
+        .with_state(AppState { svc }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -160,6 +166,121 @@ async fn self_view(
             }),
         ))?;
     match state.svc.self_by_access(token).await {
+        Ok(u) => Ok(Json(json!(u))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+// ---------- Bearer 解析 + admin 守卫 ----------
+
+/// 从 Authorization header 提取 Bearer 并校验 → UserView。
+/// catalog/token 等兄弟域复用。
+pub async fn bearer_user(
+    svc: &AuthService,
+    headers: &HeaderMap,
+) -> Result<crate::service::UserView, AuthError> {
+    let token = bearer_token(headers)?;
+    svc.self_by_access(token).await
+}
+
+fn bearer_token(headers: &HeaderMap) -> Result<&str, AuthError> {
+    headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or(AuthError::InvalidToken)
+}
+
+fn require_admin(user: &crate::service::UserView) -> Result<(), AuthError> {
+    if user.role >= 10 {
+        Ok(())
+    } else {
+        Err(AuthError::Forbidden)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateSelfRequest {
+    display_name: Option<String>,
+    original_password: Option<String>,
+    new_password: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManageUserRequest {
+    key: String,
+    action: String,
+    value: Option<String>,
+}
+
+async fn update_self(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateSelfRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    match state
+        .svc
+        .update_self(
+            uuid::Uuid::parse_str(&user.key).map_err(|_| AuthError::InvalidToken).map_err(err_response)?,
+            req.display_name.as_deref(),
+            req.original_password.as_deref(),
+            req.new_password.as_deref(),
+        )
+        .await
+    {
+        Ok(u) => Ok(Json(json!(u))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+async fn delete_self(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    let key = uuid::Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+    match state.svc.delete_user(key).await {
+        Ok(()) => Ok(Json(json!({"success": true}))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+async fn list_users(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    require_admin(&user).map_err(err_response)?;
+    match state.svc.list_users(q.search.as_deref(), q.page.unwrap_or(1), q.size.unwrap_or(20)).await {
+        Ok((users, total)) => Ok(Json(json!({"items": users, "total": total}))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ListQuery {
+    search: Option<String>,
+    page: Option<i64>,
+    size: Option<i64>,
+}
+
+async fn manage_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<ManageUserRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    require_admin(&user).map_err(err_response)?;
+    let key = uuid::Uuid::parse_str(&req.key)
+        .map_err(|_| AuthError::BadRequest("invalid user key".into()))
+        .map_err(err_response)?;
+    match state.svc.manage_user(key, &req.action, req.value.as_deref()).await {
         Ok(u) => Ok(Json(json!(u))),
         Err(e) => Err(err_response(e)),
     }

@@ -13,5 +13,5 @@ pub mod ddl;
 pub mod routes;
 
 pub use error::AuthError;
-pub use service::{AuthService, LoginResult, RefreshResult, SelfView};
-pub use routes::router;
+pub use service::{AuthService, LoginResult, RefreshResult, SelfView, UserView};
+pub use routes::{bearer_user, router};
