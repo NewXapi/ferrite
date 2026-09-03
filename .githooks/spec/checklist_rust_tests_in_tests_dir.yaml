@@ -23,11 +23,15 @@ harness:
     - |
       ROOT=$(git rev-parse --show-toplevel)
       # 决定扫描范围:本次提交相关的 .rs 文件
-      # 优先级:工作树未提交 -> staged -> HEAD~1
-      files=$(git -C "$ROOT" diff --name-only --diff-filter=ACMR HEAD 2>/dev/null | grep -E '\.rs$')
+      # 优先级:staged -> 工作树未提交 -> HEAD~1(merge 阶段)
+      # staged 优先:pre-commit 只对将进入 commit 的内容负责,
+      # unstaged 的并行改动(可能属于他人)不应被本 commit 背负
+      files=$(git -C "$ROOT" diff --name-only --cached --diff-filter=ACMR 2>/dev/null | grep -E '\.rs$')
       if [ -z "$files" ]; then
-        # merge 阶段或无 diff 时退回到 staged + last commit
-        files=$(git -C "$ROOT" diff --name-only --cached 2>/dev/null | grep -E '\.rs$')
+        files=$(git -C "$ROOT" diff --name-only --diff-filter=ACMR HEAD 2>/dev/null | grep -E '\.rs$')
+      fi
+      if [ -z "$files" ]; then
+        files=$(git -C "$ROOT" diff --name-only HEAD~1 2>/dev/null | grep -E '\.rs$')
       fi
       if [ -z "$files" ]; then
         echo '[]'

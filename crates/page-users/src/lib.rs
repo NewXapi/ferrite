@@ -2,7 +2,7 @@
 //! 字段与样式 token 对标 new-api features/users 与账户线(page-account)。
 
 pub mod api;
-mod data;
+pub mod data;
 mod panel;
 
 pub use panel::UsersPanel;

@@ -13,14 +13,16 @@ pub type Refresher = Box<dyn Fn() -> TokenFuture>;
 ///
 /// Held behind `Rc<RefCell<…>>` because wasm is single-threaded and every
 /// cheap clone of `ApiClient` must observe the same token/refresher.
-pub(crate) struct AuthState {
+#[doc(hidden)]
+pub struct AuthState {
     token: Option<String>,
     refresher: Option<Refresher>,
     on_unauthorized: Option<Box<dyn Fn()>>,
 }
 
 impl AuthState {
-    pub(crate) fn new() -> Self {
+    #[doc(hidden)]
+    pub fn new() -> Self {
         Self {
             token: None,
             refresher: None,
@@ -28,11 +30,13 @@ impl AuthState {
         }
     }
 
-    pub(crate) fn set_token(&mut self, token: Option<String>) {
+    #[doc(hidden)]
+    pub fn set_token(&mut self, token: Option<String>) {
         self.token = token;
     }
 
-    pub(crate) fn token(&self) -> Option<String> {
+    #[doc(hidden)]
+    pub fn token(&self) -> Option<String> {
         self.token.clone()
     }
 
@@ -40,12 +44,14 @@ impl AuthState {
         self.refresher = Some(refresher);
     }
 
-    pub(crate) fn set_on_unauthorized(&mut self, f: Box<dyn Fn()>) {
+    #[doc(hidden)]
+    pub fn set_on_unauthorized(&mut self, f: Box<dyn Fn()>) {
         self.on_unauthorized = Some(f);
     }
 
     /// Invoke the unauthorized hook if one was registered.
-    pub(crate) fn fire_unauthorized(&self) {
+    #[doc(hidden)]
+    pub fn fire_unauthorized(&self) {
         if let Some(f) = &self.on_unauthorized {
             f();
         }
@@ -59,30 +65,3 @@ impl AuthState {
 
 /// Shared auth state handle.
 pub(crate) type SharedAuthState = Rc<RefCell<AuthState>>;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::Cell;
-
-    #[test]
-    fn token_roundtrip() {
-        let mut state = AuthState::new();
-        assert_eq!(state.token(), None);
-        state.set_token(Some("abc".to_string()));
-        assert_eq!(state.token(), Some("abc".to_string()));
-        state.set_token(None);
-        assert_eq!(state.token(), None);
-    }
-
-    #[test]
-    fn fire_unauthorized_calls_hook() {
-        let fired = Rc::new(Cell::new(false));
-        let mut state = AuthState::new();
-        let fired_clone = fired.clone();
-        state.set_on_unauthorized(Box::new(move || fired_clone.set(true)));
-        assert!(!fired.get());
-        state.fire_unauthorized();
-        assert!(fired.get());
-    }
-}
