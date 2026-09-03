@@ -144,3 +144,23 @@ fn deserialization_preserves_serialized_shape() {
     let round_tripped: WorkspacePath = serde_json::from_str(&json).expect("round trip");
     assert_eq!(round_tripped, path);
 }
+
+#[test]
+fn deserialization_rejects_absolute_paths() {
+    let result: Result<WorkspacePath, _> = serde_json::from_str("\"/abs\"");
+    assert_eq!(
+        result.err().map(|e| e.to_string()),
+        Some(WorkspacePathError::Absolute.to_string()),
+        "JSON 形式的绝对路径必须经 parse 拒绝"
+    );
+}
+
+#[test]
+fn deserialization_rejects_empty_string() {
+    let result: Result<WorkspacePath, _> = serde_json::from_str("\"\"");
+    assert_eq!(
+        result.err().map(|e| e.to_string()),
+        Some(WorkspacePathError::Empty.to_string()),
+        "JSON 形式的空路径必须经 parse 拒绝"
+    );
+}

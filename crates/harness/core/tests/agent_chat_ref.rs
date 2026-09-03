@@ -72,6 +72,17 @@ fn chat_ref_rejects_internal_field_names_at_abi_boundary() {
 }
 
 #[test]
+fn chat_ref_rejects_internal_field_names_on_group_variant() {
+    let result = serde_json::from_value::<AgentChatRef>(serde_json::json!({
+        "kind": "group",
+        "chatId": "group-chat",
+        "chat_id": "group-chat"
+    }));
+
+    assert!(result.is_err(), "group 变体同样必须拒绝 snake_case 字段名");
+}
+
+#[test]
 fn chat_ref_rejects_missing_required_camel_case_fields() {
     let result = serde_json::from_value::<AgentChatRef>(serde_json::json!({
         "kind": "character",

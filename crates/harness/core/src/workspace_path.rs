@@ -58,10 +58,10 @@ impl std::error::Error for WorkspacePathError {}
 /// `WorkspacePath` 是相对工作区根目录的安全相对路径——不包含绝对路径、目录穿越
 /// (`..`)、NUL 字节或 Windows 盘符前缀。所有反斜杠 `\` 会被规范化为正斜杠 `/`。
 ///
-/// serde 形状：序列化为内部字符串字段；反序列化总是经由
+/// serde 形状：序列化为裸字符串（不复制内部缓冲），反序列化总是经由
 /// [`WorkspacePath::parse`] 走完整校验，保证 ABI 边界无法绕过安全规则。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(try_from = "String", into = "String")]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
+#[serde(try_from = "String")]
 pub struct WorkspacePath(String);
 
 impl WorkspacePath {
@@ -114,6 +114,15 @@ impl WorkspacePath {
 
 // serde ABI 边界：`WorkspacePath` 序列化为普通字符串，反序列化必经
 // `WorkspacePath::parse`，避免反序列化路径绕过安全规则。
+//
+// `Serialize` 手写而非 `#[serde(into = "String")]`：后者会在每次序列化时克隆
+// 内部缓冲，这里直接借用。
+impl Serialize for WorkspacePath {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
 impl From<WorkspacePath> for String {
     fn from(path: WorkspacePath) -> Self {
         path.0
