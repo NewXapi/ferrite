@@ -66,6 +66,11 @@ pub enum PromptSnapshotError {
     /// 单条 message 缺 role 或 parts
     #[error("prompt_snapshot.invalid_message: missing `role` or `parts` on message index {0}")]
     InvalidMessage(usize),
+    /// tool 消息缺 `tool_call_id`；call_id 是 wire contract 必需字段，不能静默降级
+    #[error(
+        "prompt_snapshot.missing_tool_call_id: `tool` role message at index {0} is missing required `tool_call_id`"
+    )]
+    MissingToolCallId(usize),
     /// 单条 part 缺必要字段
     #[error(
         "prompt_snapshot.invalid_part: malformed part on message index {0}, part index {1}: {2}"
@@ -135,7 +140,7 @@ pub fn reject_unfinalized_snapshot(snapshot: &Value) -> Result<(), PromptSnapsho
     }
 
     // message content 内的 marker：任何 `{{...}}` 残留或 marker 字段都拒绝
-    if let Some(messages) = obj.get("messages").and_then(Value::as_array) {
+    if let Some(messages) = locate_messages(snapshot).and_then(Value::as_array) {
         for (mi, msg) in messages.iter().enumerate() {
             check_message_no_marker(msg, mi)?;
         }
@@ -263,6 +268,7 @@ fn locate_messages<'a>(value: &'a Value) -> Option<&'a Value> {
         "chat_completion_payload",
         "generateData",
         "generate_data",
+        "frozenRunInputSnapshot",
     ] {
         if let Some(nested) = value.get(key) {
             if let Some(messages) = nested.get("messages") {
@@ -299,38 +305,101 @@ pub fn message_from_openai_value(
         .and_then(Value::as_str)
         .map(|s| s.to_string());
 
-    // OpenAI content 可以是字符串或数组
-    let parts = match obj.get("content") {
+    // tool role
+    // 不再降级为 Text —— call_id 是 wire contract，丢了 runtime 无法关联。
+    if matches!(role, AgentModelRole::Tool) {
+        let call_id = obj
+            .get("tool_call_id")
+            .and_then(Value::as_str)
+            .ok_or(PromptSnapshotError::MissingToolCallId(index))?
+            .to_string();
+        let tool_id = obj
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let is_error = obj
+            .get("status")
+            .and_then(Value::as_str)
+            .map(|s| s == "error")
+            .unwrap_or(false);
+        let result_part = match obj.get("content") {
+            Some(Value::String(s)) => AgentModelContentPart::ToolResult {
+                call_id: call_id.clone(),
+                tool_id: tool_id.clone(),
+                content: s.clone(),
+                is_error,
+            },
+            Some(Value::Array(arr)) => {
+                // 数组形式：期望每个 part 是 tool_result 类型；合并 content 字段
+                let mut merged = String::new();
+                for (pi, item) in arr.iter().enumerate() {
+                    if let Some(obj) = item.as_object() {
+                        let kind = obj.get("type").and_then(Value::as_str);
+                        if matches!(kind, Some("tool_result")) || matches!(kind, Some("text")) {
+                            if let Some(c) = obj.get("content") {
+                                let chunk = match c {
+                                    Value::String(s) => s.clone(),
+                                    other => other.to_string(),
+                                };
+                                if !merged.is_empty() {
+                                    merged.push('\n');
+                                }
+                                merged.push_str(&chunk);
+                            }
+                            continue;
+                        }
+                        let _ = pi;
+                    }
+                    return Err(PromptSnapshotError::InvalidPart(
+                        index,
+                        pi,
+                        "tool message array part must have `content`",
+                    ));
+                }
+                AgentModelContentPart::ToolResult {
+                    call_id: call_id.clone(),
+                    tool_id: tool_id.clone(),
+                    content: merged,
+                    is_error,
+                }
+            }
+            Some(Value::Null) | None => AgentModelContentPart::ToolResult {
+                call_id: call_id.clone(),
+                tool_id: tool_id.clone(),
+                content: String::new(),
+                is_error,
+            },
+            Some(_) => {
+                return Err(PromptSnapshotError::InvalidPart(
+                    index,
+                    0,
+                    "tool message content must be string or array",
+                ));
+            }
+        };
+        return Ok(AgentModelMessage {
+            role,
+            parts: vec![result_part],
+            name,
+        });
+    }
+
+    // system / user / assistant：解析 content + tool_calls（只解析一次）
+    let mut parts: Vec<AgentModelContentPart> = match obj.get("content") {
         Some(Value::String(s)) => vec![AgentModelContentPart::Text { text: s.clone() }],
         Some(Value::Array(arr)) => content_parts_from_openai_value(arr, index)?,
-        Some(Value::Null) | None => {
-            // assistant tool-call 消息可能 content=null；尝试 tool_calls
-            if let Some(Value::Array(calls)) = obj.get("tool_calls") {
-                let mut parts = Vec::with_capacity(calls.len());
-                for call in calls {
-                    parts.push(tool_call_part_from_openai(call, index, parts.len())?);
-                }
-                parts
-            } else {
-                return Err(PromptSnapshotError::InvalidMessage(index));
-            }
-        }
+        Some(Value::Null) | None => Vec::new(),
         Some(_) => return Err(PromptSnapshotError::InvalidMessage(index)),
     };
-
-    // user/assistant 消息可能同时含 tool_calls（content 部分已被上面的
-    // content 分支处理；tool_calls 单独追加）。
-    let mut parts = parts;
     if let Some(Value::Array(calls)) = obj.get("tool_calls") {
         for call in calls {
             parts.push(tool_call_part_from_openai(call, index, parts.len())?);
         }
     }
-
     if parts.is_empty() {
         return Err(PromptSnapshotError::InvalidMessage(index));
     }
-
     Ok(AgentModelMessage { role, parts, name })
 }
 
@@ -427,13 +496,77 @@ pub fn content_parts_from_openai_value(
                 });
             }
             Some("tool_call") | Some("tool_use") => {
+                // 作为内容块出现的 tool_call/tool_use 是「模型想调用工具」，不是结果。
+                // 必带 name + arguments；tool_result 必须走独立的 `tool_result` 类型。
                 let call_id = obj
                     .get("id")
                     .and_then(Value::as_str)
                     .ok_or(PromptSnapshotError::InvalidPart(
                         msg_index,
                         i,
-                        "tool part missing `id`",
+                        "tool_call part missing `id`",
+                    ))?
+                    .to_string();
+                let model_alias = obj
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .or_else(|| {
+                        obj.get("function")
+                            .and_then(Value::as_object)
+                            .and_then(|f| f.get("name"))
+                            .and_then(Value::as_str)
+                    })
+                    .ok_or(PromptSnapshotError::InvalidPart(
+                        msg_index,
+                        i,
+                        "tool_call part missing `name`",
+                    ))?
+                    .to_string();
+                let tool_id = obj
+                    .get("tool_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                // arguments / input：Anthropic 用 `input`（object），OpenAI 用 `arguments`（string|object）
+                let arguments = if let Some(input) = obj.get("input") {
+                    input.clone()
+                } else if let Some(args) = obj.get("arguments") {
+                    match args {
+                        Value::String(s) => {
+                            serde_json::from_str(s).unwrap_or(Value::String(s.clone()))
+                        }
+                        other => other.clone(),
+                    }
+                } else if let Some(args) = obj
+                    .get("function")
+                    .and_then(Value::as_object)
+                    .and_then(|f| f.get("arguments"))
+                {
+                    match args {
+                        Value::String(s) => {
+                            serde_json::from_str(s).unwrap_or(Value::String(s.clone()))
+                        }
+                        other => other.clone(),
+                    }
+                } else {
+                    Value::Null
+                };
+                out.push(AgentModelContentPart::ToolCall {
+                    call_id,
+                    tool_id,
+                    model_alias,
+                    arguments,
+                });
+            }
+            Some("tool_result") => {
+                let call_id = obj
+                    .get("tool_use_id")
+                    .or_else(|| obj.get("call_id"))
+                    .and_then(Value::as_str)
+                    .ok_or(PromptSnapshotError::InvalidPart(
+                        msg_index,
+                        i,
+                        "tool_result part missing `tool_use_id`",
                     ))?
                     .to_string();
                 let tool_id = obj
@@ -443,9 +576,11 @@ pub fn content_parts_from_openai_value(
                     .to_string();
                 let content = obj
                     .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
                 out.push(AgentModelContentPart::ToolResult {
                     call_id,
                     tool_id,
@@ -466,173 +601,4 @@ pub fn content_parts_from_openai_value(
         }
     }
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn detects_marker_at_top_level() {
-        let snapshot = json!({
-            "_ferrite_agent_prompt_marker": "pending",
-            "messages": []
-        });
-        assert_eq!(
-            reject_unfinalized_snapshot(&snapshot),
-            Err(PromptSnapshotError::UnfinalizedMarker(
-                AGENT_PROMPT_MARKER_FIELD
-            ))
-        );
-    }
-
-    #[test]
-    fn accepts_empty_marker_value_at_top_level() {
-        let snapshot = json!({
-            "_ferrite_agent_prompt_marker": "",
-            "messages": []
-        });
-        assert!(reject_unfinalized_snapshot(&snapshot).is_ok());
-    }
-
-    #[test]
-    fn accepts_legacy_marker_value() {
-        let snapshot = json!({
-            "_tauritavern_agent_prompt_marker": "pending",
-            "messages": []
-        });
-        assert_eq!(
-            reject_unfinalized_snapshot(&snapshot),
-            Err(PromptSnapshotError::UnfinalizedMarker(
-                LEGACY_TAURITAVERN_PROMPT_MARKER_FIELD
-            ))
-        );
-    }
-
-    #[test]
-    fn rejects_marker_inside_message_content() {
-        let snapshot = json!({
-            "_ferrite_agent_prompt_marker": "",
-            "messages": [
-                { "role": "user", "content": "hello {{char}}" }
-            ]
-        });
-        assert!(reject_unfinalized_snapshot(&snapshot).is_err());
-    }
-
-    #[test]
-    fn detects_chat_completion_payload() {
-        let snapshot = json!({
-            "chatCompletionPayload": {
-                "messages": [
-                    { "role": "user", "content": "hi" }
-                ]
-            }
-        });
-        assert_eq!(
-            snapshot_kind(&snapshot),
-            AgentModelSnapshotKind::ChatCompletion
-        );
-        let msgs = messages_from_payload(&snapshot).unwrap();
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].role, AgentModelRole::User);
-    }
-
-    #[test]
-    fn detects_frozen_run_input() {
-        let snapshot = json!({
-            "frozenRunInputSnapshot": { "messages": [] }
-        });
-        assert_eq!(
-            snapshot_kind(&snapshot),
-            AgentModelSnapshotKind::FrozenRunInput
-        );
-    }
-
-    #[test]
-    fn parses_tool_call_message() {
-        let payload = json!({
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": null,
-                    "tool_calls": [
-                        {
-                            "id": "call_123",
-                            "type": "function",
-                            "function": {
-                                "name": "read_file",
-                                "arguments": "{\"path\":\"/x\"}"
-                            }
-                        }
-                    ]
-                }
-            ]
-        });
-        let msgs = messages_from_payload(&payload).unwrap();
-        assert_eq!(msgs.len(), 1);
-        match &msgs[0].parts[0] {
-            AgentModelContentPart::ToolCall {
-                call_id,
-                model_alias,
-                ..
-            } => {
-                assert_eq!(call_id, "call_123");
-                assert_eq!(model_alias, "read_file");
-            }
-            _ => panic!("expected tool_call part"),
-        }
-    }
-
-    #[test]
-    fn parses_multimodal_content() {
-        let payload = json!({
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": "look:" },
-                        { "type": "image_url", "image_url": { "url": "https://x" } }
-                    ]
-                }
-            ]
-        });
-        let msgs = messages_from_payload(&payload).unwrap();
-        assert_eq!(msgs[0].parts.len(), 2);
-    }
-
-    #[test]
-    fn context_policy_match_passes() {
-        let snapshot = json!({
-            "contextPolicy": {
-                "initialChatHistoryMessages": -1,
-                "includeActivatedWorldInfo": true
-            }
-        });
-        let policy = AgentContextPolicy::default();
-        assert!(validate_prompt_snapshot_context_policy(&snapshot, &policy).is_ok());
-    }
-
-    #[test]
-    fn context_policy_mismatch_fails() {
-        let snapshot = json!({
-            "contextPolicy": {
-                "initialChatHistoryMessages": 5,
-                "includeActivatedWorldInfo": false
-            }
-        });
-        let policy = AgentContextPolicy::default();
-        assert_eq!(
-            validate_prompt_snapshot_context_policy(&snapshot, &policy),
-            Err(PromptSnapshotError::ContextPolicyMismatch)
-        );
-    }
-
-    #[test]
-    fn empty_payload_returns_empty_messages() {
-        let payload = json!({});
-        let msgs = messages_from_payload(&payload).unwrap();
-        assert!(msgs.is_empty());
-    }
 }

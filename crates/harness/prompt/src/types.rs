@@ -33,7 +33,11 @@ impl AgentModelRole {
 
 /// 一条消息的内容块；支持文本 / 工具调用 / 工具结果 三种。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum AgentModelContentPart {
     /// 普通文本
     Text {
