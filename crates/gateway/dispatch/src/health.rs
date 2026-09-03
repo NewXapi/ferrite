@@ -38,12 +38,18 @@ pub struct HealthState {
     pub failure_streak: u32,
     /// 熔断截止时刻 (unix ms); 此前不参与选择。0 = 未熔断。
     pub cooldown_until_ms: u64,
-    /// 慢启动: 熔断恢复后的初始权重折扣 (0.0-1.0, 成功一次 +SLOW_START_STEP)。
+    /// 权重折扣 (0.0-1.0), 双重角色:
+    /// - 渐进惩罚: 失败一次 -FAILURE_PENALTY (wildtoken 每次失败 -20 分等价物);
+    /// - 慢启动恢复: 熔断后从 SLOW_START_INITIAL 起步, 成功一次 +SLOW_START_STEP。
+    ///
     /// Default = 1.0 (从未观测/从未熔断的单元全量参与, 与 wildtoken "无记录
-    /// 即满血" 语义一致); 熔断触发时重置为 SLOW_START_INITIAL。
+    /// 即满血" 语义一致)。
     pub slow_start: f64,
     /// 观测样本数; 未达 MIN_SAMPLES 前延迟质量分保持中性 1.0。
     pub samples: u32,
+    /// 最近一次失败分类 (ocr #0: 保留 Retryable/Fatal 区分供观测;
+    /// new-api 亦按 local/upstream 分开计数)。成功清空。
+    pub last_failure: Option<FailureClass>,
 }
 
 impl Default for HealthState {
@@ -54,6 +60,7 @@ impl Default for HealthState {
             cooldown_until_ms: 0,
             slow_start: 1.0,
             samples: 0,
+            last_failure: None,
         }
     }
 }
@@ -85,6 +92,11 @@ pub mod defaults {
     pub const SLOW_START_INITIAL: f64 = 0.5;
     /// 每次成功恢复的步长。
     pub const SLOW_START_STEP: f64 = 0.25;
+    /// 每次失败(未达熔断阈值)的权重折扣步长 — wildtoken 每次失败 -20 分等价物。
+    pub const FAILURE_PENALTY: f64 = 0.2;
+    /// 渐进惩罚的权重下限 (wildtoken score floor 0 的等价物: 第 4 次失败后 0.2,
+    /// 第 5 次触发熔断冷却而非归零)。
+    pub const FAILURE_FLOOR: f64 = 0.2;
     /// 延迟质量分生效前的最小样本数 (new-api MinSamples=5)。
     pub const MIN_SAMPLES: u32 = 5;
     /// 延迟基准 (new-api LatencyTargetMs=30000): 达到即 1.0, 更快 >1.0。
@@ -145,19 +157,29 @@ impl HealthTable for MemoryHealthTable {
                 st.failure_streak = 0;
                 st.slow_start = (st.slow_start + defaults::SLOW_START_STEP).min(1.0);
                 st.samples = st.samples.saturating_add(1);
+                st.last_failure = None;
             }
-            Err(_) => {
+            Err(class) => {
+                st.last_failure = Some(class);
                 st.failure_streak += 1;
-                let tripped = st.failure_streak >= defaults::STREAK_THRESHOLD;
-                if tripped {
-                    st.failure_streak = 0;
-                    st.slow_start = defaults::SLOW_START_INITIAL;
-                }
-                // 熔断触发 (streak 归零) 或冷却期内继续失败 → 窗口顺延:
-                // 持续故障的节点不会因旧冷却到期就立刻满血回归 (wildtoken 同款)。
                 let cooling = st.cooldown_until_ms > now;
-                if tripped || cooling {
+                if cooling {
+                    // 冷却期内失败: 只顺延窗口 (持续故障不因旧冷却到期而满血回归,
+                    // wildtoken 同款)。单元已被排除, 不再重复惩罚权重。
                     st.cooldown_until_ms = st.cooldown_until_ms.max(now) + defaults::COOLDOWN_MS;
+                } else {
+                    let tripped = st.failure_streak >= defaults::STREAK_THRESHOLD;
+                    if tripped {
+                        st.failure_streak = 0;
+                        st.slow_start = defaults::SLOW_START_INITIAL;
+                        st.cooldown_until_ms =
+                            st.cooldown_until_ms.max(now) + defaults::COOLDOWN_MS;
+                    } else {
+                        // 渐进惩罚 (wildtoken: 每次失败 -20 分, 权重立即缩水):
+                        // 失败 1-4 次 slow_start 递减, 而不是第 5 次才突然掉线。
+                        st.slow_start = (st.slow_start - defaults::FAILURE_PENALTY)
+                            .max(defaults::FAILURE_FLOOR);
+                    }
                 }
             }
         }

@@ -42,18 +42,11 @@ pub enum AttemptOutcome {
 pub struct RetryPolicy {
     /// 含首次在内最多尝试次数 (new-api retry 次数语义; wildtoken 默认 1)。
     pub max_attempts: u32,
-    /// 重试是否忽略首优先级层 (one-api ignoreFirstPriority 语义)。
-    /// dispatch 选择器暂不实现 — 路由单元模型下 priority 是静态分层,
-    /// 逐层 fallthrough 已天然具备"降级到低优先层"的能力。
-    pub ignore_first_priority_on_retry: bool,
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self {
-            max_attempts: 3,
-            ignore_first_priority_on_retry: false,
-        }
+        Self { max_attempts: 3 }
     }
 }
 
@@ -80,6 +73,8 @@ pub struct Attempt {
 #[derive(Debug, Default)]
 pub struct Failover {
     policy: RetryPolicy,
+    // ponytail: Vec 而非 HashSet — tried 长度有上界 (max_attempts-1, 默认 2),
+    // 线性扫描与哈希在 n<=2 时同量级, Vec 保序且无分配抖动 (ocr #12 驳回)。
     /// 已试候选 key (unit.meta.key), 传给 Dispatch::select 做 exclude。
     tried: Vec<String>,
     /// 已完成尝试计数。

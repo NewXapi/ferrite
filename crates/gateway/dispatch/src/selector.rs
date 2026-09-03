@@ -20,28 +20,32 @@ use rand::Rng;
 /// 选择器 trait — 输入候选 + 健康表, 输出唯一选择。
 pub trait Selector: Send + Sync {
     /// 从候选集中选出一个。全部被门控剔除 → None (上层报 NoCandidate)。
-    fn pick(
+    ///
+    /// 返回借用而非所有权 (ocr #8): 候选在快照中已由 Arc 持有,
+    /// 热路径每请求零克隆, 只有上层最终 resolve_candidate 时才产出一个 owned。
+    fn pick<'a>(
         &self,
-        units: &[RouteUnitRecord],
+        units: &[&'a RouteUnitRecord],
         health: &dyn HealthTable,
         exclude: &[String],
         now_ms: u64,
-    ) -> Option<RouteUnitRecord>;
+    ) -> Option<&'a RouteUnitRecord>;
 }
 
 /// 分层加权选择器 — dispatch 的默认实现。
 pub struct WeightedSelector;
 
 impl Selector for WeightedSelector {
-    fn pick(
+    fn pick<'a>(
         &self,
-        units: &[RouteUnitRecord],
+        units: &[&'a RouteUnitRecord],
         health: &dyn HealthTable,
         exclude: &[String],
         now_ms: u64,
-    ) -> Option<RouteUnitRecord> {
+    ) -> Option<&'a RouteUnitRecord> {
         let eligible: Vec<&RouteUnitRecord> = units
             .iter()
+            .copied()
             .filter(|u| u.status == STATUS_ENABLED)
             .filter(|u| !exclude.iter().any(|k| k == &u.meta.key))
             .filter(|u| health.is_selectable(&u.meta.key, now_ms))
@@ -61,11 +65,12 @@ impl Selector for WeightedSelector {
         by_priority.sort_by(|a, b| b.0.cmp(&a.0));
 
         for (_, tier) in by_priority {
-            let weighted: Vec<(RouteUnitRecord, f64)> = tier
+            let weighted: Vec<(&RouteUnitRecord, f64)> = tier
                 .iter()
+                .copied()
                 .map(|u| {
                     let w = health::routing_weight(u.weight, &health.get(&u.meta.key), now_ms);
-                    ((*u).clone(), w)
+                    (u, w)
                 })
                 .filter(|(_, w)| *w > 0.0)
                 .collect();
@@ -79,15 +84,15 @@ impl Selector for WeightedSelector {
 }
 
 /// 累积加权随机 (new-api selectByWeight / wildtoken weightedIndex 的同一算法)。
-fn pick_weighted(weighted: &[(RouteUnitRecord, f64)]) -> RouteUnitRecord {
+fn pick_weighted<'a>(weighted: &[(&'a RouteUnitRecord, f64)]) -> &'a RouteUnitRecord {
     let total: f64 = weighted.iter().map(|(_, w)| w).sum();
     let mut target = rand::thread_rng().gen_range(0.0..total);
     for (u, w) in weighted {
         target -= w;
         if target < 0.0 {
-            return u.clone();
+            return u;
         }
     }
     // 浮点累计误差兜底 (new-api 的 last-candidate safety net)。
-    weighted.last().unwrap().0.clone()
+    weighted.last().unwrap().0
 }

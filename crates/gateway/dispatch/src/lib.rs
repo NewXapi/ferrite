@@ -96,15 +96,14 @@ pub enum DispatchError {
 /// 别名精确匹配; 不做模糊归一 (new-api FormatMatchingModelName)。
 /// ponytail: ferrite 的 RouteUnitRecord 已显式分离 public_model 与
 /// upstream_model, 别名是配置数据而非推导结果; 模糊匹配留到确有需求时。
-pub fn candidates_from_snapshot(
-    units: &[RouteUnitRecord],
+pub fn candidates_from_snapshot<'a>(
+    units: &'a [RouteUnitRecord],
     group: &str,
     model: &str,
-) -> Vec<RouteUnitRecord> {
+) -> Vec<&'a RouteUnitRecord> {
     units
         .iter()
         .filter(|u| u.status == STATUS_ENABLED && u.group == group && u.public_model == model)
-        .cloned()
         .collect()
 }
 
@@ -193,6 +192,14 @@ impl Dispatcher {
     }
 }
 
+/// 构造 NoCandidate (ocr #9: select 内四处重复, 提出来)。
+fn no_candidate(group: &str, model: &str) -> DispatchError {
+    DispatchError::NoCandidate {
+        group: group.to_string(),
+        model: model.to_string(),
+    }
+}
+
 impl Dispatch for Dispatcher {
     fn select(
         &self,
@@ -206,10 +213,21 @@ impl Dispatch for Dispatcher {
             .ok_or(DispatchError::SnapshotNotReady)?;
         let cands = candidates_from_snapshot(&snap.units, group, public_model);
         if cands.is_empty() {
-            return Err(DispatchError::NoCandidate {
-                group: group.to_string(),
-                model: public_model.to_string(),
-            });
+            return Err(no_candidate(group, public_model));
+        }
+        // 渠道门控 (new-api filterCandidatesByChannelStatusAndKey 等价):
+        // 快照里 channel 缺失或 status != 启用 → 单元不可调度。
+        // 放宽判定在候选阶段而非 pick 后, 避免选中一个必败的单元浪费尝试。
+        let cands: Vec<&RouteUnitRecord> = cands
+            .into_iter()
+            .filter(|u| {
+                snap.channels
+                    .get(&u.channel_key)
+                    .is_some_and(|c| c.status == STATUS_ENABLED)
+            })
+            .collect();
+        if cands.is_empty() {
+            return Err(no_candidate(group, public_model));
         }
         // 限流门控 — 仅当 limits 非空才执行; 空 = 与历史行为一致 (零开销)。
         // 过滤后若全空, 而原始候选非空 → 全部因限流被剔除, 返回 RateLimited (429);
@@ -236,21 +254,12 @@ impl Dispatch for Dispatcher {
         let unit = self
             .selector
             .pick(&cands, &*self.health, exclude, (self.now_ms)())
-            .ok_or(DispatchError::NoCandidate {
-                group: group.to_string(),
-                model: public_model.to_string(),
-            })?;
+            .ok_or_else(|| no_candidate(group, public_model))?;
         let channel = snap
             .channels
             .get(&unit.channel_key)
-            .ok_or(DispatchError::NoCandidate {
-                group: group.to_string(),
-                model: public_model.to_string(),
-            })?;
-        resolve_candidate(&unit, channel).ok_or(DispatchError::NoCandidate {
-            group: group.to_string(),
-            model: public_model.to_string(),
-        })
+            .ok_or_else(|| no_candidate(group, public_model))?;
+        resolve_candidate(unit, channel).ok_or_else(|| no_candidate(group, public_model))
     }
 
     fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>, latency_ms: u32) {

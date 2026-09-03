@@ -3,7 +3,7 @@
 use contract::records::{ChannelKey, ChannelRecord, RouteUnitRecord, SyncMeta};
 use dispatch::Dispatch;
 use dispatch::candidate::resolve_candidate;
-use dispatch::health::{defaults, FailureClass, HealthTable, MemoryHealthTable};
+use dispatch::health::{FailureClass, HealthTable, MemoryHealthTable, defaults};
 use dispatch::retry::{Failover, RetryPolicy};
 use dispatch::selector::{Selector, WeightedSelector};
 use std::collections::HashMap;
@@ -66,7 +66,8 @@ fn assert_pick(
     health: &dyn HealthTable,
     exclude: &[String],
 ) -> Option<RouteUnitRecord> {
-    WeightedSelector.pick(units, health, exclude, 0)
+    let refs: Vec<&RouteUnitRecord> = units.iter().collect();
+    WeightedSelector.pick(&refs, health, exclude, 0).cloned()
 }
 
 // ---------- health ----------
@@ -80,21 +81,31 @@ fn failure_streak_trips_cooldown_and_recovers() {
     };
     let table = MemoryHealthTable::with_clock(clock);
 
-    // 4 次失败未达阈值 → 仍可选
+    // 4 次失败未达阈值 → 仍可选, 但权重已渐进缩水 (wildtoken 每周失败 -20 分)
     for _ in 0..4 {
         table.record("u1", Err(FailureClass::Retryable), 1000);
     }
     assert!(table.is_selectable("u1", now.load(Ordering::Relaxed)));
+    assert!(
+        (table.get("u1").slow_start - 0.2).abs() < 1e-9,
+        "4 次失败后权重应递减到 0.2"
+    );
 
     // 第 5 次 → 熔断, 冷却 30s 内不可选
     table.record("u1", Err(FailureClass::Retryable), 1000);
     assert!(!table.is_selectable("u1", now.load(Ordering::Relaxed)));
 
-    // 冷却中再失败 → 窗口顺延 (时间停在窗口内)
+    // 冷却中再失败 → 窗口顺延 (时间停在窗口内), 但不叠加权重惩罚
     let first_expiry = table.get("u1").cooldown_until_ms;
+    let slow_before = table.get("u1").slow_start;
     now.store(first_expiry - 5000, Ordering::Relaxed);
     table.record("u1", Err(FailureClass::Retryable), 1000);
     assert!(table.get("u1").cooldown_until_ms > first_expiry);
+    assert_eq!(
+        table.get("u1").slow_start,
+        slow_before,
+        "冷却期内失败不应再惩罚权重"
+    );
     assert!(!table.is_selectable("u1", first_expiry + 5000));
 
     // 冷却结束 → 恢复可选, 但慢启动折扣尚未回满
@@ -103,11 +114,21 @@ fn failure_streak_trips_cooldown_and_recovers() {
     assert!(table.is_selectable("u1", expiry + 1));
     assert!(table.get("u1").slow_start < 1.0);
 
-    // 一次成功 → slow_start 回升一步 (0.5 + 0.25 = 0.75)
+    // 一次成功 → slow_start 回升一步 (0.5 + 0.25 = 0.75), 分类清空
     table.record("u1", Ok(200), 800);
     assert_eq!(table.get("u1").slow_start, 0.75);
-    // snap: SLOW_START_INITIAL + 1 * STEP
-    let _ = defaults::SLOW_START_STEP;
+    assert_eq!(table.get("u1").last_failure, None);
+}
+
+#[test]
+fn failure_class_is_preserved() {
+    let table = MemoryHealthTable::new();
+    table.record("u1", Err(FailureClass::Retryable), 1000);
+    assert_eq!(table.get("u1").last_failure, Some(FailureClass::Retryable));
+    table.record("u1", Err(FailureClass::Fatal), 1000);
+    assert_eq!(table.get("u1").last_failure, Some(FailureClass::Fatal));
+    table.record("u1", Ok(200), 900);
+    assert_eq!(table.get("u1").last_failure, None);
 }
 
 #[test]
@@ -233,6 +254,8 @@ fn tier_fallthrough_when_top_tier_all_cooled() {
     }
     // top 冷却窗口 [0, 30000), now=10000 正处于冷却中
     now.store(10_000, Ordering::Relaxed);
+    assert!(!health.is_selectable("top", 10_000), "top 应在冷却中");
+    assert!(health.is_selectable("low", 10_000), "low 应可用");
     // top 冷却中 → 落到 low 层 (wildtoken selectWeightedByPriority fallthrough)
     assert_eq!(assert_pick(&units, &health, &[]).unwrap().meta.key, "low");
 }
@@ -241,10 +264,7 @@ fn tier_fallthrough_when_top_tier_all_cooled() {
 
 #[test]
 fn failover_budget_and_tried_set() {
-    let mut f = Failover::new(RetryPolicy {
-        max_attempts: 3,
-        ignore_first_priority_on_retry: false,
-    });
+    let mut f = Failover::new(RetryPolicy { max_attempts: 3 });
     assert_eq!(f.next_attempt(), Some(1));
     assert_eq!(f.next_attempt(), Some(2));
     assert_eq!(f.next_attempt(), Some(3));
@@ -290,6 +310,44 @@ fn dispatcher_select_resolves_full_candidate() {
     let c = dispatcher.select("g", "m", &[]).unwrap();
     assert_eq!(c.secret, "sk-secret");
     assert_eq!(c.base_url, "https://upstream.example");
+}
+
+#[test]
+fn dispatcher_missing_key_index_returns_no_candidate() {
+    let mut u = unit("g", "m", "ch1", 10, 10, 1);
+    u.key_index = 5; // channel 只有 index=0 的 key
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert(
+        "ch1".to_string(),
+        channel("ch1", "sk-secret", "https://upstream.example"),
+    );
+    let snap = Arc::new(dispatch::Snapshot {
+        units: vec![u],
+        channels,
+    });
+    let dispatcher = dispatch::Dispatcher::new(Some(snap), Arc::new(MemoryHealthTable::new()));
+    assert!(matches!(
+        dispatcher.select("g", "m", &[]),
+        Err(dispatch::DispatchError::NoCandidate { .. })
+    ));
+}
+
+#[test]
+fn dispatcher_skips_disabled_channel() {
+    // channel.status = 2 (手动禁用) → 单元不可调度 (new-api 渠道状态门控)
+    let mut ch = channel("ch1", "sk-secret", "https://upstream.example");
+    ch.status = 2;
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("ch1".to_string(), ch);
+    let snap = Arc::new(dispatch::Snapshot {
+        units: vec![unit("g", "m", "ch1", 10, 10, 1)],
+        channels,
+    });
+    let dispatcher = dispatch::Dispatcher::new(Some(snap), Arc::new(MemoryHealthTable::new()));
+    assert!(matches!(
+        dispatcher.select("g", "m", &[]),
+        Err(dispatch::DispatchError::NoCandidate { .. })
+    ));
 }
 
 #[test]
