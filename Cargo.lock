@@ -4179,6 +4179,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tavern-web-app"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "tavern-client",
+ "tavern-page-characters",
+ "tavern-page-chat",
+ "tavern-page-settings",
+ "tavern-state",
+ "tavern-ui",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"

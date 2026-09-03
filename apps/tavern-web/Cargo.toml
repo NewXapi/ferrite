@@ -1,0 +1,27 @@
+[package]
+name = "tavern-web-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+
+[[bin]]
+name = "tavern-web-app"
+path = "src/main.rs"
+
+[lib]
+name = "tavern_web_app"
+path = "src/lib.rs"
+
+[dependencies]
+dioxus                = { workspace = true }
+tavern-client         = { path = "../../crates/tavern-web/client" }
+tavern-state          = { path = "../../crates/tavern-web/state" }
+tavern-ui             = { path = "../../crates/tavern-web/ui" }
+tavern-page-characters = { path = "../../crates/tavern-web/page-characters" }
+tavern-page-chat      = { path = "../../crates/tavern-web/page-chat" }
+tavern-page-settings  = { path = "../../crates/tavern-web/page-settings" }
