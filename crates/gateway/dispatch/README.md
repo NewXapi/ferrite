@@ -1,19 +1,10 @@
 # `gateway-dispatch`
 
-## 目录
+## 文件
 
-```text
-src/
-├── lib.rs
-├── candidate.rs
-├── health.rs
-├── retry.rs
-└── selector.rs
-```
+- `src/lib.rs` — 公开渠道选择入口和选中路由。
+- `src/candidate.rs` — 从模型与用户组生成候选 RouteUnit。
+- `src/health.rs` — 更新延迟、失败次数、冷却和慢启动状态。
+- `src/selector.rs` — 按优先级、权重和健康分数选渠道。
+- `src/retry.rs` — 排除已试渠道并控制最大重试次数。
 
-## 要实现
-
-- 候选路由匹配。
-- 渠道健康度。
-- 优先级、权重和 EWMA 选路。
-- 失败重试与已试路由排除。

@@ -1,24 +1,16 @@
 # `tavern-secrets`
 
-## 目录
+## src/lib.rs
 
-```text
-src/
-├── lib.rs
-└── http.rs
-```
+- `read/write/remove` — 服务端密钥读写删除。
+- `state` — 返回 key → 是否已配置，供前端显示。
 
-## 要实现
+## src/http.rs
 
-- secrets.json 密钥存取。
-- 密钥已配置状态查询。
-- 静态加密。
-- 多组密钥和标签。
+- `router` — `GET /tavern/secrets` 与 `PUT/DELETE /tavern/secrets/{key}`。
+- `PutBody` — 写入请求体。
 
-## 参考实现
+## tests/masking.rs
 
-| 能力 | 上游位置 | 机制 |
-|------|---------|------|
-| 键名表 | `~/projects/SillyTavern/src/endpoints/secrets.js:9` `SECRET_KEYS` | 按上游厂商固定键名 |
-| 读写删 | `~/projects/SillyTavern/src/endpoints/secrets.js:428` `writeSecret` `:437` `deleteSecret` `:448` `readSecret` | `readSecret` 只在服务端调用 |
-| 对外状态 | `~/projects/SillyTavern/src/endpoints/secrets.js:457` `readSecretState` | 返回是否已配置；明文回显由 `:108` `allowKeysExposure` 单独开关控制 |
+- `密钥测试` — 写读删和状态响应不含明文。
+

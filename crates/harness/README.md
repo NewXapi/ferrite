@@ -1,20 +1,18 @@
 # `crates/harness`
 
-## 目录
+## 功能 crate
 
-```text
-harness/
-├── core/
-├── prompt/
-├── tools/
-├── runtime/
-└── ui/
-```
+- `core/` — Agent Run、Step、状态、取消和序列化类型。
+- `prompt/` — 系统提示、角色资料、历史、变量和上下文裁剪。
+- `tools/` — 工具 schema、调用、结果和参数校验。
+- `runtime/` — 模型和工具循环、审批、持久化与步骤事件流。
+- `ui/` — Agent 步骤、tool call、reasoning 和审批组件。
 
-## 要实现
+## 开发顺序
 
-- `core` 定义 Agent Run、Step、状态转移和中止信号。
-- `prompt` 组装系统提示、角色上下文、历史消息和变量。
-- `tools` 定义 ToolSpec、ToolCall、ToolResult 和参数 schema。
-- `runtime` 驱动模型调用、工具执行、结果回灌和步骤事件流。
-- `ui` 展示步骤、工具调用、结果和 reasoning。
+- `core/` — 先定义 Run 和 StreamEvent。
+- `prompt/` — 接入角色卡和聊天历史。
+- `tools/` — 接入 function calling schema。
+- `runtime/` — 接入 gateway 和一个只读工具。
+- `ui/` — 在 tavern chat 页面显示步骤。
+

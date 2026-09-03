@@ -1,19 +1,10 @@
 # `tavern-client`
 
-## 目录
+## src/lib.rs
 
-```text
-src/lib.rs
-```
+- `Character API` — 角色列表、创建、读取、编辑、删除请求。
+- `Chat API` — 聊天读取、保存、最近列表请求。
+- `Settings API` — 设置读取和保存请求。
+- `Generate API` — POST 生成并消费 SSE 响应。
+- `错误类型` — 网络、HTTP、JSON 和业务错误。
 
-## 要实现
-
-- 角色、聊天、设置和密钥 API 客户端。
-- 生成请求和 SSE 消费。
-- 请求错误转换。
-
-## 参考实现
-
-| 能力 | 上游位置 | 机制 |
-|------|---------|------|
-| SSE 消费 | `~/projects/SillyTavern/public/scripts/sse-stream.js:10` | 自建 SSE 分帧，不用 EventSource（要 POST） |

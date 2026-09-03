@@ -1,26 +1,23 @@
 # `tavern-chats`
 
-## 目录
+## src/lib.rs
 
-```text
-src/
-├── lib.rs
-└── http.rs
-```
+- `Message` — 用户/角色消息、swipes、swipe_id 和未知字段。
+- `save` — 整份消息数组覆盖写为 JSONL。
+- `load` — 逐行读取 JSONL，跳过坏行。
+- `recent` — 按 mtime 返回聊天文件名和首条消息���览。
+- `delete/rename` — 聊天文件删除和重命名。
 
-## 要实现
+## src/http.rs
 
-- Message 和 swipe 数据结构。
-- JSONL 保存、读取、删除和重命名。
-- 最近聊天列表和首条消息预览。
-- 聊天导入导出。
-- 聊天备份。
+- `router` — `GET /tavern/chats/{character}`，以及单个聊天 GET/PUT/DELETE。
+- `ChatsState` — 当前用户 UserDirs。
+
+## tests/jsonl.rs
+
+- `JSONL 测试` — 覆盖写、顺序、未知字段、坏行、最近列表、路径穿越。
 
 ## 参考实现
 
-| 能力 | 上游位置 | 机制 |
-|------|---------|------|
-| 保存 | `~/projects/SillyTavern/src/endpoints/chats.js:457` `trySaveChat` | 整份数组序列化成 JSONL 覆盖写，再触发节流备份 |
-| 完整性校验 | `~/projects/SillyTavern/src/endpoints/chats.js:316` `checkChatIntegrity` | 首条消息 `chat_metadata.integrity` 对不上则拒绝写入 |
-| 首行预览 | `~/projects/SillyTavern/src/endpoints/chats.js:359` `getChatInfo` | 最近列表只读首行 |
-| 路由集 | `~/projects/SillyTavern/src/endpoints/chats.js:470` | save / get / rename / delete / export / import / search / recent |
+- `/home/hathaway/projects/SillyTavern/src/endpoints/chats.js:457` — trySaveChat。
+- `/home/hathaway/projects/SillyTavern/src/endpoints/chats.js:359` — getChatInfo 首行预览。

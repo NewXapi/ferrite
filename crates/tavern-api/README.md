@@ -1,26 +1,19 @@
 # `crates/tavern-api`
 
-## 目录
+## 功能 crate
 
-```text
-tavern-api/
-├── storage/
-├── auth/
-├── characters/
-├── chats/
-├── settings/
-├── secrets/
-├── generate/
-└── media/
-```
+- `storage/` — 用户数据根目录和安全文件读写。
+- `auth/` — 酒馆用户身份解析。
+- `characters/` — 角色卡 PNG/JSON 管理。
+- `chats/` — JSONL 聊天管理。
+- `settings/` — 酒馆设置管理。
+- `secrets/` — 用户模型密钥管理。
+- `generate/` — 模型生成转发和流输出。
+- `media/` — 头像、背景和聊天图片管理。
 
-## 要实现
+## MVP 调用链
 
-- `storage` 提供数据根目录、用户目录、原子写和安全路径。
-- `auth` 解析酒馆用户身份。
-- `characters` 管理角色卡和角色头像。
-- `chats` 管理 JSONL 聊天记录。
-- `settings` 保存用户连接、采样和界面设置。
-- `secrets` 保存用户上游密钥并提供已配置状态。
-- `generate` 转发生成请求、透传 SSE、支持中止。
-- `media` 管理头像、背景和聊天图片。
+- `storage → auth` — 根据当前用户取得角色、聊天、设置和密钥路径。
+- `characters + chats + settings + secrets` — 提供 `/tavern/*` REST 路由。
+- `generate` — 把聊天页发送的 OpenAI 请求转发到 `/v1/chat/completions`。
+

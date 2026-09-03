@@ -1,17 +1,9 @@
 # `gateway-protocol-bridge`
 
-## 目录
+## 文件
 
-```text
-src/
-├── lib.rs
-├── codec.rs
-├── error_mapping.rs
-└── stage.rs
-```
+- `src/lib.rs` — 公开 ProtocolBridgeStage 和 codec registry。
+- `src/codec.rs` — 按客户端协议和渠道协议选择 codec。
+- `src/stage.rs` — 把 forward 的上游响应转换成客户端协议响应。
+- `src/error_mapping.rs` — 把 NormalizedError 转换成协议错误体。
 
-## 要实现
-
-- 协议 codec 注册表。
-- Pipeline ProtocolBridgeStage。
-- 上游错误到客户端协议错误映射。

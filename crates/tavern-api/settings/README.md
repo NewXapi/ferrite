@@ -1,22 +1,16 @@
 # `tavern-settings`
 
-## 目录
+## src/lib.rs
 
-```text
-src/
-├── lib.rs
-└── http.rs
-```
+- `load` — 读取 settings.json；文件不存在返回空对象。
+- `save` — 原子保存完整设置 JSON，未知字段保留。
 
-## 要实现
+## src/http.rs
 
-- settings.json 读取和保存。
-- 连接配置、采样参数和界面设置。
-- 设置快照和预设。
+- `router` — `GET/PUT /tavern/settings`。
+- `SettingsState` — 当前用户 UserDirs。
 
-## 参考实现
+## tests/roundtrip.rs
 
-| 能力 | 上游位置 | 机制 |
-|------|---------|------|
-| 读存 | `~/projects/SillyTavern/src/endpoints/settings.js:206` `/save` `:219` `/get` | `/get` 同时返回设置与各类预设清单 |
-| 快照 | `~/projects/SillyTavern/src/endpoints/settings.js:298` | get-snapshots / make-snapshot / load-snapshot / restore-snapshot |
+- `设置测试` — 空设置与未知字段往返。
+

@@ -1,22 +1,17 @@
 # `crates/tavern-web`
 
-## 目录
+## 功能 crate
 
-```text
-tavern-web/
-├── client/
-├── state/
-├── ui/
-├── page-characters/
-├── page-chat/
-└── page-settings/
-```
+- `client/` — 调用 `/tavern/*` 与消费 SSE。
+- `state/` — 角色、聊天、消息和生成状态。
+- `ui/` — 消息、输入、对话框和加载组件。
+- `page-characters/` — 角色列表、新建和编辑。
+- `page-chat/` — 聊天、生成、swipe、编辑和历史。
+- `page-settings/` — 连接、模型、密钥和采样设置。
 
-## 要实现
+## MVP 页面
 
-- `client` 调用 tavern-api 并消费 SSE。
-- `state` 保存当前角色、聊天、消息和流式状态。
-- `ui` 提供消息气泡、输入框、弹窗和加载组件。
-- `page-characters` 提供角色列表和角色卡编辑。
-- `page-chat` 提供聊天、生成、swipe、消息编辑和历史恢复。
-- `page-settings` 提供连接配置、采样参数和模型选择。
+- `page-characters/` — 创建角色并选中。
+- `page-chat/` — 发送消息、显示流式回复、保存和恢复聊天。
+- `page-settings/` — 保存模型和采样设置。
+

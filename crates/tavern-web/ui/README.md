@@ -1,14 +1,9 @@
 # `tavern-ui`
 
-## 目录
+## src/lib.rs
 
-```text
-src/lib.rs
-```
+- `MessageBubble` — 用户和角色消息气泡。
+- `ChatInput` — 多行输入和发送按钮。
+- `Dialog` — 确认弹窗。
+- `Loading` — 加载和空状态。
 
-## 要实现
-
-- 消息气泡。
-- 输入框。
-- 弹窗和确认框。
-- 加载和空状态。

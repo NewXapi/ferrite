@@ -1,20 +1,10 @@
 # `gateway-pipeline`
 
-## 目录
+## 文件
 
-```text
-src/
-├── lib.rs
-├── ctx.rs
-├── stage.rs
-├── pipeline.rs
-└── router.rs
-```
+- `src/lib.rs` — 公开 RequestCtx、Stage、Pipeline、GatewayShared 和 router。
+- `src/ctx.rs` — 定义请求元数据、请求体来源、协议类型和跨 stage 可变字段。
+- `src/stage.rs` — 定义 Stage trait、StageOutcome、StageError、UpstreamError。
+- `src/pipeline.rs` — 按顺序调用 Stage 并处理 Continue、ShortCircuit、Stream。
+- `src/router.rs` — 把 Pipeline 接到 Axum fallback，输出 OpenAI 错误体。
 
-## 要实现
-
-- RequestCtx、RequestMeta 和请求体来源。
-- Stage trait、StageError 和 StageOutcome。
-- Pipeline 编排。
-- GatewayShared 跨请求状态。
-- Axum 路由和错误响应。

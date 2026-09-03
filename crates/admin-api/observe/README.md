@@ -1,22 +1,11 @@
 # `observe`
 
-## 目录
+## 文件
 
-```text
-src/
-├── lib.rs
-├── hourly.rs
-├── monitor.rs
-├── perf.rs
-├── rankings.rs
-└── retention.rs
-```
+- `src/lib.rs` — 公开用量记录和查询服务。
+- `src/hourly.rs` — 按小时汇总 token、成本和请求次数。
+- `src/rankings.rs` — 生成用户、模型和渠道排行。
+- `src/perf.rs` — 记录 TTFT、总延迟和成功率。
+- `src/monitor.rs` — 记录渠道探活和可用率。
+- `src/retention.rs` — 清理旧用量记录。
 
-## 要实现
-
-- 原始用量记录。
-- 小时聚合。
-- 日周月排行。
-- TTFT、延迟和成功率。
-- 渠道探活历史。
-- 数据保留清理。

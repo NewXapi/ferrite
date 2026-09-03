@@ -1,24 +1,19 @@
 # `tavern-storage`
 
-## 目录
+## src/lib.rs
 
-```text
-src/lib.rs
-```
+- `DataRoot` — 保存酒馆数据根目录。
+- `UserDirs` — 生成 `<data>/<user>/characters`、`chats`、`avatars`、`settings.json`、`secrets.json` 路径。
+- `sanitize_name` — 拒绝空名、路径分隔符和 `..`。
+- `join_checked` — 拼接文件名并确认路径仍在目标目录。
+- `write_atomic` — 同目录临时文件写入后 rename。
+- `list_by_mtime_desc` — 按修改时间倒序列文件。
 
-## 要实现
+## tests/paths.rs
 
-- DataRoot 和 UserDirs。
-- 角色卡、聊天、头像、设置和密钥目录。
-- 原子文件写入。
-- 文件名清洗和路径检查。
-- 按修改时间列举文件。
+- `路径安全测试` — 覆盖文件名穿越、目录边界、原子覆盖写和用户目录布局。
 
 ## 参考实现
 
-| 能力 | 上游位置 | 机制 |
-|------|---------|------|
-| 用户目录解析 | `~/projects/SillyTavern/src/users.js:683` `getUserDirectories` | 27 个子目录来自 `src/constants.js:16` `USER_DIRECTORY_TEMPLATE`，按 handle 拼接后进 `DIRECTORIES_CACHE` |
-| 原子写 | `~/projects/SillyTavern/src/util.js:1491` `tryWriteFileSync` | 封装 `write-file-atomic`，临时文件加 rename |
-| 路径逃逸检查 | `~/projects/SillyTavern/src/util.js:1384` `isPathUnderParent` | 拼接后再校验最终路径仍在父目录内 |
-| 首行读取 | `~/projects/SillyTavern/src/util.js:1537` `readFirstLine` | 只读一行做预览，不加载整个 JSONL |
+- `/home/hathaway/projects/SillyTavern/src/users.js:683` — getUserDirectories。
+- `/home/hathaway/projects/SillyTavern/src/util.js:1384` — isPathUnderParent。

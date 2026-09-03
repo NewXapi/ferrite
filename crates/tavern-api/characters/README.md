@@ -1,27 +1,31 @@
 # `tavern-characters`
 
-## 目录
+## src/lib.rs
 
-```text
-src/
-├── lib.rs
-├── http.rs
-└── png.rs
-```
+- `Character` — Character Card V2 基础字段和未知字段透传。
+- `CharacterSummary` — 角色列表展示字段。
+- `get/save/delete/rename/list` — 角色卡文件 CRUD。
 
-## 要实现
+## src/png.rs
 
-- Character Card V2 数据结构。
-- PNG `chara` tEXt chunk 读写。
-- 角色创建、读取、编辑、删除、重命名和列表。
-- PNG 与 JSON 导入导出。
-- 角色头像上传。
+- `read_chara` — 读取 PNG `chara` tEXt chunk 内的 base64 JSON。
+- `write_chara` — 写入或替换 PNG `chara` tEXt chunk。
+- `minimal_png` — 新建角色的默认 1×1 PNG 底图。
+
+## src/http.rs
+
+- `router` — `GET/POST /tavern/characters` 与 `GET/PUT/DELETE /tavern/characters/{name}`。
+- `CharactersState` — 当前用户 UserDirs。
+
+## tests/cards.rs
+
+- `角色卡 CRUD 测试` — 保存、读取、编辑、列表容错、删除、路径穿越。
+
+## tests/png_chunk.rs
+
+- `PNG chunk 测试` — 写读、重复写覆盖、不同长度 JSON、非法 PNG。
 
 ## 参考实现
 
-| 能力 | 上游位置 | 机制 |
-|------|---------|------|
-| 角色卡写盘 | `~/projects/SillyTavern/src/endpoints/characters.js:220` `writeCharacterData` | 角色 JSON 写进 PNG tEXt 后原子落盘 |
-| PNG tEXt 读写 | `~/projects/SillyTavern/src/character-card-parser.js:15` `write` / `:54` `read` | `ccv3` 与 `chara` 两个关键字，base64 编码 |
-| 卡规范校验 | `~/projects/SillyTavern/src/validator/TavernCardValidator.js:8` | V1 / V2 / V3 三种 spec 分别校验 |
-| 列表浅解析 | `~/projects/SillyTavern/src/endpoints/characters.js` `processCharacter` + `DiskCache` | 列表只取展示字段，避免全量解析每张卡 |
+- `/home/hathaway/projects/SillyTavern/src/endpoints/characters.js:220` — writeCharacterData。
+- `/home/hathaway/projects/SillyTavern/src/character-card-parser.js:15` — PNG tEXt write。

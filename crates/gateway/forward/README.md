@@ -1,19 +1,10 @@
 # `gateway-forward`
 
-## 目录
+## 文件
 
-```text
-src/
-├── lib.rs
-├── adapter.rs
-├── egress.rs
-├── pipeline.rs
-└── stream.rs
-```
+- `src/lib.rs` — 公开上游转发入口。
+- `src/adapter.rs` — 根据渠道类型生成 URL、认证头和请求体。
+- `src/egress.rs` — 发起上游 HTTP 请求。
+- `src/pipeline.rs` — 把 RequestCtx 转成一次上游 attempt。
+- `src/stream.rs` — 读取 SSE、记录首 token、提取 usage 并传给客户端。
 
-## 要实现
-
-- 上游 URL、头和鉴权组装。
-- 请求体转发。
-- 流式与非流式响应处理。
-- SSE usage 和 first-token 提取。
