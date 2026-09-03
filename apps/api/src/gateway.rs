@@ -50,7 +50,10 @@ impl Gateway {
             .route("/admin/tokens", get(list_tokens).post(create_token))
             .route("/admin/tokens/{key}", delete(delete_token))
             .route("/admin/channels", get(list_channels).post(create_channel))
-            .route("/admin/channels/{id}", put(update_channel).delete(delete_channel))
+            .route(
+                "/admin/channels/{id}",
+                put(update_channel).delete(delete_channel),
+            )
             .route("/admin/recharge", post(recharge))
             .layer(
                 // 统一请求日志：span 声明业务字段，handler 内 record 填充，
@@ -154,7 +157,8 @@ async fn reload_channels(
     headers: HeaderMap,
 ) -> Result<axum::response::Response, axum::response::Response> {
     let pass = authenticate_request(&state, &headers).await?;
-    crate::identity::require_admin(&pass).map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
+    crate::identity::require_admin(&pass)
+        .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
 
     match load_channels(&state.pool).await {
         Ok(channels) => {
@@ -171,13 +175,11 @@ async fn reload_channels(
             )
                 .into_response())
         }
-        Err(e) => {
-            Err(error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("reload failed: {e}"),
-                "server_error",
-            ))
-        }
+        Err(e) => Err(error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("reload failed: {e}"),
+            "server_error",
+        )),
     }
 }
 
@@ -234,7 +236,11 @@ async fn create_token(
                     .fetch_one(&state.pool)
                     .await
                     .map_err(|e| {
-                        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+                        error_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &format!("db error: {e}"),
+                            "server_error",
+                        )
                     })?;
             next
         }
@@ -259,7 +265,11 @@ async fn create_token(
     .fetch_one(&state.pool)
     .await
     .map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db error: {e}"),
+            "server_error",
+        )
     })?;
 
     let body = serde_json::json!({
@@ -340,13 +350,16 @@ async fn create_channel(
             "invalid_request_error",
         )
     })?;
-    validate_channel(&req).map_err(|m| {
-        error_response(StatusCode::BAD_REQUEST, &m, "invalid_request_error")
-    })?;
+    validate_channel(&req)
+        .map_err(|m| error_response(StatusCode::BAD_REQUEST, &m, "invalid_request_error"))?;
 
     // name 唯一性：与现有渠道比对
     let existing = load_channels(&state.pool).await.map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db error: {e}"),
+            "server_error",
+        )
     })?;
     if existing.iter().any(|c| c.name == req.name) {
         return Err(error_response(
@@ -367,7 +380,11 @@ async fn create_channel(
         models: req.models.clone(),
     };
     let value = serde_json::to_value(&cfg).map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("serialize error: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("serialize error: {e}"),
+            "server_error",
+        )
     })?;
     sqlx::query("INSERT INTO kv_store (key, value) VALUES ($1, $2)")
         .bind(format!("channel:{id}"))
@@ -375,7 +392,11 @@ async fn create_channel(
         .execute(&state.pool)
         .await
         .map_err(|e| {
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db error: {e}"),
+                "server_error",
+            )
         })?;
 
     let body = serde_json::json!({
@@ -444,19 +465,21 @@ async fn list_tokens(
         .into_iter()
         .skip(offset as usize)
         .take(limit as usize)
-        .map(|(key, user_id, username, quota, used_quota, group, enabled, created_at, is_admin)| {
-            serde_json::json!({
-                "key": mask_key(&key),
-                "user_id": user_id,
-                "username": username,
-                "quota": quota,
-                "used_quota": used_quota,
-                "group": group,
-                "enabled": enabled,
-                "created_at": created_at,
-                "is_admin": is_admin,
-            })
-        })
+        .map(
+            |(key, user_id, username, quota, used_quota, group, enabled, created_at, is_admin)| {
+                serde_json::json!({
+                    "key": mask_key(&key),
+                    "user_id": user_id,
+                    "username": username,
+                    "quota": quota,
+                    "used_quota": used_quota,
+                    "group": group,
+                    "enabled": enabled,
+                    "created_at": created_at,
+                    "is_admin": is_admin,
+                })
+            },
+        )
         .collect();
 
     let body = serde_json::json!({ "object": "list", "total": total, "data": data });
@@ -483,11 +506,19 @@ async fn delete_token(
         .execute(&state.pool)
         .await
         .map_err(|e| {
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db error: {e}"),
+                "server_error",
+            )
         })?;
 
     if result.rows_affected() == 0 {
-        return Err(error_response(StatusCode::NOT_FOUND, "token not found", "invalid_request_error"));
+        return Err(error_response(
+            StatusCode::NOT_FOUND,
+            "token not found",
+            "invalid_request_error",
+        ));
     }
 
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -534,11 +565,19 @@ async fn recharge(
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db error: {e}"),
+            "server_error",
+        )
     })?;
 
     let (new_quota, user_id, username) = row.ok_or_else(|| {
-        error_response(StatusCode::NOT_FOUND, "token not found", "invalid_request_error")
+        error_response(
+            StatusCode::NOT_FOUND,
+            "token not found",
+            "invalid_request_error",
+        )
     })?;
 
     let body = serde_json::json!({
@@ -555,8 +594,6 @@ async fn recharge(
     )
         .into_response())
 }
-
-
 
 // ─── F7.2 + F7.3: Channel 管理 ─────────────────────────────────────────────
 
@@ -582,12 +619,20 @@ async fn list_channels(
         .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
 
     let rows = load_channels(&state.pool).await.map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db error: {e}"),
+            "server_error",
+        )
     })?;
 
     let filtered: Vec<&crate::dispatch::ChannelConfig> = rows
         .iter()
-        .filter(|c| q.channel_type.as_deref().map_or(true, |t| c.channel_type == t))
+        .filter(|c| {
+            q.channel_type
+                .as_deref()
+                .map_or(true, |t| c.channel_type == t)
+        })
         .collect();
 
     let data: Vec<serde_json::Value> = filtered
@@ -631,11 +676,36 @@ pub fn merge_channel_config(
 ) -> (crate::dispatch::ChannelConfig, bool) {
     let mut cfg = existing.clone();
     let mut changed = false;
-    if let Some(v) = &req.name && *v != cfg.name { cfg.name = v.clone(); changed = true; }
-    if let Some(v) = &req.base_url && *v != cfg.base_url { cfg.base_url = v.clone(); changed = true; }
-    if let Some(v) = &req.channel_type && *v != cfg.channel_type { cfg.channel_type = v.clone(); changed = true; }
-    if let Some(v) = &req.keys && *v != cfg.keys { cfg.keys = v.clone(); changed = true; }
-    if let Some(v) = &req.models && *v != cfg.models { cfg.models = v.clone(); changed = true; }
+    if let Some(v) = &req.name
+        && *v != cfg.name
+    {
+        cfg.name = v.clone();
+        changed = true;
+    }
+    if let Some(v) = &req.base_url
+        && *v != cfg.base_url
+    {
+        cfg.base_url = v.clone();
+        changed = true;
+    }
+    if let Some(v) = &req.channel_type
+        && *v != cfg.channel_type
+    {
+        cfg.channel_type = v.clone();
+        changed = true;
+    }
+    if let Some(v) = &req.keys
+        && *v != cfg.keys
+    {
+        cfg.keys = v.clone();
+        changed = true;
+    }
+    if let Some(v) = &req.models
+        && *v != cfg.models
+    {
+        cfg.models = v.clone();
+        changed = true;
+    }
     (cfg, changed)
 }
 
@@ -662,24 +732,43 @@ async fn update_channel(
         .map_err(|(s, m)| error_response(s, &m, "permission_denied"))?;
 
     let req: UpdateChannelReq = serde_json::from_slice(&body).map_err(|e| {
-        error_response(StatusCode::BAD_REQUEST, &format!("invalid JSON: {e}"), "invalid_request_error")
+        error_response(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid JSON: {e}"),
+            "invalid_request_error",
+        )
     })?;
 
     let kv_key = format!("channel:{id}");
-    let row: Option<(serde_json::Value,)> = sqlx::query_as(
-        "SELECT value FROM kv_store WHERE key = $1",
-    )
-    .bind(&kv_key)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error"))?;
+    let row: Option<(serde_json::Value,)> =
+        sqlx::query_as("SELECT value FROM kv_store WHERE key = $1")
+            .bind(&kv_key)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| {
+                error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("db error: {e}"),
+                    "server_error",
+                )
+            })?;
 
-    let value = row.ok_or_else(|| {
-        error_response(StatusCode::NOT_FOUND, "channel not found", "invalid_request_error")
-    })?.0;
+    let value = row
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "channel not found",
+                "invalid_request_error",
+            )
+        })?
+        .0;
 
     let existing: crate::dispatch::ChannelConfig = serde_json::from_value(value).map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("corrupt channel config: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("corrupt channel config: {e}"),
+            "server_error",
+        )
     })?;
 
     let (merged, _changed) = merge_channel_config(&existing, &req);
@@ -687,7 +776,11 @@ async fn update_channel(
     // 更新后 name 可能变了，需要重新查重（排除自己）
     if merged.name != existing.name {
         let all = load_channels(&state.pool).await.map_err(|e| {
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db error: {e}"),
+                "server_error",
+            )
         })?;
         if all.iter().any(|c| c.id != id && c.name == merged.name) {
             return Err(error_response(
@@ -703,7 +796,11 @@ async fn update_channel(
         .map_err(|m| error_response(StatusCode::BAD_REQUEST, &m, "invalid_request_error"))?;
 
     let new_value = serde_json::to_value(&merged).map_err(|e| {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("serialize error: {e}"), "server_error")
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("serialize error: {e}"),
+            "server_error",
+        )
     })?;
 
     sqlx::query("UPDATE kv_store SET value = $2 WHERE key = $1")
@@ -712,7 +809,11 @@ async fn update_channel(
         .execute(&state.pool)
         .await
         .map_err(|e| {
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db error: {e}"),
+                "server_error",
+            )
         })?;
 
     let body = serde_json::json!({
@@ -745,11 +846,19 @@ async fn delete_channel(
         .execute(&state.pool)
         .await
         .map_err(|e| {
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("db error: {e}"), "server_error")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db error: {e}"),
+                "server_error",
+            )
         })?;
 
     if result.rows_affected() == 0 {
-        return Err(error_response(StatusCode::NOT_FOUND, "channel not found", "invalid_request_error"));
+        return Err(error_response(
+            StatusCode::NOT_FOUND,
+            "channel not found",
+            "invalid_request_error",
+        ));
     }
 
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -766,7 +875,13 @@ async fn chat_completions(
     // 1. 认证
     let pass = authenticate_request(&state, &headers).await?;
     let span = tracing::Span::current();
-    span.record("request_id", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0).to_string());
+    span.record(
+        "request_id",
+        chrono::Utc::now()
+            .timestamp_nanos_opt()
+            .unwrap_or(0)
+            .to_string(),
+    );
     span.record("user", pass.username.as_str());
 
     // 2. 解析请求体
@@ -863,16 +978,26 @@ async fn chat_completions(
                 && let Some(u) = v.get("usage")
             {
                 let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
-                let completion_tokens = u.get("completion_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                let completion_tokens = u
+                    .get("completion_tokens")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0);
                 span.record("prompt_tokens", prompt_tokens as i64);
                 span.record("completion_tokens", completion_tokens as i64);
                 if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
                     span.record("total_tokens", n);
                 }
 
-                let actual = crate::billing::tokens_to_quota(prompt_tokens, completion_tokens, pricing.as_ref());
+                let actual = crate::billing::tokens_to_quota(
+                    prompt_tokens,
+                    completion_tokens,
+                    pricing.as_ref(),
+                );
                 span.record("actual_quota", actual);
-                if let Err(e) = crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual).await {
+                if let Err(e) =
+                    crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual)
+                        .await
+                {
                     tracing::warn!(event = "billing_settle_failed", error = %e, actual, reserve, "settle_quota failed");
                 }
             }
@@ -880,7 +1005,12 @@ async fn chat_completions(
 
         // 上游非 2xx → 预扣消耗，不回滚（决策 C）
         if !status.is_success() {
-            tracing::warn!(event = "billing_reserve_consumed", reserve, status = status.as_u16(), "upstream non-2xx, reserve not rolled back");
+            tracing::warn!(
+                event = "billing_reserve_consumed",
+                reserve,
+                status = status.as_u16(),
+                "upstream non-2xx, reserve not rolled back"
+            );
         }
 
         let mut response_headers = HeaderMap::new();
@@ -898,7 +1028,9 @@ async fn chat_completions(
 ///
 /// - 2xx 默认 text/event-stream；非 2xx 默认 application/json（上游错误体）
 /// - 流中断时注入 SSE error frame，避免静默截断
-async fn stream_into_response(resp: StreamResponse) -> Result<axum::response::Response, axum::response::Response> {
+async fn stream_into_response(
+    resp: StreamResponse,
+) -> Result<axum::response::Response, axum::response::Response> {
     let resp = crate::adapter::ensure_stream_ok(resp)
         .await
         .map_err(|e| error_response(StatusCode::BAD_GATEWAY, &e.to_string(), "upstream_error"))?;
@@ -1020,7 +1152,9 @@ pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>
         // 字符串字段精确匹配
         let str_match = |field: &str, val: &Option<String>| -> bool {
             val.as_ref().map_or(true, |want| {
-                flat.get(field).and_then(|f| f.as_str()).map_or(false, |s| s == want)
+                flat.get(field)
+                    .and_then(|f| f.as_str())
+                    .map_or(false, |s| s == want)
             })
         };
         if !str_match("user", &q.user)
@@ -1119,7 +1253,10 @@ async fn list_logs(
     let body = serde_json::json!({"object": "list", "total": total, "data": data});
     Ok((
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "application/json".to_string())],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/json".to_string(),
+        )],
         body.to_string(),
     )
         .into_response())
@@ -1148,7 +1285,9 @@ mod tests {
         let resp = error_response(StatusCode::BAD_REQUEST, "bad", "invalid_request_error");
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
-            resp.headers().get(axum::http::header::CONTENT_TYPE).unwrap(),
+            resp.headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap(),
             "application/json"
         );
         let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
@@ -1166,25 +1305,56 @@ mod tests {
         // 非完成事件行（无 fields.status）→ 跳过
         let line2 = r#"{"timestamp":"2025-01-01T00:01:00Z","fields":{"user":"bob"}}"#;
         // status 不匹配
-        let line3 = r#"{"timestamp":"2025-01-01T00:02:00Z","fields":{"status":500,"user":"alice"}}"#;
+        let line3 =
+            r#"{"timestamp":"2025-01-01T00:02:00Z","fields":{"status":500,"user":"alice"}}"#;
         // 损坏行 → 跳过
         let line4 = "not json at all";
 
         let lines = [line1, line2, line3, line4];
 
         // 无过滤：1 匹配（只有 line1 有 status）
-        let q = LogQuery { user: None, model: None, channel: None, path: None, status: None, since: None, until: None, limit: None, offset: None };
+        let q = LogQuery {
+            user: None,
+            model: None,
+            channel: None,
+            path: None,
+            status: None,
+            since: None,
+            until: None,
+            limit: None,
+            offset: None,
+        };
         let (page, total) = filter_log_lines(&lines, &q);
         assert_eq!(total, 2); // line1 (200) + line3 (500)
         assert_eq!(page.len(), 2);
 
         // 按 user 过滤
-        let q = LogQuery { user: Some("alice".into()), model: None, channel: None, path: None, status: None, since: None, until: None, limit: None, offset: None };
+        let q = LogQuery {
+            user: Some("alice".into()),
+            model: None,
+            channel: None,
+            path: None,
+            status: None,
+            since: None,
+            until: None,
+            limit: None,
+            offset: None,
+        };
         let (_, total) = filter_log_lines(&lines, &q);
         assert_eq!(total, 2); // line1 + line3 都是 alice
 
         // 按 status 过滤
-        let q = LogQuery { user: None, model: None, channel: None, path: None, status: Some(200), since: None, until: None, limit: None, offset: None };
+        let q = LogQuery {
+            user: None,
+            model: None,
+            channel: None,
+            path: None,
+            status: Some(200),
+            since: None,
+            until: None,
+            limit: None,
+            offset: None,
+        };
         let (page, total) = filter_log_lines(&lines, &q);
         assert_eq!(total, 1);
         assert_eq!(page[0]["status"].as_u64(), Some(200));
@@ -1192,12 +1362,32 @@ mod tests {
         assert_eq!(page[0]["channel"].as_str(), Some("ch1")); // 来自 span 展平
 
         // since 前缀比较
-        let q = LogQuery { user: None, model: None, channel: None, path: None, status: None, since: Some("2025-01-01T00:01:30Z".into()), until: None, limit: None, offset: None };
+        let q = LogQuery {
+            user: None,
+            model: None,
+            channel: None,
+            path: None,
+            status: None,
+            since: Some("2025-01-01T00:01:30Z".into()),
+            until: None,
+            limit: None,
+            offset: None,
+        };
         let (_, total) = filter_log_lines(&lines, &q);
         assert_eq!(total, 1); // 只有 line3 在 00:02:00
 
         // 分页
-        let q = LogQuery { user: None, model: None, channel: None, path: None, status: None, since: None, until: None, limit: Some(1), offset: Some(1) };
+        let q = LogQuery {
+            user: None,
+            model: None,
+            channel: None,
+            path: None,
+            status: None,
+            since: None,
+            until: None,
+            limit: Some(1),
+            offset: Some(1),
+        };
         let (page, total) = filter_log_lines(&lines, &q);
         assert_eq!(total, 2); // 全量
         assert_eq!(page.len(), 1); // 第二页只取 1 条

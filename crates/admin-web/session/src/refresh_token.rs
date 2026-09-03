@@ -1,9 +1,9 @@
 //! Token refresh flow (`POST /api/user/auth/refresh`).
 
-use dioxus::prelude::ReadableExt;
 use client::{ApiClient, ApiResult};
+use dioxus::prelude::ReadableExt;
 
-use crate::{manage_session::apply_bundle, AuthBundle};
+use crate::{AuthBundle, manage_session::apply_bundle};
 
 /// Refresh the access token via `POST /api/user/auth/refresh`.
 ///

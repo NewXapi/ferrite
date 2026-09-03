@@ -41,6 +41,6 @@ pub struct AuthBundle {
     pub user: User,
 }
 
-pub use login::{login, verify_2fa, LoginOutcome};
-pub use manage_session::{clear_session, init, logout, SessionState, SESSION};
+pub use login::{LoginOutcome, login, verify_2fa};
+pub use manage_session::{SESSION, SessionState, clear_session, init, logout};
 pub use refresh_token::refresh;

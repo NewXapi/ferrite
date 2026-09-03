@@ -1,4 +1,4 @@
-use api::identity::{require_admin, Pass};
+use api::identity::{Pass, require_admin};
 use axum::http::StatusCode;
 
 fn make_pass(is_admin: bool) -> Pass {

@@ -1,4 +1,4 @@
-use api::dispatch::{RouteIndex, ChannelConfig, ModelRoute};
+use api::dispatch::{ChannelConfig, ModelRoute, RouteIndex};
 
 /// RouteIndex 构造和修改
 #[test]
@@ -40,7 +40,10 @@ fn route_index_list_models_sorted() {
             base_url: "https://a.com".into(),
             channel_type: "openai".into(),
             keys: vec!["sk-1".into()],
-            models: vec![ModelRoute { alias: "z-model".into(), upstream: "z".into() }],
+            models: vec![ModelRoute {
+                alias: "z-model".into(),
+                upstream: "z".into(),
+            }],
         },
         ChannelConfig {
             id: 2,
@@ -48,7 +51,10 @@ fn route_index_list_models_sorted() {
             base_url: "https://b.com".into(),
             channel_type: "openai".into(),
             keys: vec!["sk-2".into()],
-            models: vec![ModelRoute { alias: "a-model".into(), upstream: "a".into() }],
+            models: vec![ModelRoute {
+                alias: "a-model".into(),
+                upstream: "a".into(),
+            }],
         },
     ];
     idx.build_from_channels(&channels);

@@ -22,7 +22,10 @@ fn valid_req() -> CreateChannelReq {
         base_url: "https://api.openai.com".into(),
         channel_type: "openai".into(),
         keys: vec!["sk-upstream-key".into()],
-        models: vec![ModelRoute { alias: "gpt-4o".into(), upstream: "gpt-4o".into() }],
+        models: vec![ModelRoute {
+            alias: "gpt-4o".into(),
+            upstream: "gpt-4o".into(),
+        }],
     }
 }
 
@@ -37,7 +40,11 @@ fn validate_channel_happy() {
 fn validate_channel_rejects_bad_input() {
     let mut bad_type = valid_req();
     bad_type.channel_type = "unknown".into();
-    assert!(validate_channel(&bad_type).unwrap_err().contains("channel_type"));
+    assert!(
+        validate_channel(&bad_type)
+            .unwrap_err()
+            .contains("channel_type")
+    );
 
     let mut no_models = valid_req();
     no_models.models.clear();
@@ -75,10 +82,10 @@ fn validate_channel_rejects_empty_fields() {
 /// deny_unknown_fields：多余 typo 字段必须报错，不能静默吞掉
 #[test]
 fn create_token_req_deny_unknown_fields() {
-    assert!(serde_json::from_str::<api::gateway::CreateTokenReq>(
-        r#"{"username":"x","quota_usd":5}"#
-    )
-    .is_err());
+    assert!(
+        serde_json::from_str::<api::gateway::CreateTokenReq>(r#"{"username":"x","quota_usd":5}"#)
+            .is_err()
+    );
     assert!(serde_json::from_str::<api::gateway::CreateTokenReq>(r#"{"username":"x"}"#).is_ok());
 }
 
@@ -89,7 +96,10 @@ fn valid_channel_cfg() -> api::dispatch::ChannelConfig {
         base_url: "https://api.openai.com".into(),
         channel_type: "openai".into(),
         keys: vec!["sk-key1".into()],
-        models: vec![api::dispatch::ModelRoute { alias: "gpt-4o".into(), upstream: "gpt-4o".into() }],
+        models: vec![api::dispatch::ModelRoute {
+            alias: "gpt-4o".into(),
+            upstream: "gpt-4o".into(),
+        }],
     }
 }
 
@@ -113,7 +123,7 @@ fn mask_channel_keys_all_masked() {
 /// merge_channel_config：None 字段不变，Some 字段覆写；changed 旗标准确
 #[test]
 fn merge_channel_config_partial_update() {
-    use api::gateway::{merge_channel_config, UpdateChannelReq};
+    use api::gateway::{UpdateChannelReq, merge_channel_config};
     let base = valid_channel_cfg();
 
     // 空更新：全部不变
@@ -131,7 +141,8 @@ fn merge_channel_config_partial_update() {
     assert_eq!(merged.keys, base.keys);
 
     // 同值不标 changed
-    let req = serde_json::from_str::<UpdateChannelReq>(&format!(r#"{{"name":"{}"}}"#, base.name)).unwrap();
+    let req = serde_json::from_str::<UpdateChannelReq>(&format!(r#"{{"name":"{}"}}"#, base.name))
+        .unwrap();
     let (merged, changed) = merge_channel_config(&base, &req);
     assert!(!changed);
     assert_eq!(merged.name, base.name);
@@ -140,13 +151,15 @@ fn merge_channel_config_partial_update() {
 /// UpdateChannelReq：多余字段 400（deny_unknown_fields）
 #[test]
 fn update_channel_req_deny_unknown_fields() {
-    assert!(serde_json::from_str::<api::gateway::UpdateChannelReq>(r#"{"name":"x","typo":1}"#).is_err());
+    assert!(
+        serde_json::from_str::<api::gateway::UpdateChannelReq>(r#"{"name":"x","typo":1}"#).is_err()
+    );
 }
 
 /// merge 边界：keys=[] （非 None) 算 change，随后 validate 会拒绝（三层校验证实）
 #[test]
 fn merge_channel_config_empty_vec_is_change() {
-    use api::gateway::{merge_channel_config, UpdateChannelReq};
+    use api::gateway::{UpdateChannelReq, merge_channel_config};
     let base = valid_channel_cfg();
     let req = serde_json::from_str::<UpdateChannelReq>(r#"{"keys":[]}"#).unwrap();
     let (merged, changed) = merge_channel_config(&base, &req);
@@ -154,14 +167,18 @@ fn merge_channel_config_empty_vec_is_change() {
     assert!(merged.keys.is_empty());
     // validate 链路禁止空 keys，PUT handler 会 400
     let create_req = api::gateway::CreateChannelReq {
-        name: merged.name, base_url: merged.base_url, channel_type: merged.channel_type,
-        keys: merged.keys, models: merged.models,
+        name: merged.name,
+        base_url: merged.base_url,
+        channel_type: merged.channel_type,
+        keys: merged.keys,
+        models: merged.models,
     };
     assert!(api::gateway::validate_channel(&create_req).is_err());
 
     // models 字段 merge
-    let req = serde_json::from_str::<UpdateChannelReq>(
-        r#"{"models":[{"alias":"m8","upstream":"m8"}]}"#).unwrap();
+    let req =
+        serde_json::from_str::<UpdateChannelReq>(r#"{"models":[{"alias":"m8","upstream":"m8"}]}"#)
+            .unwrap();
     let (merged, changed) = merge_channel_config(&base, &req);
     assert!(changed);
     assert_eq!(merged.models[0].alias, "m8");
@@ -170,12 +187,14 @@ fn merge_channel_config_empty_vec_is_change() {
 /// RechargeReq：多余 typo 字段必须报错（deny_unknown_fields）
 #[test]
 fn recharge_req_deny_typo() {
-    assert!(serde_json::from_str::<api::gateway::RechargeReq>(
-        r#"{"token_key":"sk-abc","amount":100,"typo":1}"#
-    )
-    .is_err());
-    assert!(serde_json::from_str::<api::gateway::RechargeReq>(
-        r#"{"token_key":"sk-abc","amount":100}"#
-    )
-    .is_ok());
+    assert!(
+        serde_json::from_str::<api::gateway::RechargeReq>(
+            r#"{"token_key":"sk-abc","amount":100,"typo":1}"#
+        )
+        .is_err()
+    );
+    assert!(
+        serde_json::from_str::<api::gateway::RechargeReq>(r#"{"token_key":"sk-abc","amount":100}"#)
+            .is_ok()
+    );
 }

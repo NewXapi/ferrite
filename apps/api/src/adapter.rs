@@ -42,7 +42,10 @@ pub async fn ensure_stream_ok(resp: StreamResponse) -> Result<StreamResponse, Ad
         }
         buf.extend_from_slice(&chunk);
     }
-    Err(AdapterError::Upstream(format!("status {status}: {}", String::from_utf8_lossy(&buf))))
+    Err(AdapterError::Upstream(format!(
+        "status {status}: {}",
+        String::from_utf8_lossy(&buf)
+    )))
 }
 
 /// OpenAI 格式适配器

@@ -92,8 +92,7 @@ pub fn tokens_to_quota(
     let Some(p) = pricing else {
         return prompt_tokens + completion_tokens;
     };
-    let cost = (prompt_tokens as f64 * p.input_per_1k
-        + completion_tokens as f64 * p.output_per_1k)
+    let cost = (prompt_tokens as f64 * p.input_per_1k + completion_tokens as f64 * p.output_per_1k)
         * p.multiplier
         / 1000.0;
     // 浮点上限护栏：f64 最大 ~1.8e19；超过视作饱和，防 panick/overflow
@@ -160,26 +159,42 @@ mod tests {
 
     #[test]
     fn configured_half_multiplier() {
-        let p = ModelPricing { input_per_1k: 1.0, output_per_1k: 1.0, multiplier: 0.5 };
+        let p = ModelPricing {
+            input_per_1k: 1.0,
+            output_per_1k: 1.0,
+            multiplier: 0.5,
+        };
         assert_eq!(tokens_to_quota(1000, 1000, Some(&p)), 1);
         assert_eq!(tokens_to_quota(500, 500, Some(&p)), 1);
     }
 
     #[test]
     fn tokens_to_quota_overflow_saturates() {
-        let p = ModelPricing { input_per_1k: 1e12, output_per_1k: 0.0, multiplier: 1.0 };
+        let p = ModelPricing {
+            input_per_1k: 1e12,
+            output_per_1k: 0.0,
+            multiplier: 1.0,
+        };
         assert_eq!(tokens_to_quota(u64::MAX, 0, Some(&p)), u64::MAX);
     }
 
     #[test]
     fn zero_tokens_is_zero() {
-        let p = ModelPricing { input_per_1k: 2.0, output_per_1k: 3.0, multiplier: 1.0 };
+        let p = ModelPricing {
+            input_per_1k: 2.0,
+            output_per_1k: 3.0,
+            multiplier: 1.0,
+        };
         assert_eq!(tokens_to_quota(0, 0, Some(&p)), 0);
     }
 
     #[test]
     fn validate_pricing_rejects_bad() {
-        let mut p = ModelPricing { input_per_1k: -1.0, output_per_1k: 1.0, multiplier: 1.0 };
+        let mut p = ModelPricing {
+            input_per_1k: -1.0,
+            output_per_1k: 1.0,
+            multiplier: 1.0,
+        };
         assert!(validate_pricing(&p).is_err());
         p.input_per_1k = 1.0;
         p.multiplier = 0.0;

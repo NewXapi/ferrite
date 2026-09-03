@@ -1,4 +1,4 @@
-use api::adapter::{ensure_stream_ok, AdapterError, StreamResponse};
+use api::adapter::{AdapterError, StreamResponse, ensure_stream_ok};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 
@@ -28,7 +28,10 @@ async fn ensure_stream_ok_2xx_returns_ok() {
     let (url, _server) = serve_once(200, "ok");
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await.unwrap();
-    let sr = StreamResponse { status: resp.status().as_u16(), stream: resp };
+    let sr = StreamResponse {
+        status: resp.status().as_u16(),
+        stream: resp,
+    };
 
     let result = ensure_stream_ok(sr).await;
     assert!(result.is_ok());
@@ -40,7 +43,10 @@ async fn ensure_stream_ok_5xx_returns_error() {
     let (url, _server) = serve_once(500, "internal error");
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await.unwrap();
-    let sr = StreamResponse { status: resp.status().as_u16(), stream: resp };
+    let sr = StreamResponse {
+        status: resp.status().as_u16(),
+        stream: resp,
+    };
 
     let result = ensure_stream_ok(sr).await;
     assert!(result.is_err());
@@ -56,7 +62,10 @@ async fn ensure_stream_ok_4xx_returns_error() {
     let (url, _server) = serve_once(404, "not found");
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await.unwrap();
-    let sr = StreamResponse { status: resp.status().as_u16(), stream: resp };
+    let sr = StreamResponse {
+        status: resp.status().as_u16(),
+        stream: resp,
+    };
 
     let result = ensure_stream_ok(sr).await;
     assert!(result.is_err());

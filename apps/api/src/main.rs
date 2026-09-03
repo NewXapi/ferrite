@@ -26,7 +26,7 @@ async fn main() -> ExitCode {
     // 统一遥测（纯现成 crate，零自研）：
     //   stdout 人类可读层 + 滚动 JSON 文件层（tracing-appender，非阻塞）
     //   两层各自挂 per-layer EnvFilter，RUST_LOG / config.log_level 统一控制
-    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer as _};
+    use tracing_subscriber::{Layer as _, layer::SubscriberExt, util::SubscriberInitExt};
     let file_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&config.log_level));
     let stdout_filter = file_filter.clone();
