@@ -47,9 +47,27 @@ crates/<domain>/<feature>/
 - 测试放同层 `tests/`，不在 `src/` 使用 `#[cfg(test)]`。
 - 新增或移动功能 crate 时，更新根 `Cargo.toml` 的 `workspace.members` 和对应域目录的 `README.md`。
 
+
 ## 开发环境约定
 
-- `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支，代码改动只在对应 worktree 里做；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
-- CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：`cargo build` / `cargo test` / `cargo clippy` / `npm` / `bun` 等编译、测试、装包类命令一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
-- `.githooks/` 的 pre-commit / pre-push / merge 拦截信息必须读，按输出修根因；禁止 `--no-verify`、禁止绕过 gate。绕过会让 PR 侧 `gate merge --dry-run` 与 CI 失败。
-- 完整编排规范（主控/子代理拆分、CRG + ocr 双层审查、PR comment 规则）见 `~/.config/deskctl/snippets/tasks/dev-implement`，本文件只列环境级约定。
+### worktree 与子代理
+
+- `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
+- 开子代理时，prompt 必须写明**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`）与所属分支，限定其只在该目录内读写、编译、提交；禁止在仓库根目录或其他 worktree 落文件。
+
+### cpulimit
+
+- CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等），以及跑子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
+
+### gate（`.githooks/`）
+
+- pre-commit / pre-push / merge 的拦截信息必须逐条读完再修根因；禁止 `--no-verify`、禁止 `| head -5` 之类截断后忽略。FAIL 条目（`checklist.*` / `WS-*` 格式）必须清零，WARN 说明理由后可放行。
+- gate 会检查 GitHub 侧规范（issue 关联、PR 结构）；`gh` 操作前先跑对应检查，不要等 push 才发现。
+- 占位用 Rust 原生宏：未实现的函数/trait 写 `todo!("TODO(#<issue>): 说明")` 或 `unimplemented!(...)`；TODO/FIXME 注释必须带 issue 号（`TODO(#123): ...`），这是 `rust_todo_needs_issue` 检查项。
+
+### 调查与审查工具
+
+- 调查代码先用 `code-review-graph update` 建增量图谱，再查调用关系与全局结构；不要直接逐文件翻。
+- 审查两层：先 `code-review-graph detect-changes`（结构层 CRG），再 `ocr review`（规范层）。ocr 是 LLM 审查，必须按文件/模块分批跑（如 `ocr review --from <base> --to <ref>` 后按块拆），禁止一次性全 repo 喂入，避免限流。
+
+完整编排规范（主控/子代理拆分、审查轮次、PR comment 规则）见 `~/.config/deskctl/snippets/tasks/dev-implement`；本文件只列环境级约定。
