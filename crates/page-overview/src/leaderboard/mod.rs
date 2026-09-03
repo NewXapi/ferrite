@@ -6,7 +6,7 @@ pub mod data;
 
 use dioxus::prelude::*;
 
-use crate::api::{MODELS, ModelStat, composite};
+use crate::api::leaderboard::{MODELS, ModelStat, composite};
 use cards::{MiniRadarCard, PosterImageCard};
 use charts::{BubbleCard, RankListCard, RidgeCard};
 

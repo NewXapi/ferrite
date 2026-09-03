@@ -5,7 +5,7 @@
 //!
 //! 范围:`account`(密钥·资料 / 用量日志 / 邀请奖励)、`users`(用户管理)、
 //! `overview`(总览统计 / 用量分布)、`models`(模型卡片 / 分组价格)。
-//! leaderboard 的数据用 `asset!()` 宏引立绘,留在面板内的 data 层(见 page-leaderboard)。
+//! leaderboard 的数据用 `asset!()` 宏引立绘,留在面板内的 data 层(见 page-overview)。
 
 pub mod account;
 pub mod models;

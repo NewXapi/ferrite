@@ -2253,8 +2253,6 @@ dependencies = [
  "page-account",
  "page-admin",
  "page-auth",
- "page-leaderboard",
- "page-models",
  "page-overview",
  "page-users",
  "ui",
@@ -2398,27 +2396,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "page-leaderboard"
-version = "0.1.0"
-dependencies = [
- "dioxus",
- "manganis",
-]
-
-[[package]]
-name = "page-models"
-version = "0.1.0"
-dependencies = [
- "dioxus",
- "mock",
-]
-
-[[package]]
 name = "page-overview"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "dioxus",
+ "manganis",
  "mock",
 ]
 
@@ -2426,6 +2409,7 @@ dependencies = [
 name = "page-users"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dioxus",
  "mock",
  "ui",

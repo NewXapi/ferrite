@@ -3,24 +3,58 @@
 
 use dioxus::prelude::*;
 
-use crate::api::{MODELS, ModelStat, composite};
+use crate::api::leaderboard::{MODELS, ModelStat, composite};
 
-/// 综合排行: 按六维均值排序.
+/// 综合排行: 按六维均值排序, 可按时间窗切换.
 #[component]
 pub fn RankListCard() -> Element {
-    let mut ranked: Vec<(&ModelStat, f64)> = MODELS.iter().map(|m| (m, composite(m))).collect();
+    // 时间窗只作用于本卡, 不外泄给面板.
+    let mut timeframe = use_signal(|| "至今");
+
+    // ponytail: 数据层还是静态 mock, 用 growth 当"近期势头"权重伪造窗口差异;
+    // 接上真实后端时把这段换成按窗口取数即可.
+    let momentum = match timeframe() {
+        "今天" => 0.30,
+        "本周" => 0.20,
+        "本月" => 0.10,
+        _ => 0.0,
+    };
+    let mut ranked: Vec<(&ModelStat, f64)> = MODELS
+        .iter()
+        .map(|m| {
+            let recent = (m.growth / 20.0).min(1.0) * 100.0;
+            (m, composite(m) * (1.0 - momentum) + recent * momentum)
+        })
+        .collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     rsx! {
         div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
-            h2 { class: "mb-4 text-sm font-medium text-zinc-300", "综合排行" }
+            // 标题与切换器同行: 不额外占高, 卡片尺寸不变.
+            div { class: "mb-4 flex items-center justify-between gap-3",
+                h2 { class: "text-sm font-medium text-zinc-300", "综合排行" }
+                div { class: "flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5",
+                    for tf in ["今天", "本周", "本月", "至今"] {
+                        button {
+                            key: "{tf}",
+                            class: "rounded px-1.5 py-0.5 text-[11px] leading-4 transition-colors",
+                            class: if timeframe() == tf { "bg-zinc-800 text-zinc-100" } else { "text-zinc-500 hover:text-zinc-300" },
+                            onclick: move |_| timeframe.set(tf),
+                            "{tf}"
+                        }
+                    }
+                }
+            }
             div { class: "space-y-3",
                 for (i, (m, score)) in ranked.iter().enumerate() {
                     {
                         let num_cls = if i == 0 { "text-zinc-100" } else { "text-zinc-500" };
                         let bar_cls = if i == 0 { "bg-zinc-200" } else { "bg-zinc-500" };
                         rsx! {
-                        div { class: "grid grid-cols-[auto_1fr_auto] items-center gap-3",
+                        // 负外边距抵掉内边距: 悬停有命中区, 行宽行高不变.
+                        div {
+                            key: "{m.name}",
+                            class: "-mx-2 -my-1 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-zinc-800/60 cursor-default",
                             span { class: "w-5 text-right text-sm font-semibold {num_cls}", "{i + 1}" }
                             span { class: "truncate text-sm text-zinc-300", "{m.name}" }
                             span { class: "text-sm text-zinc-400", "{score:.1}" }

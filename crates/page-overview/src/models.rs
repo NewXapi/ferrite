@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::api::{self, ModelInfo};
+use crate::api::models::{self as api, ModelInfo};
 
 /// Tab switcher glyph.
 #[component]

@@ -10,8 +10,6 @@ members = [
     "crates/page-auth",
     "crates/page-overview",
     "crates/page-account",
-    "crates/page-models",
-    "crates/page-leaderboard",
     "crates/page-admin",
     "crates/page-users",
 ]
