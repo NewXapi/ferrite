@@ -352,6 +352,215 @@ impl AuthService {
         .ok_or(AuthError::UserNotFound)?;
         Ok(row.into())
     }
+    // ---------- self 管理 / admin 用户管理 ----------
+
+    /// 改昵称 / 改密码。改密码需要原密码, 成功后 auth_version++
+    /// (全部 access/refresh 立即失效) 并吊销该用户全部 refresh。
+    pub async fn update_self(
+        &self,
+        user_key: Uuid,
+        display_name: Option<&str>,
+        original_password: Option<&str>,
+        new_password: Option<&str>,
+    ) -> Result<UserView, AuthError> {
+        if let (Some(_), None) | (None, Some(_)) = (new_password, original_password) {
+            return Err(AuthError::BadRequest(
+                "original_password and new_password must be provided together".into(),
+            ));
+        }
+
+        let row: UserRow = sqlx::query_as::<_, UserRow>(
+            r#"SELECT key, username, display_name, email, password_hash, role, status,
+                      quota, used_quota, group_id, auth_version, created_at
+               FROM auth_users WHERE key = $1"#,
+        )
+        .bind(user_key)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(AuthError::UserNotFound)?;
+
+        let bump_version = if let Some(new_pwd) = new_password {
+            let original = original_password.expect("checked above");
+            if new_pwd.len() < 8 {
+                return Err(AuthError::BadRequest("password >= 8 chars".into()));
+            }
+            if !password::verify(original, &row.password_hash) {
+                return Err(AuthError::InvalidCredentials);
+            }
+            let phc = password::hash(new_pwd)?;
+            sqlx::query("UPDATE auth_users SET password_hash = $2, auth_version = auth_version + 1, updated_at = now() WHERE key = $1")
+                .bind(user_key)
+                .bind(&phc)
+                .execute(&self.pool)
+                .await?;
+            true
+        } else {
+            false
+        };
+
+        if let Some(name) = display_name {
+            sqlx::query("UPDATE auth_users SET display_name = $2, updated_at = now() WHERE key = $1")
+                .bind(user_key)
+                .bind(name)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        if bump_version {
+            // 改密 = 全端登出
+            sqlx::query("DELETE FROM auth_refresh_tokens WHERE user_key = $1")
+                .bind(user_key)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        self.fetch_user_by_key(user_key).await
+    }
+
+    /// 注销 / admin 删号 — 平表阶段直接硬删 (含 refresh), 不过度设计软删。
+    pub async fn delete_user(&self, user_key: Uuid) -> Result<(), AuthError> {
+        sqlx::query("DELETE FROM auth_refresh_tokens WHERE user_key = $1")
+            .bind(user_key)
+            .execute(&self.pool)
+            .await?;
+        let affected = sqlx::query("DELETE FROM auth_users WHERE key = $1")
+            .bind(user_key)
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
+        if affected == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+        Ok(())
+    }
+
+    /// admin 用户列表 — 分页 + 搜索 (username/email/display_name ILIKE)。
+    pub async fn list_users(
+        &self,
+        search: Option<&str>,
+        page: i64,
+        size: i64,
+    ) -> Result<(Vec<UserView>, i64), AuthError> {
+        let size = size.clamp(1, 100);
+        let page = page.max(1);
+        let offset = (page - 1) * size;
+        let pattern = search
+            .map(|s| format!("%{}%", s.trim()))
+            .unwrap_or_else(|| "%".into());
+
+        let total: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM auth_users WHERE username ILIKE $1 OR email ILIKE $1 OR display_name ILIKE $1",
+        )
+        .bind(&pattern)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let rows: Vec<UserRow> = sqlx::query_as::<_, UserRow>(
+            r#"SELECT key, username, display_name, email, password_hash, role, status,
+                      quota, used_quota, group_id, auth_version, created_at
+               FROM auth_users
+               WHERE username ILIKE $1 OR email ILIKE $1 OR display_name ILIKE $1
+               ORDER BY created_at DESC
+               LIMIT $2 OFFSET $3"#,
+        )
+        .bind(&pattern)
+        .bind(size)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok((rows.into_iter().map(Into::into).collect(), total))
+    }
+
+    /// admin 用户操作 — action ∈ {enable, disable, set_role, adjust_quota, reset_password}。
+    pub async fn manage_user(
+        &self,
+        target_key: Uuid,
+        action: &str,
+        value: Option<&str>,
+    ) -> Result<UserView, AuthError> {
+        match action {
+            "enable" | "disable" => {
+                let status: i16 = if action == "enable" { 1 } else { 2 };
+                let affected = sqlx::query("UPDATE auth_users SET status = $2, updated_at = now() WHERE key = $1")
+                    .bind(target_key)
+                    .bind(status)
+                    .execute(&self.pool)
+                    .await?
+                    .rows_affected();
+                if affected == 0 {
+                    return Err(AuthError::UserNotFound);
+                }
+                if status == 2 {
+                    sqlx::query("DELETE FROM auth_refresh_tokens WHERE user_key = $1")
+                        .bind(target_key)
+                        .execute(&self.pool)
+                        .await?;
+                }
+            }
+            "set_role" => {
+                let role: i16 = value
+                    .and_then(|v| v.parse().ok())
+                    .ok_or_else(|| AuthError::BadRequest("value must be 1 | 10 | 100".into()))?;
+                if ![1, 10, 100].contains(&role) {
+                    return Err(AuthError::BadRequest("role must be 1 | 10 | 100".into()));
+                }
+                let affected = sqlx::query("UPDATE auth_users SET role = $2, updated_at = now() WHERE key = $1")
+                    .bind(target_key)
+                    .bind(role)
+                    .execute(&self.pool)
+                    .await?
+                    .rows_affected();
+                if affected == 0 {
+                    return Err(AuthError::UserNotFound);
+                }
+            }
+            "adjust_quota" => {
+                let delta: i64 = value
+                    .and_then(|v| v.parse().ok())
+                    .ok_or_else(|| AuthError::BadRequest("value must be an integer delta".into()))?;
+                let affected = sqlx::query(
+                    "UPDATE auth_users SET quota = GREATEST(0, quota + $2), updated_at = now() WHERE key = $1",
+                )
+                .bind(target_key)
+                .bind(delta)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
+                if affected == 0 {
+                    return Err(AuthError::UserNotFound);
+                }
+            }
+            "reset_password" => {
+                let new_pwd = value.ok_or_else(|| AuthError::BadRequest("value = new password".into()))?;
+                if new_pwd.len() < 8 {
+                    return Err(AuthError::BadRequest("password >= 8 chars".into()));
+                }
+                let phc = password::hash(new_pwd)?;
+                let affected = sqlx::query(
+                    "UPDATE auth_users SET password_hash = $2, auth_version = auth_version + 1, updated_at = now() WHERE key = $1",
+                )
+                .bind(target_key)
+                .bind(&phc)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
+                if affected == 0 {
+                    return Err(AuthError::UserNotFound);
+                }
+                sqlx::query("DELETE FROM auth_refresh_tokens WHERE user_key = $1")
+                    .bind(target_key)
+                    .execute(&self.pool)
+                    .await?;
+            }
+            _ => {
+                return Err(AuthError::BadRequest(
+                    "action must be enable|disable|set_role|adjust_quota|reset_password".into(),
+                ));
+            }
+        }
+        self.fetch_user_by_key(target_key).await
+    }
 
     async fn issue_session(
         &self,

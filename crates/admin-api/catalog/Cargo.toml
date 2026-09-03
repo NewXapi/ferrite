@@ -11,5 +11,19 @@ publish.workspace = true
 [dependencies]
 contract = { path = "../../contract" }
 store    = { path = "../store" }
+auth     = { path = "../auth" }
+axum     = { workspace = true }
+sqlx     = { workspace = true }
 serde    = { workspace = true }
 serde_json = { workspace = true }
+chrono   = { workspace = true }
+uuid     = { workspace = true }
+rand     = { workspace = true }
+sha2     = "0.10"
+hex      = "0.4"
+
+[dev-dependencies]
+tokio = { workspace = true }
+uuid  = { workspace = true }
+sha2  = "0.10"
+hex   = "0.4"
