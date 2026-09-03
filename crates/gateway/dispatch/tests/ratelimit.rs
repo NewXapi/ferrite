@@ -10,6 +10,59 @@ use std::sync::Arc;
 // ---------- 解析边界 ----------
 
 #[test]
+fn parse_rejects_malformed_and_overflow() {
+    // 畸形输入必须 None, 绝不放行 (漏配 = 不限流, 错配 = 拒绝)
+    for bad in [
+        "",       // 空
+        "100",    // 缺 /
+        "100/",   // 缺单位
+        "/50s",   // 缺请求数
+        "100/50", // 缺单位字符
+        "100/0s", // 0 倍数
+        "0/50s",  // 0 请求
+        "100/5x", // 未知单位
+        " 100/s", // 空白
+        "100/s ", // 尾随空白
+    ] {
+        assert_eq!(RateLimitSpec::parse(bad), None, "应拒绝: {bad:?}");
+    }
+    // u64 溢出: parse 失败 → None (checked_mul 语义)
+    assert_eq!(RateLimitSpec::parse("18446744073709551616/1s"), None);
+    assert_eq!(RateLimitSpec::parse("100/18446744073709551616s"), None);
+}
+
+#[test]
+fn stale_buckets_pruned_after_two_hours() {
+    // 2h 前的旧桶必须被 retain 清理 — 否则长尾 key 内存无限膨胀。
+    // 内省 bucket_count 验证清理, 而非只靠行为 (滑动窗口计数本来就不含
+    // 窗口外桶, 行为观测不到内存回收)。
+    let now = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let clock = {
+        let now = now.clone();
+        move || now.load(std::sync::atomic::Ordering::Relaxed)
+    };
+    let rl = SlidingWindow::with_clock(clock);
+    let spec = RateLimitSpec {
+        requests: 1000,
+        window_ms: 60_000,
+    };
+
+    rl.admits("k", Some(&spec), 0);
+    assert_eq!(rl.bucket_count("k"), 1);
+
+    // 推进 2h+1s: 同一 admits 调用内先清理旧桶再计数
+    now.store(2 * 3_600_000 + 1_000, std::sync::atomic::Ordering::Relaxed);
+    assert!(rl.admits(
+        "k",
+        Some(&spec),
+        now.load(std::sync::atomic::Ordering::Relaxed)
+    ));
+    assert_eq!(rl.bucket_count("k"), 1, "2h 前旧桶应被清理, 只剩当前秒桶");
+}
+
+// ---------- 解析边界 ----------
+
+#[test]
 fn parse_basic_units() {
     assert_eq!(
         RateLimitSpec::parse("100/s"),

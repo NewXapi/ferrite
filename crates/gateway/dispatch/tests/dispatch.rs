@@ -146,6 +146,38 @@ fn success_updates_ewma_and_clears_streak() {
 }
 
 #[test]
+fn slow_start_mid_recovery_failure_resumes_streak() {
+    // 熔断 → 冷却过期 → 成功 1 次 (slow_start 0.5→0.75) → 再失败 2 次:
+    // streak 从 0 重新累计且权重继续递减, 而不是把恢复进度清零重来。
+    let now = Arc::new(AtomicU64::new(0));
+    let clock = {
+        let now = now.clone();
+        move || now.load(Ordering::Relaxed)
+    };
+    let table = MemoryHealthTable::with_clock(clock);
+
+    for _ in 0..5 {
+        table.record("u1", Err(FailureClass::Retryable), 1000); // 熔断
+    }
+    let expiry = table.get("u1").cooldown_until_ms;
+    now.store(expiry + 1, Ordering::Relaxed);
+
+    table.record("u1", Ok(200), 900); // 恢复中: 0.5 + 0.25 = 0.75
+    assert_eq!(table.get("u1").slow_start, 0.75);
+
+    table.record("u1", Err(FailureClass::Retryable), 1000); // streak=1
+    table.record("u1", Err(FailureClass::Retryable), 1000); // streak=2
+    let st = table.get("u1");
+    assert_eq!(st.failure_streak, 2, "恢复后的失败应重新累计 streak");
+    assert!(
+        (st.slow_start - 0.35).abs() < 1e-9,
+        "0.75 - 2×0.2 = 0.35, got {}",
+        st.slow_start
+    );
+    assert!(table.is_selectable("u1", expiry + 1), "未达阈值不应熔断");
+}
+
+#[test]
 fn latency_quality_neutral_below_min_samples() {
     let table = MemoryHealthTable::new();
     table.record("u1", Ok(200), 2500); // 1 sample < MIN_SAMPLES
@@ -200,6 +232,30 @@ fn weight_zero_stays_selectable_at_lowest_share() {
     assert!(
         zero_picks < 150,
         "weight=0 份额应显著低于 weight=10: got {zero_picks}/300"
+    );
+}
+
+#[test]
+fn weighted_distribution_matches_configured_ratio() {
+    // pick_weighted 核心数学: 同 priority 层, weight 10:30 → 期望 25%/75%。
+    // 3000 抽, heavy 落在 [70%, 80%] — 真值 75%, σ≈23.7, 边界在 6σ+ 外,
+    // flake 概率可忽略。测的是"权重比例方向与幅度正确", 不是精确概率。
+    let units = vec![
+        unit("g", "m", "light", 10, 10, 1),
+        unit("g", "m", "heavy", 10, 30, 1),
+    ];
+    let health = MemoryHealthTable::new();
+    let mut heavy = 0;
+    let n = 3000;
+    for _ in 0..n {
+        if assert_pick(&units, &health, &[]).unwrap().meta.key == "heavy" {
+            heavy += 1;
+        }
+    }
+    let ratio = heavy as f64 / n as f64;
+    assert!(
+        (0.70..=0.80).contains(&ratio),
+        "weight 10:30 期望 ~75%, 实测 {ratio:.3} ({heavy}/{n})"
     );
 }
 
@@ -310,6 +366,45 @@ fn dispatcher_select_resolves_full_candidate() {
     let c = dispatcher.select("g", "m", &[]).unwrap();
     assert_eq!(c.secret, "sk-secret");
     assert_eq!(c.base_url, "https://upstream.example");
+}
+
+#[test]
+fn failover_end_to_end_switches_candidate() {
+    // 端到端: select 得 A → 失败 mark_tried(A) → 下次 select 排除 A 换 B。
+    let units = vec![
+        unit("g", "m", "ch1", 10, 10, 1),
+        unit("g", "m", "ch2", 10, 10, 1),
+    ];
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("ch1".to_string(), channel("ch1", "s1", "https://u1"));
+    channels.insert("ch2".to_string(), channel("ch2", "s2", "https://u2"));
+    let snap = Arc::new(dispatch::Snapshot { units, channels });
+    let dispatcher = dispatch::Dispatcher::new(Some(snap), Arc::new(MemoryHealthTable::new()));
+
+    let mut failover = dispatch::retry::Failover::new(dispatch::retry::RetryPolicy::default());
+    assert_eq!(failover.next_attempt(), Some(1));
+    let first = dispatcher.select("g", "m", failover.exclude()).unwrap();
+    failover.mark_tried(first.unit.meta.key.clone());
+
+    assert_eq!(failover.next_attempt(), Some(2));
+    let second = dispatcher.select("g", "m", failover.exclude()).unwrap();
+    assert_ne!(
+        second.unit.meta.key, first.unit.meta.key,
+        "排除已试候选后必须换渠道"
+    );
+    assert!(failover.exclude().contains(&first.unit.meta.key));
+}
+
+#[test]
+fn single_candidate_is_selected() {
+    // 单候选: 直接选中, 不经过分层随机 (new-api selectByWeight 单候选直返语义)
+    let units = vec![unit("g", "m", "only", 10, 0, 1)];
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("only".to_string(), channel("only", "s1", "https://u1"));
+    let snap = Arc::new(dispatch::Snapshot { units, channels });
+    let dispatcher = dispatch::Dispatcher::new(Some(snap), Arc::new(MemoryHealthTable::new()));
+    let c = dispatcher.select("g", "m", &[]).unwrap();
+    assert_eq!(c.unit.meta.key, "only");
 }
 
 #[test]

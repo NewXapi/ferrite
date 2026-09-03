@@ -178,4 +178,10 @@ impl SlidingWindow {
     pub fn admits_now(&self, key: &str, spec: Option<&RateLimitSpec>) -> bool {
         self.admits(key, spec, (self.now_ms)())
     }
+
+    /// 某 key 当前保留的秒桶数 (观测/测试用; 生产不需要)。
+    #[doc(hidden)]
+    pub fn bucket_count(&self, key: &str) -> usize {
+        self.lock().get(key).map_or(0, |b| b.len())
+    }
 }
