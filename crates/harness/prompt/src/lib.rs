@@ -12,7 +12,9 @@
 //! - [`render`] — `PromptInput::render`，按固定顺序拼装最终 messages
 //! - [`truncate`] — `truncate_history`，从最新到最旧按 token budget 裁剪，system 与
 //!   tool-call/result 组原子保留
-//!
+//! - [`reasoning`] — `ReasoningTemplate` + `wrap_reasoning` + `inject_reasoning`，
+//!   把模型推理回填为额外 system 消息（无 UI）
+
 //! ## 设计边界
 //!
 //! 宏引擎（`{{time}}` / `/roll` / `setvar` 等）在前端（Dioxus）执行；Rust 侧只接受
@@ -28,6 +30,7 @@
 #![deny(missing_docs)]
 
 pub mod prompt_snapshot;
+pub mod reasoning;
 pub mod render;
 pub mod truncate;
 pub mod types;
@@ -38,6 +41,7 @@ pub use prompt_snapshot::{
     PromptSnapshotError, is_prompt_snapshot, messages_from_payload, reject_unfinalized_snapshot,
     snapshot_kind, validate_prompt_snapshot_context_policy,
 };
+pub use reasoning::{ReasoningTemplate, inject_reasoning, wrap_reasoning};
 pub use render::{RenderError, render};
 pub use truncate::{TruncationDropReason, truncate_history};
 pub use types::{
