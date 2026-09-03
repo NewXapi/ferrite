@@ -1,6 +1,27 @@
 # Ferrite 工作约定
 
-## 目录术语
+## 开工前（按顺序读）
+
+1. 读根 `AGENTS.md`（本文件）。
+2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
+3. 读自己功能 crate 的 `README.md`，按文件实现列表工作，按其验收命令验证后提交 conventional commit。
+
+本文件按阅读优先级排布：开工动作 → 域边界 → 参考知识 → 安全约定 → 编排流程 → 硬约束。
+
+## 开发方式
+
+- `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支，worktree 目录名与分支名尾段一致（`.wt/admin-api` ↔ `feat/admin-api`）；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
+- 默认 **PR-only**：不开 issue，worktree 起手就开 draft PR，任务清单与验收登记在 PR body；用户 prompt 明确要求时才建 issue。
+- 合并一律 **squash merge**（`gh pr merge --squash`），不用 merge commit / rebase merge；PR 标题就是 squash 后的 conventional commit message，必须规范。
+- 首次 clone 后 `cp config/config.toml.example config/config.toml`（本地配置不入库）。
+
+## 域目录并发与越界
+
+- `crates/<domain>/` 是高内聚的开发单元：一个会话接手某域目录即**独占**它——其他会话不会来干扰，它也**不准越界**改动其他域目录下的任何 crate。
+- 唯一例外是重构开发需要跨域时：开工前在 PR 报备涉及的域目录清单，确认无在跑会话冲突再动。
+- 跨域共享只有 `crates/contract`（共享 API 契约）：需要新 DTO 先声明变更，由一个会话统一修改。
+
+## 目录术语（参考）
 
 ```text
 crates/<domain>/<feature>/
@@ -9,14 +30,15 @@ crates/<domain>/<feature>/
 | 术语 | 位置 | 含义 |
 |------|------|------|
 | **域目录** | `crates/<domain>/` | 业务能力集合，只放 `README.md` 和功能 crate 目录；自身不是 crate。例：`gateway`、`admin-api`、`admin-web`、`tavern-api`、`tavern-web`、`harness`。 |
-| **功能 crate** | `crates/<domain>/<feature>/` | 有 `Cargo.toml` 和 `src/lib.rs` 的 library crate。例：`tavern-api/chats`、`gateway/dispatch`、`harness/tools`。提需求时可直接说“做 `tavern-api/chats`”。 |
+| **功能 crate** | `crates/<domain>/<feature>/` | 有 `Cargo.toml` 和 `src/lib.rs` 的 library crate。例：`tavern-api/chats`、`gateway/dispatch`、`harness/tools`。提需求时可直接说"做 `tavern-api/chats`"。 |
 | **共享 crate** | `crates/<name>/` | 跨域共享的独立 crate。当前只有 `crates/contract`。 |
 | **应用** | `apps/<name>/` | 有 `main.rs` 的可执行程序，负责配置、状态和路由组装。例：`apps/api`、`apps/admin-web`、`apps/tavern-web`。 |
 | **模块** | `src/<name>.rs` 或 `src/<name>/` | 功能 crate 内部实现文件，不单独进 workspace。 |
 
-## 依赖和组装
+## 依赖和组装（参考）
 
 - 功能 crate 只提供 library API；不定义进程入口。
+- 域间禁止直接依赖：跨域引用只允许依赖 `crates/contract`；域内功能 crate 之间可以依赖（如 `admin-web/page-*` → `client`）。
 - `apps/api` 组装 `gateway/*`、`admin-api/*`、`tavern-api/*` 和 `harness/runtime`。
 - `apps/admin-web` 组装 `admin-web/*`。
 - `apps/tavern-web` 组装 `tavern-web/*` 和 `harness/ui`。
@@ -26,39 +48,32 @@ crates/<domain>/<feature>/
 
 ## 多会话文件所有权
 
-- 一个会话只改自己负责的功能 crate。
+- 会话所有权以域目录为边界（见上「域目录并发与越界」）；`crates/contract/` 是唯一跨域共享点。
 - 根 `Cargo.toml` 只有新增或移动功能 crate 的会话修改；改完说明新增的 workspace member。
 - `crates/contract/` 是共享 API 契约；需要新 DTO 时先声明变更，再由一个会话统一修改。
 - `apps/api/src/` 只由 API 组装会话修改。
 - `apps/admin-web/` 和 `apps/tavern-web/` 只由各自应用组装会话修改。
 - 每个功能 crate 的 README 与实现同步更新。
 
-## 每个会话开工前
+## 安全与环境约定
 
-1. 读根 `AGENTS.md`。
-2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
-3. 读自己功能 crate 的 `README.md`，按文件实现列表工作。
-4. 按该 README 的验收命令验证，再提交一个 conventional commit。
+### 文件删除
 
-## 目标约束
+- 删除用 `gio trash <path>`（进回收站，可恢复）；`gio remove` / `gio rm` / `rm` 是**永久删除**，禁止直接用。git 跟踪文件的删除可以用 `git rm`。
 
-- `harness/core`、`harness/prompt`、`harness/tools` 必须支持 `wasm32-unknown-unknown`。
-- `tavern-web/*` 和 `admin-web/*` 必须支持 `wasm32-unknown-unknown`。
-- 测试放同层 `tests/`，不在 `src/` 使用 `#[cfg(test)]`。
-- 新增或移动功能 crate 时，更新根 `Cargo.toml` 的 `workspace.members` 和对应域目录的 `README.md`。
+### 密钥与敏感信息
 
-
-## 开发环境约定
-
-### worktree 与子代理
-
-- `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
-- 默认 **PR-only 开发**：不开 issue，worktree 起手就开 draft PR，任务清单与验收登记在 PR body；用户 prompt 明确要求时才建 issue。
-- 开子代理时，prompt 必须写明**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`）与所属分支，限定其只在该目录内读写、编译、提交；禁止在仓库根目录或其他 worktree 落文件。
+- 禁止提交：真实 IP 地址、上游/内网地址、API key、token、密钥、密码。提交前扫一眼 diff。
+- 本地配置放 `config/config.toml`（已 gitignore，模板见 `config/config.toml.example`）或 `.env*`（已 gitignore）；文档与示例用占位符（`<API_KEY>`、`127.0.0.1`）。
 
 ### cpulimit
 
-- CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等），以及跑子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
+- CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
+
+### 测试分层
+
+- 本地只跑针对性测试：`cargo test -p <crate>`（受影响的 crate 及其验收命令）。
+- 全量测试（`cargo test --all`、全 workspace 构建）放 PR CI，不在本地裸跑。
 
 ### gate（`.githooks/`）
 
@@ -69,8 +84,7 @@ crates/<domain>/<feature>/
 ### 调查与审查工具
 
 - 调查代码先用 `code-review-graph update` 建增量图谱，再查调用关系与全局结构；不要直接逐文件翻。
-- 审查两层：先 `code-review-graph detect-changes`（结构层 CRG），再 `ocr review`（规范层）。ocr 是 LLM 审查，必须按文件/模块分批跑（如 `ocr review --from <base> --to <ref>` 后按块拆），禁止一次性全 repo 喂入，避免限流。
-
+- 审查两层：先 `code-review-graph detect-changes`（结构层 CRG），再 `ocr review`（规范层）。ocr 是 LLM 审查，必须按文件/模块分批跑，禁止一次性全 repo 喂入（限流）。
 
 ## PR 开发流程（主控 / 子代理编排）
 
@@ -78,8 +92,8 @@ crates/<domain>/<feature>/
 
 ### 硬性门禁
 
-- **PR-only**：一切工作面以 PR 登记（见上「开发环境约定」）；禁止新建 GitHub issue、禁止改 epic 结构（挂/摘 sub-issue）。仅当用户 prompt 明确要求建 issue 时，先报备标题与 done when，批准后才建。
-- **工作目录门禁**：所有子代理必须在 `.wt/<branch>` 工作；子代理 prompt 必须写明全局绝对路径与分支，禁止在仓库根目录写入。
+- **PR-only**：一切工作面以 PR 登记（见上「开发方式」）；禁止新建 GitHub issue、禁止改 epic 结构（挂/摘 sub-issue）。仅当用户 prompt 明确要求建 issue 时，先报备标题与 done when，批准后才建。
+- **工作目录门禁**：所有子代理必须在 `.wt/<branch>` 工作；子代理 prompt 必须写明**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`）与所属分支，限定其只在该目录内读写、编译、提交；禁止在仓库根目录或其他 worktree 落文件。
 - **任务量门禁**：单个子任务 ≤ 5 个文件、单一主题、单一修改范围；能按文件 / 范围 / 主题 / 调用链 / 测试拆就拆，不把半个模块丢给一个子代理。
 - **登记处**：suspect area 与风险点写进 PR body 对应字段（不进 done when）；子任务以 checkbox 形式登记到 PR body 任务清单，完成勾回。
 - 每轮「审查 + 修复」写 **一条** PR comment（含修复 commit SHA）；smoke 验证再单独写 **一条** comment，说明验证手段与结果。两种留言可能多次出现。
@@ -106,7 +120,7 @@ crates/<domain>/<feature>/
 - 先按文件拆；同文件内再按修改范围拆；仍然太大就按主题 / 调用链 / 测试拆。
 - 每个子任务必须写清：全局绝对路径 cwd、允许修改的文件、禁止触碰的文件、goal、非目标、验收命令（哪条命令跑通 = 完成）。
 - 不相信子代理会自动完成：每个子任务都要有主控可复验的 diff 边界和验收证据。
-- 子任务太大、文件边界不清、或需要跨模块协调 → 继续拆；禁止“一个子代理干完半个模块”。
+- 子任务太大、文件边界不清、或需要跨模块协调 → 继续拆；禁止"一个子代理干完半个模块"。
 - 子任务登记到 PR body 任务清单，方便后续 closeout 勾回。
 
 #### 3. dev → audit
@@ -124,7 +138,7 @@ loop1:
 
 #### 4. test
 
-- 全部子任务通过 audit 后，本地跑针对性测试；CPU-heavy 加 `cpulimit -l 70 -i --`。
+- 全部子任务通过 audit 后，本地跑针对性测试（`cargo test -p <crate>`，CPU-heavy 加 `cpulimit -l 70 -i --`）；全量测试交 PR CI。
 - **重型测试**（>2 min、需要容器 / 网络 / 大数据）放 PR CI；CI 未跑完前不得 closeout / merge。
 - test failed → 回 loop1，把这个失败当成新的子任务重新走 dev → audit。
 
@@ -143,7 +157,7 @@ loop1:
 
 #### 7. tidy
 
-- **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么删、要么加 `.gitignore`。
+- **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么 `gio trash`、要么加 `.gitignore`。
 - **code**：测试代码没放 `tests/` 的挪过去；`cargo fmt` / `prettier` / 项目对应 formatter 跑一遍；无调试 log、commented-out code、调试 surrogate；formatter 如修改文件，必须重跑最小验收命令、tool review、smoke，并更新 PR comment。
 - **docs**：同步改动的代码注释、`AGENTS.md` / `README.md` / `docs/` 里过期的段落，引用跟新增要一致。
 
@@ -151,3 +165,10 @@ loop1:
 
 - report: 改了哪些文件、跑了哪些测试、CRG / ocr / smoke 的结果、PR 链接、剩余风险。
 - **收尾报备**：列出本会话新建/修改的全部 PR；有未报备的新建即违规。
+
+## 目标约束
+
+- `harness/core`、`harness/prompt`、`harness/tools` 必须支持 `wasm32-unknown-unknown`。
+- `tavern-web/*` 和 `admin-web/*` 必须支持 `wasm32-unknown-unknown`。
+- 测试放同层 `tests/`，不在 `src/` 使用 `#[cfg(test)]`。
+- 新增或移动功能 crate 时，更新根 `Cargo.toml` 的 `workspace.members` 和对应域目录的 `README.md`。
