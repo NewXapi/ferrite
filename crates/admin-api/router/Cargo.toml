@@ -1,0 +1,15 @@
+[package]
+name = "admin-api-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 聚合 admin-api 子域的 axum Router，apps/api main.rs 调它一次挂上。
+# 当前包含: auth (login/register/refresh/logout/self)。后续 catalog/users 等再加。
+
+[dependencies]
+auth    = { path = "../auth" }
+sqlx    = { workspace = true }
+axum    = { workspace = true }
+tracing = { workspace = true }
