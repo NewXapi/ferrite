@@ -51,10 +51,7 @@ pub struct AgentRun {
     pub chat_ref: AgentChatRef,
     pub generation_type: String,
     pub profile_id: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "AgentRunSkillScopeRefs::is_empty"
-    )]
+    #[serde(default, skip_serializing_if = "AgentRunSkillScopeRefs::is_empty")]
     pub skill_scope_refs: AgentRunSkillScopeRefs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_base_state_id: Option<String>,
@@ -70,7 +67,8 @@ pub struct AgentRun {
 #[serde(
     rename_all = "camelCase",
     rename_all_fields = "camelCase",
-    tag = "kind"
+    tag = "kind",
+    deny_unknown_fields
 )]
 pub enum AgentChatRef {
     Character {
@@ -233,4 +231,3 @@ pub struct CommitPolicy {
     #[serde(default)]
     pub store_artifacts_in_extra: bool,
 }
-

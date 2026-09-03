@@ -6,6 +6,9 @@
 //! - `\0` → 拒绝
 //! - `./foo/./bar` → `foo/bar`
 //! - 空字符串 → 拒绝
+//!
+//! 同时覆盖 serde ABI 边界：反序列化必须强制走 `WorkspacePath::parse`，
+//! 避免字符串字段绕过路径校验直接落入 `WorkspacePath` 内部。
 
 use harness_core::workspace_path::{WorkspacePath, WorkspacePathError};
 
@@ -86,4 +89,58 @@ fn rejects_absolute_windows_paths() {
         WorkspacePath::parse("\\Users\\me"),
         Err(WorkspacePathError::Absolute)
     );
+}
+
+#[test]
+fn deserialization_rejects_parent_traversal() {
+    let result: Result<WorkspacePath, _> = serde_json::from_str("\"../etc/passwd\"");
+    assert_eq!(
+        result.err().map(|e| e.to_string()),
+        Some(WorkspacePathError::ParentTraversal.to_string()),
+        "JSON 形式的 `../etc/passwd` 必须经 parse 拒绝"
+    );
+}
+
+#[test]
+fn deserialization_rejects_windows_drive_prefix() {
+    let result: Result<WorkspacePath, _> = serde_json::from_str("\"C:\\\\Windows\"");
+    assert_eq!(
+        result.err().map(|e| e.to_string()),
+        Some(WorkspacePathError::WindowsDrivePrefix.to_string()),
+        "JSON 形式的 Windows 盘符前缀必须经 parse 拒绝"
+    );
+}
+
+#[test]
+fn deserialization_rejects_nul_byte() {
+    let result: Result<WorkspacePath, _> = serde_json::from_str("\"\\u0000\"");
+    assert_eq!(
+        result.err().map(|e| e.to_string()),
+        Some(WorkspacePathError::ContainsNul.to_string()),
+        "JSON 形式 (`\\u0000`) 的 NUL 字节必须经 parse 拒绝"
+    );
+}
+
+#[test]
+fn deserialization_normalizes_curdir_segments() {
+    let path: WorkspacePath =
+        serde_json::from_str("\"./foo/./bar\"").expect("JSON `./foo/./bar` 必须经 parse 规范化");
+    assert_eq!(
+        path.as_str(),
+        "foo/bar",
+        "反序列化必须保留 `./` 折叠与反斜杠规范化"
+    );
+}
+
+#[test]
+fn deserialization_preserves_serialized_shape() {
+    let path = WorkspacePath::parse("output/drafts/main.md").expect("valid path");
+    let json = serde_json::to_string(&path).expect("serialize");
+    assert_eq!(
+        json, "\"output/drafts/main.md\"",
+        "序列化形状必须是裸字符串，与 ABI 一致"
+    );
+
+    let round_tripped: WorkspacePath = serde_json::from_str(&json).expect("round trip");
+    assert_eq!(round_tripped, path);
 }

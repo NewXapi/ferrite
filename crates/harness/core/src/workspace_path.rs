@@ -4,6 +4,10 @@
 //! `DomainError::InvalidData(String)` 替换为本 crate 内部的 `WorkspacePathError`。
 //!
 //! 拒绝 NUL / 绝对路径 / Windows 盘符 / `..`；规范化 `\` → `/`；折叠 `CurDir`。
+//!
+//! serde 边界：`WorkspacePath` 的反序列化固定走 `WorkspacePath::parse`，
+//! 任何未通过校验的输入都会返回 `WorkspacePathError`，包括 NUL 字节、Windows
+//! 盘符前缀、目录穿越、绝对路径与纯 CurDir 路径。
 
 use std::fmt;
 use std::path::Component;
@@ -53,7 +57,11 @@ impl std::error::Error for WorkspacePathError {}
 ///
 /// `WorkspacePath` 是相对工作区根目录的安全相对路径——不包含绝对路径、目录穿越
 /// (`..`)、NUL 字节或 Windows 盘符前缀。所有反斜杠 `\` 会被规范化为正斜杠 `/`。
+///
+/// serde 形状：序列化为内部字符串字段；反序列化总是经由
+/// [`WorkspacePath::parse`] 走完整校验，保证 ABI 边界无法绕过安全规则。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(try_from = "String", into = "String")]
 pub struct WorkspacePath(String);
 
 impl WorkspacePath {
@@ -68,10 +76,7 @@ impl WorkspacePath {
         if raw.starts_with('/') || raw.starts_with('\\') {
             return Err(WorkspacePathError::Absolute);
         }
-        if raw.len() >= 2
-            && raw.as_bytes()[1] == b':'
-            && raw.as_bytes()[0].is_ascii_alphabetic()
-        {
+        if raw.len() >= 2 && raw.as_bytes()[1] == b':' && raw.as_bytes()[0].is_ascii_alphabetic() {
             return Err(WorkspacePathError::WindowsDrivePrefix);
         }
 
@@ -104,5 +109,21 @@ impl WorkspacePath {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+// serde ABI 边界：`WorkspacePath` 序列化为普通字符串，反序列化必经
+// `WorkspacePath::parse`，避免反序列化路径绕过安全规则。
+impl From<WorkspacePath> for String {
+    fn from(path: WorkspacePath) -> Self {
+        path.0
+    }
+}
+
+impl TryFrom<String> for WorkspacePath {
+    type Error = WorkspacePathError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(value)
     }
 }

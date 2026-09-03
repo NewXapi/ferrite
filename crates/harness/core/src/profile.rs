@@ -8,8 +8,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::run::AgentRunPresentation;
 
-
-
 pub const AGENT_PROFILE_SCHEMA_VERSION: u32 = 2;
 pub const AGENT_PROFILE_KIND: &str = "tauritavern.agentProfile";
 pub const DEFAULT_AGENT_PROFILE_ID: &str = "default-writer";
