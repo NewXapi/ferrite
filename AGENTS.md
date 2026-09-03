@@ -53,6 +53,7 @@ crates/<domain>/<feature>/
 ### worktree 与子代理
 
 - `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
+- 默认 **PR-only 开发**：不开 issue，worktree 起手就开 draft PR，任务清单与验收登记在 PR body；用户 prompt 明确要求时才建 issue。
 - 开子代理时，prompt 必须写明**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`）与所属分支，限定其只在该目录内读写、编译、提交；禁止在仓库根目录或其他 worktree 落文件。
 
 ### cpulimit
