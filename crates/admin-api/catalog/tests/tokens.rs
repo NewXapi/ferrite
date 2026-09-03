@@ -57,8 +57,9 @@ async fn token_create_list_update_delete() {
     assert!(svc.list(stranger, false).await.unwrap().is_empty());
     assert!(svc.get(stranger, uuid::Uuid::parse_str(&created.token.key).unwrap(), false).await.is_err());
 
-    // admin_all 可见
-    assert_eq!(svc.list(owner, true).await.unwrap().len(), 1);
+    // admin_all 可见 (跨用户聚合; 表里可能有其他测试残留, 只断言包含自己这条)
+    let all = svc.list(owner, true).await.unwrap();
+    assert!(all.iter().any(|t| t.key == created.token.key));
 
     // 搜索
     let hits = svc.search(owner, false, "my-tok").await.unwrap();

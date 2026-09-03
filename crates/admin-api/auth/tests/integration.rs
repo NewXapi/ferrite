@@ -178,7 +178,7 @@ async fn disabled_user_cannot_login_or_refresh() {
         .expect("disable");
 
     let bad_login = svc.login(&username, "hunter2hunter", "ua", "ip").await;
-    assert!(matches!(bad_login, Err(auth::AuthError::InvalidCredentials)));
+    assert!(matches!(bad_login, Err(auth::AuthError::UserDisabled)));
 
     let bad_refresh = svc.refresh(&login.refresh_token, "ua", "ip").await;
     assert!(matches!(bad_refresh, Err(auth::AuthError::UserDisabled)));
@@ -241,11 +241,8 @@ async fn admin_user_management_flow() {
     // 禁用
     let disabled = svc.manage_user(user_key, "disable", None).await.unwrap();
     assert_eq!(disabled.status, 2);
-    // 禁用后登录拒
-    assert!(matches!(
-        svc.login(&user_name, "hunter2hunter", "ua", "ip").await,
-        Err(auth::AuthError::InvalidCredentials)
-    ));
+    let disabled_login = svc.login(&user_name, "hunter2hunter", "ua", "ip").await;
+    assert!(matches!(disabled_login, Err(auth::AuthError::UserDisabled)));
 
     // 调额度
     let charged = svc.manage_user(user_key, "adjust_quota", Some("500000")).await.unwrap();

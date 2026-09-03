@@ -169,10 +169,11 @@ impl AuthService {
         .await?;
 
         // 防用户枚举: 用户不存在时也对 dummy hash 跑一次 argon2 verify,
-        // 让"不存在"与"密码错"耗时一致。
+        // 让"不存在"与"密码错"耗时一致。密码对但被禁用 → UserDisabled
+        // (与 refresh 语义一致, 也不泄露用户是否存在 — 先验密码再报状态)。
         let (row, verified) = match row {
             Some(r) => {
-                let ok = r.status == 1 && password::verify(password_plain, &r.password_hash);
+                let ok = password::verify(password_plain, &r.password_hash);
                 (Some(r), ok)
             }
             None => {
@@ -185,7 +186,8 @@ impl AuthService {
         };
 
         let row = match (row, verified) {
-            (Some(r), true) => r,
+            (Some(r), true) if r.status == 1 => r,
+            (Some(_), true) => return Err(AuthError::UserDisabled),
             _ => return Err(AuthError::InvalidCredentials),
         };
 
@@ -198,11 +200,13 @@ impl AuthService {
         password_plain: &str,
         email: Option<&str>,
     ) -> Result<SelfView, AuthError> {
-        if username.is_empty() || password_plain.len() < 8 {
-            return Err(AuthError::BadRequest(
-                "username required, password >= 8 chars".into(),
-            ));
+        if username.trim().is_empty() {
+            return Err(AuthError::BadRequest("username required".into()));
         }
+        if username.chars().count() > 32 {
+            return Err(AuthError::BadRequest("username <= 32 chars".into()));
+        }
+        validate_password(password_plain)?;
         let phc = password::hash(password_plain)?;
         let key = Uuid::new_v4();
         let now: DateTime<Utc> = Utc::now();
@@ -381,30 +385,41 @@ impl AuthService {
 
         let bump_version = if let Some(new_pwd) = new_password {
             let original = original_password.expect("checked above");
-            if new_pwd.len() < 8 {
-                return Err(AuthError::BadRequest("password >= 8 chars".into()));
-            }
+            validate_password(new_pwd)?;
             if !password::verify(original, &row.password_hash) {
                 return Err(AuthError::InvalidCredentials);
             }
             let phc = password::hash(new_pwd)?;
-            sqlx::query("UPDATE auth_users SET password_hash = $2, auth_version = auth_version + 1, updated_at = now() WHERE key = $1")
-                .bind(user_key)
-                .bind(&phc)
-                .execute(&self.pool)
-                .await?;
+            // 原子改密: WHERE 带旧 hash — 并发改密时第二个请求的 verify
+            // 基于旧 hash 通过, 但 UPDATE 因 hash 已变 rows_affected=0 → 拒绝。
+            let affected = sqlx::query(
+                "UPDATE auth_users SET password_hash = $2, auth_version = auth_version + 1, updated_at = now() WHERE key = $1 AND password_hash = $3",
+            )
+            .bind(user_key)
+            .bind(&phc)
+            .bind(&row.password_hash)
+            .execute(&self.pool)
+            .await?
+            .rows_affected();
+            if affected == 0 {
+                return Err(AuthError::Conflict("password changed concurrently".into()));
+            }
             true
         } else {
             false
         };
 
         if let Some(name) = display_name {
+            if name.chars().count() > 64 {
+                return Err(AuthError::BadRequest("display_name <= 64 chars".into()));
+            }
             sqlx::query("UPDATE auth_users SET display_name = $2, updated_at = now() WHERE key = $1")
                 .bind(user_key)
                 .bind(name)
                 .execute(&self.pool)
                 .await?;
         }
+
 
         if bump_version {
             // 改密 = 全端登出
@@ -533,9 +548,7 @@ impl AuthService {
             }
             "reset_password" => {
                 let new_pwd = value.ok_or_else(|| AuthError::BadRequest("value = new password".into()))?;
-                if new_pwd.len() < 8 {
-                    return Err(AuthError::BadRequest("password >= 8 chars".into()));
-                }
+                validate_password(new_pwd)?;
                 let phc = password::hash(new_pwd)?;
                 let affected = sqlx::query(
                     "UPDATE auth_users SET password_hash = $2, auth_version = auth_version + 1, updated_at = now() WHERE key = $1",
@@ -605,6 +618,14 @@ impl AuthService {
             expires_in: self.access_ttl(),
         })
     }
+}
+
+/// 密码策略: 8..=128 字节 (上限防 argon2 DoS)。
+fn validate_password(p: &str) -> Result<(), AuthError> {
+    if p.len() < 8 || p.len() > 128 {
+        return Err(AuthError::BadRequest("password length must be 8..=128".into()));
+    }
+    Ok(())
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
