@@ -24,6 +24,22 @@ crates/<domain>/<feature>/
 - 每个功能 crate 都要有 `README.md`：目录树、要实现的功能、参考实现。
 - 每个功能 crate 都要有 `Cargo.toml`、`src/lib.rs` 和 workspace member。
 
+## 多会话文件所有权
+
+- 一个会话只改自己负责的功能 crate。
+- 根 `Cargo.toml` 只有新增或移动功能 crate 的会话修改；改完说明新增的 workspace member。
+- `crates/contract/` 是共享 API 契约；需要新 DTO 时先声明变更，再由一个会话统一修改。
+- `apps/api/src/` 只由 API 组装会话修改。
+- `apps/web/` 和 `apps/tavern-web/` 只由各自应用组装会话修改。
+- 每个功能 crate 的 README 与实现同步更新。
+
+## 每个会话开工前
+
+1. 读根 `AGENTS.md`。
+2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
+3. 读自己功能 crate 的 `README.md`，按文件实现列表工作。
+4. 按该 README 的验收命令验证，再提交一个 conventional commit。
+
 ## 目标约束
 
 - `harness/core`、`harness/prompt`、`harness/tools` 必须支持 `wasm32-unknown-unknown`。
