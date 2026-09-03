@@ -30,8 +30,10 @@ impl RateLimitSpec {
     ///   - `200/5m` → 200 req / 5min
     ///   - `10000/d`→ 10000 req / 24h
     ///
-    /// 空串返回 `None`, 非法串返回 `None`, `requests == 0` 或 `mult == 0`
-    /// 也返回 `None`。
+    /// 空串与非法串都返回 `None` (ocr #3): 调用方无法区分"不限流"与
+    /// "配置写错"。ponytail: parse 不区分, 错误由配置层在写入时拦截
+    /// (wildtoken 同款—写时 NormalizeRateLimit 校验); 热路径只关心有没有。
+    /// `requests == 0` 或 `mult == 0` 同样拒绝。
     pub fn parse(s: &str) -> Option<Self> {
         if s.is_empty() {
             return None;
@@ -125,6 +127,11 @@ impl SlidingWindow {
         }
     }
 
+    /// 取锁, 毒化不 panic (ocr #2: 热路径一个线程 panic 不该拖垮所有请求)。
+    fn lock(&self) -> std::sync::MutexGuard<'_, LimitMap> {
+        self.limits.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// 判定 + 记账: 限额内放行并 +1, 超限返回 false 且不递增。
     ///
     /// `None` spec 永远放行 (配置层短路, 零开销)。
@@ -140,12 +147,12 @@ impl SlidingWindow {
         // 起点 = now_s - window_s + 1; 严格侧判定: 落在该区间的桶累计 < requests 放行。
         let start_s = now_s - window_s + 1;
 
-        let mut limits = self.limits.lock().unwrap();
+        let mut limits = self.lock();
         let buckets = limits.entry(key.to_string()).or_default();
 
         // 顺手清理 < now_s - 7200 (2h) 的桶 — 防止长尾 key 内存膨胀。
-        // ponytail: BTreeMap::split_off(&K) 返回键 >= K 的部分; 自己保留 < K。
-        // 我们要保留的是返回的 stale, self 里 < cutoff 的部分直接 drop 即可。
+        // ponytail: 每次 admits 都清, 但 retain 只在有旧桶时才实际分配;
+        // 后台清理线程省掉, 热路径上这点成本换来零定时器牵连。
         let cutoff = now_s - 7200;
         if buckets
             .keys()
@@ -153,11 +160,7 @@ impl SlidingWindow {
             .copied()
             .is_some_and(|first| first < cutoff)
         {
-            let kept = buckets.split_off(&cutoff);
-            // split_off 后 self 持有键 < cutoff 的部分, kept 持有 >= cutoff 的部分。
-            // 把 kept 装回 buckets, self 离开作用域时丢弃旧部分。
-            buckets.clear();
-            buckets.extend(kept);
+            buckets.retain(|bucket, _| *bucket >= cutoff);
         }
 
         let current_count: u64 = buckets.range(start_s..=now_s).map(|(_, c)| *c).sum();

@@ -135,22 +135,21 @@ impl MemoryHealthTable {
             now_ms: Box::new(now_ms),
         }
     }
+
+    /// 取锁, 毒化不 panic (ocr #17/18: 一个线程 panic 不该拖垮全部请求)。
+    fn lock(&self) -> std::sync::MutexGuard<'_, StateMap> {
+        self.states.lock().unwrap_or_else(|e| e.into_inner())
+    }
 }
 
 impl HealthTable for MemoryHealthTable {
     fn get(&self, unit_key: &str) -> HealthState {
-        self.states
-            .lock()
-            .unwrap()
-            .get(unit_key)
-            .copied()
-            .unwrap_or_default()
+        self.lock().get(unit_key).copied().unwrap_or_default()
     }
 
     fn record(&self, unit_key: &str, outcome: Result<u16, FailureClass>, latency_ms: u32) {
         let now = (self.now_ms)();
-        let mut states = self.states.lock().unwrap();
-        let mut st = states.get(unit_key).copied().unwrap_or_default();
+        let mut st = self.lock().get(unit_key).copied().unwrap_or_default();
         match outcome {
             Ok(_) => {
                 update_ewma(&mut st, latency_ms as f64);
@@ -183,7 +182,7 @@ impl HealthTable for MemoryHealthTable {
                 }
             }
         }
-        states.insert(unit_key.to_string(), st);
+        self.lock().insert(unit_key.to_string(), st);
     }
 
     fn is_selectable(&self, unit_key: &str, now_ms: u64) -> bool {

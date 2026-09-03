@@ -188,15 +188,13 @@ fn dispatcher_without_limits_keeps_legacy_behavior() {
 
 #[test]
 fn dispatcher_rate_limited_when_all_candidates_throttled() {
-    // 两个单元, 都限流 1 req / 60s; 第一个放行后第二个也被吃掉,
-    // 但 rl 共用同一窗口 — 这里两次 select 都返回 RateLimited (因为
-    // 每个 select 路径独立过滤, 但同 key 共享窗口)。
+    // 两个单元都限流 1 req / 60s, 先消费两把 key 各一次,
+    // 之后全部超限 → RateLimited (429 区分 503 NoCandidate)。
     let units = vec![unit("ch1", 1), unit("ch2", 1)];
     let snap = build_snapshot(units.clone(), vec!["ch1", "ch2"]);
 
     let rl = Arc::new(SlidingWindow::new());
     let mut limits = HashMap::new();
-    // 让两个单元共用同一 key 名 → 共享同一窗口 → 第二次必拒
     limits.insert(
         "ch1".to_string(),
         RateLimitSpec {
@@ -219,10 +217,11 @@ fn dispatcher_rate_limited_when_all_candidates_throttled() {
         rl,
     );
 
-    // 第一次 — 两个候选都未超限, 应正常返回 (任一被选中)
+    // 消耗两把 key: 每轮 select 恰好消费被选中的那一把 (选到已超限的会换)
+    let _ = dispatcher.select("g", "m", &[]).unwrap();
     let _ = dispatcher.select("g", "m", &[]).unwrap();
 
-    // 第二次 — rl 状态使两 key 都超限, 过滤后为空 → RateLimited
+    // 第三次 — 两把 key 都超限 → RateLimited
     let err = dispatcher.select("g", "m", &[]).unwrap_err();
     match err {
         dispatch::DispatchError::RateLimited { group, model } => {
@@ -231,6 +230,43 @@ fn dispatcher_rate_limited_when_all_candidates_throttled() {
         }
         other => panic!("expected RateLimited, got {other:?}"),
     }
+}
+
+#[test]
+fn dispatcher_only_consumes_picked_unit_quota() {
+    // 回归: 记账语义 = 只对被选中渠道 +1 (wildtoken runProxyAttempts),
+    // 绝不消耗未选中候选的配额。两个单元都限 1/60s — 第一次选完,
+    // 第二次必然能换到另一把未消费的 key, 而不是 RateLimited。
+    let units = vec![unit("ch1", 1), unit("ch2", 1)];
+    let snap = build_snapshot(units.clone(), vec!["ch1", "ch2"]);
+
+    let rl = Arc::new(SlidingWindow::new());
+    let mut limits = HashMap::new();
+    limits.insert(
+        "ch1".to_string(),
+        RateLimitSpec {
+            requests: 1,
+            window_ms: 60_000,
+        },
+    );
+    limits.insert(
+        "ch2".to_string(),
+        RateLimitSpec {
+            requests: 1,
+            window_ms: 60_000,
+        },
+    );
+
+    let dispatcher = dispatch::Dispatcher::with_limits(
+        Some(snap),
+        Arc::new(MemoryHealthTable::new()),
+        limits,
+        rl,
+    );
+
+    // 第一次与第二次都必须成功 — 第二次靠换候选而不是同 key 重试
+    let _ = dispatcher.select("g", "m", &[]).unwrap();
+    let _ = dispatcher.select("g", "m", &[]).unwrap();
 }
 
 #[test]

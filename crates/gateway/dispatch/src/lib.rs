@@ -229,32 +229,49 @@ impl Dispatch for Dispatcher {
         if cands.is_empty() {
             return Err(no_candidate(group, public_model));
         }
-        // 限流门控 — 仅当 limits 非空才执行; 空 = 与历史行为一致 (零开销)。
-        // 过滤后若全空, 而原始候选非空 → 全部因限流被剔除, 返回 RateLimited (429);
-        // 否则按现有路径走 NoCandidate (503)。
-        let cands = if self.limits.is_empty() {
-            cands
+        // 限流门控 — pick 一个 → 检查它 → 超限则排除重选 (wildtoken
+        // runProxyAttempts 语义: 只对"被选中"的渠道记账, 绝不消耗未选中
+        // 候选的配额)。全部被拒 → RateLimited (429); 与 NoCandidate (503) 区分。
+        // limits 空时直接走 pick, 与历史行为一致 (零开销)。
+        let unit = if self.limits.is_empty() {
+            self.selector
+                .pick(&cands, &*self.health, exclude, (self.now_ms)())
+                .ok_or_else(|| no_candidate(group, public_model))?
         } else {
             let now = (self.now_ms)();
-            let mut kept = Vec::with_capacity(cands.len());
-            for u in cands {
-                let spec = self.limits.get(&u.meta.key);
-                if self.rl.admits(&u.meta.key, spec, now) {
-                    kept.push(u);
+            // 局部排除集 = 调用方已试 + 本次限流拒绝的 key。每轮要么放行,
+            // 要么把被拒 key 加入排除集 — 排除集单调增长, pick 必在某轮
+            // 因候选耗尽返回 None, 循环终止。
+            let mut refused: Vec<String> = Vec::with_capacity(cands.len() + exclude.len());
+            refused.extend_from_slice(exclude);
+            let mut refused_by_limit = false;
+            loop {
+                let picked = match self.selector.pick(&cands, &*self.health, &refused, now) {
+                    Some(p) => p,
+                    None => {
+                        // 候选耗尽: 若本轮限流拒过至少一个 → 全被限流 (429);
+                        // 否则是纯粹的不可调度 (503)。
+                        return Err(if refused_by_limit {
+                            DispatchError::RateLimited {
+                                group: group.to_string(),
+                                model: public_model.to_string(),
+                            }
+                        } else {
+                            no_candidate(group, public_model)
+                        });
+                    }
+                };
+                let admitted = match self.limits.get(&picked.meta.key) {
+                    Some(spec) => self.rl.admits(&picked.meta.key, Some(spec), now),
+                    None => true, // 未配置限流的单元恒放行
+                };
+                if admitted {
+                    break picked;
                 }
+                refused_by_limit = true;
+                refused.push(picked.meta.key.clone());
             }
-            if kept.is_empty() {
-                return Err(DispatchError::RateLimited {
-                    group: group.to_string(),
-                    model: public_model.to_string(),
-                });
-            }
-            kept
         };
-        let unit = self
-            .selector
-            .pick(&cands, &*self.health, exclude, (self.now_ms)())
-            .ok_or_else(|| no_candidate(group, public_model))?;
         let channel = snap
             .channels
             .get(&unit.channel_key)

@@ -70,7 +70,7 @@ pub struct Attempt {
 ///
 /// 本机只保证"不重选已试、不超过预算"; 同渠道退避等时序由上层循环控制
 /// (sub2api sameAccountRetryDelay/指数退避)。
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Failover {
     policy: RetryPolicy,
     // ponytail: Vec 而非 HashSet — tried 长度有上界 (max_attempts-1, 默认 2),
@@ -104,10 +104,12 @@ impl Failover {
         Some(self.attempts)
     }
 
-    /// 记一笔已试 (失败后调用, 排除集去重)。
-    pub fn mark_tried(&mut self, key: &str) {
-        if !self.tried.iter().any(|k| k == key) {
-            self.tried.push(key.to_string());
+    /// 记一笔已试 (失败后调用, 排除集去重)。接受 owned 避免重复分配
+    /// (ocr #11: 调用方常已持有 String)。
+    pub fn mark_tried(&mut self, key: impl Into<String>) {
+        let key = key.into();
+        if !self.tried.contains(&key) {
+            self.tried.push(key);
         }
     }
 

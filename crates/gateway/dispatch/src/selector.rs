@@ -16,6 +16,7 @@ use crate::candidate::STATUS_ENABLED;
 use crate::health::{self, HealthTable};
 use contract::records::RouteUnitRecord;
 use rand::Rng;
+use std::collections::HashMap;
 
 /// 选择器 trait — 输入候选 + 健康表, 输出唯一选择。
 pub trait Selector: Send + Sync {
@@ -54,17 +55,17 @@ impl Selector for WeightedSelector {
             return None;
         }
 
-        // 按 priority 分层, 高优先层先试。
-        let mut by_priority: Vec<(i32, Vec<&RouteUnitRecord>)> = Vec::new();
+        // 按 priority 分层, 高优先层先试 (HashMap 分组避免 O(n²) 查找,
+        // ocr #12; 分组后按 key 降序, 层内顺序不参与随机语义)。
+        let mut by_priority: HashMap<i32, Vec<&RouteUnitRecord>> = HashMap::new();
         for u in &eligible {
-            match by_priority.iter_mut().find(|(p, _)| *p == u.priority) {
-                Some((_, tier)) => tier.push(u),
-                None => by_priority.push((u.priority, vec![u])),
-            }
+            by_priority.entry(u.priority).or_default().push(u);
         }
-        by_priority.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut priorities: Vec<i32> = by_priority.keys().copied().collect();
+        priorities.sort_unstable_by(|a, b| b.cmp(a));
 
-        for (_, tier) in by_priority {
+        for p in priorities {
+            let tier = &by_priority[&p];
             let weighted: Vec<(&RouteUnitRecord, f64)> = tier
                 .iter()
                 .copied()
