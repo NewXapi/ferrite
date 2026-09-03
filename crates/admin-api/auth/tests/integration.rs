@@ -89,3 +89,97 @@ async fn duplicate_username_rejected() {
     let dup = svc.register(&username, "hunter2hunter", None).await;
     assert!(matches!(dup, Err(auth::AuthError::UsernameTaken)));
 }
+
+#[tokio::test]
+#[ignore]
+async fn login_nonexistent_user_rejected() {
+    // 防枚举路径: 用户不存在也要走 dummy argon2 verify, 不能 panic/500
+    let svc = make_service().await;
+    let bad = svc.login("no_such_user_zz", "whatever123", "ua", "127.0.0.1").await;
+    assert!(matches!(bad, Err(auth::AuthError::InvalidCredentials)));
+}
+
+#[tokio::test]
+#[ignore]
+async fn auth_version_bump_invalidates_refresh() {
+    // 改密 (auth_version++) 后, 已发的 refresh 必须失效
+    let svc = make_service().await;
+    let username = unique_user("carol");
+    svc.register(&username, "hunter2hunter", None).await.expect("register");
+    let login = svc.login(&username, "hunter2hunter", "ua", "ip").await.expect("login");
+
+    let pool = sqlx::PgPool::connect(&db_url()).await.expect("pool2");
+    sqlx::query("UPDATE auth_users SET auth_version = auth_version + 1 WHERE username = $1")
+        .bind(&username)
+        .execute(&pool)
+        .await
+        .expect("bump");
+
+    // 旧 access JWT: auth_version 不匹配 → InvalidToken
+    let self_after = svc.self_by_access(&login.access_token).await;
+    assert!(matches!(self_after, Err(auth::AuthError::InvalidToken)));
+
+    // 旧 refresh: auth_version 不匹配 → InvalidToken
+    let r = svc.refresh(&login.refresh_token, "ua", "ip").await;
+    assert!(matches!(r, Err(auth::AuthError::InvalidToken)));
+}
+
+#[tokio::test]
+#[ignore]
+async fn duplicate_email_rejected() {
+    let svc = make_service().await;
+    let email = format!("{}@x.com", unique_user("shared"));
+    let u1 = unique_user("dave");
+    let u2 = unique_user("eve");
+
+    svc.register(&u1, "hunter2hunter", Some(&email)).await.expect("u1");
+    let dup = svc.register(&u2, "hunter2hunter", Some(&email)).await;
+    assert!(matches!(dup, Err(auth::AuthError::EmailTaken)));
+}
+
+#[tokio::test]
+#[ignore]
+async fn malformed_refresh_tokens_rejected() {
+    let svc = make_service().await;
+    for bad in ["", "no-dot", "not-a-uuid.00", "00000000-0000-0000-0000-000000000000.zzz", "00000000-0000-0000-0000-000000000000.00"] {
+        let r = svc.refresh(bad, "ua", "ip").await;
+        assert!(matches!(r, Err(auth::AuthError::InvalidToken)), "expected InvalidToken for {bad:?}");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn weak_credentials_rejected() {
+    let svc = make_service().await;
+    let u = unique_user("frank");
+    assert!(matches!(
+        svc.register(&u, "short", None).await,
+        Err(auth::AuthError::BadRequest(_))
+    ));
+    assert!(matches!(
+        svc.register("", "hunter2hunter", None).await,
+        Err(auth::AuthError::BadRequest(_))
+    ));
+}
+
+#[tokio::test]
+#[ignore]
+async fn disabled_user_cannot_login_or_refresh() {
+    let svc = make_service().await;
+    let username = unique_user("gina");
+    svc.register(&username, "hunter2hunter", None).await.expect("register");
+    let login = svc.login(&username, "hunter2hunter", "ua", "ip").await.expect("login");
+
+    let pool = sqlx::PgPool::connect(&db_url()).await.expect("pool2");
+    sqlx::query("UPDATE auth_users SET status = 2 WHERE username = $1")
+        .bind(&username)
+        .execute(&pool)
+        .await
+        .expect("disable");
+
+    let bad_login = svc.login(&username, "hunter2hunter", "ua", "ip").await;
+    assert!(matches!(bad_login, Err(auth::AuthError::InvalidCredentials)));
+
+    let bad_refresh = svc.refresh(&login.refresh_token, "ua", "ip").await;
+    assert!(matches!(bad_refresh, Err(auth::AuthError::UserDisabled)));
+}

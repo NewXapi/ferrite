@@ -21,14 +21,16 @@ CREATE TABLE IF NOT EXISTS auth_users (
 );
 
 CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
-    sid          UUID PRIMARY KEY,
-    user_key     UUID NOT NULL,
-    token_hash   TEXT NOT NULL,
-    user_agent   TEXT NOT NULL DEFAULT '',
-    ip           TEXT NOT NULL DEFAULT '',
-    issued_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at   TIMESTAMPTZ NOT NULL,
-    revoked_at   TIMESTAMPTZ
+    sid           UUID PRIMARY KEY,
+    user_key      UUID NOT NULL,
+    token_hash    TEXT NOT NULL,
+    -- 发放时的用户 auth_version; refresh 时与当前值比对, 改密即全量失效
+    auth_version  BIGINT NOT NULL,
+    user_agent    TEXT NOT NULL DEFAULT '',
+    ip            TEXT NOT NULL DEFAULT '',
+    issued_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at    TIMESTAMPTZ NOT NULL,
+    revoked_at    TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_key
