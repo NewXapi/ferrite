@@ -363,3 +363,37 @@ fn budget_rejection_does_not_reserve_call_id() {
         ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
     ));
 }
+
+#[test]
+fn reused_call_id_in_new_snapshot_does_not_bypass_its_budget() {
+    let tool_id = ToolId::builtin("a").expect("tool id");
+    let wide_snapshot = build_snapshot(
+        "inv_wide",
+        vec![ToolBinding::new(descriptor(tool_id.clone()), "a", None).unwrap()],
+        8,
+    );
+    let tight_snapshot = build_snapshot(
+        "inv_tight",
+        vec![ToolBinding::new(descriptor(tool_id.clone()), "a", Some(1)).unwrap()],
+        1,
+    );
+    let wide_turn = ToolTurnContract::all(&wide_snapshot, ToolChoice::Auto).expect("turn");
+    let tight_turn = ToolTurnContract::all(&tight_snapshot, ToolChoice::Auto).expect("turn");
+    let invocation = ToolInvocation {
+        call_id: "shared".to_string(),
+        tool_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+    let mut gate = ToolRequestGate::default();
+
+    gate.authorize_and_reserve(&wide_snapshot, &wide_turn, &invocation)
+        .expect("wide snapshot allows first call");
+    let err = gate
+        .authorize_and_reserve(&tight_snapshot, &tight_turn, &invocation)
+        .expect_err("a new snapshot must enforce its own call budget");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
+    ));
+}

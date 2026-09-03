@@ -15,9 +15,9 @@ use crate::spec::{
 pub struct ToolRequestGate {
     total_calls: usize,
     calls_per_tool: HashMap<ToolId, usize>,
-    // Provider 重放同一 call id 时，只有工具也完全相同才幂等。`call_id` 单独
-    // 不是授权键：同一 id 换工具必须经过完整预算和 choice 校验。
-    reserved_calls: HashMap<String, ToolId>,
+    // Provider 重放同一 call id 时，只有同一个 snapshot 内的同一个工具才幂等。
+    // 新 snapshot 有独立预算，不能复用旧 snapshot 的 reservation。
+    reserved_calls: HashMap<(ToolSnapshotId, String), ToolId>,
 }
 
 impl ToolRequestGate {
@@ -56,7 +56,8 @@ impl ToolRequestGate {
             ToolChoice::Auto | ToolChoice::Required | ToolChoice::Specific(_) => {}
         }
 
-        if self.reserved_calls.get(&invocation.call_id) == Some(&invocation.tool_id) {
+        let reservation_key = (snapshot.id().clone(), invocation.call_id.clone());
+        if self.reserved_calls.get(&reservation_key) == Some(&invocation.tool_id) {
             return Ok(());
         }
 
@@ -80,7 +81,7 @@ impl ToolRequestGate {
         }
 
         self.reserved_calls
-            .insert(invocation.call_id.clone(), invocation.tool_id.clone());
+            .insert(reservation_key, invocation.tool_id.clone());
         self.total_calls += 1;
         *self
             .calls_per_tool
