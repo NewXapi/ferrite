@@ -24,6 +24,12 @@ pub enum AuthError {
     #[error("missing JWT secret")]
     MissingSecret,
 
+    #[error("forbidden: admin required")]
+    Forbidden,
+
+    #[error("conflict: {0}")]
+    Conflict(String),
+
     #[error("bad request: {0}")]
     BadRequest(String),
 
@@ -42,7 +48,8 @@ impl AuthError {
         match self {
             Self::InvalidCredentials | Self::InvalidToken => StatusCode::UNAUTHORIZED,
             Self::UserDisabled => StatusCode::FORBIDDEN,
-            Self::UsernameTaken | Self::EmailTaken => StatusCode::CONFLICT,
+            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::UsernameTaken | Self::EmailTaken | Self::Conflict(_) => StatusCode::CONFLICT,
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::MissingSecret => StatusCode::INTERNAL_SERVER_ERROR,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
@@ -58,6 +65,8 @@ impl AuthError {
             Self::UsernameTaken => "USERNAME_TAKEN",
             Self::EmailTaken => "EMAIL_TAKEN",
             Self::UserNotFound => "USER_NOT_FOUND",
+            Self::Forbidden => "FORBIDDEN",
+            Self::Conflict(_) => "CONFLICT",
             Self::MissingSecret => "MISSING_JWT_SECRET",
             Self::BadRequest(_) => "BAD_REQUEST",
             Self::Db(_) => "DB_ERROR",

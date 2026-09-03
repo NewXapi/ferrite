@@ -56,7 +56,7 @@
 
 ### `tavern-web/Dioxus.toml`
 
-- 参照 `apps/web/Dioxus.toml` 配置 web target、资产目录和开发端口。
+- 参照 `apps/admin-web/Dioxus.toml` 配置 web target、资产目录和开发端口。
 
 ### 验收
 
