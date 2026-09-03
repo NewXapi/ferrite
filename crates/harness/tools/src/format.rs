@@ -112,14 +112,21 @@ fn remove_schema_keys(value: &mut Value, keys: &[&str]) {
                     remove_schema_keys(nested, keys);
                 }
             }
-            for schema_key in SUB_SCHEMA_KEYS {
+            for schema_key in SINGLE_SCHEMA_KEYS {
                 if let Some(child) = object.get_mut(*schema_key) {
                     remove_schema_keys(child, keys);
                 }
             }
-            for combinator in COMBINATOR_KEYS {
-                if let Some(array) = object.get_mut(*combinator).and_then(Value::as_array_mut) {
+            for schema_key in ARRAY_SCHEMA_KEYS {
+                if let Some(array) = object.get_mut(*schema_key).and_then(Value::as_array_mut) {
                     for item in array {
+                        remove_schema_keys(item, keys);
+                    }
+                }
+            }
+            for schema_key in MAP_SCHEMA_KEYS {
+                if let Some(map) = object.get_mut(*schema_key).and_then(Value::as_object_mut) {
+                    for item in map.values_mut() {
                         remove_schema_keys(item, keys);
                     }
                 }
@@ -134,18 +141,19 @@ fn remove_schema_keys(value: &mut Value, keys: &[&str]) {
     }
 }
 
-const SUB_SCHEMA_KEYS: &[&str] = &[
+const SINGLE_SCHEMA_KEYS: &[&str] = &[
     "items",
     "additionalProperties",
     "unevaluatedProperties",
     "contains",
     "propertyNames",
     "not",
+    "if",
+    "then",
+    "else",
 ];
-const COMBINATOR_KEYS: &[&str] = &[
-    "allOf",
-    "anyOf",
-    "oneOf",
+const ARRAY_SCHEMA_KEYS: &[&str] = &["allOf", "anyOf", "oneOf", "prefixItems"];
+const MAP_SCHEMA_KEYS: &[&str] = &[
     "dependencies",
     "dependentSchemas",
     "patternProperties",

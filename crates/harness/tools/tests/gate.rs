@@ -292,3 +292,74 @@ fn failed_reservation_does_not_pollute_call_id_slot() {
     gate.authorize_and_reserve(&snapshot, &auto_turn, &invocation)
         .expect("legal retry must succeed after a prior failure");
 }
+
+#[test]
+fn reused_call_id_for_different_tool_still_enforces_invocation_budget() {
+    let a_id = ToolId::builtin("a").expect("tool id");
+    let b_id = ToolId::builtin("b").expect("tool id");
+    let snapshot = build_snapshot(
+        "inv_root",
+        vec![
+            ToolBinding::new(descriptor(a_id.clone()), "a", Some(1)).unwrap(),
+            ToolBinding::new(descriptor(b_id.clone()), "b", Some(1)).unwrap(),
+        ],
+        1,
+    );
+    let turn = ToolTurnContract::all(&snapshot, ToolChoice::Auto).expect("turn");
+    let mut gate = ToolRequestGate::default();
+
+    let invoke = |tool_id| ToolInvocation {
+        call_id: "shared".to_string(),
+        tool_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+
+    gate.authorize_and_reserve(&snapshot, &turn, &invoke(a_id))
+        .expect("first call allowed");
+    let err = gate
+        .authorize_and_reserve(&snapshot, &turn, &invoke(b_id))
+        .expect_err("same call id must not bypass invocation budget for another tool");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
+    ));
+}
+
+#[test]
+fn budget_rejection_does_not_reserve_call_id() {
+    let a_id = ToolId::builtin("a").expect("tool id");
+    let b_id = ToolId::builtin("b").expect("tool id");
+    let snapshot = build_snapshot(
+        "inv_root",
+        vec![
+            ToolBinding::new(descriptor(a_id.clone()), "a", Some(1)).unwrap(),
+            ToolBinding::new(descriptor(b_id.clone()), "b", Some(1)).unwrap(),
+        ],
+        1,
+    );
+    let turn = ToolTurnContract::all(&snapshot, ToolChoice::Auto).expect("turn");
+    let mut gate = ToolRequestGate::default();
+
+    let invocation = |call_id: &str, tool_id| ToolInvocation {
+        call_id: call_id.to_string(),
+        tool_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+
+    gate.authorize_and_reserve(&snapshot, &turn, &invocation("a", a_id.clone()))
+        .expect("first call allowed");
+    gate.authorize_and_reserve(&snapshot, &turn, &invocation("rejected", b_id.clone()))
+        .expect_err("budget must reject");
+
+    // A failed reservation never owns its id. The only reason this retry fails
+    // is still the live budget, not a replay short-circuit.
+    let err = gate
+        .authorize_and_reserve(&snapshot, &turn, &invocation("rejected", a_id))
+        .expect_err("failed call id must not become idempotent");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
+    ));
+}

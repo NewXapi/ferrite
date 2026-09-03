@@ -3,7 +3,7 @@
 //! 整文件照抄自 TauriTavern
 //! `tt-application/src/services/tool_request_gate.rs:1-113`。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use thiserror::Error;
 
@@ -15,11 +15,9 @@ use crate::spec::{
 pub struct ToolRequestGate {
     total_calls: usize,
     calls_per_tool: HashMap<ToolId, usize>,
-    // call ids already authorized by `authorize_and_reserve`. Reservations are
-    // idempotent: replaying the same `call_id` returns success without
-    // consuming extra budget, and a *failed* call never inserts into this set
-    // so subsequent legal calls with the same id still succeed.
-    reserved_calls: HashSet<String>,
+    // Provider 重放同一 call id 时，只有工具也完全相同才幂等。`call_id` 单独
+    // 不是授权键：同一 id 换工具必须经过完整预算和 choice 校验。
+    reserved_calls: HashMap<String, ToolId>,
 }
 
 impl ToolRequestGate {
@@ -58,7 +56,7 @@ impl ToolRequestGate {
             ToolChoice::Auto | ToolChoice::Required | ToolChoice::Specific(_) => {}
         }
 
-        if self.reserved_calls.contains(&invocation.call_id) {
+        if self.reserved_calls.get(&invocation.call_id) == Some(&invocation.tool_id) {
             return Ok(());
         }
 
@@ -81,7 +79,8 @@ impl ToolRequestGate {
             });
         }
 
-        self.reserved_calls.insert(invocation.call_id.clone());
+        self.reserved_calls
+            .insert(invocation.call_id.clone(), invocation.tool_id.clone());
         self.total_calls += 1;
         *self
             .calls_per_tool

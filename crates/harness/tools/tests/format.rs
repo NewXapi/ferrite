@@ -234,3 +234,41 @@ fn resolve_request_adapter_accepts_canonical_and_alias_strings() {
         "error message should echo the unknown source; got {err}"
     );
 }
+
+#[test]
+fn claude_sanitize_recurses_into_all_schema_subschema_positions() {
+    let schema = json!({
+        "$id": "top",
+        "$defs": { "Def": { "$id": "def", "type": "object" } },
+        "patternProperties": { "^x": { "$schema": "pattern", "type": "string" } },
+        "if": { "$id": "if", "type": "object" },
+        "then": { "$schema": "then", "type": "object" },
+        "else": { "$id": "else", "type": "object" },
+        "prefixItems": [
+            { "$id": "prefix", "type": "string" }
+        ],
+        "properties": {
+            "title": { "type": "string" },
+            "$id": { "type": "number" },
+            "if": { "type": "boolean" }
+        }
+    });
+
+    let sanitized = sanitize_schema_for_provider(&schema, AgentProviderAdapter::ClaudeMessages);
+    assert!(sanitized.get("$id").is_none());
+    assert!(sanitized["$defs"]["Def"].get("$id").is_none());
+    assert!(
+        sanitized["patternProperties"]["^x"]
+            .get("$schema")
+            .is_none()
+    );
+    assert!(sanitized["if"].get("$id").is_none());
+    assert!(sanitized["then"].get("$schema").is_none());
+    assert!(sanitized["else"].get("$id").is_none());
+    assert!(sanitized["prefixItems"][0].get("$id").is_none());
+
+    let properties = sanitized["properties"].as_object().expect("properties");
+    assert!(properties.contains_key("title"));
+    assert!(properties.contains_key("$id"));
+    assert!(properties.contains_key("if"));
+}
