@@ -2,11 +2,12 @@
 
 ## src/lib.rs
 
-- `Message` — 用户/角色消息、`is_system`、`swipes`、`swipe_id`、未知顶层字段。
+- `Message` — 用户/角色消息、顶层 `is_system` / `swipes` / `swipe_id` /
+  `gen_started` / `gen_finished` / `title` / `force_avatar`，嵌套
+  `extra: MessageExtra`，以及 `unknown` flatten 透传未声明顶层字段。
 - `MessageExtra` — Agent 元数据（`api` / `model` / `reasoning` /
-  `reasoning_duration` / `token_count` / `gen_started` / `gen_finished` /
-  `title` / `force_avatar`），平铺在 Message 顶层，并通过 `additional`
-  flatten 保留未声明字段。
+  `reasoning_duration` / `token_count`）序列化在 `Message.extra` 嵌套对象内；
+  `additional` flatten 保留 extra 内部未声明字段。
 - `save` — 整份消息数组覆盖写为 JSONL。
 - `load` — 逐行读取 JSONL，跳过坏行。
 - `recent` — 按 mtime 返回聊天文件名和首条消息预览。
@@ -20,10 +21,14 @@
 ## tests/jsonl.rs
 
 - 顺序、覆盖写、坏行、未知顶层字段、路径穿越。
-- 老格式 JSONL 反序列化（无 `is_system` / 无 MessageExtra 字段）。
-- `MessageExtra` 顶层 round-trip。
+- 老格式 JSONL 反序列化（无嵌套 `extra`、无新增顶层字段）。
+- 真实 SillyTavern 嵌套输入：顶层 `gen_started` / `force_avatar` + 嵌套
+  `extra` 元数据，load → save 后结构保持（`api` / `model` / `reasoning`
+  仍落在 nested `extra`）。
+- 新消息输出 `extra` 为嵌套对象，不冒到顶层。
 - `is_system` 序列化 / 默认值。
-- 未知顶层字段透传到 `MessageExtra.additional`。
+- 未知顶层字段透传到 `Message.unknown`；未知 extra 内部字段透传到
+  `MessageExtra.additional`。
 
 ## 参考实现
 
