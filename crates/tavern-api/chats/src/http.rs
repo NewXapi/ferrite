@@ -38,7 +38,9 @@ async fn read(
     State(st): State<Arc<ChatsState>>,
     Path((character, chat)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    load(&st.dirs.chats(), &character, &chat).map(Json).map_err(err)
+    load(&st.dirs.chats(), &character, &chat)
+        .map(Json)
+        .map_err(err)
 }
 
 async fn write(

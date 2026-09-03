@@ -4,7 +4,7 @@
 //! 存储形态：`<user>/chats/<character>/<chat>.jsonl`。
 
 pub mod http;
-pub use http::{router, ChatsState};
+pub use http::{ChatsState, router};
 
 use std::path::{Path, PathBuf};
 
@@ -20,19 +20,54 @@ pub enum ChatError {
 }
 
 /// 一条消息。字段名与 SillyTavern JSONL 对齐，便于导入现有数据。
+///
+/// `is_system` 区分 system 消息，agent prompt 组装时据此过滤。
+/// `extra: MessageExtra` 平铺到顶层，已知字段（如 `api` / `model` / `reasoning` /
+/// `token_count`）直接出现，老 JSONL 的未知顶层字段也透传到 `extra.additional`。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub name: String,
     pub is_user: bool,
+    #[serde(default)]
+    pub is_system: bool,
     pub send_date: String,
     pub mes: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub swipes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swipe_id: Option<usize>,
+    #[serde(default, flatten)]
+    pub extra: MessageExtra,
+}
+
+/// 消息附带的 Agent 元数据，平铺在 Message 顶层。
+///
+/// `additional` 透传未知字段，老 JSONL 里出现过的顶层自定义字段不会因为
+/// 后端不认识就丢掉。已知字段（`api` / `model` / `reasoning` 等）以
+/// 顶层 key 出现，避免破坏 SillyTavern 兼容。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MessageExtra {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_duration: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gen_started: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gen_finished: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub force_avatar: Option<String>,
     /// 未知字段透传保留，不因后端不认识就丢掉。
     #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
+    pub additional: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 最近聊天列表的一行。
@@ -87,12 +122,7 @@ pub fn delete(chats_dir: &Path, character: &str, chat: &str) -> Result<(), ChatE
     Ok(())
 }
 
-pub fn rename(
-    chats_dir: &Path,
-    character: &str,
-    from: &str,
-    to: &str,
-) -> Result<(), ChatError> {
+pub fn rename(chats_dir: &Path, character: &str, from: &str, to: &str) -> Result<(), ChatError> {
     let src = chat_path(chats_dir, character, from)?;
     let dst = chat_path(chats_dir, character, to)?;
     std::fs::rename(src, dst).map_err(StorageError::Io)?;
