@@ -1,16 +1,21 @@
-//! 打分与挑选 — priority 分层 + weight 加权随机 + EWMA 微调。
+//! 打分与挑选 — priority 分层 + 层内 weight 加权随机 + 健康微调。
 //!
-//! 算法 (对齐 new-api select_route_unit.go + wildtoken matcher.go):
+//! 算法 (对齐 wildtoken `matcher.go::selectWeightedByPriority` +
+//! new-api `route_unit_selector.go::scoreCandidates`):
 //! 1. 过滤: status=启用 且 health::is_selectable 且不在 exclude 集;
-//! 2. 分层: 取最高 priority 层 (one-api 的 MAX(priority) 语义);
-//! 3. 加权随机: 层内按 weight 抽取, effective_weight = weight × slow_start。
+//! 2. 分层: priority DESC, 取第一个存在正权重候选的层 (wildtoken fallthrough:
+//!    顶层全冷却 → 落到下一层, 而不是整体失败);
+//! 3. 加权随机: 层内按 effective = (weight+1) × slow_start × latency_quality
+//!    抽取 (new-api routingBaseWeight 的 +1 保证 weight=0 也以最低份额参与,
+//!    且权重单调: 配置越大份额越大)。
 //!
 //! affinity (new-api track_affinity.go): 同会话固定候选 — V2,
 //! 需要 session_hash 提取规则定型后做。
 
-use crate::candidate::Candidate;
-use crate::health::HealthTable;
+use crate::candidate::STATUS_ENABLED;
+use crate::health::{self, HealthTable};
 use contract::records::RouteUnitRecord;
+use rand::Rng;
 
 /// 选择器 trait — 输入候选 + 健康表, 输出唯一选择。
 pub trait Selector: Send + Sync {
@@ -24,8 +29,65 @@ pub trait Selector: Send + Sync {
     ) -> Option<RouteUnitRecord>;
 }
 
-/// 解析候选 → 可转发目标 (查 catalog 快照补全 secret/base_url)。
-/// TODO(#306): 快照上建 channel_key → (secret 解密, base_url) 索引。
-pub fn resolve_candidate(_unit: &RouteUnitRecord) -> Candidate {
-    todo!("TODO(#306): 从 catalog 快照解析凭据与 base_url")
+/// 分层加权选择器 — dispatch 的默认实现。
+pub struct WeightedSelector;
+
+impl Selector for WeightedSelector {
+    fn pick(
+        &self,
+        units: &[RouteUnitRecord],
+        health: &dyn HealthTable,
+        exclude: &[String],
+        now_ms: u64,
+    ) -> Option<RouteUnitRecord> {
+        let eligible: Vec<&RouteUnitRecord> = units
+            .iter()
+            .filter(|u| u.status == STATUS_ENABLED)
+            .filter(|u| !exclude.iter().any(|k| k == &u.meta.key))
+            .filter(|u| health.is_selectable(&u.meta.key, now_ms))
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+
+        // 按 priority 分层, 高优先层先试。
+        let mut by_priority: Vec<(i32, Vec<&RouteUnitRecord>)> = Vec::new();
+        for u in &eligible {
+            match by_priority.iter_mut().find(|(p, _)| *p == u.priority) {
+                Some((_, tier)) => tier.push(u),
+                None => by_priority.push((u.priority, vec![u])),
+            }
+        }
+        by_priority.sort_by(|a, b| b.0.cmp(&a.0));
+
+        for (_, tier) in by_priority {
+            let weighted: Vec<(RouteUnitRecord, f64)> = tier
+                .iter()
+                .map(|u| {
+                    let w = health::routing_weight(u.weight, &health.get(&u.meta.key), now_ms);
+                    ((*u).clone(), w)
+                })
+                .filter(|(_, w)| *w > 0.0)
+                .collect();
+            if weighted.is_empty() {
+                continue; // 这一层全被健康门控 → 落下一层
+            }
+            return Some(pick_weighted(&weighted));
+        }
+        None
+    }
+}
+
+/// 累积加权随机 (new-api selectByWeight / wildtoken weightedIndex 的同一算法)。
+fn pick_weighted(weighted: &[(RouteUnitRecord, f64)]) -> RouteUnitRecord {
+    let total: f64 = weighted.iter().map(|(_, w)| w).sum();
+    let mut target = rand::thread_rng().gen_range(0.0..total);
+    for (u, w) in weighted {
+        target -= w;
+        if target < 0.0 {
+            return u.clone();
+        }
+    }
+    // 浮点累计误差兜底 (new-api 的 last-candidate safety net)。
+    weighted.last().unwrap().0.clone()
 }
