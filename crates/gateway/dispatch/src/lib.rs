@@ -5,8 +5,9 @@
 //! ```text
 //! ① 候选过滤 (candidate)   group + public_model 匹配的 RouteUnit 全集
 //! ② 健康门控 (health)      剔除: 熔断冷却中 / status != 启用; 慢启动折扣权重
-//! ③ 权重打分 (selector)    priority 分层 → 层内按 (weight+1)×slow_start×latency 加权随机
-//! ④ 失败回退 (retry)       可重试失败 → 排除已试候选 → 回到 ②
+//! ③ 限流门控 (ratelimit)   按 unit.meta.key 的滑动窗口剔除超额单元
+//! ④ 权重打分 (selector)    priority 分层 → 层内按 (weight+1)×slow_start×latency 加权随机
+//! ⑤ 失败回退 (retry)       可重试失败 → 排除已试候选 → 回到 ②
 //! ```
 //!
 //! 健康数据全部是**本节点内存观测** (health::MemoryHealthTable), 不跨节点同步 —
@@ -17,30 +18,31 @@
 //!   `model/channel_model_health.go` (失败隔离状态机), `pkg/routestats/quality.go`
 //!   (EWMA 延迟质量分)
 //! - wildtoken `internal/proxy/matcher.go` (priority 分层加权随机),
-//!   `internal/proxy/health.go` (整数健康分 + 定时渐进恢复)
+//!   `internal/proxy/health.go` (整数健康分 + 定时渐进恢复),
+//!   `internal/ratelimit/{limiter.go,parser.go}` (按 key 滑动窗口)
 //! - sub2api `backend/internal/handler/failover_loop.go` (重试状态机)
-//!
-//! 限流 (滑动窗口 RPM) 属于 `gateway-gate` 的 gate/ratelimit.rs — 见 gateway
-//! README 分工, dispatch 不持有。
 //!
 //! 模块地图:
 //! | 模块 | 职责 |
 //! |------|------|
 //! | [`candidate`] | 候选过滤与凭据解析 (选择产物 = 可转发的完整目标) |
 //! | [`health`]    | 本地健康表: EWMA/熔断/冷却/慢启动 |
+//! | [`ratelimit`] | 滑动窗口限流: 按 unit.key 保护上游频率 |
 //! | [`selector`]  | 分层打分与加权挑选算法 |
 //! | [`retry`]     | failover 排除集 + 尝试预算 |
 //!
-//! 组装入口: [`Dispatcher`] 把快照 + 健康表 + 选择器串成 [`Dispatch`] 实现,
+//! 组装入口: [`Dispatcher`] 把快照 + 健康表 + 限流 + 选择器串成 [`Dispatch`] 实现,
 //! apps/gateway 直接持有。
 
 pub mod candidate;
 pub mod health;
+pub mod ratelimit;
 pub mod retry;
 pub mod selector;
 
 pub use candidate::{Candidate, STATUS_ENABLED, resolve_candidate};
 pub use health::{FailureClass, HealthState, HealthTable, MemoryHealthTable};
+pub use ratelimit::{RateLimitSpec, SlidingWindow};
 pub use retry::{Attempt, AttemptOutcome, Failover, RetryLoop, RetryPolicy};
 pub use selector::{Selector, WeightedSelector};
 
@@ -78,6 +80,10 @@ pub enum DispatchError {
     /// 该分组下没有此模型的路由 (或全部被健康门控剔除 / 凭据缺失)。
     #[error("no candidate for {group}/{model}")]
     NoCandidate { group: String, model: String },
+    /// 全候选因限流被剔除 — 上层映射 429; 与 NoCandidate=503 区分,
+    /// 让客户端区分"暂时无可用单元"与"上游频率被触顶"。
+    #[error("all candidates rate-limited for {group}/{model}")]
+    RateLimited { group: String, model: String },
     /// catalog 快照尚未就绪 (启动期 sync 未完成首次拉取)。
     /// 决策: fail-closed (503), 与"安全配置 fail-closed"原则一致。
     #[error("catalog snapshot not ready")]
@@ -102,23 +108,33 @@ pub fn candidates_from_snapshot(
         .collect()
 }
 
-/// dispatch 默认组装 — 快照 + 健康表 + 分层选择器。
+/// dispatch 默认组装 — 快照 + 健康表 + 限流 + 分层选择器。
 ///
 /// `SnapshotNotReady`: 启动期 `snapshot` 为 None 时 select 直接 503,
 /// 与"安全配置 fail-closed"原则一致; sync 完成首次拉取后调 `set_snapshot`
 /// 整体替换 (catalog 变更经过 sync 重新构建, 与 new-api channelSyncLock 语义一致)。
+///
+/// `limits`: 可选按 unit.meta.key 的限流规格。空 → 限流门控完全跳过,
+/// 行为与历史实现一致 (forward 兼容既有调用方)。
 pub struct Dispatcher {
     snapshot: Option<Arc<Snapshot>>,
     health: Arc<MemoryHealthTable>,
     selector: WeightedSelector,
     now_ms: Box<dyn Fn() -> u64 + Send + Sync>,
+    /// unit.meta.key → 限流规格。未配置 = 不限流。
+    limits: HashMap<String, RateLimitSpec>,
+    /// 滑动窗口状态机; 即便 limits 为空也要有实例 (set_limits 入口留好)。
+    rl: Arc<SlidingWindow>,
 }
 
 impl Dispatcher {
     pub fn new(snapshot: Option<Arc<Snapshot>>, health: Arc<MemoryHealthTable>) -> Self {
-        Self::with_clock(snapshot, health, || {
-            chrono::Utc::now().timestamp_millis().max(0) as u64
-        })
+        Self::with_limits(
+            snapshot,
+            health,
+            HashMap::new(),
+            Arc::new(SlidingWindow::new()),
+        )
     }
 
     /// 时钟注入 (测试确定性)。
@@ -127,17 +143,53 @@ impl Dispatcher {
         health: Arc<MemoryHealthTable>,
         now_ms: impl Fn() -> u64 + Send + Sync + 'static,
     ) -> Self {
+        Self::with_limits_and_clock(
+            snapshot,
+            health,
+            HashMap::new(),
+            Arc::new(SlidingWindow::new()),
+            now_ms,
+        )
+    }
+
+    /// 注入限流规格表 (按 unit.meta.key) 与共享窗口状态机。
+    pub fn with_limits(
+        snapshot: Option<Arc<Snapshot>>,
+        health: Arc<MemoryHealthTable>,
+        limits: HashMap<String, RateLimitSpec>,
+        rl: Arc<SlidingWindow>,
+    ) -> Self {
+        Self::with_limits_and_clock(snapshot, health, limits, rl, || {
+            chrono::Utc::now().timestamp_millis().max(0) as u64
+        })
+    }
+
+    /// 限流 + 时钟一并注入 (测试全确定性)。
+    pub fn with_limits_and_clock(
+        snapshot: Option<Arc<Snapshot>>,
+        health: Arc<MemoryHealthTable>,
+        limits: HashMap<String, RateLimitSpec>,
+        rl: Arc<SlidingWindow>,
+        now_ms: impl Fn() -> u64 + Send + Sync + 'static,
+    ) -> Self {
         Self {
             snapshot,
             health,
             selector: WeightedSelector,
             now_ms: Box::new(now_ms),
+            limits,
+            rl,
         }
     }
 
     /// 整体替换调度快照 (catalog sync 完成后调用)。
     pub fn set_snapshot(&mut self, snapshot: Arc<Snapshot>) {
         self.snapshot = Some(snapshot);
+    }
+
+    /// 整体替换限流规格表 (限流配置变更 / 启动期一次性载入)。
+    pub fn set_limits(&mut self, limits: HashMap<String, RateLimitSpec>) {
+        self.limits = limits;
     }
 }
 
@@ -159,6 +211,28 @@ impl Dispatch for Dispatcher {
                 model: public_model.to_string(),
             });
         }
+        // 限流门控 — 仅当 limits 非空才执行; 空 = 与历史行为一致 (零开销)。
+        // 过滤后若全空, 而原始候选非空 → 全部因限流被剔除, 返回 RateLimited (429);
+        // 否则按现有路径走 NoCandidate (503)。
+        let cands = if self.limits.is_empty() {
+            cands
+        } else {
+            let now = (self.now_ms)();
+            let mut kept = Vec::with_capacity(cands.len());
+            for u in cands {
+                let spec = self.limits.get(&u.meta.key);
+                if self.rl.admits(&u.meta.key, spec, now) {
+                    kept.push(u);
+                }
+            }
+            if kept.is_empty() {
+                return Err(DispatchError::RateLimited {
+                    group: group.to_string(),
+                    model: public_model.to_string(),
+                });
+            }
+            kept
+        };
         let unit = self
             .selector
             .pick(&cands, &*self.health, exclude, (self.now_ms)())

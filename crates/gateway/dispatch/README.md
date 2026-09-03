@@ -10,11 +10,9 @@
   把 (group, model) 匹配的路由单元解析成可转发目标（secret / base_url）。
 - `src/health.rs` — `MemoryHealthTable`：EWMA 延迟质量分、失败连击熔断、
   冷却窗口（冷却中再失败顺延）、慢启动渐进恢复。
+- `src/ratelimit.rs` — `RateLimitSpec` 解析（`100/s` / `50/10m` 等语法）+
+  `SlidingWindow` 滑动窗口限流（按 `unit.meta.key` 秒级桶计数，2h 旧桶惰性回收）。
 - `src/selector.rs` — `WeightedSelector`：priority 分层（DESC，逐层 fallthrough）
-  + 层内按 `(weight+1) × slow_start × latency_quality` 加权随机。
-- `src/retry.rs` — `Failover` 状态机：已试排除集 + 尝试预算；`RetryPolicy` /
-  `AttemptOutcome` / `RetryLoop` 编排接口。
-
 ## 实现对照
 
 | 机制 | 参考实现 | 本 crate 落地 |
@@ -26,7 +24,10 @@
 
 ## 明确不做（边界）
 
-- 限流（滑动窗口 RPM）→ `gateway-gate` 的 `gate/ratelimit.rs`。
+- 限流：dispatch 提供**每单元**滑动窗口（`SlidingWindow`，保护上游渠道频率），
+  `gateway-gate` 负责**每用户/Token**的频率限制 — 两者各管一段。调度侧按
+  `unit.meta.key` 跟踪配额耗尽情况，全候选被剔除时返回 `DispatchError::RateLimited`
+  → 上层映射 429；与"完全没候选"的 `NoCandidate` (503) 严格区分。
 - 会话亲和（affinity）→ V2，等 `session_hash` 提取规则定型。
 - 共享份额修正（new-api `routestats` share-deficit）→ 需要观测窗口，热路径成本高，暂不引入。
 - 别名模糊归一（new-api `FormatMatchingModelName`）→ `RouteUnitRecord` 已显式分离 public/upstream 模型名。
