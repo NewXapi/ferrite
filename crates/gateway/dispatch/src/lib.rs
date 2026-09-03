@@ -47,6 +47,7 @@ pub use retry::{Attempt, AttemptOutcome, Failover, RetryLoop, RetryPolicy};
 pub use selector::{Selector, WeightedSelector};
 
 use contract::records::{ChannelRecord, RouteUnitRecord};
+use rand::SeedableRng;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -233,9 +234,10 @@ impl Dispatch for Dispatcher {
         // runProxyAttempts 语义: 只对"被选中"的渠道记账, 绝不消耗未选中
         // 候选的配额)。全部被拒 → RateLimited (429); 与 NoCandidate (503) 区分。
         // limits 空时直接走 pick, 与历史行为一致 (零开销)。
+        let mut rng = rand::rngs::StdRng::from_entropy();
         let unit = if self.limits.is_empty() {
             self.selector
-                .pick(&cands, &*self.health, exclude, (self.now_ms)())
+                .pick(&cands, &*self.health, exclude, (self.now_ms)(), &mut rng)
                 .ok_or_else(|| no_candidate(group, public_model))?
         } else {
             let now = (self.now_ms)();
@@ -246,21 +248,25 @@ impl Dispatch for Dispatcher {
             refused.extend_from_slice(exclude);
             let mut refused_by_limit = false;
             loop {
-                let picked = match self.selector.pick(&cands, &*self.health, &refused, now) {
-                    Some(p) => p,
-                    None => {
-                        // 候选耗尽: 若本轮限流拒过至少一个 → 全被限流 (429);
-                        // 否则是纯粹的不可调度 (503)。
-                        return Err(if refused_by_limit {
-                            DispatchError::RateLimited {
-                                group: group.to_string(),
-                                model: public_model.to_string(),
-                            }
-                        } else {
-                            no_candidate(group, public_model)
-                        });
-                    }
-                };
+                let picked =
+                    match self
+                        .selector
+                        .pick(&cands, &*self.health, &refused, now, &mut rng)
+                    {
+                        Some(p) => p,
+                        None => {
+                            // 候选耗尽: 若本轮限流拒过至少一个 → 全被限流 (429);
+                            // 否则是纯粹的不可调度 (503)。
+                            return Err(if refused_by_limit {
+                                DispatchError::RateLimited {
+                                    group: group.to_string(),
+                                    model: public_model.to_string(),
+                                }
+                            } else {
+                                no_candidate(group, public_model)
+                            });
+                        }
+                    };
                 let admitted = match self.limits.get(&picked.meta.key) {
                     Some(spec) => self.rl.admits(&picked.meta.key, Some(spec), now),
                     None => true, // 未配置限流的单元恒放行

@@ -6,6 +6,7 @@ use dispatch::candidate::resolve_candidate;
 use dispatch::health::{FailureClass, HealthTable, MemoryHealthTable, defaults};
 use dispatch::retry::{Failover, RetryPolicy};
 use dispatch::selector::{Selector, WeightedSelector};
+use rand::SeedableRng;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -67,7 +68,10 @@ fn assert_pick(
     exclude: &[String],
 ) -> Option<RouteUnitRecord> {
     let refs: Vec<&RouteUnitRecord> = units.iter().collect();
-    WeightedSelector.pick(&refs, health, exclude, 0).cloned()
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    WeightedSelector
+        .pick(&refs, health, exclude, 0, &mut rng)
+        .cloned()
 }
 
 // ---------- health ----------
@@ -211,52 +215,69 @@ fn higher_priority_tier_wins_even_at_lower_weight() {
 
 #[test]
 fn weight_zero_stays_selectable_at_lowest_share() {
-    let units = vec![
+    // weight=0 单元仍可被选中 (routingBaseWeight +1 语义, base 1:11 ≈ 8.3%),
+    // 但份额必须显著低于重权重单元。固定 seed → 确定性, 跨 12 seed 累计
+    // 验证 (单 seed 300 抽 8.3% 可能落空, 累计后 P(一次都不中)≈0)。
+    let units = [
         unit("g", "m", "zero", 10, 0, 1),
         unit("g", "m", "heavy", 10, 10, 1),
     ];
     let health = MemoryHealthTable::new();
-    // weight=0 单元仍可能被选中 (routingBaseWeight +1 语义), 只是份额极小
-    let mut zero_picks = 0;
-    for _ in 0..300 {
-        let picked = assert_pick(&units, &health, &[]).unwrap();
-        if picked.meta.key == "zero" {
-            zero_picks += 1;
+    let mut zero_picks = 0usize;
+    let mut total = 0usize;
+    for seed in 1u64..=12 {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        for _ in 0..300 {
+            let refs: Vec<&RouteUnitRecord> = units.iter().collect();
+            let picked = WeightedSelector
+                .pick(&refs, &health, &[], 0, &mut rng)
+                .unwrap();
+            if picked.meta.key == "zero" {
+                zero_picks += 1;
+            }
+            total += 1;
         }
     }
-    // base 1:11 → P(zero)≈8.3%, 300 抽一个不中都不到 1e-12
     assert!(
         zero_picks > 0,
         "weight=0 候选必须仍可被选中 (routingBaseWeight +1 语义)"
     );
+    let ratio = zero_picks as f64 / total as f64;
     assert!(
-        zero_picks < 150,
-        "weight=0 份额应显著低于 weight=10: got {zero_picks}/300"
+        ratio < 0.5,
+        "weight=0 份额应显著低于 weight=10: {ratio:.3} ({zero_picks}/{total})"
     );
 }
 
 #[test]
 fn weighted_distribution_matches_configured_ratio() {
     // pick_weighted 核心数学: 同 priority 层, weight 10:30 → 期望 25%/75%。
-    // 3000 抽, heavy 落在 [70%, 80%] — 真值 75%, σ≈23.7, 边界在 6σ+ 外,
-    // flake 概率可忽略。测的是"权重比例方向与幅度正确", 不是精确概率。
-    let units = vec![
+    // 用固定 seed 的 StdRng 注入 → 结果完全确定性, 永无 flake;
+    // 跨 8 个 seed 验证比例方向与幅度 (75% ± 5%)。
+    let units = [
         unit("g", "m", "light", 10, 10, 1),
         unit("g", "m", "heavy", 10, 30, 1),
     ];
     let health = MemoryHealthTable::new();
-    let mut heavy = 0;
-    let n = 3000;
-    for _ in 0..n {
-        if assert_pick(&units, &health, &[]).unwrap().meta.key == "heavy" {
-            heavy += 1;
+    let n = 2000;
+    for seed in 1u64..=8 {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let mut heavy = 0;
+        for _ in 0..n {
+            let refs: Vec<&RouteUnitRecord> = units.iter().collect();
+            let picked = WeightedSelector
+                .pick(&refs, &health, &[], 0, &mut rng)
+                .unwrap();
+            if picked.meta.key == "heavy" {
+                heavy += 1;
+            }
         }
+        let ratio = heavy as f64 / n as f64;
+        assert!(
+            (0.70..=0.80).contains(&ratio),
+            "seed {seed}: weight 10:30 期望 ~75%, 实测 {ratio:.3} ({heavy}/{n})"
+        );
     }
-    let ratio = heavy as f64 / n as f64;
-    assert!(
-        (0.70..=0.80).contains(&ratio),
-        "weight 10:30 期望 ~75%, 实测 {ratio:.3} ({heavy}/{n})"
-    );
 }
 
 #[test]

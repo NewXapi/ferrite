@@ -24,12 +24,15 @@ pub trait Selector: Send + Sync {
     ///
     /// 返回借用而非所有权 (ocr #8): 候选在快照中已由 Arc 持有,
     /// 热路径每请求零克隆, 只有上层最终 resolve_candidate 时才产出一个 owned。
+    ///
+    /// `rng` 注入使加权随机的测试完全确定性 (统计断言不再依赖全局随机源)。
     fn pick<'a>(
         &self,
         units: &[&'a RouteUnitRecord],
         health: &dyn HealthTable,
         exclude: &[String],
         now_ms: u64,
+        rng: &mut dyn rand::RngCore,
     ) -> Option<&'a RouteUnitRecord>;
 }
 
@@ -43,6 +46,7 @@ impl Selector for WeightedSelector {
         health: &dyn HealthTable,
         exclude: &[String],
         now_ms: u64,
+        rng: &mut dyn rand::RngCore,
     ) -> Option<&'a RouteUnitRecord> {
         let eligible: Vec<&RouteUnitRecord> = units
             .iter()
@@ -78,16 +82,19 @@ impl Selector for WeightedSelector {
             if weighted.is_empty() {
                 continue; // 这一层全被健康门控 → 落下一层
             }
-            return Some(pick_weighted(&weighted));
+            return Some(pick_weighted(&weighted, rng));
         }
         None
     }
 }
 
 /// 累积加权随机 (new-api selectByWeight / wildtoken weightedIndex 的同一算法)。
-fn pick_weighted<'a>(weighted: &[(&'a RouteUnitRecord, f64)]) -> &'a RouteUnitRecord {
+fn pick_weighted<'a>(
+    weighted: &[(&'a RouteUnitRecord, f64)],
+    rng: &mut dyn rand::RngCore,
+) -> &'a RouteUnitRecord {
     let total: f64 = weighted.iter().map(|(_, w)| w).sum();
-    let mut target = rand::thread_rng().gen_range(0.0..total);
+    let mut target = rng.gen_range(0.0..total);
     for (u, w) in weighted {
         target -= w;
         if target < 0.0 {
