@@ -1,0 +1,16 @@
+[package]
+name = "admission"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 网关准入闸 — 请求进入转发热路径前的所有本地检查。
+# 只依赖 contract; 快照数据来自 sync 下发, 不直接访问数据库。
+
+[dependencies]
+contract = { path = "../../contract" }
+serde    = { workspace = true }
+chrono   = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }

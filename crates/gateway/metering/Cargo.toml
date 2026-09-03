@@ -1,0 +1,18 @@
+[package]
+name = "metering"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 计量 — 预扣、流式 token 扫描、UsageEvent 落盘。转发不阻塞计费。
+
+[dependencies]
+contract = { path = "../../contract" }
+protocol = { path = "../../protocol" }
+serde    = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono   = { workspace = true }
+bytes    = { workspace = true }
+futures-util = { workspace = true }
