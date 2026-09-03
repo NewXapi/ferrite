@@ -10,7 +10,7 @@ publish.workspace = true
 
 [dependencies]
 contract = { path = "../../contract" }
-store    = { path = "../../service/store" }
+store    = { path = "../store" }
 serde    = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }

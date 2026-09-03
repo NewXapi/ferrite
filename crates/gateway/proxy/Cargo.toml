@@ -1,0 +1,20 @@
+[package]
+name = "gateway-proxy"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+gateway-pipeline = { path = "../pipeline" }
+contract         = { path = "../../contract" }
+
+hyper = { workspace = true, features = ["client", "http2"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time", "net", "io-util"] }
+url = "2"
+bytes = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = "1"
+async-trait = "0.1"
+dashmap = "6"
+arc-swap = { workspace = true }

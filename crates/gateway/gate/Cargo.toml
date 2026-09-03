@@ -1,0 +1,22 @@
+[package]
+name = "gateway-gate"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+gateway-pipeline = { path = "../pipeline" }
+contract         = { path = "../../contract" }
+
+tokio = { workspace = true, features = ["sync", "rt-multi-thread", "macros"] }
+arc-swap = { workspace = true }
+dashmap = "6"
+parking_lot = "0.12"
+http = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = "1"
+async-trait = "0.1"
