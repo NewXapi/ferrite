@@ -46,3 +46,10 @@ crates/<domain>/<feature>/
 - `tavern-web/*` 和 `admin-web/*` 必须支持 `wasm32-unknown-unknown`。
 - 测试放同层 `tests/`，不在 `src/` 使用 `#[cfg(test)]`。
 - 新增或移动功能 crate 时，更新根 `Cargo.toml` 的 `workspace.members` 和对应域目录的 `README.md`。
+
+## 开发环境约定
+
+- `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支，代码改动只在对应 worktree 里做；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
+- CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：`cargo build` / `cargo test` / `cargo clippy` / `npm` / `bun` 等编译、测试、装包类命令一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
+- `.githooks/` 的 pre-commit / pre-push / merge 拦截信息必须读，按输出修根因；禁止 `--no-verify`、禁止绕过 gate。绕过会让 PR 侧 `gate merge --dry-run` 与 CI 失败。
+- 完整编排规范（主控/子代理拆分、CRG + ocr 双层审查、PR comment 规则）见 `~/.config/deskctl/snippets/tasks/dev-implement`，本文件只列环境级约定。
