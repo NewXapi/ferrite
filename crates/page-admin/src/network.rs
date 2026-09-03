@@ -8,16 +8,17 @@ use ui::ScrollSpyNav;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
 /// 任一侧改名/增删，其他侧立即反映。
+#[doc(hidden)]
 #[derive(Clone)]
-struct GraphView {
+pub struct GraphView {
     /// 分组名（按 store 顺序；即 NodeKey::Group(i) 中的 i）
-    groups: Vec<String>,
+    pub groups: Vec<String>,
     /// 模型别名
-    aliases: Vec<String>,
+    pub aliases: Vec<String>,
     /// 渠道名
-    channels: Vec<String>,
+    pub channels: Vec<String>,
     /// 调度模型：(渠道序号, 模型名)，展开自每个渠道的 dispatch
-    dispatch: Vec<(usize, String)>,
+    pub dispatch: Vec<(usize, String)>,
 }
 
 impl GraphView {
@@ -92,7 +93,8 @@ fn view_subtitle(view: &GraphView, key: NodeKey) -> String {
 }
 
 /// 按 GraphView 尺寸算出可见层。
-fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
+#[doc(hidden)]
+pub fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
     [
         (0..view.groups.len()).map(NodeKey::Group).collect(),
         (0..view.aliases.len()).map(NodeKey::Mapping).collect(),
@@ -118,9 +120,9 @@ fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
 /// - 「适配」button: zoom/pan to fit all visible nodes
 ///
 /// Sample data; persistence + real /api/channel + /api/group come later.
-
+#[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum NodeKey {
+pub enum NodeKey {
     Group(usize),
     Mapping(usize),
     /// 调度模型：渠道下真实可用的上游模型。
@@ -158,7 +160,8 @@ const SEED_EDGES: &[(NodeKey, NodeKey)] = &[
     (NodeKey::Mapping(3), NodeKey::Dispatch(8)),
 ];
 
-const MARGIN: f64 = 110.0;
+#[doc(hidden)]
+pub const MARGIN: f64 = 110.0;
 const COL_GAP: f64 = 130.0;
 // 三层收紧成地图式分层；横向空间留给节点本身，宽层再折行。
 const ROW_Y: [f64; 3] = [100.0, 330.0, 560.0];
@@ -171,10 +174,14 @@ fn band_y(layer: u8) -> (f64, f64) {
     )
 }
 // 9 个调度模型按两排显示，避免用过宽 viewBox 把节点缩小。
-const VIEW_W: f64 = MARGIN * 2.0 + 7.0 * COL_GAP;
-const VIEW_H: f64 = 700.0;
-const NODE_W: f64 = 104.0;
-const NODE_H: f64 = 36.0;
+#[doc(hidden)]
+pub const VIEW_W: f64 = MARGIN * 2.0 + 7.0 * COL_GAP;
+#[doc(hidden)]
+pub const VIEW_H: f64 = 700.0;
+#[doc(hidden)]
+pub const NODE_W: f64 = 104.0;
+#[doc(hidden)]
+pub const NODE_H: f64 = 36.0;
 
 /// Deterministic startup layout, computed from the graph — no physics involved:
 /// groups spread evenly; each mapping sits at the average x of the groups it
@@ -183,7 +190,8 @@ const NODE_H: f64 = 36.0;
 /// handles collisions and user drags, so the graph no longer reels inward
 /// on open (the old grid was wider than the rope slack radius, so every link
 /// started taut and pulled everything toward the center).
-fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
+#[doc(hidden)]
+pub fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
     let layers = visible_layers_of(view);
     let mut out: HashMap<NodeKey, (f64, f64)> = HashMap::new();
     // row 0: even spread around the canvas center
@@ -256,7 +264,8 @@ fn normalize(a: NodeKey, b: NodeKey) -> Option<(NodeKey, NodeKey)> {
     Some(if la < lb { (a, b) } else { (b, a) })
 }
 
-fn bezier(a: (f64, f64), b: (f64, f64)) -> String {
+#[doc(hidden)]
+pub fn bezier(a: (f64, f64), b: (f64, f64)) -> String {
     let mid = (a.1 + b.1) / 2.0;
     path_str(a, (a.0, mid), (b.0, mid), b)
 }
@@ -268,7 +277,14 @@ fn path_str(a: (f64, f64), c1: (f64, f64), c2: (f64, f64), b: (f64, f64)) -> Str
     )
 }
 
-fn cubic_at(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), t: f64) -> (f64, f64) {
+#[doc(hidden)]
+pub fn cubic_at(
+    p0: (f64, f64),
+    p1: (f64, f64),
+    p2: (f64, f64),
+    p3: (f64, f64),
+    t: f64,
+) -> (f64, f64) {
     let u = 1.0 - t;
     (
         u * u * u * p0.0 + 3.0 * u * u * t * p1.0 + 3.0 * u * t * t * p2.0 + t * t * t * p3.0,
@@ -278,7 +294,8 @@ fn cubic_at(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), t: f
 
 /// Fraction of lateral control-point offset that dodges blocker rects:
 /// first collision-free candidate wins, else the least-colliding one.
-fn dodge_frac(a: (f64, f64), b: (f64, f64), blockers: &[(f64, f64)]) -> f64 {
+#[doc(hidden)]
+pub fn dodge_frac(a: (f64, f64), b: (f64, f64), blockers: &[(f64, f64)]) -> f64 {
     const FRACS: [f64; 5] = [0.0, 0.12, -0.12, 0.26, -0.26];
     const SAMPLES: usize = 20;
     const PAD_X: f64 = NODE_W / 2.0 + 8.0;
@@ -496,7 +513,8 @@ struct Tween {
 }
 
 /// 两次进入更顺滑：前期快启动，末段缓刹。
-fn ease_out_quint(t: f64) -> f64 {
+#[doc(hidden)]
+pub fn ease_out_quint(t: f64) -> f64 {
     1.0 - (1.0 - t).powi(5)
 }
 
@@ -555,7 +573,8 @@ fn now_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
-fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
+#[doc(hidden)]
+pub fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
     let pad = NODE_W / 2.0 + 24.0;
     let (minx, maxx) = pts
         .iter()
@@ -2290,113 +2309,5 @@ fn InspectList(title: &'static str, items: Vec<String>, empty: &'static str) -> 
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // 测试专用快照构造: 不经过 EntityStore (Signal 需要 Dioxus runtime),
-    // 直接摆数据 —— GraphView 是纯结构体, 可在裸测试环境里构造。
-    fn test_view() -> GraphView {
-        GraphView {
-            groups: vec!["default".into(), "claude".into(), "vip".into()],
-            aliases: vec!["gpt-4o".into(), "gpt-5".into(), "claude-sonnet-4".into()],
-            channels: vec!["OpenAI".into(), "Claude".into(), "OneAPI".into()],
-            dispatch: vec![
-                (0usize, "gpt-4o".to_string()),
-                (0, "gpt-5".to_string()),
-                (1, "claude-sonnet-4".to_string()),
-            ],
-        }
-    }
-
-    /// 落位要覆盖全部可见节点且不越出画布。
-    #[test]
-    fn initial_layout_covers_all_visible_nodes_in_view() {
-        let view = test_view();
-        let pos = initial_positions(&view);
-        for layer in visible_layers_of(&view) {
-            for k in &layer {
-                let (x, y) = pos[k];
-                assert!(
-                    x >= MARGIN && x <= VIEW_W - MARGIN,
-                    "{k:?} x={x} out of view"
-                );
-                assert!(y >= 0.0 && y <= VIEW_H, "{k:?} y={y} out of view");
-            }
-        }
-    }
-
-    #[test]
-    fn initial_layout_no_same_layer_overlap() {
-        let view = test_view();
-        let pos = initial_positions(&view);
-        let all: Vec<NodeKey> = visible_layers_of(&view).into_iter().flatten().collect();
-        for (i, a) in all.iter().enumerate() {
-            for b in &all[i + 1..] {
-                let (pa, pb) = (pos[a], pos[b]);
-                let clash = (pb.0 - pa.0).abs() < NODE_W && (pb.1 - pa.1).abs() < NODE_H;
-                assert!(!clash, "{a:?} {pa:?} overlaps {b:?} {pb:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn bezier_start_end_match_input() {
-        let a = (10.0, 20.0);
-        let b = (110.0, 220.0);
-        let d = bezier(a, b);
-        // "M 10 20 C ... 110 220" — 首尾坐标要出现在 path 里
-        assert!(d.starts_with("M 10 20"), "path: {d}");
-        assert!(d.ends_with("110 220"), "path: {d}");
-    }
-
-    #[test]
-    fn cubic_at_endpoints() {
-        let p0 = (0.0, 0.0);
-        let p3 = (1.0, 0.0);
-        let p1 = (0.0, 0.0);
-        let p2 = (1.0, 0.0);
-        assert_eq!(cubic_at(p0, p1, p2, p3, 0.0), p0);
-        assert_eq!(cubic_at(p0, p1, p2, p3, 1.0), p3);
-        let mid = cubic_at(p0, p1, p2, p3, 0.5);
-        assert!(mid.1.abs() < 1e-9, "零偏置 mid y 应为 0, got {}", mid.1);
-    }
-
-    #[test]
-    fn ease_out_quint_monotonic_endpoints() {
-        assert_eq!(ease_out_quint(0.0), 0.0);
-        assert!((ease_out_quint(1.0) - 1.0).abs() < 1e-9);
-        let samples: Vec<f64> = (0..=10).map(|i| ease_out_quint(i as f64 / 10.0)).collect();
-        for w in samples.windows(2) {
-            assert!(w[0] <= w[1], "ease_out_quint 必须单调递增");
-        }
-    }
-
-    #[test]
-    fn dodge_frac_zero_when_no_blockers() {
-        let a = (0.0, 0.0);
-        let b = (200.0, 0.0);
-        assert_eq!(dodge_frac(a, b, &[]), 0.0, "无遮挡时首候选 0.0 即无碰撞");
-    }
-
-    #[test]
-    fn fit_view_centers_point_set() {
-        let pts = vec![(0.0, 0.0), (100.0, 0.0), (50.0, 50.0)];
-        let ((cx, cy), _z) = fit_view(&pts);
-        let (sum_x, sum_y): (f64, f64) = pts.iter().fold((0.0, 0.0), |a, p| (a.0 + p.0, a.1 + p.1));
-        // 中心应接近点集质心(近似; 允许 zoom/pan 常数误差)
-        let expect_cx = sum_x / pts.len() as f64;
-        let expect_cy = sum_y / pts.len() as f64;
-        assert!(
-            (cx - expect_cx).abs() < VIEW_W,
-            "cx={cx} too far from {expect_cx}"
-        );
-        assert!(
-            (cy - expect_cy).abs() < VIEW_H,
-            "cy={cy} too far from {expect_cy}"
-        );
     }
 }

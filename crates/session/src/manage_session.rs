@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::{refresh_token::refresh, AuthBundle};
+use crate::{AuthBundle, refresh_token::refresh};
 use client::ApiClient;
 
 /// Snapshot of the authenticated identity shared across all pages.
@@ -78,7 +78,7 @@ pub async fn logout(client: &ApiClient) {
     let headers: Option<Vec<(&str, &str)>> = sid_owned
         .as_ref()
         .map(|sid| vec![("X-Auth-Session", sid.as_str())]);
-    let headers_ref = headers.as_ref().map(|h| h.as_slice());
+    let headers_ref = headers.as_deref();
 
     // Best-effort: ignore the result so we always clear below.
     let _ = client
@@ -87,81 +87,4 @@ pub async fn logout(client: &ApiClient) {
 
     clear_session();
     client.set_token(None);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn is_authenticated_none_when_missing() {
-        let state = SessionState::default();
-        assert!(!state.is_authenticated());
-
-        let state = SessionState {
-            user: Some(crate::User {
-                id: 1,
-                username: "x".into(),
-                display_name: "X".into(),
-                role: 1,
-                status: 1,
-                email: String::new(),
-                group: String::new(),
-                quota: 0,
-                used_quota: 0,
-                request_count: 0,
-            }),
-            access_token: None,
-            access_expires_at: None,
-            sid: None,
-        };
-        assert!(!state.is_authenticated());
-    }
-
-    #[test]
-    fn is_authenticated_true_when_both_present() {
-        let state = SessionState {
-            user: Some(crate::User {
-                id: 1,
-                username: "x".into(),
-                display_name: "X".into(),
-                role: 1,
-                status: 1,
-                email: String::new(),
-                group: String::new(),
-                quota: 0,
-                used_quota: 0,
-                request_count: 0,
-            }),
-            access_token: Some("tok".into()),
-            access_expires_at: Some(100),
-            sid: Some("s".into()),
-        };
-        assert!(state.is_authenticated());
-    }
-
-    #[test]
-    fn is_expired_none_is_true() {
-        let state = SessionState::default();
-        assert!(state.is_expired(0));
-    }
-
-    #[test]
-    fn is_expired_past_is_true() {
-        let state = SessionState {
-            access_expires_at: Some(100),
-            ..Default::default()
-        };
-        assert!(state.is_expired(100));
-        assert!(state.is_expired(200));
-    }
-
-    #[test]
-    fn is_expired_future_is_false() {
-        let state = SessionState {
-            access_expires_at: Some(100),
-            ..Default::default()
-        };
-        assert!(!state.is_expired(50));
-    }
 }
