@@ -252,9 +252,8 @@ impl AuthService {
 
         let row: Option<(Uuid, String, i64)> = sqlx::query_as(
             r#"SELECT user_key, token_hash, auth_version
-               FROM auth_refresh_tokens t
-               JOIN auth_users u ON u.key = t.user_key
-               WHERE t.sid = $1 AND t.revoked_at IS NULL AND t.expires_at > now()"#,
+               FROM auth_refresh_tokens
+               WHERE sid = $1 AND revoked_at IS NULL AND expires_at > now()"#,
         )
         .bind(sid)
         .fetch_optional(&self.pool)
@@ -369,12 +368,13 @@ impl AuthService {
 
         sqlx::query(
             r#"INSERT INTO auth_refresh_tokens
-               (sid, user_key, token_hash, user_agent, ip, issued_at, expires_at)
-               VALUES ($1, $2, $3, $4, $5, now(), $6)"#,
+               (sid, user_key, token_hash, auth_version, user_agent, ip, issued_at, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, now(), $7)"#,
         )
         .bind(sid)
         .bind(user.key)
         .bind(&token_hash)
+        .bind(user.auth_version)
         .bind(user_agent)
         .bind(ip)
         .bind(expires_at)
