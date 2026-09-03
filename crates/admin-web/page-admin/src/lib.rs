@@ -7,4 +7,5 @@ pub mod pages;
 pub mod state;
 pub use groups::GroupsPage;
 pub use network::NetworkPanel;
-pub use pages::{AliasesPage, ChannelsPage, RedemptionsPage, SubscriptionsPage, SystemPage};
+pub use pages::{AliasesPage, ChannelsPage, RedemptionsPage, SubscriptionsPage, SystemPage, parse_url_key};
+

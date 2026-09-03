@@ -223,8 +223,8 @@ pub fn HomePage() -> Element {
                 class: "fixed top-4 left-1/2 z-30 hidden w-max -translate-x-1/2 md:block",
                 div { class: "flex items-center gap-5 rounded-full border border-zinc-800/80 bg-zinc-900/90 px-5 py-2.5 shadow-lg shadow-black/20",
                     div { class: "flex items-center gap-1.5",
-                        span { class: "text-lg font-semibold tracking-tight text-zinc-100", "New API" }
-                        span { class: "hidden sm:inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500", "web-rs" }
+                        span { class: "text-lg font-semibold tracking-tight text-zinc-100", "Ferrite" }
+                        span { class: "hidden sm:inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500", "admin" }
                     }
                     TopNavMeter { active: section(), on_select: move |s| section.set(s) }
                     button {
@@ -242,7 +242,7 @@ pub fn HomePage() -> Element {
             SectionPill { active: section(), on_select: move |s| section.set(s) }
             main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
-                    span { class: "text-base font-semibold", "New API · 控制台" }
+                    span { class: "text-base font-semibold", "Ferrite · 控制台" }
                     button {
                         class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900",
                         onclick: open_drawer,
@@ -278,7 +278,7 @@ pub fn HomePage() -> Element {
                     }
                 }
             }
-        }
+         }
         AuthDrawer { open: drawer_open(), light: is_light, on_close: close_drawer }
     }
 }
