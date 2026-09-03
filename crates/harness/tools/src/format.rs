@@ -143,10 +143,13 @@ fn remove_schema_keys(value: &mut Value, keys: &[&str]) {
 
 const SINGLE_SCHEMA_KEYS: &[&str] = &[
     "items",
+    "additionalItems",
+    "unevaluatedItems",
     "additionalProperties",
     "unevaluatedProperties",
     "contains",
     "propertyNames",
+    "contentSchema",
     "not",
     "if",
     "then",

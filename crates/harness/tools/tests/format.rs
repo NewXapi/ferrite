@@ -244,9 +244,10 @@ fn claude_sanitize_recurses_into_all_schema_subschema_positions() {
         "if": { "$id": "if", "type": "object" },
         "then": { "$schema": "then", "type": "object" },
         "else": { "$id": "else", "type": "object" },
-        "prefixItems": [
-            { "$id": "prefix", "type": "string" }
-        ],
+        "prefixItems": [{ "$id": "prefix", "type": "string" }],
+        "additionalItems": { "$id": "additional-items", "type": "string" },
+        "unevaluatedItems": { "$schema": "unevaluated-items", "type": "string" },
+        "contentSchema": { "$id": "content", "type": "string" },
         "properties": {
             "title": { "type": "string" },
             "$id": { "type": "number" },
@@ -266,6 +267,9 @@ fn claude_sanitize_recurses_into_all_schema_subschema_positions() {
     assert!(sanitized["then"].get("$schema").is_none());
     assert!(sanitized["else"].get("$id").is_none());
     assert!(sanitized["prefixItems"][0].get("$id").is_none());
+    assert!(sanitized["additionalItems"].get("$id").is_none());
+    assert!(sanitized["unevaluatedItems"].get("$schema").is_none());
+    assert!(sanitized["contentSchema"].get("$id").is_none());
 
     let properties = sanitized["properties"].as_object().expect("properties");
     assert!(properties.contains_key("title"));
