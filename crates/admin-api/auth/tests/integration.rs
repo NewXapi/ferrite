@@ -7,13 +7,16 @@ use std::time::Duration;
 
 use auth::service::AuthService;
 use sqlx::postgres::PgPoolOptions;
+static INIT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn db_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite".into())
 }
 
+
 async fn make_service() -> AuthService {
+    let _guard = INIT.lock().await;
     let pool = PgPoolOptions::new()
         .max_connections(2)
         .acquire_timeout(Duration::from_secs(5))
@@ -21,7 +24,7 @@ async fn make_service() -> AuthService {
         .await
         .expect("PG connect");
     auth::ddl::run(&pool).await.expect("ddl");
-    AuthService::new(pool, b"test-secret-must-be-long-enough".to_vec())
+    AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec())
 }
 
 fn unique_user(prefix: &str) -> String {
@@ -40,7 +43,7 @@ async fn end_to_end_login_flow() {
     let username = unique_user("alice");
 
     let view = svc
-        .register(&username, "hunter2hunter", Some("a@x.com"))
+        .register(&username, "hunter2hunter", Some(&format!("{username}@x.com")))
         .await
         .expect("register");
     assert_eq!(view.username, username);

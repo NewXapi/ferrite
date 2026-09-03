@@ -18,18 +18,17 @@ pub struct AppState {
     pub svc: Arc<AuthService>,
 }
 
-pub fn router(pool: PgPool) -> Router {
-    let secret = std::env::var("FERRITE_JWT_SECRET")
-        .expect("FERRITE_JWT_SECRET env var required");
+pub fn router(pool: PgPool) -> Result<Router, AuthError> {
+    let secret = std::env::var("FERRITE_JWT_SECRET").map_err(|_| AuthError::MissingSecret)?;
     let svc = Arc::new(AuthService::new(pool, secret.into_bytes()));
     let state = AppState { svc };
-    Router::new()
+    Ok(Router::new()
         .route("/api/user/login", post(login))
         .route("/api/user/register", post(register))
         .route("/api/user/refresh", post(refresh))
         .route("/api/user/logout", post(logout))
         .route("/api/user/self", get(self_view))
-        .with_state(state)
+        .with_state(state))
 }
 
 #[derive(Debug, Deserialize)]
