@@ -127,7 +127,7 @@ fn plan_period_label(period: &str) -> &'static str {
 
 // ============ 渠道页 ============
 
-/// 渠道管理:4 个面板 = 状态速览(启用/测速/停启/删除)、编辑渠道、模型调度、批量绑定。
+/// 渠道管理:5 块 = 顶部导入条 + 4 面板(状态速览、编辑渠道、模型调度、批量绑定)。
 #[component]
 pub fn ChannelsPage() -> Element {
     let store = use_context::<EntityStore>();
@@ -142,7 +142,8 @@ pub fn ChannelsPage() -> Element {
 
     rsx! {
         GridShell {
-            // 面板 1:状态速览(new-api 列表行的状态/测速/操作)
+            // 顶部导入条:URL + Key + 渠道名,一键写入 store
+            ChannelImportBar {}
             Panel {
                 title: "渠道状态速览",
                 hint: "点行加载到编辑;开关=启停,测速=mock 往返",
@@ -941,5 +942,171 @@ pub fn SystemPage() -> Element {
                 p { class: "text-[11px] text-zinc-600", "当前:{def_group()}" }
             }
         }
+    }
+}
+/// 渠道导入面板:5/3/1 栏 GridShell 里的第 1 栏。粘贴 URL + Key 自动解析。
+#[component]
+fn ChannelImportBar() -> Element {
+    let mut store = use_context::<EntityStore>();
+    let mut url = use_signal(String::new);
+    let mut key = use_signal(String::new);
+    let mut alias = use_signal(String::new);
+    let mut done = use_signal(|| false);
+    let mut raw = use_signal(String::new);
+    // 解析状态:None=没尝试/空文本,Some(true)=命中,Some(false)=尝试但失败
+    let mut parsed_ok = use_signal(|| None::<bool>);
+
+    let can_import = !url.read().trim().is_empty() && !key.read().trim().is_empty();
+
+    rsx! {
+        Panel {
+            title: "渠道导入",
+            hint: "粘贴 URL+Key 自动解析",
+            if done() {
+                p { class: "rounded-md border border-emerald-800/40 bg-emerald-950/40 px-3 py-1.5 text-[11px] text-emerald-300",
+                    "已加入渠道列表,去下方「编辑渠道」补充类型/分组"
+                }
+            }
+            textarea {
+                class: "min-h-[60px] w-full resize-y rounded-md border border-dashed border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
+                placeholder: "粘贴 URL + Key(每行一对,或 key=value 形式)",
+                oninput: move |e| {
+                    // e.value() 返回 owned String,e 的 borrow 在这里就释放;
+                    // 后续 set 多个 signal 时不再持有任何 RefCell 借用。
+                    let text = e.value();
+                    raw.set(text.clone());
+                    // ponytail: 同 oninput 内对 url/key/done 多次 set 在 dioxus 0.7
+                    // 的 reactive update 中可能嵌套触发。改成仅在 parse 命中时
+                    // set url+key+done 三者;text 始终先 set,保证 textarea 自身回显。
+                    let trimmed = text.trim();
+                    if trimmed.is_empty() {
+                        parsed_ok.set(None);
+                    } else if let Some((u, k)) = parse_url_key(&text) {
+                        url.set(u);
+                        key.set(k);
+                        done.set(false);
+                        parsed_ok.set(Some(true));
+                    } else {
+                        parsed_ok.set(Some(false));
+                    }
+                },
+            }
+            if parsed_ok() == Some(false) {
+                p { class: "text-[11px] text-amber-400", "未识别到 URL + Key,可手动填下面三个字段" }
+            }
+            div { class: "grid grid-cols-1 gap-2",
+                label { class: "block space-y-1",
+                    input {
+                        class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500",
+                        placeholder: "渠道名(可选)",
+                        value: "{alias.read()}",
+                        oninput: move |e| alias.set(e.value()),
+                    }
+                }
+                label { class: "block space-y-1",
+                    span { class: "text-[11px] text-zinc-500", "Base URL" }
+                    input {
+                        class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500",
+                        placeholder: "https://…",
+                        value: "{url.read()}",
+                        oninput: move |e| url.set(e.value()),
+                    }
+                }
+                label { class: "block space-y-1",
+                    span { class: "text-[11px] text-zinc-500", "API Key" }
+                    input {
+                        class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-200 outline-none focus:border-zinc-500",
+                        placeholder: "sk-…",
+                        value: "{key.read()}",
+                        oninput: move |e| key.set(e.value()),
+                    }
+                }
+            }
+            button {
+                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-4 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-300 disabled:cursor-not-allowed disabled:opacity-50",
+                disabled: !can_import,
+                onclick: move |_| {
+                    let raw_name = alias.peek().trim().to_string();
+                    let name = if raw_name.is_empty() { "新渠道".into() } else { raw_name };
+                    store.channels.write().push(crate::state::ChannelRow {
+                        name,
+                        url: url.peek().trim().to_string(),
+                        keys: key.peek().trim().to_string(),
+                        ctype: "openai".into(),
+                        status: 1,
+                        group: "default".into(),
+                        latency_ms: None,
+                        candidates: vec![],
+                        dispatch: vec![],
+                    });
+                    alias.set(String::new());
+                    url.set(String::new());
+                    key.set(String::new());
+                    raw.set(String::new());
+                    parsed_ok.set(None);
+                    done.set(true);
+                },
+                "导入渠道"
+            }
+        }
+    }
+}
+
+/// 粘贴文本里抽出 (Base URL, API Key)。支持多种形式:
+/// - 每行一对:`https://api.openai.com/v1\nsk-xxx`
+/// - `|` / 空白 分隔:`https://x | sk-xxx`
+/// - `url=https://x\nkey=sk-xxx`(或 base_url / api_key)
+/// 仅在能同时拿到 URL 和 Key 时返回 Some,否则 None(让用户继续手动填)。
+pub fn parse_url_key(text: &str) -> Option<(String, String)> {
+    let mut url = None::<String>;
+    let mut key = None::<String>;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // key=value 形式
+        if let Some((k, v)) = line.split_once('=') {
+            let k = k.trim().to_ascii_lowercase();
+            let v = v.trim();
+            if k == "url" || k == "base_url" || k == "endpoint" || k == "api_base" {
+                url = Some(v.to_string());
+                continue;
+            }
+            if k == "key" || k == "api_key" || k == "apikey" || k == "token" {
+                key = Some(v.to_string());
+                continue;
+            }
+            continue;
+        }
+        let parts: Vec<&str> = line.split(|c: char| c.is_whitespace() || c == '|' || c == ',' || c == ';')
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() >= 2 {
+            let first = parts[0];
+            if first.starts_with("http://") || first.starts_with("https://") {
+                url.get_or_insert_with(|| first.to_string());
+                for p in &parts[1..] {
+                    if p.starts_with("sk-") || p.starts_with("rk-") || p.len() >= 20 {
+                        key.get_or_insert_with(|| p.to_string());
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+        // 裸 key 行:sk-/rk- 前缀 + 至少 20 字符,降低误匹配短串的概率
+        if (line.starts_with("sk-") || line.starts_with("rk-")) && line.len() >= 20 {
+            key.get_or_insert_with(|| line.to_string());
+            continue;
+        }
+        // 裸 URL 行
+        if line.starts_with("http://") || line.starts_with("https://") {
+            url.get_or_insert_with(|| line.to_string());
+        }
+    }
+    match (url, key) {
+        (Some(u), Some(k)) => Some((u, k)),
+        _ => None,
     }
 }

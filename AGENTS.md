@@ -11,14 +11,14 @@ crates/<domain>/<feature>/
 | **域目录** | `crates/<domain>/` | 业务能力集合，只放 `README.md` 和功能 crate 目录；自身不是 crate。例：`gateway`、`admin-api`、`admin-web`、`tavern-api`、`tavern-web`、`harness`。 |
 | **功能 crate** | `crates/<domain>/<feature>/` | 有 `Cargo.toml` 和 `src/lib.rs` 的 library crate。例：`tavern-api/chats`、`gateway/dispatch`、`harness/tools`。提需求时可直接说“做 `tavern-api/chats`”。 |
 | **共享 crate** | `crates/<name>/` | 跨域共享的独立 crate。当前只有 `crates/contract`。 |
-| **应用** | `apps/<name>/` | 有 `main.rs` 的可执行程序，负责配置、状态和路由组装。例：`apps/api`、`apps/web`、`apps/tavern-web`。 |
+| **应用** | `apps/<name>/` | 有 `main.rs` 的可执行程序，负责配置、状态和路由组装。例：`apps/api`、`apps/admin-web`、`apps/tavern-web`。 |
 | **模块** | `src/<name>.rs` 或 `src/<name>/` | 功能 crate 内部实现文件，不单独进 workspace。 |
 
 ## 依赖和组装
 
 - 功能 crate 只提供 library API；不定义进程入口。
 - `apps/api` 组装 `gateway/*`、`admin-api/*`、`tavern-api/*` 和 `harness/runtime`。
-- `apps/web` 组装 `admin-web/*`。
+- `apps/admin-web` 组装 `admin-web/*`。
 - `apps/tavern-web` 组装 `tavern-web/*` 和 `harness/ui`。
 - 域目录不放 `Cargo.toml`。
 - 每个功能 crate 都要有 `README.md`：目录树、要实现的功能、参考实现。
@@ -30,7 +30,7 @@ crates/<domain>/<feature>/
 - 根 `Cargo.toml` 只有新增或移动功能 crate 的会话修改；改完说明新增的 workspace member。
 - `crates/contract/` 是共享 API 契约；需要新 DTO 时先声明变更，再由一个会话统一修改。
 - `apps/api/src/` 只由 API 组装会话修改。
-- `apps/web/` 和 `apps/tavern-web/` 只由各自应用组装会话修改。
+- `apps/admin-web/` 和 `apps/tavern-web/` 只由各自应用组装会话修改。
 - 每个功能 crate 的 README 与实现同步更新。
 
 ## 每个会话开工前

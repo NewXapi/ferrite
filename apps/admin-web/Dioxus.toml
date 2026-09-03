@@ -1,9 +1,9 @@
 [application]
-name = "newapi-web-rs"
+name = "admin-web"
 asset_dir = "assets"
 
 [web.app]
-title = "New API"
+title = "Ferrite Admin"
 
 [[web.proxy]]
 backend = "http://localhost:3000/api"

@@ -1,5 +1,5 @@
 [package]
-name = "newapi-web-rs"
+name = "admin-web"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,11 +10,11 @@ default = ["web"]
 web = ["dioxus/web"]
 
 [[bin]]
-name = "newapi-web-rs"
+name = "admin-web"
 path = "src/main.rs"
 
 [lib]
-name = "newapi_web_rs"
+name = "admin_web"
 path = "src/lib.rs"
 
 [dependencies]

@@ -1,0 +1,13 @@
+/* Tailwind v4 entry. */
+@import "tailwindcss";
+
+/* 显式把 .rs 源加入扫描(v4 CLI 默认仅扫 html/js/ts/jsx/tsx/vue/svelte/astro)。*/
+@source "./src/**/*.rs";
+@source "../../../crates/admin-web/**/*.rs";
+@layer base {
+  body {
+    background: #09090b;
+    color: #e4e4e7;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Inter", sans-serif;
+  }
+}

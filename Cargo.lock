@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "admin-web"
+version = "0.1.0"
+dependencies = [
+ "client",
+ "dioxus",
+ "page-account",
+ "page-admin",
+ "page-auth",
+ "page-overview",
+ "page-users",
+ "ui",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2630,22 +2646,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
-]
-
-[[package]]
-name = "newapi-web-rs"
-version = "0.1.0"
-dependencies = [
- "client",
- "dioxus",
- "page-account",
- "page-admin",
- "page-auth",
- "page-overview",
- "page-users",
- "ui",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

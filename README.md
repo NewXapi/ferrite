@@ -95,7 +95,7 @@ grid grid-cols-1 gap-3 p-4 md:grid-cols-3 md:gap-4 md:p-6 xl:grid-cols-5
 ```sh
 cargo run -p api                    # 后端
 
-cd apps/web && bun install
+cd apps/admin-web && bun install
 dx serve --port 8081                # 管理前端
 bun run css
 ```
