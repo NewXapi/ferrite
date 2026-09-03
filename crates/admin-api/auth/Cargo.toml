@@ -17,13 +17,13 @@ tokio        = { workspace = true }
 sqlx         = { workspace = true }
 serde        = { workspace = true }
 serde_json   = { workspace = true }
-thiserror    = { workspace = true }
 chrono       = { workspace = true }
 uuid         = { workspace = true }
+thiserror    = { workspace = true }
+rand         = { workspace = true }
+tracing      = { workspace = true }
+sha2         = { workspace = true }
+hex          = { workspace = true }
+hmac         = "0.12"
 argon2       = "0.5"
 jsonwebtoken = "9"
-sha2         = "0.10"
-hmac         = "0.12"
-rand         = { workspace = true }
-hex          = "0.4"
-tracing      = { workspace = true }

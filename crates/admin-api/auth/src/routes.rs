@@ -191,8 +191,11 @@ fn bearer_token(headers: &HeaderMap) -> Result<&str, AuthError> {
         .ok_or(AuthError::InvalidToken)
 }
 
+/// role >= 10 即管理权限 (10=admin, 100=root; 1=普通用户)。
+pub const ADMIN_ROLE_THRESHOLD: u16 = 10;
+
 fn require_admin(user: &crate::service::UserView) -> Result<(), AuthError> {
-    if user.role >= 10 {
+    if user.role >= ADMIN_ROLE_THRESHOLD {
         Ok(())
     } else {
         Err(AuthError::Forbidden)
@@ -211,8 +214,30 @@ struct UpdateSelfRequest {
 #[serde(rename_all = "camelCase")]
 struct ManageUserRequest {
     key: String,
-    action: String,
+    action: ManageUserAction,
     value: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ManageUserAction {
+    Enable,
+    Disable,
+    SetRole,
+    AdjustQuota,
+    ResetPassword,
+}
+
+impl ManageUserAction {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Enable => "enable",
+            Self::Disable => "disable",
+            Self::SetRole => "set_role",
+            Self::AdjustQuota => "adjust_quota",
+            Self::ResetPassword => "reset_password",
+        }
+    }
 }
 
 async fn update_self(
@@ -280,7 +305,7 @@ async fn manage_user(
     let key = uuid::Uuid::parse_str(&req.key)
         .map_err(|_| AuthError::BadRequest("invalid user key".into()))
         .map_err(err_response)?;
-    match state.svc.manage_user(key, &req.action, req.value.as_deref()).await {
+    match state.svc.manage_user(key, req.action.as_str(), req.value.as_deref()).await {
         Ok(u) => Ok(Json(json!(u))),
         Err(e) => Err(err_response(e)),
     }

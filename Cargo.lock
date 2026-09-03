@@ -9,6 +9,7 @@ version = "0.1.0"
 dependencies = [
  "auth",
  "axum",
+ "catalog",
  "sqlx",
  "tracing",
 =======
@@ -338,10 +339,19 @@ dependencies = [
 name = "catalog"
 version = "0.1.0"
 dependencies = [
+ "auth",
+ "axum",
+ "chrono",
  "contract",
+ "hex",
+ "rand 0.8.7",
  "serde",
  "serde_json",
+ "sha2",
+ "sqlx",
  "store",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
