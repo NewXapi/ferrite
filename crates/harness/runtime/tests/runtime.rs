@@ -1,0 +1,535 @@
+//! Runtime integration tests.
+
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use futures_util::stream;
+use serde_json::json;
+
+use harness_core::{AgentChatRef, AgentRunStatus};
+use harness_prompt::{AgentModelMessage, AgentModelRole};
+use harness_runtime::{
+    AgentRunDeps, AgentRunRequest, CancelReason, CancellationToken, ChatProvider, DeltaAggregator,
+    EventFactory, EventSink, MpscEventSink, PersistenceError, ProviderDelta, ProviderFinishReason,
+    ProviderRequest, ProviderStream, RunPersistence, ToolCallFragment, ToolExecutor, ToolHandler,
+    VecEventSink, run_agent_run,
+};
+use harness_tools::{InvocationToolSnapshot, ToolBinding, ToolDescriptor, ToolId, ToolSnapshotId};
+
+struct ScriptedProvider {
+    rounds: Mutex<Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>>,
+}
+
+impl ScriptedProvider {
+    fn new(rounds: Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>) -> Self {
+        Self {
+            rounds: Mutex::new(rounds),
+        }
+    }
+}
+
+impl ChatProvider for ScriptedProvider {
+    fn stream(&self, _request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
+        let deltas = self.rounds.lock().expect("mock provider mutex").remove(0);
+        Box::pin(stream::iter(deltas))
+    }
+}
+
+fn descriptor(id: ToolId) -> ToolDescriptor {
+    ToolDescriptor {
+        id,
+        title: None,
+        description: None,
+        input_schema: json!({
+            "type": "object",
+            "properties": { "path": { "type": "string" } },
+            "required": ["path"]
+        }),
+        output_schema: None,
+        annotations: json!({}),
+    }
+}
+
+fn snapshot() -> InvocationToolSnapshot {
+    let id = ToolId::builtin("read_file").expect("tool id");
+    InvocationToolSnapshot::try_new(
+        ToolSnapshotId::parse("inv_root").expect("snapshot"),
+        vec![ToolBinding::new(descriptor(id), "read_file", Some(4)).unwrap()],
+        8,
+    )
+    .expect("snapshot")
+}
+
+fn request(run_id: &str, persistence_ok: bool) -> AgentRunRequest {
+    let _ = persistence_ok;
+    AgentRunRequest {
+        run_id: run_id.to_string(),
+        workspace_id: "ws".into(),
+        stable_chat_id: "chat".into(),
+        chat_ref: AgentChatRef::Character {
+            character_id: "alice".into(),
+            file_name: "alice".into(),
+        },
+        profile_id: None,
+        model: "test-model".into(),
+        prompt: harness_prompt::AgentModelRequest {
+            system: Some("sys".into()),
+            messages: vec![AgentModelMessage::text(AgentModelRole::User, "hi")],
+            tools: Vec::new(),
+            metadata: None,
+        },
+        snapshot: snapshot(),
+        max_rounds: 4,
+    }
+}
+
+fn text_delta(text: &str, finish: Option<ProviderFinishReason>) -> ProviderDelta {
+    ProviderDelta {
+        text: Some(text.into()),
+        finish_reason: finish,
+        ..ProviderDelta::default()
+    }
+}
+
+fn tool_delta(call_id: &str, name: &str, arguments: &str) -> Vec<ProviderDelta> {
+    vec![
+        ProviderDelta {
+            tool_call: Some(ToolCallFragment {
+                index: 0,
+                call_id: Some(call_id.into()),
+                name: Some(name.into()),
+                arguments: Some(arguments.into()),
+            }),
+            ..ProviderDelta::default()
+        },
+        ProviderDelta {
+            finish_reason: Some(ProviderFinishReason::ToolCalls),
+            ..ProviderDelta::default()
+        },
+    ]
+}
+
+fn ok_handler() -> ToolHandler {
+    Arc::new(|invocation| {
+        Box::pin(async move {
+            harness_tools::AgentToolResult {
+                call_id: invocation.call_id,
+                tool_id: invocation.tool_id,
+                content: "file contents".into(),
+                structured: json!({}),
+                is_error: false,
+                error_code: None,
+                resource_refs: Vec::new(),
+            }
+        })
+    })
+}
+
+fn err_handler() -> ToolHandler {
+    Arc::new(|invocation| {
+        Box::pin(async move {
+            harness_tools::AgentToolResult {
+                call_id: invocation.call_id,
+                tool_id: invocation.tool_id,
+                content: "boom".into(),
+                structured: json!({}),
+                is_error: true,
+                error_code: Some("failed".into()),
+                resource_refs: Vec::new(),
+            }
+        })
+    })
+}
+
+fn tmp_root(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("ferrite-runtime-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    dir
+}
+
+#[tokio::test]
+async fn text_only_run_completes_and_persists() {
+    let root = tmp_root("text");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "hello",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let run = run_agent_run(
+        request("run_text", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    let loaded = persistence.load_run("run_text").await.expect("load run");
+    assert_eq!(loaded.status, AgentRunStatus::Completed);
+    let events = persistence.load_events("run_text").await.expect("events");
+    assert!(events.iter().any(|event| event.event_type == "model.delta"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "run.completed")
+    );
+}
+
+#[tokio::test]
+async fn two_turn_tool_loop_injects_result() {
+    let root = tmp_root("tools");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![
+        tool_delta("c1", "read_file", "{\"path\":\"/tmp/x\"}")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+        vec![Ok(text_delta("done", Some(ProviderFinishReason::Stop)))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").unwrap(), ok_handler());
+    let mut sink = VecEventSink::default();
+    let run = run_agent_run(
+        request("run_tools", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    let result = tokio::fs::read_to_string(
+        persistence
+            .run_dir("run_tools")
+            .unwrap()
+            .join("tool-results/c1.json"),
+    )
+    .await
+    .expect("result file");
+    assert!(result.contains("file contents"));
+}
+
+#[tokio::test]
+async fn handler_failure_is_partial_success() {
+    let root = tmp_root("fail");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![
+        tool_delta("c1", "read_file", "{\"path\":\"/tmp/x\"}")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+        vec![Ok(text_delta(
+            "recovered",
+            Some(ProviderFinishReason::Stop),
+        ))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").unwrap(), err_handler());
+    let mut sink = VecEventSink::default();
+    let run = run_agent_run(
+        request("run_fail", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+    assert_eq!(run.status, AgentRunStatus::PartialSuccess);
+}
+
+#[tokio::test]
+async fn cancellation_stops_stream() {
+    let root = tmp_root("cancel");
+    let persistence = RunPersistence::new(&root);
+    let cancel = CancellationToken::new();
+    cancel.cancel(CancelReason::UserRequested);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "hello",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let run = run_agent_run(
+        request("run_cancel", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel,
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+    assert_eq!(run.status, AgentRunStatus::Cancelled);
+}
+
+#[tokio::test]
+async fn malformed_tool_arguments_fail_the_run() {
+    let root = tmp_root("badargs");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![
+        tool_delta("c1", "read_file", "{not-json")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+    ]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let result = run_agent_run(
+        request("run_bad", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(result.is_err());
+    let loaded = persistence.load_run("run_bad").await.expect("load");
+    assert_eq!(loaded.status, AgentRunStatus::Failed);
+}
+
+#[tokio::test]
+async fn max_rounds_stops_repeat_tool_calls() {
+    let root = tmp_root("rounds");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![
+        tool_delta("c1", "read_file", "{\"path\":\"/tmp/x\"}")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+        tool_delta("c2", "read_file", "{\"path\":\"/tmp/y\"}")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+    ]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").unwrap(), ok_handler());
+    let mut sink = VecEventSink::default();
+    let mut req = request("run_rounds", true);
+    req.max_rounds = 1;
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+    assert_eq!(run.status, AgentRunStatus::Failed);
+}
+
+#[tokio::test]
+async fn persistence_rejects_unsafe_ids_and_keeps_event_order() {
+    let root = tmp_root("persist");
+    let persistence = RunPersistence::new(&root);
+    let err = persistence
+        .write_tool_args("run_ok", "../escape", &json!({}))
+        .await
+        .expect_err("unsafe id");
+    assert!(matches!(err, PersistenceError::InvalidComponent(_)));
+
+    let mut factory = EventFactory::new("run_ok");
+    persistence
+        .write_run(&harness_core::AgentRun {
+            id: "run_ok".into(),
+            workspace_id: "ws".into(),
+            stable_chat_id: "chat".into(),
+            chat_ref: AgentChatRef::Group {
+                chat_id: "g".into(),
+            },
+            generation_type: "chat".into(),
+            profile_id: None,
+            skill_scope_refs: Default::default(),
+            persist_base_state_id: None,
+            input_message_count: None,
+            presentation: harness_core::AgentRunPresentation::Foreground,
+            status: AgentRunStatus::Created,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let first = factory.next("a", harness_core::AgentRunEventLevel::Info, json!({}));
+    let second = factory.next("b", harness_core::AgentRunEventLevel::Info, json!({}));
+    persistence.append_event("run_ok", &first).await.unwrap();
+    persistence.append_event("run_ok", &second).await.unwrap();
+    let events = persistence.load_events("run_ok").await.unwrap();
+    assert_eq!(events[0].event_type, "a");
+    assert_eq!(events[1].event_type, "b");
+    assert_eq!(events[0].seq, 1);
+    assert_eq!(events[1].seq, 2);
+}
+
+#[test]
+fn delta_aggregator_joins_fragments_and_rejects_bad_json() {
+    let mut agg = DeltaAggregator::default();
+    agg.apply(&ProviderDelta {
+        text: Some("he".into()),
+        ..ProviderDelta::default()
+    });
+    agg.apply(&ProviderDelta {
+        text: Some("llo".into()),
+        tool_call: Some(ToolCallFragment {
+            index: 0,
+            call_id: Some("c1".into()),
+            name: Some("read_file".into()),
+            arguments: Some("{\"path\":".into()),
+        }),
+        ..ProviderDelta::default()
+    });
+    agg.apply(&ProviderDelta {
+        tool_call: Some(ToolCallFragment {
+            index: 0,
+            call_id: None,
+            name: None,
+            arguments: Some("\"/tmp\"}".into()),
+        }),
+        ..ProviderDelta::default()
+    });
+    let finished = agg
+        .finish(&|alias: &str| ToolId::builtin(alias).ok())
+        .expect("ok json");
+    assert_eq!(finished.text, "hello");
+    assert_eq!(finished.tool_calls[0].arguments["path"], "/tmp");
+
+    let mut bad = DeltaAggregator::default();
+    bad.apply(&ProviderDelta {
+        tool_call: Some(ToolCallFragment {
+            index: 0,
+            call_id: Some("c1".into()),
+            name: Some("read_file".into()),
+            arguments: Some("{".into()),
+        }),
+        ..ProviderDelta::default()
+    });
+    assert!(
+        bad.finish(&|alias: &str| ToolId::builtin(alias).ok())
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn event_sinks_preserve_seq() {
+    let mut factory = EventFactory::new("run");
+    let mut vec_sink = VecEventSink::default();
+    let (mut mpsc_sink, mut rx) = MpscEventSink::new();
+    let event = factory.next("x", harness_core::AgentRunEventLevel::Info, json!({}));
+    vec_sink.emit(event.clone());
+    mpsc_sink.emit(event);
+    assert_eq!(vec_sink.events[0].seq, 1);
+    assert_eq!(rx.recv().await.unwrap().seq, 1);
+}
+
+#[tokio::test]
+async fn cancel_token_wakes_waiters() {
+    let token = CancellationToken::new();
+    let waiter = token.clone();
+    let done = Arc::new(AtomicBool::new(false));
+    let flag = done.clone();
+    let handle = tokio::spawn(async move {
+        waiter.cancelled().await;
+        flag.store(true, Ordering::SeqCst);
+    });
+    token.cancel(CancelReason::UserRequested);
+    handle.await.unwrap();
+    assert!(done.load(Ordering::SeqCst));
+    assert_eq!(token.reason().as_deref(), Some("user requested"));
+}
+
+#[tokio::test]
+async fn provider_error_finish_marks_run_failed() {
+    let root = tmp_root("provider-error");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(ProviderDelta {
+        finish_reason: Some(ProviderFinishReason::Error),
+        ..ProviderDelta::default()
+    })]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let result = run_agent_run(
+        request("run_provider_error", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(result.is_err());
+    assert_eq!(
+        persistence
+            .load_run("run_provider_error")
+            .await
+            .unwrap()
+            .status,
+        AgentRunStatus::Failed
+    );
+}
+
+#[tokio::test]
+async fn replayed_tool_call_executes_handler_once() {
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = count.clone();
+    let handler: ToolHandler = Arc::new(move |invocation| {
+        let counter = counter.clone();
+        Box::pin(async move {
+            counter.fetch_add(1, Ordering::SeqCst);
+            harness_tools::AgentToolResult {
+                call_id: invocation.call_id,
+                tool_id: invocation.tool_id,
+                content: "ok".into(),
+                structured: json!({}),
+                is_error: false,
+                error_code: None,
+                resource_refs: Vec::new(),
+            }
+        })
+    });
+    let snapshot = snapshot();
+    let turn =
+        harness_tools::ToolTurnContract::all(&snapshot, harness_tools::ToolChoice::Auto).unwrap();
+    let invocation = harness_tools::ToolInvocation {
+        call_id: "replay".into(),
+        tool_id: ToolId::builtin("read_file").unwrap(),
+        arguments: json!({ "path": "/tmp/x" }),
+        provider_metadata: json!(null),
+    };
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").unwrap(), handler);
+    executor
+        .execute(&snapshot, &turn, invocation.clone())
+        .await
+        .unwrap();
+    executor
+        .execute(&snapshot, &turn, invocation)
+        .await
+        .unwrap();
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+}
