@@ -1,0 +1,13 @@
+[package]
+name = "tavern-page-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-client = { path = "../client" }
+tavern-state  = { path = "../state" }
+tavern-ui     = { path = "../ui" }
+
+dioxus = { workspace = true }

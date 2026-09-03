@@ -10,4 +10,3 @@ dioxus    = { workspace = true }
 ui       = { path = "../ui" }
 gloo-timers = { version = "0.3", features = ["futures"] }
 web-sys = { version = "0.3", features = ["Window", "Performance"] }
-client   = { path = "../client" }

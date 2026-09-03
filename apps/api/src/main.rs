@@ -62,7 +62,14 @@ async fn main() -> ExitCode {
     }
 
     let gateway = gateway::Gateway::new(pool, route_index);
-    let app = gateway.router();
+    let tavern = match api::tavern::router(&api::tavern::TavernConfig::default()) {
+        Ok(router) => router,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to initialize tavern storage");
+            return ExitCode::FAILURE;
+        }
+    };
+    let app = gateway.router().merge(tavern);
 
     let listener = match tokio::net::TcpListener::bind(&config.listen).await {
         Ok(l) => l,

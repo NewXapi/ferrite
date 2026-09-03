@@ -3,27 +3,50 @@ resolver = "2"
 members = [
     "apps/api",
     "apps/web",
-    "crates/mock",
-    "crates/client",
-    "crates/session",
-    "crates/ui",
-    "crates/page-auth",
-    "crates/page-overview",
-    "crates/page-account",
-    "crates/page-admin",
-    "crates/page-users",
     "crates/contract",
-    "crates/protocol",
-    "crates/gateway/admission",
+    "crates/gateway/protocol",
     "crates/gateway/dispatch",
     "crates/gateway/forward",
     "crates/gateway/metering",
-    "crates/service/store",
-    "crates/service/catalog",
-    "crates/service/sync",
-    "crates/service/billing",
-    "crates/service/observe",
-    "crates/service/ops",
+    "crates/gateway/pipeline",
+    "crates/gateway/gate",
+    "crates/gateway/protocol-bridge",
+    "crates/gateway/proxy",
+    "crates/gateway/security",
+    "crates/admin-api/store",
+    "crates/admin-api/catalog",
+    "crates/admin-api/sync",
+    "crates/admin-api/billing",
+    "crates/admin-api/observe",
+    "crates/admin-api/ops",
+    "crates/admin-web/client",
+    "crates/admin-web/session",
+    "crates/admin-web/ui",
+    "crates/admin-web/mock",
+    "crates/admin-web/page-auth",
+    "crates/admin-web/page-overview",
+    "crates/admin-web/page-account",
+    "crates/admin-web/page-admin",
+    "crates/admin-web/page-users",
+    "crates/tavern-api/storage",
+    "crates/tavern-api/auth",
+    "crates/tavern-api/characters",
+    "crates/tavern-api/chats",
+    "crates/tavern-api/settings",
+    "crates/tavern-api/secrets",
+    "crates/tavern-api/generate",
+    "crates/tavern-api/media",
+    "crates/tavern-web/client",
+    "crates/tavern-web/state",
+    "crates/tavern-web/ui",
+    "crates/tavern-web/page-characters",
+    "crates/tavern-web/page-chat",
+    "crates/tavern-web/page-settings",
+    "crates/harness/core",
+    "crates/harness/prompt",
+    "crates/harness/tools",
+    "crates/harness/runtime",
+    "crates/harness/ui",
 ]
 
 [workspace.package]
@@ -33,9 +56,11 @@ license = "MIT"
 rust-version = "1.85"
 publish = false
 
+
 [workspace.dependencies]
 tokio       = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync", "time", "io-util"] }
 axum        = "0.8"
+hyper       = { version = "1", features = ["client", "http2"] }
 tower       = "0.5"
 tower-http  = { version = "0.6", features = ["cors", "trace", "limit"] }
 reqwest     = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "socks"] }

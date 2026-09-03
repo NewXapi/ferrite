@@ -1,0 +1,12 @@
+[package]
+name = "tavern-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-client = { path = "../client" }
+
+dioxus = { workspace = true }
+serde  = { workspace = true }

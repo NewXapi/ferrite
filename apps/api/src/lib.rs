@@ -7,4 +7,5 @@ pub mod config;
 pub mod dispatch;
 pub mod gateway;
 pub mod identity;
+pub mod tavern;
 pub mod ratelimit;
