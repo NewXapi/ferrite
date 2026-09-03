@@ -128,3 +128,45 @@ cargo test -p observe -p ops
 
 - `sync/`：多实例版本摘要、delta 和 snapshot 同步。
 - `billing/`：支付、订单、兑换码和订阅。
+
+## API 路线图（单机版）
+
+约束：不做 sync/分布式，全部平表（内存建全字段、无关联表/FK），
+等数据聚合点明确后再分析读写路径优化表结构。gateway 逻辑不进 admin-api。
+
+### 已完成 — `auth/`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/user/login` | 用户名+密码 → access JWT (15min) + refresh (7d) |
+| POST | `/api/user/register` | 自注册，argon2id |
+| POST | `/api/user/refresh` | refresh 旋转，旧 sid 即刻吊销 |
+| POST | `/api/user/logout` | 吊销 sid |
+| GET | `/api/user/self` | Bearer access → 当前用户 |
+
+### 接下来 — `auth/` 扩展（用户自管理 + admin 用户管理）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| PUT | `/api/user/self` | 改昵称/密码（改密 auth_version++ 全端失效） |
+| DELETE | `/api/user/self` | 注销 |
+| GET | `/api/user` | admin 用户列表（分页/搜索） |
+| GET | `/api/user/{key}` | admin 查单个用户 |
+| POST | `/api/user/manage` | admin 启停/改角色/改额度/改密 |
+| DELETE | `/api/user/{key}` | admin 软删 |
+
+### 接下来 — `catalog/` token 管理（API Key）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/token` | 令牌列表 |
+| POST | `/api/token` | 创建（明文只返一次，库存哈希） |
+| PUT | `/api/token` | 编辑启停/过期/配额/模型白名单 |
+| DELETE | `/api/token/{key}` | 删除 |
+| GET | `/api/token/search` | 搜索 |
+
+### 之后 — 渠道 / 日志 / 计费
+
+- `/api/channel` CRUD + 测试请求（catalog/channels）
+- `/api/log` + `/api/log/self`（observe）
+- `/api/redemption` 兑换码、`/api/group` 分组倍率（billing）
