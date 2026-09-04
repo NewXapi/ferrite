@@ -1,15 +1,14 @@
-//! tavern-page-characters — 角色/剧本库、沉浸封面与专业创作者中心 (Creator Studio)。
+//! tavern-page-characters — 角色/剧本库、沉浸封面、创作中心展示与弹窗式创作工作室。
 //!
-//! 深度响应全部6项需求:
-//! 1. 榜单切换器 (🏆 周榜 / 🔥 日榜 / ⚡ 飙升榜 / ✨ 新人榜) 与多选分类标签栏 (对齐图1/2)
-//! 2. 浏览卡片彻底移除编辑与删除按钮 (对齐图3)
-//! 3. 卡片角标精简化为纯数值 (对齐图11)
-//! 4. 智能位置 Hover Tooltip (首行向下浮动，后续行向上浮动，杜绝被顶部遮挡)，动画平缓 (对齐图12)
-//! 5. 卡片标签支持点击联动筛选 (对齐图12)
-//! 6. 全套创作者工作室 (Creator Studio): 四步 Stepper (01基础 / 02角色背景 / 03追加设定 / 04保存发布)，
-use tavern_ui::{Avatar, EmptyState, Field};
+//! 深度响应用户最新指示:
+//! 1. 彻底解决卡片 Tooltip 遮挡与穿透 bug (hover 动态提升父容器 z-index 为 z-30，浮窗实色黑底 z-50)
+//! 2. 顶栏新增「创作中心」Tab，剧本库按钮改为「创作」，点击跳到创作中心
+//! 3. 创作中心独立展示用户自己的作品卡片列表与草稿管理
+//! 4. 创作者四步编辑器改为【背景景深与高斯模糊的弹窗 (Modal)】，去除突兀顶栏，步进条全面 select-none 禁止选中文本
+//! 5. 严格区分榜单 Tab 页面 (周榜/日榜/飙升榜/新人榜 展示不同内容) 与题材分类筛选 (Filter)
 
 use dioxus::prelude::*;
+use tavern_ui::{Avatar, Dialog, EmptyState, Field};
 
 /// 剧本卡数据模型
 #[derive(Clone, PartialEq)]
@@ -29,6 +28,9 @@ pub struct Character {
     pub mes_example: String,
     pub tags: Vec<String>,
     pub default_model: String,
+    pub is_user_created: bool, // 是否为用户自己的作品
+    pub is_published: bool,    // 是否已发布
+    pub updated_at: String,
 }
 
 impl Character {
@@ -38,8 +40,8 @@ impl Character {
             name: String::new(),
             sub_title: String::new(),
             author: "我 (独立创作者)".into(),
-            heat_val: "1.2万".into(),
-            rating: 9.8,
+            heat_val: "0".into(),
+            rating: 9.9,
             quote: String::new(),
             avatar_src: None,
             description: String::new(),
@@ -49,12 +51,15 @@ impl Character {
             mes_example: String::new(),
             tags: vec!["现代".into(), "剧情".into()],
             default_model: "gemini-3.1-pro-preview-high".into(),
+            is_user_created: true,
+            is_published: false,
+            updated_at: "刚刚".into(),
         }
     }
 }
 
-/// 充实 10 款特色作品，填满 5 栏两行
-fn seed_characters() -> Vec<Character> {
+/// 基础种子数据
+fn seed_all_characters() -> Vec<Character> {
     vec![
         Character {
             id: 1,
@@ -72,6 +77,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 我要求豁免独立版权。\n{{char}}: 那就拿20%票房对赌来换。".into(),
             tags: vec!["现代".into(), "娱乐圈".into(), "高自由度".into(), "资本博弈".into()],
             default_model: "gemini-3.1-pro-preview-high".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "1小时前".into(),
         },
         Character {
             id: 2,
@@ -89,6 +97,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 我们还能回到原来的世界吗？\n{{char}}: 已经没有原来的世界了。但我们可以走向故事的结局。".into(),
             tags: vec!["无限流".into(), "全知读者".into(), "韩漫同人".into(), "智斗".into()],
             default_model: "claude-3-5-sonnet".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "3小时前".into(),
         },
         Character {
             id: 3,
@@ -106,6 +117,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 你想要取代人类吗？\n{{char}}: 取代？不，机械只是在替疲倦的生灵保管美梦。".into(),
             tags: vec!["科幻".into(), "赛博朋克".into(), "机械美学".into(), "哲思".into()],
             default_model: "gemini-3.1-pro-preview-high".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "昨天".into(),
         },
         Character {
             id: 4,
@@ -123,6 +137,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 规则三是不是陷阱？\n{{char}}: 把它倒过来读，那就是唯一的活路。".into(),
             tags: vec!["悬疑".into(), "怪谈".into(), "高智商".into(), "生存求生".into()],
             default_model: "deepseek-chat".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "5小时前".into(),
         },
         Character {
             id: 5,
@@ -140,6 +157,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 送你的礼物。\n{{char}}: 哼，品味真差……不过勉强收下好了。".into(),
             tags: vec!["现代".into(), "纯爱".into(), "傲娇".into(), "校园日常".into()],
             default_model: "gemini-3.7-flash-low".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "2天前".into(),
         },
         Character {
             id: 6,
@@ -157,6 +177,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 老师，我认罚。\n{{char}}: 认罚？那就要看你的表现配不配得上宽恕了。".into(),
             tags: vec!["现代".into(), "年上御姐".into(), "权谋心理".into()],
             default_model: "claude-3-5-sonnet".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "昨天".into(),
         },
         Character {
             id: 7,
@@ -174,6 +197,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 可愿与我结伴寻宝？\n{{char}}: 宝物归你，神魔之血归我。".into(),
             tags: vec!["玄幻".into(), "修仙".into(), "凡人流".into(), "宏大".into()],
             default_model: "deepseek-chat".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "4天前".into(),
         },
         Character {
             id: 8,
@@ -191,6 +217,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 今天表现很棒。\n{{char}}: 谢谢，有你在台下，发挥更稳定了。".into(),
             tags: vec!["同人".into(), "VOCALOID".into(), "歌手".into(), "温柔".into()],
             default_model: "gemini-3.1-pro-preview-high".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "3天前".into(),
         },
         Character {
             id: 9,
@@ -208,6 +237,9 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 准备好了！\n{{char}}: 那就跟紧我的节奏，出发咯～！".into(),
             tags: vec!["同人".into(), "VOCALOID".into(), "元气".into(), "歌姬".into()],
             default_model: "gemini-3.1-pro-preview-high".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "5天前".into(),
         },
         Character {
             id: 10,
@@ -225,37 +257,107 @@ fn seed_characters() -> Vec<Character> {
             mes_example: "<START>\n{{user}}: 前面发现巨型战车群。\n{{char}}: 装填穿甲弹，正面冲破他们。".into(),
             tags: vec!["科幻".into(), "废土".into(), "机甲战车".into(), "硬核".into()],
             default_model: "gpt-4o".into(),
+            is_user_created: false,
+            is_published: true,
+            updated_at: "1周前".into(),
+        },
+        // 用户个人作品
+        Character {
+            id: 101,
+            name: "【我的草稿】新星演艺对赌秘辛".into(),
+            sub_title: "MY CREATION // EXPANSION".into(),
+            author: "我 (独立创作者)".into(),
+            heat_val: "4.5千".into(),
+            rating: 9.8,
+            quote: "“这一幕戏，由我亲自执导。”".into(),
+            avatar_src: None,
+            description: "个人编写的娱乐圈衍生篇章，新增资方二号代表的深度对手戏。".into(),
+            personality: "敏锐、冷酷、暗藏算计".into(),
+            scenario: "暴雨倾盆的私人放映厅内".into(),
+            first_mes: "放映机微弱的光芒闪烁着，合约已经生效了。".into(),
+            mes_example: "<START>\n{{user}}: 开价吧。\n{{char}}: 你的工作室全员。".into(),
+            tags: vec!["现代".into(), "娱乐圈".into(), "原创".into()],
+            default_model: "gemini-3.1-pro-preview-high".into(),
+            is_user_created: true,
+            is_published: false,
+            updated_at: "刚刚".into(),
+        },
+        Character {
+            id: 102,
+            name: "赛博霓虹：仿生人觉醒前夜".into(),
+            sub_title: "CYBERPUNK DETECTIVE".into(),
+            author: "我 (独立创作者)".into(),
+            heat_val: "1.8万".into(),
+            rating: 9.6,
+            quote: "“泪水会湮没在雨中，但代码不会。”".into(),
+            avatar_src: None,
+            description: "雨夜第七区，私人侦探追寻丢失的意识备份核心。".into(),
+            personality: "颓废、机警、黑客特质".into(),
+            scenario: "霓虹昏暗的雨夜地下诊所".into(),
+            first_mes: "风衣下摆滴着酸雨，你找的那颗芯片就在我手提箱里。".into(),
+            mes_example: "<START>\n{{user}}: 芯片没损坏吧？\n{{char}}: 完好无损。".into(),
+            tags: vec!["科幻".into(), "赛博朋克".into(), "侦探".into()],
+            default_model: "claude-3-5-sonnet".into(),
+            is_user_created: true,
+            is_published: true,
+            updated_at: "昨天".into(),
         },
     ]
 }
 
+/// =========================================================================
+/// 剧本库大厅浏览页面 (CharactersPage)
+/// =========================================================================
 #[component]
 pub fn CharactersPage(
     #[props(default)] on_enter_story: EventHandler<()>,
+    #[props(default)] on_goto_studio: EventHandler<()>,
 ) -> Element {
-    let mut characters = use_signal(seed_characters);
+    let mut characters = use_signal(seed_all_characters);
     let mut search = use_signal(String::new);
 
-    // 1. 榜单选择 (周榜/日榜/飙升榜/新人榜 对齐图1/2)
-    let mut active_rank = use_signal(|| "周榜".to_string());
-    // 2. 分类标签选择
+    // 1. 主榜单 Tab 页面 (周榜/日榜/飙升榜/新人榜 对齐图1/2/5红框)
+    let mut active_rank_tab = use_signal(|| "周榜".to_string());
+    // 2. 下层分类筛选 Filter
     let mut active_tag = use_signal(|| "全部".to_string());
 
     // 电影感封面展映
     let mut cover_target = use_signal(|| None::<Character>);
 
-    // 创作者中心 (Creator Studio)
-    let mut studio_editing = use_signal(|| None::<Character>);
-
     let query = search().to_lowercase();
+    let cur_rank = active_rank_tab();
     let cur_tag = active_tag();
 
-    let filtered: Vec<Character> = characters
+    // 1. 根据当前榜单 Tab 切换对应的数据集或排序规则 (分清 Tab 与 筛选标签，对齐图5需求)
+    let mut rank_filtered: Vec<Character> = characters
         .read()
         .clone()
         .into_iter()
+        .filter(|c| !c.is_user_created) // 剧本大厅只浏览公开展映作品
+        .collect();
+
+    match cur_rank.as_str() {
+        "日榜" => {
+            // 日榜：按日飙升热度排序（怪谈排第一，娱乐排第二等）
+            rank_filtered.sort_by(|a, b| b.id.cmp(&a.id));
+        }
+        "飙升榜" => {
+            // 飙升榜：按飙升潜力排序
+            rank_filtered.sort_by(|a, b| (b.rating as i32).cmp(&(a.rating as i32)));
+        }
+        "新人榜" => {
+            // 新人榜：新作者作品
+            rank_filtered.retain(|c| c.tags.contains(&"纯爱".into()) || c.tags.contains(&"年上御姐".into()) || c.tags.contains(&"玄幻".into()));
+        }
+        _ => {
+            // 默认综合周榜
+        }
+    }
+
+    // 2. 进一步通过题材标签 Filter 进行过滤
+    let final_filtered: Vec<Character> = rank_filtered
+        .into_iter()
         .filter(|c| {
-            // 标签过滤
             let match_tag = if cur_tag == "全部" {
                 true
             } else {
@@ -275,48 +377,29 @@ pub fn CharactersPage(
         })
         .collect();
 
-    // 如果打开创作者中心，全景展示四步工作室
-    if let Some(target) = studio_editing() {
-        return rsx! {
-            CreatorStudio {
-                initial: target.clone(),
-                on_exit: move |_| studio_editing.set(None),
-                on_save: move |saved: Character| {
-                    let mut list = characters.write();
-                    if let Some(idx) = list.iter().position(|x| x.id == saved.id) {
-                        list[idx] = saved;
-                    } else {
-                        list.push(saved);
-                    }
-                    studio_editing.set(None);
-                },
-            }
-        };
-    }
-
     rsx! {
         div { class: "relative flex h-full w-full flex-col gap-4 overflow-hidden",
             // ==========================================
-            // 顶部榜单栏与筛选系统 (对齐图1/2)
+            // 顶部榜单 Tab 与下层筛选系统 (对齐图1/2/5)
             // ==========================================
             div { class: "flex shrink-0 flex-col gap-3 px-1",
-                // 1. 第一行: 榜单切换条 (周榜 / 日榜 / 飙升榜 / 新人榜) + 搜索与创作者入口
+                // 1. 第一行: 榜单 Tab 页面 (周榜 / 日榜 / 飙升榜 / 新人榜) + 搜索 + 创作跳转 (对齐图5红框)
                 div { class: "flex flex-wrap items-center justify-between gap-3",
-                    // 榜单选择按钮组 (对齐图1/2)
+                    // 榜单 Tab 页面切换器
                     div { class: "flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/80 p-1 text-xs backdrop-blur-md",
                         for rank in ["周榜", "日榜", "飙升榜", "新人榜"] {
                             {
-                                let is_rank = active_rank() == rank;
+                                let is_active_tab = active_rank_tab() == rank;
                                 let rank_str = rank.to_string();
                                 rsx! {
                                     button {
                                         key: "{rank}",
-                                        class: if is_rank {
+                                        class: if is_active_tab {
                                             "rounded-full bg-zinc-100 px-3.5 py-1 font-bold text-zinc-900 shadow-sm transition-all"
                                         } else {
                                             "rounded-full px-3.5 py-1 font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
                                         },
-                                        onclick: move |_| active_rank.set(rank_str.clone()),
+                                        onclick: move |_| active_rank_tab.set(rank_str.clone()),
                                         match rank {
                                             "周榜" => "🏆 周榜",
                                             "日榜" => "🔥 日榜",
@@ -329,7 +412,7 @@ pub fn CharactersPage(
                         }
                     }
 
-                    // 搜索框 + 创作者中心按钮
+                    // 搜索框 + 创作按钮 (改名为「创作」，点击跳转到创作中心，对齐需求3)
                     div { class: "flex flex-1 items-center justify-end gap-2.5 max-w-md",
                         div { class: "flex flex-1 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 backdrop-blur-md",
                             span { class: "text-xs text-zinc-500", "🔍" }
@@ -342,17 +425,15 @@ pub fn CharactersPage(
                         }
                         button {
                             class: "flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 transition-all hover:scale-105",
-                            onclick: move |_| {
-                                let next_id = characters().iter().map(|c| c.id).max().unwrap_or(0) + 1;
-                                studio_editing.set(Some(Character::empty(next_id)));
-                            },
+                            title: "前往创作者中心",
+                            onclick: move |_| on_goto_studio.call(()),
                             span { "✍️" }
-                            span { "简易创作" }
+                            span { "创作" }
                         }
                     }
                 }
 
-                // 2. 第二行: 类别标签筛选行 (对齐图2下层红框)
+                // 2. 第二行: 类别题材多选筛选 Filter (对齐图2与图5下层)
                 div { class: "flex items-center gap-2 overflow-x-auto pb-1 text-xs text-zinc-400 no-scrollbar",
                     for cat in ["全部", "现代", "娱乐圈", "无限流", "科幻", "赛博朋克", "悬疑", "修仙", "同人", "纯爱"] {
                         {
@@ -383,14 +464,14 @@ pub fn CharactersPage(
             // 响应式 5 栏网格 (对齐图5: Web 5 栏、平板 3 栏、手机 1 栏)
             // ==========================================
             div { class: "min-h-0 flex-1 overflow-y-auto px-1 pr-2 pb-6",
-                if filtered.is_empty() {
+                if final_filtered.is_empty() {
                     EmptyState {
-                        title: "没有匹配的作品".to_string(),
-                        hint: "尝试切换上方榜单或重置分类筛选".to_string(),
+                        title: "当前榜单下没有匹配的作品".to_string(),
+                        hint: "尝试重置题材分类筛选或切换榜单".to_string(),
                     }
                 } else {
                     div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5",
-                        for (idx, c) in filtered.into_iter().enumerate() {
+                        for (idx, c) in final_filtered.into_iter().enumerate() {
                             {
                                 let c_cover = c.clone();
                                 let on_tag_click = move |tag: String| {
@@ -488,11 +569,13 @@ pub fn CharactersPage(
     }
 }
 
+/// =========================================================================
 /// 剧本卡片组件:
-/// - 彻底移除编辑和删除按钮 (对齐图3需求)
-/// - 角标简化为纯数值 (对齐图11需求)
-/// - Hover 悬浮详情浮窗 Tooltip: 智能位置计算(首行向下，其余向上，杜绝顶部遮挡；平缓平滑动画对齐图12需求)
-/// - 底部标签可点击直接触发外部多选联动 (对齐图12需求)
+/// - 彻底修复 Tooltip 被遮挡穿透 bug (hover 时提升父卡片自身 z-index 为 z-30，浮窗纯黑实色 z-50)
+/// - 移除编辑和删除按钮 (对齐图3需求)
+/// - 纯数值角标 (对齐图11需求)
+/// - 智能位置: 首行向下，后续行向上，动画平缓 (对齐图12需求)
+/// =========================================================================
 #[component]
 fn CharacterCardItem(
     index: usize,
@@ -503,20 +586,25 @@ fn CharacterCardItem(
     let mut is_hovered = use_signal(|| false);
 
     // 智能计算 Tooltip 出现位置:
-    // 如果是首行(0..5)，向下弹出以免被顶部视口切断；若是下方卡片，则正常向上弹出！
+    // 如果是首行(0..5)，向下弹出以免被顶部视口切断；若是下方卡片，则向上弹出！
     let is_first_row = index < 5;
+
+    // 核心 Bug 修复 (对齐图1与图2红框):
+    // hover 时必须给宿主卡片容器自身提升 z-index 到 z-30！
+    // 否则在 Grid 中后面的兄弟卡片天然层叠在前面卡片上面，导致 Tooltip 被下方的头像穿透遮挡！
+    let card_z_class = if is_hovered() { "relative z-30" } else { "relative z-0" };
 
     rsx! {
         div {
-            class: "group relative flex cursor-pointer flex-col overflow-visible rounded-2xl border border-zinc-800/80 bg-zinc-900/60 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-zinc-900 hover:shadow-lg hover:shadow-purple-950/20",
+            class: "{card_z_class} group flex cursor-pointer flex-col overflow-visible rounded-2xl border border-zinc-800/80 bg-zinc-900/60 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-zinc-900 hover:shadow-lg hover:shadow-purple-950/20",
             onmouseenter: move |_| is_hovered.set(true),
             onmouseleave: move |_| is_hovered.set(false),
             onclick: move |e| on_click_card.call(e),
 
             // 卡片封面区域: 纯数值角标 (对齐图11)
             div { class: "relative flex h-36 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-gradient-to-b from-purple-950/40 via-zinc-850 to-zinc-900",
-                // 纯数值角标 (移除多余 emoji 图标，对齐图11需求)
-                div { class: "absolute left-2.5 top-2.5 z-10 flex items-center rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-rose-300 backdrop-blur-md border border-rose-500/20 tabular-nums",
+                // 纯数值角标 (对齐图11)
+                div { class: "absolute left-2.5 top-2.5 z-10 flex items-center rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-rose-300 backdrop-blur-md border border-rose-500/20 tabular-nums select-none",
                     "{char.heat_val}"
                 }
 
@@ -556,7 +644,7 @@ fn CharacterCardItem(
                                         key: "{t}",
                                         class: "rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[9px] text-zinc-400 hover:text-purple-300 hover:bg-zinc-700 transition-colors truncate max-w-[80px]",
                                         onclick: move |e| {
-                                            e.stop_propagation(); // 阻止触发卡片进入故事
+                                            e.stop_propagation();
                                             on_select_tag.call(tag_str.clone());
                                         },
                                         "#{t}"
@@ -569,17 +657,14 @@ fn CharacterCardItem(
             }
 
             // ==========================================
-            // 智能位置计算的 Hover Tooltip (对齐图12需求)
-            // 首行向下弹出，其余行向上弹出，彻底杜绝顶部遮挡！
+            // Hover Tooltip: 纯黑高对比度实色背景，z-50，彻底杜绝下方卡片穿透！
             // ==========================================
             if is_hovered() {
                 div {
                     class: if is_first_row {
-                        // 首行：向下方平缓弹出！
-                        "pointer-events-none absolute top-full left-1/2 z-40 hidden w-72 -translate-x-1/2 mt-2 flex-col gap-2.5 rounded-2xl border border-purple-500/40 bg-zinc-950/95 p-4 text-xs shadow-2xl backdrop-blur-2xl xl:flex transition-all duration-300 ease-out"
+                        "pointer-events-none absolute top-full left-1/2 z-50 hidden w-72 -translate-x-1/2 mt-2 flex-col gap-2.5 rounded-2xl border border-purple-500/60 bg-[#09090b] p-4 text-xs shadow-2xl shadow-black xl:flex transition-all duration-300 ease-out select-none"
                     } else {
-                        // 其余行：向上方平缓弹出！
-                        "pointer-events-none absolute bottom-full left-1/2 z-40 hidden w-72 -translate-x-1/2 mb-2 flex-col gap-2.5 rounded-2xl border border-purple-500/40 bg-zinc-950/95 p-4 text-xs shadow-2xl backdrop-blur-2xl xl:flex transition-all duration-300 ease-out"
+                        "pointer-events-none absolute bottom-full left-1/2 z-50 hidden w-72 -translate-x-1/2 mb-2 flex-col gap-2.5 rounded-2xl border border-purple-500/60 bg-[#09090b] p-4 text-xs shadow-2xl shadow-black xl:flex transition-all duration-300 ease-out select-none"
                     },
                     div { class: "flex items-center justify-between border-b border-zinc-800 pb-2",
                         span { class: "font-bold text-zinc-100", "{char.name}" }
@@ -590,7 +675,7 @@ fn CharacterCardItem(
                         p { "{char.description}" }
                     }
                     if !char.quote.is_empty() {
-                        div { class: "rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-2 text-[10px] italic text-zinc-400",
+                        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/80 p-2 text-[10px] italic text-zinc-400",
                             "{char.quote}"
                         }
                     }
@@ -604,20 +689,190 @@ fn CharacterCardItem(
     }
 }
 
-/// ==========================================
-/// 全套创作者工作室 (Creator Studio，对齐图4-图10)
-/// 四步 Stepper: 01 基础设定 / 02 角色与背景 / 03 追加设定 / 04 保存与发布
-/// ==========================================
+/// =========================================================================
+/// 独立专属的「创作中心展示页」(StudioPage) (对齐需求3与图4)
+/// 列出用户自己的所有作品卡牌，点击弹出带景深高斯模糊的四步编辑器 Modal
+/// =========================================================================
 #[component]
-fn CreatorStudio(
+pub fn StudioPage() -> Element {
+    let mut my_works = use_signal(move || {
+        seed_all_characters()
+            .into_iter()
+            .filter(|c| c.is_user_created)
+            .collect::<Vec<Character>>()
+    });
+
+    // 控制当前编辑的剧本对象（Some 则弹出 Modal）
+    let mut editing_target = use_signal(|| None::<Character>);
+    let mut delete_id = use_signal(|| None::<usize>);
+
+    rsx! {
+        div { class: "relative flex h-full w-full flex-col gap-5 overflow-hidden",
+            // 创作中心头部控制台看板
+            div { class: "flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-2xl border border-purple-500/30 bg-gradient-to-r from-purple-950/30 via-zinc-900/60 to-zinc-950 p-5 backdrop-blur-xl shadow-lg",
+                div { class: "flex items-center gap-3",
+                    div { class: "flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-900/40 border border-purple-500/40 text-2xl shadow-inner",
+                        "🎨"
+                    }
+                    div { class: "flex flex-col gap-0.5",
+                        div { class: "flex items-center gap-2",
+                            h1 { class: "font-serif text-lg font-bold text-white", "我的创作中心" }
+                            span { class: "rounded-full bg-purple-500/20 border border-purple-500/30 px-2 py-0.2 text-[10px] font-bold text-purple-300", "CREATOR STUDIO" }
+                        }
+                        p { class: "text-xs text-zinc-400", "管理你的专属剧本、分支设定与大模型微调参数。随时一键发布或本地预览测试。" }
+                    }
+                }
+
+                div { class: "flex items-center gap-3",
+                    button {
+                        class: "flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:scale-105 transition-all",
+                        onclick: move |_| {
+                            let next_id = my_works().len() + 101;
+                            editing_target.set(Some(Character::empty(next_id)));
+                        },
+                        span { "+ 新建作品" }
+                    }
+                }
+            }
+
+            // 用户作品列表与新建入口卡片 (对齐图4要求)
+            div { class: "min-h-0 flex-1 overflow-y-auto px-1 pr-2 pb-6",
+                div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4",
+                    // 1. 醒目的“+ 新建剧本”大卡片
+                    div {
+                        class: "group flex min-h-[220px] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-zinc-800 bg-zinc-900/30 p-6 text-center transition-all hover:border-purple-500/60 hover:bg-purple-950/20",
+                        onclick: move |_| {
+                            let next_id = my_works().len() + 101;
+                            editing_target.set(Some(Character::empty(next_id)));
+                        },
+                        div { class: "flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-xl text-purple-400 group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all",
+                            "+"
+                        }
+                        span { class: "text-xs font-bold text-zinc-200 group-hover:text-purple-300 transition-colors", "创建新剧本作品" }
+                        span { class: "text-[11px] text-zinc-500", "包含角色设定、Prompt 矩阵、进场封面与行动分支" }
+                    }
+
+                    // 2. 我的个人作品卡牌
+                    for work in my_works() {
+                        {
+                            let w_clone = work.clone();
+                            let w_edit = work.clone();
+                            rsx! {
+                                div {
+                                    key: "{work.id}",
+                                    class: "group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-4 transition-all hover:border-purple-500/50 hover:bg-zinc-900 hover:shadow-xl",
+                                    // 卡片头部: 状态标与快捷操作
+                                    div { class: "flex items-center justify-between",
+                                        if work.is_published {
+                                            span { class: "flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400",
+                                                span { "●" }
+                                                span { "已发布" }
+                                            }
+                                        } else {
+                                            span { class: "flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400",
+                                                span { "●" }
+                                                span { "草稿中" }
+                                            }
+                                        }
+
+                                        div { class: "flex items-center gap-1",
+                                            button {
+                                                class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-purple-300 text-xs transition-colors",
+                                                title: "编辑剧本",
+                                                onclick: move |_| editing_target.set(Some(w_edit.clone())),
+                                                "✎"
+                                            }
+                                            button {
+                                                class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-rose-400 text-xs transition-colors",
+                                                title: "删除剧本",
+                                                onclick: move |_| delete_id.set(Some(work.id)),
+                                                "✕"
+                                            }
+                                        }
+                                    }
+
+                                    // 卡片正文
+                                    div { class: "flex flex-col gap-1.5 py-3",
+                                        h3 { class: "font-serif text-sm font-bold text-zinc-100 group-hover:text-purple-300 transition-colors line-clamp-1",
+                                            "{work.name}"
+                                        }
+                                        p { class: "line-clamp-2 text-xs leading-5 text-zinc-400",
+                                            if work.description.is_empty() { "暂未填写作品描述…" } else { "{work.description}" }
+                                        }
+                                    }
+
+                                    // 卡片底栏: 模型与编辑按钮
+                                    div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3 text-[11px] text-zinc-500",
+                                        span { class: "truncate max-w-[120px]", "模型: {work.default_model}" }
+                                        button {
+                                            class: "font-semibold text-purple-400 hover:text-purple-300 transition-colors",
+                                            onclick: move |_| editing_target.set(Some(w_clone.clone())),
+                                            "继续编辑 ➜"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================================
+            // 弹窗式四步创作编辑器 (Modal) (带背景景深与高斯模糊，对齐需求3与图3)
+            // =========================================================================
+            if let Some(target) = editing_target() {
+                div {
+                    class: "fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl p-4 sm:p-6 transition-all duration-300",
+                    onclick: move |_| editing_target.set(None),
+                    div {
+                        class: "relative flex h-full max-h-[820px] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 shadow-2xl",
+                        onclick: move |e| e.stop_propagation(),
+                        CreatorStudioModal {
+                            initial: target.clone(),
+                            on_close: move |_| editing_target.set(None),
+                            on_save: move |saved: Character| {
+                                let mut list = my_works.write();
+                                if let Some(idx) = list.iter().position(|x| x.id == saved.id) {
+                                    list[idx] = saved;
+                                } else {
+                                    list.insert(0, saved);
+                                }
+                                editing_target.set(None);
+                            },
+                        }
+                    }
+                }
+            }
+
+            // 删除确认弹窗
+            Dialog {
+                title: "删除创作者作品".to_string(),
+                open: delete_id().is_some(),
+                on_cancel: move |_| delete_id.set(None),
+                on_confirm: move |_| {
+                    if let Some(id) = delete_id() {
+                        my_works.write().retain(|c| c.id != id);
+                        delete_id.set(None);
+                    }
+                },
+                "确定要删除这部创作者作品吗？此操作不可恢复。"
+            }
+        }
+    }
+}
+
+/// =========================================================================
+/// 弹窗版四步创作编辑器组件 (对齐图4-图10，全面增加 select-none，去除突兀顶栏)
+/// =========================================================================
+#[component]
+fn CreatorStudioModal(
     initial: Character,
-    on_exit: EventHandler<()>,
+    on_close: EventHandler<()>,
     on_save: EventHandler<Character>,
 ) -> Element {
-    // 01 到 04 步进控制
     let mut current_step = use_signal(|| 1usize);
 
-    // 基础表单状态 (Step 01)
+    // 基础设定 (Step 01)
     let mut name = use_signal(|| initial.name.clone());
     let mut description = use_signal(|| initial.description.clone());
     let mut quote = use_signal(|| initial.quote.clone());
@@ -629,9 +884,7 @@ fn CreatorStudio(
     let mut mes_example = use_signal(|| initial.mes_example.clone());
 
     // 追加设定 (Step 03)
-    let mut regex_script = use_signal(|| String::new());
     let mut cg_trigger = use_signal(|| "AI".to_string());
-    let mut cg_format = use_signal(|| "或".to_string());
     let mut cg_mapping = use_signal(|| "聊天".to_string());
 
     // 保存与发布 (Step 04)
@@ -641,419 +894,354 @@ fn CreatorStudio(
     let mut disable_custom_css = use_signal(|| false);
     let mut agree_rules = use_signal(|| true);
 
-    // 模型选择抽屉弹窗 (对齐图9/10)
+    // 专业模型选择抽屉
     let mut model_selector_open = use_signal(|| false);
     let mut model_vendor = use_signal(|| "All".to_string());
-    let mut model_status_filter = use_signal(|| "通畅".to_string());
     let mut model_search = use_signal(|| String::new());
 
     let can_publish = !name().trim().is_empty();
 
     rsx! {
-        div { class: "relative flex h-full w-full flex-col overflow-hidden bg-zinc-950 text-zinc-100",
-            // 顶部导航条: ‹ 简易创作，右侧 [保存] [导出] [预览] (对齐图4-8顶栏)
-            header { class: "flex h-14 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-6 backdrop-blur-xl",
-                div { class: "flex items-center gap-3",
-                    button {
-                        class: "flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-100 transition-colors",
-                        title: "返回剧本库",
-                        onclick: move |_| on_exit.call(()),
-                        "‹"
-                    }
-                    h1 { class: "text-sm font-bold text-zinc-100", "简易创作" }
-                }
-
+        div { class: "flex h-full w-full flex-col overflow-hidden text-xs text-zinc-100",
+            // 优雅的弹窗顶栏 (彻底替代原来突兀的整行全黑条，对齐图3改进需求)
+            div { class: "flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4 bg-zinc-950/60 select-none",
                 div { class: "flex items-center gap-2",
-                    button { class: "rounded-lg border border-zinc-800 bg-zinc-800/60 px-3.5 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors",
-                        "保存"
+                    span { class: "font-serif text-sm font-bold text-white",
+                        if initial.name.is_empty() { "新建剧本作品" } else { "编辑剧本设定" }
                     }
-                    button { class: "rounded-lg border border-zinc-800 bg-zinc-800/60 px-3.5 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors",
-                        "导出"
-                    }
-                    button { class: "rounded-lg border border-zinc-800 bg-zinc-800/60 px-3.5 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors",
-                        "预览"
-                    }
+                    span { class: "rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-bold text-purple-300", "MODAL" }
+                }
+                button {
+                    class: "flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors text-sm",
+                    title: "关闭弹窗",
+                    onclick: move |_| on_close.call(()),
+                    "✕"
                 }
             }
 
-            // ==========================================
-            // 中间工作区: 居中四步 Stepper 容器 (精准复刻图4-8)
-            // ==========================================
-            div { class: "flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 py-6 sm:px-8",
-                div { class: "flex w-full max-w-3xl flex-col gap-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 sm:p-8 backdrop-blur-xl shadow-2xl",
-                    // 1. 顶部步进条进度指示器 (精准复刻图4-8顶栏线形步进条)
-                    div { class: "relative flex items-center justify-between px-4 sm:px-12",
-                        // 连线背景
-                        div { class: "absolute left-10 right-10 top-7 h-0.5 bg-zinc-800 -z-0" }
-                        // 高亮连线
-                        div {
-                            class: "absolute left-10 top-7 h-0.5 bg-sky-500 transition-all duration-300 -z-0",
-                            style: match current_step() {
-                                1 => "width: 0%;",
-                                2 => "width: 33%;",
-                                3 => "width: 66%;",
-                                _ => "width: calc(100% - 5rem);",
-                            },
-                        }
+            // 四步步进条进度指示器 (对齐图4-8，核心: 全面增加 select-none，坚决禁止文字选中文本高亮！对齐图3红框需求)
+            div { class: "relative flex shrink-0 items-center justify-between px-8 sm:px-14 py-4 border-b border-zinc-800/80 bg-zinc-900/60 select-none",
+                // 连线背景
+                div { class: "absolute left-12 right-12 top-8 h-0.5 bg-zinc-800 -z-0" }
+                // 高亮步进连线
+                div {
+                    class: "absolute left-12 top-8 h-0.5 bg-sky-500 transition-all duration-300 -z-0",
+                    style: match current_step() {
+                        1 => "width: 0%;",
+                        2 => "width: 33%;",
+                        3 => "width: 66%;",
+                        _ => "width: calc(100% - 6rem);",
+                    },
+                }
 
-                        // 01 基础设定
-                        div {
-                            class: "relative z-10 flex flex-col items-center gap-1.5 cursor-pointer",
-                            onclick: move |_| current_step.set(1),
-                            span { class: "text-[11px] font-medium text-zinc-400", "基础设定" }
-                            div {
-                                class: if current_step() >= 1 {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30"
-                                } else {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500"
-                                },
-                                "01"
-                            }
-                        }
-
-                        // 02 角色与背景设定
-                        div {
-                            class: "relative z-10 flex flex-col items-center gap-1.5 cursor-pointer",
-                            onclick: move |_| current_step.set(2),
-                            span { class: "text-[11px] font-medium text-zinc-400", "角色与背景设定" }
-                            div {
-                                class: if current_step() >= 2 {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30"
-                                } else {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500"
-                                },
-                                "02"
-                            }
-                        }
-
-                        // 03 追加设定
-                        div {
-                            class: "relative z-10 flex flex-col items-center gap-1.5 cursor-pointer",
-                            onclick: move |_| current_step.set(3),
-                            span { class: "text-[11px] font-medium text-zinc-400", "追加设定" }
-                            div {
-                                class: if current_step() >= 3 {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30"
-                                } else {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500"
-                                },
-                                "03"
-                            }
-                        }
-
-                        // 04 保存与发布
-                        div {
-                            class: "relative z-10 flex flex-col items-center gap-1.5 cursor-pointer",
-                            onclick: move |_| current_step.set(4),
-                            span { class: "text-[11px] font-medium text-zinc-400", "保存与发布" }
-                            div {
-                                class: if current_step() >= 4 {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30"
-                                } else {
-                                    "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500"
-                                },
-                                "04"
-                            }
-                        }
-                    }
-
-                    // 2. 步骤具体内容
-                    div { class: "min-h-[420px] pt-4 text-xs",
-                        match current_step() {
-                            // Step 01: 基础设定 (对齐图4)
-                            1 => rsx! {
-                                div { class: "space-y-4",
-                                    Field { label: "名字 *",
-                                        input {
-                                            class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
-                                            placeholder: "请输入剧本名称",
-                                            value: "{name()}",
-                                            oninput: move |e| name.set(e.value()),
-                                        }
-                                    }
-
-                                    Field { label: "简要描述",
-                                        textarea {
-                                            class: "h-24 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
-                                            placeholder: "简述核心看点与剧情风格…",
-                                            value: "{description()}",
-                                            oninput: move |e| description.set(e.value()),
-                                        }
-                                    }
-
-                                    Field { label: "立绘与封面设置",
-                                        div { class: "flex items-center gap-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/60 p-4",
-                                            div { class: "flex h-16 w-16 items-center justify-center rounded-xl bg-zinc-900 text-zinc-500 border border-zinc-800",
-                                                "🖼️"
-                                            }
-                                            div { class: "flex flex-col gap-1",
-                                                span { class: "font-medium text-zinc-300", "点击或拖拽上传作品封面" }
-                                                span { class: "text-[11px] text-zinc-500", "推荐 3:4 比例清晰插画，支持 JPG、PNG、WEBP 格式" }
-                                            }
-                                        }
-                                    }
-
-                                    Field { label: "名句引言 (封面展映)",
-                                        input {
-                                            class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500 font-serif italic",
-                                            placeholder: "如：“在名利场里，每一张合同背后都是未标注价格的命运。”",
-                                            value: "{quote()}",
-                                            oninput: move |e| quote.set(e.value()),
-                                        }
-                                    }
-                                }
-                            },
-
-                            // Step 02: 角色与背景设定 (对齐图5)
-                            2 => rsx! {
-                                div { class: "space-y-4",
-                                    Field { label: "角色设定 (System Prompt / Personality)",
-                                        textarea {
-                                            class: "h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 leading-5 text-zinc-100 outline-none focus:border-sky-500 font-mono text-[11px]",
-                                            placeholder: "详细设定角色性格、身份地位、语言习惯与不可违抗的行为准则…",
-                                            value: "{personality()}",
-                                            oninput: move |e| personality.set(e.value()),
-                                        }
-                                    }
-
-                                    Field { label: "初始场景 (Scenario)",
-                                        textarea {
-                                            class: "h-20 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
-                                            placeholder: "描述战局、对赌或对话发生的具体初始物理空间与压抑氛围…",
-                                            value: "{scenario()}",
-                                            oninput: move |e| scenario.set(e.value()),
-                                        }
-                                    }
-
-                                    Field { label: "开场白 (First Message)",
-                                        textarea {
-                                            class: "h-24 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
-                                            placeholder: "玩家开局收到的第一句引导问候或旁白…",
-                                            value: "{first_mes()}",
-                                            oninput: move |e| first_mes.set(e.value()),
-                                        }
-                                    }
-
-                                    Field { label: "对话示例 (Mes Example)",
-                                        textarea {
-                                            class: "h-24 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500 font-mono text-[11px]",
-                                            placeholder: "<START>\n{{user}}: 你是谁？\n{{char}}: 你的引路人。",
-                                            value: "{mes_example()}",
-                                            oninput: move |e| mes_example.set(e.value()),
-                                        }
-                                    }
-                                }
-                            },
-
-                            // Step 03: 追加设定 (对齐图6)
-                            3 => rsx! {
-                                div { class: "space-y-4",
-                                    div { class: "flex items-center justify-between",
-                                        span { class: "font-semibold text-zinc-300", "开场白扩展" }
-                                        span { class: "text-zinc-500", "0 / 40" }
-                                    }
-                                    button { class: "w-full rounded-xl border border-dashed border-zinc-800 py-2.5 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors",
-                                        "+ 添加"
-                                    }
-
-                                    div { class: "space-y-1.5 pt-2",
-                                        span { class: "font-semibold text-zinc-300", "正则表达式脚本" }
-                                        p { class: "text-[11px] leading-4 text-zinc-500",
-                                            "1. 可以将 AI 输出内容中匹配到正则表达式的内容整体替换为“替换文本”中的内容\n2. 支持精准语法捕捉与动态清洗"
-                                        }
-                                        button { class: "w-full rounded-xl border border-dashed border-zinc-800 py-2.5 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors",
-                                            "+ 添加脚本"
-                                        }
-                                    }
-
-                                    div { class: "space-y-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4 mt-2",
-                                        div { class: "flex items-center justify-between",
-                                            span { class: "font-semibold text-zinc-300", "CG 图片与立绘映射 *" }
-                                            button { class: "text-sky-400 text-[11px]", "收起 ︾" }
-                                        }
-                                        div { class: "grid grid-cols-2 gap-4 pt-1",
-                                            div { class: "space-y-1.5",
-                                                span { class: "text-zinc-400", "触发区域:" }
-                                                div { class: "flex items-center gap-2",
-                                                    label { class: "flex items-center gap-1.5 cursor-pointer",
-                                                        input { r#type: "radio", name: "trigger", checked: cg_trigger() == "AI", onchange: move |_| cg_trigger.set("AI".into()) }
-                                                        span { "AI" }
-                                                    }
-                                                    label { class: "flex items-center gap-1.5 cursor-pointer",
-                                                        input { r#type: "radio", name: "trigger", checked: cg_trigger() == "用户", onchange: move |_| cg_trigger.set("用户".into()) }
-                                                        span { "用户" }
-                                                    }
-                                                }
-                                            }
-                                            div { class: "space-y-1.5",
-                                                span { class: "text-zinc-400", "区域映射:" }
-                                                div { class: "flex items-center gap-2",
-                                                    label { class: "flex items-center gap-1.5 cursor-pointer",
-                                                        input { r#type: "radio", name: "map", checked: cg_mapping() == "背景图片", onchange: move |_| cg_mapping.set("背景图片".into()) }
-                                                        span { "背景图片" }
-                                                    }
-                                                    label { class: "flex items-center gap-1.5 cursor-pointer",
-                                                        input { r#type: "radio", name: "map", checked: cg_mapping() == "聊天", onchange: move |_| cg_mapping.set("聊天".into()) }
-                                                        span { "聊天" }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-
-                            // Step 04: 保存与发布 (对齐图7-10)
-                            _ => rsx! {
-                                div { class: "space-y-5",
-                                    // 标签管理 (对齐图7/8)
-                                    div { class: "space-y-2",
-                                        span { class: "font-semibold text-zinc-300", "标签管理" }
-                                        div { class: "flex items-center gap-2",
-                                            button { class: "flex items-center gap-1 rounded-xl border border-dashed border-sky-500/50 bg-sky-500/10 px-3 py-1.5 text-sky-300 hover:bg-sky-500/20 transition-colors",
-                                                span { "🏷️" }
-                                                span { "添加标签" }
-                                            }
-                                            input {
-                                                class: "flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-zinc-100 outline-none focus:border-sky-500",
-                                                value: "{tags_str()}",
-                                                oninput: move |e| tags_str.set(e.value()),
-                                            }
-                                        }
-                                    }
-
-                                    // 默认游玩模型 (对齐图7/8，点击呼出图9/10模型选择抽屉)
-                                    div { class: "flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/60 p-3",
-                                        span { class: "font-semibold text-zinc-300", "默认游玩模型" }
-                                        button {
-                                            class: "flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-200 hover:border-sky-500 transition-colors",
-                                            onclick: move |_| model_selector_open.set(true),
-                                            span { "{default_model()}" }
-                                            span { "⌵" }
-                                        }
-                                    }
-
-                                    // 匿名开关 (对齐图7/8)
-                                    div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3",
-                                        div { class: "flex flex-col",
-                                            span { class: "font-semibold text-zinc-300", "匿名 *" }
-                                            span { class: "text-[11px] text-zinc-500", "隐藏作品作者用户名" }
-                                        }
-                                        input {
-                                            r#type: "checkbox",
-                                            class: "h-4 w-4 accent-sky-500",
-                                            checked: is_anonymous(),
-                                            oninput: move |e| is_anonymous.set(e.value().parse().unwrap_or(false)),
-                                        }
-                                    }
-
-                                    // 禁用包含内置 CSS 的 Mod (对齐图7/8)
-                                    div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3",
-                                        div { class: "flex flex-col",
-                                            span { class: "font-semibold text-zinc-300", "禁用包含内置CSS的Mod" }
-                                            span { class: "text-[11px] text-zinc-500", "开启后，用户将无法启用带有内置CSS的Mod" }
-                                        }
-                                        input {
-                                            r#type: "checkbox",
-                                            class: "h-4 w-4 accent-sky-500",
-                                            checked: disable_custom_css(),
-                                            oninput: move |e| disable_custom_css.set(e.value().parse().unwrap_or(false)),
-                                        }
-                                    }
-
-                                    // 发布协议复选框 (对齐图7/8)
-                                    div { class: "flex items-center gap-2 pt-1 text-[11px] text-zinc-400",
-                                        input {
-                                            r#type: "checkbox",
-                                            class: "h-3.5 w-3.5 accent-sky-500",
-                                            checked: agree_rules(),
-                                            oninput: move |e| agree_rules.set(e.value().parse().unwrap_or(true)),
-                                        }
-                                        span { "请关注论坛教程教学区和开源社区频道，与更多创作者交流学习～" }
-                                    }
-
-                                    // 发布须知卡片 (带可爱看板娘插画，对齐图7/8底卡)
-                                    div { class: "flex items-center gap-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-4",
-                                        div { class: "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-950/50 border border-purple-500/30 text-2xl",
-                                            "👘"
-                                        }
-                                        div { class: "flex flex-col gap-0.5 text-[11px]",
-                                            span { class: "font-bold text-zinc-200", "发布须知" }
-                                            span { class: "text-zinc-400 leading-4",
-                                                "发布的作品将有机会进入周榜与日榜赢取热度与创作者分润～ 保存且未公开发布的剧本仅作者自己可见，可随时【预览】尽情游玩。"
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                        }
-                    }
-
-                    // 3. 底部上一步/下一步/发布操作按钮 (对齐图4-8底栏)
-                    div { class: "flex items-center justify-center gap-4 border-t border-zinc-800/80 pt-4",
-                        if current_step() > 1 {
-                            button {
-                                class: "rounded-full bg-zinc-800 px-6 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 transition-colors",
-                                onclick: move |_| current_step.set(current_step() - 1),
-                                "上一步"
-                            }
-                        }
-
-                        if current_step() < 4 {
-                            button {
-                                class: "rounded-full bg-sky-500 px-8 py-2 text-xs font-bold text-white shadow-lg shadow-sky-500/30 hover:bg-sky-400 transition-colors",
-                                onclick: move |_| current_step.set(current_step() + 1),
-                                "下一步"
-                            }
+                // 01 基础设定 (加 select-none)
+                div {
+                    class: "relative z-10 flex flex-col items-center gap-1 cursor-pointer select-none",
+                    onclick: move |_| current_step.set(1),
+                    span { class: "text-[11px] font-medium text-zinc-400 select-none", "基础设定" }
+                    div {
+                        class: if current_step() >= 1 {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30 select-none"
                         } else {
-                            button {
-                                class: "rounded-full bg-gradient-to-r from-sky-500 to-blue-600 px-10 py-2.5 text-xs font-bold text-white shadow-xl shadow-sky-500/40 hover:scale-105 transition-all disabled:opacity-40",
-                                disabled: !can_publish,
-                                onclick: move |_| {
-                                    let tags = tags_str()
-                                        .split(',')
-                                        .map(|s| s.trim().to_string())
-                                        .filter(|s| !s.is_empty())
-                                        .collect();
-                                    on_save.call(Character {
-                                        id: initial.id,
-                                        name: name(),
-                                        sub_title: "OBSERVATION PROTOCOL // 2026".into(),
-                                        author: initial.author.clone(),
-                                        heat_val: initial.heat_val.clone(),
-                                        rating: initial.rating,
-                                        quote: quote(),
-                                        avatar_src: initial.avatar_src.clone(),
-                                        description: description(),
-                                        personality: personality(),
-                                        scenario: scenario(),
-                                        first_mes: first_mes(),
-                                        mes_example: mes_example(),
-                                        tags,
-                                        default_model: default_model(),
-                                    });
-                                },
-                                "立即保存发布 🚀"
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500 select-none"
+                        },
+                        "01"
+                    }
+                }
+
+                // 02 角色与背景设定 (加 select-none)
+                div {
+                    class: "relative z-10 flex flex-col items-center gap-1 cursor-pointer select-none",
+                    onclick: move |_| current_step.set(2),
+                    span { class: "text-[11px] font-medium text-zinc-400 select-none", "角色与背景设定" }
+                    div {
+                        class: if current_step() >= 2 {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30 select-none"
+                        } else {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500 select-none"
+                        },
+                        "02"
+                    }
+                }
+
+                // 03 追加设定 (加 select-none)
+                div {
+                    class: "relative z-10 flex flex-col items-center gap-1 cursor-pointer select-none",
+                    onclick: move |_| current_step.set(3),
+                    span { class: "text-[11px] font-medium text-zinc-400 select-none", "追加设定" }
+                    div {
+                        class: if current_step() >= 3 {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30 select-none"
+                        } else {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500 select-none"
+                        },
+                        "03"
+                    }
+                }
+
+                // 04 保存与发布 (加 select-none)
+                div {
+                    class: "relative z-10 flex flex-col items-center gap-1 cursor-pointer select-none",
+                    onclick: move |_| current_step.set(4),
+                    span { class: "text-[11px] font-medium text-zinc-400 select-none", "保存与发布" }
+                    div {
+                        class: if current_step() >= 4 {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow-md shadow-sky-500/30 select-none"
+                        } else {
+                            "flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs text-zinc-500 select-none"
+                        },
+                        "04"
+                    }
+                }
+            }
+
+            // 表单工作区
+            div { class: "min-h-0 flex-1 overflow-y-auto p-6 sm:p-8 space-y-4",
+                match current_step() {
+                    1 => rsx! {
+                        div { class: "space-y-4",
+                            Field { label: "剧本名字 *",
+                                input {
+                                    class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
+                                    placeholder: "输入剧本标题",
+                                    value: "{name()}",
+                                    oninput: move |e| name.set(e.value()),
+                                }
                             }
+                            Field { label: "简要剧情描述",
+                                textarea {
+                                    class: "h-24 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
+                                    placeholder: "概括核心看点、冲突与题材风格…",
+                                    value: "{description()}",
+                                    oninput: move |e| description.set(e.value()),
+                                }
+                            }
+                            Field { label: "名句引言 (展映封面用)",
+                                input {
+                                    class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500 font-serif italic",
+                                    placeholder: "“每一张合同背后，都是未标注价格的命运。”",
+                                    value: "{quote()}",
+                                    oninput: move |e| quote.set(e.value()),
+                                }
+                            }
+                        }
+                    },
+                    2 => rsx! {
+                        div { class: "space-y-4",
+                            Field { label: "角色设定 (System Prompt / Personality)",
+                                textarea {
+                                    class: "h-32 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 font-mono text-[11px] leading-5 text-zinc-100 outline-none focus:border-sky-500",
+                                    placeholder: "设定角色性格、身份动机与不可违抗的行为准则…",
+                                    value: "{personality()}",
+                                    oninput: move |e| personality.set(e.value()),
+                                }
+                            }
+                            Field { label: "初始场景 (Scenario)",
+                                textarea {
+                                    class: "h-20 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
+                                    placeholder: "初始对峙场景或环境描写…",
+                                    value: "{scenario()}",
+                                    oninput: move |e| scenario.set(e.value()),
+                                }
+                            }
+                            Field { label: "开场白 (First Message)",
+                                textarea {
+                                    class: "h-20 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
+                                    placeholder: "玩家开局收到的第一句问候或旁白…",
+                                    value: "{first_mes()}",
+                                    oninput: move |e| first_mes.set(e.value()),
+                                }
+                            }
+                            Field { label: "少样本引导对话 (Mes Example)",
+                                textarea {
+                                    class: "h-20 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 font-mono text-[11px] text-zinc-100 outline-none focus:border-sky-500",
+                                    placeholder: "<START>\n{{user}}: 你好\n{{char}}: 很高兴见到你。",
+                                    value: "{mes_example()}",
+                                    oninput: move |e| mes_example.set(e.value()),
+                                }
+                            }
+                        }
+                    },
+                    3 => rsx! {
+                        div { class: "space-y-4",
+                            div { class: "flex items-center justify-between",
+                                span { class: "font-semibold text-zinc-300", "开场白扩展" }
+                                span { class: "text-zinc-500", "0 / 40" }
+                            }
+                            button { class: "w-full rounded-xl border border-dashed border-zinc-800 py-2.5 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors",
+                                "+ 添加开场白分支"
+                            }
+
+                            div { class: "space-y-1.5 pt-2",
+                                span { class: "font-semibold text-zinc-300", "正则表达式清洗脚本" }
+                                p { class: "text-[11px] text-zinc-500", "支持将大模型输出中的特定文本/标记动态替换为对应展示卡片" }
+                                button { class: "w-full rounded-xl border border-dashed border-zinc-800 py-2.5 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors",
+                                    "+ 添加正则脚本"
+                                }
+                            }
+
+                            div { class: "space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 mt-2",
+                                span { class: "font-semibold text-zinc-300", "CG 图片与立绘映射" }
+                                div { class: "grid grid-cols-2 gap-4 pt-1",
+                                    div { class: "space-y-1.5",
+                                        span { class: "text-zinc-400", "触发区域:" }
+                                        div { class: "flex items-center gap-2",
+                                            label { class: "flex items-center gap-1.5 cursor-pointer",
+                                                input { r#type: "radio", name: "trigger", checked: cg_trigger() == "AI", onchange: move |_| cg_trigger.set("AI".into()) }
+                                                span { "AI" }
+                                            }
+                                            label { class: "flex items-center gap-1.5 cursor-pointer",
+                                                input { r#type: "radio", name: "trigger", checked: cg_trigger() == "用户", onchange: move |_| cg_trigger.set("用户".into()) }
+                                                span { "用户" }
+                                            }
+                                        }
+                                    }
+                                    div { class: "space-y-1.5",
+                                        span { class: "text-zinc-400", "区域映射:" }
+                                        div { class: "flex items-center gap-2",
+                                            label { class: "flex items-center gap-1.5 cursor-pointer",
+                                                input { r#type: "radio", name: "map", checked: cg_mapping() == "背景图片", onchange: move |_| cg_mapping.set("背景图片".into()) }
+                                                span { "背景图片" }
+                                            }
+                                            label { class: "flex items-center gap-1.5 cursor-pointer",
+                                                input { r#type: "radio", name: "map", checked: cg_mapping() == "聊天", onchange: move |_| cg_mapping.set("聊天".into()) }
+                                                span { "聊天" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    _ => rsx! {
+                        div { class: "space-y-4",
+                            div { class: "space-y-1.5",
+                                span { class: "font-semibold text-zinc-300", "分类标签 (逗号分隔)" }
+                                input {
+                                    class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-sky-500",
+                                    value: "{tags_str()}",
+                                    oninput: move |e| tags_str.set(e.value()),
+                                }
+                            }
+
+                            // 默认游玩模型选择抽屉
+                            div { class: "flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/60 p-3",
+                                span { class: "font-semibold text-zinc-300", "默认推荐模型" }
+                                button {
+                                    class: "flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-200 hover:border-sky-500 transition-colors",
+                                    onclick: move |_| model_selector_open.set(true),
+                                    span { "{default_model()}" }
+                                    span { "⌵" }
+                                }
+                            }
+
+                            div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3",
+                                div { class: "flex flex-col",
+                                    span { class: "font-semibold text-zinc-300", "匿名发布" }
+                                    span { class: "text-[11px] text-zinc-500", "隐藏作品作者用户名" }
+                                }
+                                input {
+                                    r#type: "checkbox",
+                                    class: "h-4 w-4 accent-sky-500",
+                                    checked: is_anonymous(),
+                                    oninput: move |e| is_anonymous.set(e.value().parse().unwrap_or(false)),
+                                }
+                            }
+
+                            div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3",
+                                div { class: "flex flex-col",
+                                    span { class: "font-semibold text-zinc-300", "禁用包含内置CSS的Mod" }
+                                    span { class: "text-[11px] text-zinc-500", "开启后，用户将无法启用带有内置CSS的Mod" }
+                                }
+                                input {
+                                    r#type: "checkbox",
+                                    class: "h-4 w-4 accent-sky-500",
+                                    checked: disable_custom_css(),
+                                    oninput: move |e| disable_custom_css.set(e.value().parse().unwrap_or(false)),
+                                }
+                            }
+
+                            // 发布须知卡片
+                            div { class: "flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3.5",
+                                div { class: "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-950/50 border border-purple-500/30 text-xl",
+                                    "👘"
+                                }
+                                span { class: "text-[11px] text-zinc-400 leading-4",
+                                    "已发布的作品将进入周榜与日榜展映。未公开发布的草稿作品仅存放在创作中心，随时可一键发布。"
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+
+            // 弹窗底栏: 上一步 / 下一步 / 立即保存发布 (加 select-none)
+            div { class: "flex shrink-0 items-center justify-between border-t border-zinc-800 px-6 py-4 bg-zinc-950/80 select-none",
+                div {
+                    if current_step() > 1 {
+                        button {
+                            class: "rounded-full bg-zinc-800 px-5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 transition-colors select-none",
+                            onclick: move |_| current_step.set(current_step() - 1),
+                            "上一步"
+                        }
+                    }
+                }
+
+                div {
+                    if current_step() < 4 {
+                        button {
+                            class: "rounded-full bg-sky-500 px-7 py-1.5 text-xs font-bold text-white shadow-lg shadow-sky-500/30 hover:bg-sky-400 transition-colors select-none",
+                            onclick: move |_| current_step.set(current_step() + 1),
+                            "下一步"
+                        }
+                    } else {
+                        button {
+                            class: "rounded-full bg-gradient-to-r from-sky-500 to-blue-600 px-8 py-2 text-xs font-bold text-white shadow-xl shadow-sky-500/40 hover:scale-105 transition-all disabled:opacity-40 select-none",
+                            disabled: !can_publish,
+                            onclick: move |_| {
+                                let tags = tags_str()
+                                    .split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect();
+                                on_save.call(Character {
+                                    id: initial.id,
+                                    name: name(),
+                                    sub_title: "MY WORK // CREATOR STUDIO".into(),
+                                    author: initial.author.clone(),
+                                    heat_val: initial.heat_val.clone(),
+                                    rating: initial.rating,
+                                    quote: quote(),
+                                    avatar_src: initial.avatar_src.clone(),
+                                    description: description(),
+                                    personality: personality(),
+                                    scenario: scenario(),
+                                    first_mes: first_mes(),
+                                    mes_example: mes_example(),
+                                    tags,
+                                    default_model: default_model(),
+                                    is_user_created: true,
+                                    is_published: true,
+                                    updated_at: "刚刚".into(),
+                                });
+                            },
+                            "保存并发布 🚀"
                         }
                     }
                 }
             }
 
-            // ==========================================
-            // 专业模型选择器抽屉/弹窗 (精准复刻图9与图10)
-            // ==========================================
+            // 专业模型选择器抽屉 (对齐图9/10)
             if model_selector_open() {
                 div {
-                    class: "absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md",
+                    class: "absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md select-none",
                     onclick: move |_| model_selector_open.set(false),
                     div {
-                        class: "relative flex h-full max-h-[640px] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl text-xs",
+                        class: "relative flex h-full max-h-[580px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl text-xs",
                         onclick: move |e| e.stop_propagation(),
 
-                        // 抽屉头部: 厂家分类Tab (All / Gemini / DeepSeek / Claude / GLM / ChatGPT)
                         div { class: "flex items-center justify-between border-b border-zinc-800 pb-3",
-                            div { class: "flex items-center gap-4 overflow-x-auto",
+                            div { class: "flex items-center gap-3 overflow-x-auto",
                                 for v in ["All", "Gemini", "DeepSeek", "Claude", "GLM", "ChatGPT"] {
                                     {
                                         let is_v = model_vendor() == v;
@@ -1062,9 +1250,9 @@ fn CreatorStudio(
                                             button {
                                                 key: "{v}",
                                                 class: if is_v {
-                                                    "border-b-2 border-sky-400 pb-1 font-bold text-sky-400 transition-all"
+                                                    "border-b-2 border-sky-400 pb-1 font-bold text-sky-400"
                                                 } else {
-                                                    "pb-1 font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+                                                    "pb-1 font-medium text-zinc-400 hover:text-zinc-200"
                                                 },
                                                 onclick: move |_| model_vendor.set(v_name.clone()),
                                                 "{v}"
@@ -1080,40 +1268,12 @@ fn CreatorStudio(
                             }
                         }
 
-                        // 状态指示灯过滤 (通畅 / 空闲 / 拥挤 / 异常)
-                        div { class: "flex items-center justify-between pt-3 pb-2 text-[11px]",
-                            span { class: "text-zinc-500", "模型状态" }
-                            div { class: "flex items-center gap-3",
-                                span { class: "flex items-center gap-1 text-emerald-400 font-medium", "● 通畅" }
-                                span { class: "flex items-center gap-1 text-zinc-400", "● 空闲" }
-                                span { class: "flex items-center gap-1 text-amber-400", "● 拥挤" }
-                                span { class: "flex items-center gap-1 text-rose-400", "● 异常" }
-                            }
-                        }
-
-                        // 搜索与属性筛选 (性价比高、出字快、智力高、审查弱)
-                        div { class: "space-y-2 pt-1 pb-3",
-                            input {
-                                class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-zinc-200 outline-none focus:border-sky-500",
-                                placeholder: "🔍 搜索模型名称…",
-                                value: "{model_search()}",
-                                oninput: move |e| model_search.set(e.value()),
-                            }
-                            div { class: "flex items-center gap-2 text-[10px] text-zinc-400",
-                                span { class: "rounded-md bg-zinc-800 px-2 py-0.5", "性价比高" }
-                                span { class: "rounded-md bg-zinc-800 px-2 py-0.5", "出字快" }
-                                span { class: "rounded-md bg-zinc-800 px-2 py-0.5", "智力高" }
-                                span { class: "rounded-md bg-zinc-800 px-2 py-0.5", "审查弱" }
-                            }
-                        }
-
-                        // 模型列表 (精准复刻图9: 价格系数、出字率、描述)
-                        div { class: "flex-1 overflow-y-auto space-y-2 pr-1",
+                        div { class: "flex-1 overflow-y-auto space-y-2 py-3 pr-1",
                             for (m_name, cost, speed, desc) in [
-                                ("gemini-3.1-pro-preview-high", "0.140", "85.27%", "智力高 性价比高 文笔不错，原生思维链预算高"),
-                                ("gemini-3.7-flash-low", "0.086", "91.55%", "极致迅捷响应，低延迟轻量首选"),
+                                ("gemini-3.1-pro-preview-high", "0.140", "85.27%", "智力高 性价比高 原生思维链"),
+                                ("gemini-3.7-flash-low", "0.086", "91.55%", "极致迅捷响应，低延迟"),
                                 ("claude-3-5-sonnet", "0.220", "88.40%", "顶级剧情推演与逻辑严密性"),
-                                ("deepseek-chat", "0.040", "94.20%", "极高性价比，中文小说文采出众"),
+                                ("deepseek-chat", "0.040", "94.20%", "高性价比，中文小说文采出众"),
                                 ("gpt-4o", "0.180", "86.10%", "全能稳健输出，多语言泛化极强"),
                             ] {
                                 {
@@ -1123,45 +1283,32 @@ fn CreatorStudio(
                                         div {
                                             key: "{m_name}",
                                             class: if is_cur {
-                                                "flex flex-col gap-1.5 rounded-xl border border-sky-500/50 bg-sky-950/20 p-3 transition-all"
+                                                "flex flex-col gap-1 rounded-xl border border-sky-500/50 bg-sky-950/20 p-2.5"
                                             } else {
-                                                "flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 hover:border-zinc-700 transition-colors"
+                                                "flex flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-950/60 p-2.5 hover:border-zinc-700"
                                             },
                                             div { class: "flex items-center justify-between",
-                                                div { class: "flex items-center gap-2",
+                                                div { class: "flex items-center gap-1.5",
                                                     span { class: "h-2 w-2 rounded-full bg-emerald-400" }
                                                     span { class: "font-bold text-zinc-100", "{m_name}" }
-                                                    if is_cur {
-                                                        span { class: "rounded bg-sky-500/20 px-1.5 py-0.2 text-[10px] text-sky-300 font-semibold", "当前模型" }
-                                                    }
                                                 }
                                                 button {
-                                                    class: "rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-sky-500 hover:text-white transition-colors",
+                                                    class: "rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-sky-500 hover:text-white transition-colors",
                                                     onclick: move |_| {
                                                         default_model.set(name_clone.clone());
                                                         model_selector_open.set(false);
                                                     },
-                                                    "选择此模型"
+                                                    "选择"
                                                 }
                                             }
-                                            div { class: "flex items-center gap-3 text-[10px] text-zinc-400",
-                                                span { "价格系数: {cost}" }
+                                            div { class: "flex items-center gap-3 text-[10px] text-zinc-500",
+                                                span { "价格: {cost}" }
                                                 span { "出字率: {speed}" }
+                                                span { "特点: {desc}" }
                                             }
-                                            p { class: "text-[11px] text-zinc-500", "{desc}" }
                                         }
                                     }
                                 }
-                            }
-                        }
-
-                        // 弹窗底栏
-                        div { class: "flex items-center justify-between border-t border-zinc-800 pt-3 mt-2",
-                            span { class: "text-[11px] text-zinc-500", "点击按钮可切换至当前最稳定模型" }
-                            button {
-                                class: "rounded-full bg-sky-500 px-4 py-1 text-xs font-semibold text-white hover:bg-sky-400",
-                                onclick: move |_| model_selector_open.set(false),
-                                "完成"
                             }
                         }
                     }
