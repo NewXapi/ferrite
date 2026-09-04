@@ -34,3 +34,47 @@ pub fn fetch_roles() -> &'static [(&'static str, u16)] {
 pub fn current_month_prefix() -> String {
     chrono::Utc::now().format("%Y-%m").to_string()
 }
+
+use client::{ApiClient, ApiResult};
+use contract::api::admin::{AdminUserPage, ManageUserRequest};
+use contract::api::user::UserDto;
+
+/// 真实调用: GET /api/user?search=&page=&size=
+pub async fn list_users_api(
+    client: &ApiClient,
+    search: Option<&str>,
+    page: Option<i64>,
+    size: Option<i64>,
+) -> ApiResult<AdminUserPage> {
+    let mut query = Vec::new();
+    if let Some(s) = search {
+        if !s.is_empty() {
+            query.push(format!("search={s}"));
+        }
+    }
+    if let Some(p) = page {
+        query.push(format!("page={p}"));
+    }
+    if let Some(sz) = size {
+        query.push(format!("size={sz}"));
+    }
+    let path = if query.is_empty() {
+        "/api/user".to_string()
+    } else {
+        format!("/api/user?{}", query.join("&"))
+    };
+    client.get(&path).await
+}
+
+/// 真实调用: POST /api/user/manage
+pub async fn manage_user_api(
+    client: &ApiClient,
+    req: &ManageUserRequest,
+) -> ApiResult<serde_json::Value> {
+    client.post("/api/user/manage", req).await
+}
+
+/// 真实调用: GET /api/user/self
+pub async fn get_user_self_api(client: &ApiClient) -> ApiResult<UserDto> {
+    client.get("/api/user/self").await
+}

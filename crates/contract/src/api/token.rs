@@ -5,7 +5,7 @@ use crate::records::TokenRecord;
 use serde::{Deserialize, Serialize};
 
 /// GET /api/token/ → data: Vec<TokenDto>
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenDto {
     pub key: String,
@@ -48,5 +48,23 @@ pub struct CreateTokenRequest {
     pub group: Option<String>,
     pub quota: i64,
     pub unlimited_quota: bool,
+    pub expires_at: Option<String>,
+}
+
+/// PUT /api/token/{key} (编辑)
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTokenRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub group: Option<String>,
+    #[serde(default)]
+    pub quota: Option<i64>,
+    #[serde(default)]
+    pub unlimited_quota: Option<bool>,
+    #[serde(default)]
+    pub status: Option<u8>,
+    #[serde(default)]
     pub expires_at: Option<String>,
 }

@@ -11,3 +11,7 @@ dioxus = { workspace = true }
 ui = { path = "../ui" }
 mock = { path = "../mock" }
 gloo-timers = { version = "0.3", features = ["futures"] }
+client = { path = "../client" }
+contract = { path = "../../contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }

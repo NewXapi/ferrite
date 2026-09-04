@@ -151,15 +151,11 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
 
 #[component]
 pub fn HomePage() -> Element {
-    let mut drawer_open = use_signal(|| false);
     let mut section = use_signal(|| Section::Dashboard);
     let mut dash_tab = use_signal(|| 0u8);
     let mut theme = use_signal(|| Theme::Dark);
     use_context_provider(EntityStore::seed);
     let is_light = theme() == Theme::Light;
-
-    let open_drawer = move |_| drawer_open.set(true);
-    let close_drawer = move |_| drawer_open.set(false);
     // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
     let labels: Vec<String> = match section() {
         Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
@@ -207,18 +203,9 @@ pub fn HomePage() -> Element {
     };
 
     rsx! {
-        if drawer_open() {
-            div {
-                class: "fixed inset-0 z-40 bg-black/35 transition-opacity duration-300",
-                onclick: close_drawer,
-                "aria-hidden": "true",
-            }
-        }
         div {
             class: "flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
-            class: if drawer_open() { "brightness-75" } else { "" },
             class: if is_light { "light" } else { "" },
-            "aria-hidden": drawer_open(),
             header {
                 class: "fixed top-4 left-1/2 z-30 hidden w-max -translate-x-1/2 md:block",
                 div { class: "flex items-center gap-5 rounded-full border border-zinc-800/80 bg-zinc-900/90 px-5 py-2.5 shadow-lg shadow-black/20",
@@ -232,9 +219,9 @@ pub fn HomePage() -> Element {
                         onclick: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         if is_light { "Dark" } else { "Light" }
                     }
-                    button {
-                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300",
-                        onclick: open_drawer,
+                    a {
+                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
+                        href: "#signup",
                         "登录"
                     }
                 }
@@ -243,9 +230,9 @@ pub fn HomePage() -> Element {
             main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "Ferrite · 控制台" }
-                    button {
-                        class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900",
-                        onclick: open_drawer,
+                    a {
+                        class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
+                        href: "#signup",
                         "登录"
                     }
                 }
@@ -277,47 +264,6 @@ pub fn HomePage() -> Element {
                         (Section::Manage, _) => rsx! { NetworkPanel {} },
                     }
                 }
-            }
-         }
-        AuthDrawer { open: drawer_open(), light: is_light, on_close: close_drawer }
-    }
-}
-
-/// Auth page content is owned by the auth page crate; the shell only hosts it.
-#[component]
-pub fn AuthPageContent() -> Element {
-    rsx! { page_auth::AuthPageRoot {} }
-}
-/// Right-side auth drawer.
-#[component]
-pub fn AuthDrawer(open: bool, light: bool, on_close: EventHandler<MouseEvent>) -> Element {
-    let drawer_class = if open {
-        "translate-x-0"
-    } else {
-        "translate-x-full pointer-events-none"
-    };
-    rsx! {
-        aside {
-            class: "fixed top-0 right-0 z-50 h-full w-full max-w-sm border-l border-zinc-800 bg-zinc-950 shadow-lg transition-transform duration-300 ease-out {drawer_class}",
-            class: if light { "light" } else { "" },
-            role: "dialog",
-            "aria-modal": "true",
-            "aria-labelledby": "auth-drawer-title",
-            button {
-                class: "absolute top-4 right-4 z-10 rounded-lg p-1.5 text-zinc-500 transition-colors hover:text-zinc-200 hover:bg-zinc-800",
-                onclick: move |event| on_close.call(event),
-                "aria-label": "Close authentication drawer",
-                svg {
-                    class: "h-5 w-5",
-                    fill: "none",
-                    stroke: "currentColor",
-                    view_box: "0 0 24 24",
-                    stroke_width: "2",
-                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M6 18L18 6M6 6l12 12" }
-                }
-            }
-            div { class: "flex h-full flex-col overflow-y-auto p-6 sm:p-8",
-                AuthPageContent {}
             }
         }
     }

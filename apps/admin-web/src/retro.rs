@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 
-use crate::AuthDrawer;
 use crate::{ConsolePanel, Theme};
 
 /// Playground page (`#retro`): floating capsule topbar + one centered panel, no
@@ -9,23 +8,13 @@ use crate::{ConsolePanel, Theme};
 /// action buttons sitting right on the hub.
 #[component]
 pub fn RetroPage() -> Element {
-    let mut drawer_open = use_signal(|| false);
     let mut theme = use_signal(|| Theme::Dark);
     let is_light = theme() == Theme::Light;
 
     rsx! {
-        if drawer_open() {
-            div {
-                class: "fixed inset-0 z-40 bg-black/35 transition-opacity duration-300",
-                onclick: move |_| drawer_open.set(false),
-                "aria-hidden": "true",
-            }
-        }
-
         div {
             class: "flex min-h-screen bg-zinc-950 text-zinc-100 transition-colors duration-300",
             class: if is_light { "light" } else { "" },
-            "aria-hidden": drawer_open(),
 
             // Floating capsule header — same shell as the console page
             header {
@@ -46,9 +35,9 @@ pub fn RetroPage() -> Element {
                         onclick: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         if is_light { "Dark" } else { "Light" }
                     }
-                    button {
-                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300",
-                        onclick: move |_| drawer_open.set(true),
+                    a {
+                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
+                        href: "#signup",
                         "登录"
                     }
                 }
@@ -112,7 +101,5 @@ pub fn RetroPage() -> Element {
                 }
             }
         }
-
-        AuthDrawer { open: drawer_open(), light: is_light, on_close: move |_| drawer_open.set(false) }
     }
 }

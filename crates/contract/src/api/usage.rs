@@ -18,7 +18,7 @@ pub struct UsageLogQuery {
     pub page_size: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageLogPage {
     pub items: Vec<UsageLogDto>,
@@ -26,7 +26,7 @@ pub struct UsageLogPage {
 }
 
 /// 前端日志行 — 与 mock::account::UsageLog 字段一一对齐。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageLogDto {
     pub id: String,
@@ -61,4 +61,29 @@ impl From<&UsageEventRecord> for UsageLogDto {
             error: e.error.clone(),
         }
     }
+}
+
+/// 用量统计 DTO (/api/log/stat, /api/log/self/stat)
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageStatDto {
+    pub quota: i64,
+    pub requests: i64,
+    pub rpm: i64,
+    pub tpm: i64,
+}
+
+/// Dashboard 汇总 DTO (/api/dashboard)
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardSummaryDto {
+    pub users: i64,
+    pub tokens: i64,
+    pub channels: i64,
+    pub channels_enabled: i64,
+    pub groups: i64,
+    pub quota_today: i64,
+    pub requests_today: i64,
+    pub rpm: i64,
+    pub tpm: i64,
 }

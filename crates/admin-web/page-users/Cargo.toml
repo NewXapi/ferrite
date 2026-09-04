@@ -10,3 +10,7 @@ dioxus = { workspace = true }
 ui = { path = "../ui" }
 mock = { path = "../mock" }
 chrono = { workspace = true }
+client = { path = "../client" }
+contract = { path = "../../contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }

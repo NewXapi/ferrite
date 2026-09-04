@@ -68,14 +68,14 @@ impl From<&RouteUnitRecord> for AdminRouteUnitUpsert {
 }
 
 /// GET /api/user → data: AdminUserPage (admin 用户列表, 对齐 mock::users)。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminUserPage {
     pub items: Vec<AdminUserDto>,
     pub total: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminUserDto {
     pub key: String,
@@ -107,6 +107,89 @@ impl From<&UserRecord> for AdminUserDto {
             created_at: r.created_at.format("%Y-%m-%d").to_string(),
         }
     }
+}
+
+/// POST /api/user/manage — admin 管理用户 (enable/disable/set_role/adjust_quota/reset_password)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageUserRequest {
+    pub key: String,
+    pub action: String,
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+/// 渠道视图 DTO — 对标 admin-api /api/channel 响应
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelDto {
+    pub key: String,
+    pub name: String,
+    pub channel_type: String,
+    pub base_url: String,
+    pub key_count: i64,
+    #[serde(default)]
+    pub keys: Option<Vec<String>>,
+    pub models: serde_json::Value,
+    pub group_name: String,
+    pub priority: i32,
+    pub weight: i32,
+    pub status: i16,
+    #[serde(default)]
+    pub test_model: Option<String>,
+    #[serde(default)]
+    pub remark: String,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// 渠道创建/更新请求
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelUpsertRequest {
+    pub name: String,
+    pub channel_type: String,
+    pub base_url: String,
+    #[serde(default)]
+    pub keys: Vec<String>,
+    pub models: serde_json::Value,
+    pub group_name: String,
+    pub priority: i32,
+    pub weight: i32,
+    #[serde(default)]
+    pub test_model: Option<String>,
+    #[serde(default)]
+    pub remark: String,
+}
+
+/// 用户组 DTO — 对标 admin-api /api/group 响应
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupDto {
+    pub key: String,
+    pub name: String,
+    pub ratio: f64,
+    pub model_whitelist: serde_json::Value,
+    #[serde(default)]
+    pub remark: String,
+    pub status: i16,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// 用户组创建/更新请求
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupUpsertRequest {
+    pub name: String,
+    pub ratio: f64,
+    pub model_whitelist: serde_json::Value,
+    #[serde(default)]
+    pub remark: String,
 }
 
 /// PUT /api/group — 分组编辑 (admin)。

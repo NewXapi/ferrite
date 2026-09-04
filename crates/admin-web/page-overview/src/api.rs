@@ -43,7 +43,9 @@ pub mod overview {
 
     // ponytail: 确定性伪随机;接真实后端时整段换成按窗口聚合即可,面板不动。
     fn hash01(a: u64, b: u64) -> f64 {
-        let mut x = a.wrapping_mul(374761393).wrapping_add(b.wrapping_mul(668265263));
+        let mut x = a
+            .wrapping_mul(374761393)
+            .wrapping_add(b.wrapping_mul(668265263));
         x = (x ^ (x >> 13)).wrapping_mul(1274126177);
         ((x ^ (x >> 16)) % 1000) as f64 / 1000.0
     }
@@ -107,4 +109,44 @@ pub mod leaderboard {
     pub use crate::leaderboard::data::{
         DIMS, MODELS, ModelStat, avg_norms, composite, dim_rank, dim_raw, key_stats, norms,
     };
+}
+
+use client::{ApiClient, ApiResult};
+use contract::api::usage::{DashboardSummaryDto, UsageLogPage, UsageStatDto};
+
+/// 真实调用: GET /api/dashboard
+pub async fn get_dashboard_summary_api(client: &ApiClient) -> ApiResult<DashboardSummaryDto> {
+    client.get("/api/dashboard").await
+}
+
+/// 真实调用: GET /api/log/stat
+pub async fn get_usage_stat_api(client: &ApiClient) -> ApiResult<UsageStatDto> {
+    client.get("/api/log/stat").await
+}
+
+/// 真实调用: GET /api/log?model=&p=&page_size=
+pub async fn list_all_logs_api(
+    client: &ApiClient,
+    model: Option<&str>,
+    page: Option<u32>,
+    page_size: Option<u32>,
+) -> ApiResult<UsageLogPage> {
+    let mut query = Vec::new();
+    if let Some(m) = model {
+        if !m.is_empty() {
+            query.push(format!("model_name={m}"));
+        }
+    }
+    if let Some(p) = page {
+        query.push(format!("p={p}"));
+    }
+    if let Some(ps) = page_size {
+        query.push(format!("page_size={ps}"));
+    }
+    let path = if query.is_empty() {
+        "/api/log".to_string()
+    } else {
+        format!("/api/log?{}", query.join("&"))
+    };
+    client.get(&path).await
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// GET /api/user/self → data
 /// 用户在前端的投影: 不含密码哈希等存储细节, role 转语义化字符串。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserDto {
     pub key: String,

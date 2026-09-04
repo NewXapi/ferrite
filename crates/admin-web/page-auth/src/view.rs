@@ -71,11 +71,12 @@ pub fn AuthPage() -> Element {
                 class: "absolute -top-32 -left-32 h-96 w-96 rounded-full bg-gradient-to-br from-zinc-800/15 via-zinc-900/25 to-transparent blur-3xl pointer-events-none",
             }
 
-            // Header: logo left only
+            // Header: logo left, return to console right
             header {
-                class: "sticky top-0 z-20 flex items-center px-8 py-5 sm:px-12",
-                div {
-                    class: "flex items-center gap-3",
+                class: "sticky top-0 z-20 flex items-center justify-between px-6 py-5 sm:px-12",
+                a {
+                    href: "#",
+                    class: "flex items-center gap-3 transition-opacity hover:opacity-80 cursor-pointer",
                     div {
                         class: "flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800/60 bg-zinc-900/80",
                         svg {
@@ -95,12 +96,16 @@ pub fn AuthPage() -> Element {
                         "Ferrite"
                     }
                 }
+                a {
+                    href: "#",
+                    class: "rounded-full border border-zinc-800 bg-zinc-900/80 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:text-white hover:bg-zinc-800 shadow-sm flex items-center gap-1.5",
+                    "返回控制台 →"
+                }
             }
 
             // Main: top-anchored card with embedded title + tab
             main {
-                class: "relative z-10 w-full max-w-md ml-auto mr-auto px-4 sm:px-6 pt-6 sm:pt-10 pb-16",
-
+                class: "relative z-10 w-full max-w-md mx-auto px-4 sm:px-6 pt-6 sm:pt-12 pb-20",
                 // Card: title + tab + form
                 div {
                     class: "rounded-xl border border-zinc-800/70 bg-zinc-900/40 backdrop-blur-sm p-5 sm:p-8 transition-all duration-300",

@@ -2764,9 +2764,13 @@ name = "page-account"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "client",
+ "contract",
  "dioxus",
  "gloo-timers",
  "mock",
+ "serde",
+ "serde_json",
  "ui",
 ]
 
@@ -2774,8 +2778,12 @@ dependencies = [
 name = "page-admin"
 version = "0.1.0"
 dependencies = [
+ "client",
+ "contract",
  "dioxus",
  "gloo-timers",
+ "serde",
+ "serde_json",
  "ui",
  "web-sys",
 ]
@@ -2785,7 +2793,9 @@ name = "page-auth"
 version = "0.1.0"
 dependencies = [
  "client",
+ "contract",
  "dioxus",
+ "serde",
  "tokio",
  "ui",
 ]
@@ -2795,9 +2805,13 @@ name = "page-overview"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "client",
+ "contract",
  "dioxus",
  "manganis",
  "mock",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2805,8 +2819,12 @@ name = "page-users"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "client",
+ "contract",
  "dioxus",
  "mock",
+ "serde",
+ "serde_json",
  "ui",
 ]
 
