@@ -247,10 +247,11 @@ pub async fn run_agent_run<P: ChatProvider>(
                     return Ok(run);
                 }
                 Err(error) => {
-                    // Only transport-level provider failures are worth retrying. A
-                    // malformed tool-call transcript is deterministic: replaying the
-                    // same request reproduces it.
-                    let retryable = matches!(error, TurnError::Provider(_));
+                    // Only transient transport failures are worth retrying.
+                    // `Aggregate` is deterministic (same request, same bad tool
+                    // call), and `Permanent` is the adapter explicitly saying
+                    // replaying cannot succeed (401, unknown model, ...).
+                    let retryable = matches!(error, TurnError::Provider(ProviderError::Failed(_)));
                     if retryable
                         && attempt < request.retry.max_retries
                         && !deps.cancel.is_cancelled()

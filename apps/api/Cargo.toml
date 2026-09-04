@@ -33,10 +33,11 @@ chrono    = { workspace = true }
 futures-util = { workspace = true }
 tower     = { workspace = true }
 
-tavern-storage    = { path = "../../crates/tavern-api/storage" }
-tavern-auth       = { path = "../../crates/tavern-api/auth" }
-tavern-characters = { path = "../../crates/tavern-api/characters" }
-tavern-chats      = { path = "../../crates/tavern-api/chats" }
-tavern-settings   = { path = "../../crates/tavern-api/settings" }
-tavern-secrets    = { path = "../../crates/tavern-api/secrets" }
-tavern-generate   = { path = "../../crates/tavern-api/generate" }
+tavern-storage    = { path = "../../crates/api/tavern-storage" }
+tavern-auth       = { path = "../../crates/api/tavern-auth" }
+tavern-characters = { path = "../../crates/api/tavern-characters" }
+tavern-chats      = { path = "../../crates/api/tavern-chats" }
+tavern-settings   = { path = "../../crates/api/tavern-settings" }
+tavern-secrets    = { path = "../../crates/api/tavern-secrets" }
+tavern-generate   = { path = "../../crates/api/tavern-generate" }
+auth              = { path = "../../crates/api/auth" }

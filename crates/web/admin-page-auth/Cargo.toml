@@ -1,0 +1,16 @@
+[package]
+name = "admin-page-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dioxus    = { workspace = true }
+ui       = { package = "ui-components", path = "../ui-components" }
+client   = { path = "../admin-client" }
+contract = { path = "../../contract" }
+serde    = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

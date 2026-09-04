@@ -1,0 +1,12 @@
+{
+  "name": "tavern-web-app-styles",
+  "private": true,
+  "scripts": {
+    "css": "tailwindcss --input assets/tailwind.css --output assets/tailwind.out.css",
+    "css:watch": "tailwindcss --input assets/tailwind.css --output assets/tailwind.out.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.2",
+    "tailwindcss": "4.3.2"
+  }
+}

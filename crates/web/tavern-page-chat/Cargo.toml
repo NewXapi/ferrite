@@ -1,0 +1,13 @@
+[package]
+name = "tavern-page-chat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-client = { path = "../tavern-client" }
+tavern-state  = { path = "../tavern-state" }
+tavern-ui     = { package = "ui-components", path = "../ui-components" }
+
+dioxus = { workspace = true }
