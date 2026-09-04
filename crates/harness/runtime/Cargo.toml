@@ -10,9 +10,9 @@ harness-core   = { path = "../core" }
 harness-prompt = { path = "../prompt" }
 harness-tools  = { path = "../tools" }
 
-serde      = { workspace = true }
-serde_json = { workspace = true }
-thiserror  = { workspace = true }
-tokio      = { workspace = true }
-reqwest    = { workspace = true }
+chrono       = { workspace = true }
 futures-util = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+thiserror    = { workspace = true }
+tokio        = { workspace = true }
