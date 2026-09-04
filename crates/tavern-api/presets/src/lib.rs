@@ -5,7 +5,7 @@
 //! JSON 文件。文件落 `<user>/<folder>/<sanitize(name)>.json`。
 
 pub mod http;
-pub use http::{router, PresetsState};
+pub use http::{PresetsState, router};
 
 use std::path::{Path, PathBuf};
 
@@ -28,15 +28,21 @@ pub enum PresetError {
 /// API 源到子目录名的映射。未知返回 `None`。
 pub fn folder_for(api_id: &str) -> Option<&'static str> {
     // ponytail: 静态匹配避免堆分配；调用方拿到 `&'static str` 直接 `join`。
+    #[rustfmt::skip]
+    const KOBOLD_DIR: &str = "koboldAI Settings";
+    #[rustfmt::skip]
+    const NOVEL_DIR: &str = "novelAI Settings";
+    #[rustfmt::skip]
+    const TGWEBUI_DIR: &str = "textGen Settings";
     match api_id {
         "openai" => Some("OpenAI Settings"),
         "instruct" => Some("instruct"),
         "context" => Some("context"),
         "sysprompt" => Some("sysprompt"),
         "reasoning" => Some("reasoning"),
-        "kobold" | "koboldhorde" => Some("KoboldAI Settings"),
-        "novel" => Some("NovelAI Settings"),
-        "textgenerationwebui" => Some("TextGen Settings"),
+        "kobold" | "koboldhorde" => Some(KOBOLD_DIR),
+        "novel" => Some(NOVEL_DIR),
+        "textgenerationwebui" => Some(TGWEBUI_DIR),
         _ => None,
     }
 }
@@ -54,7 +60,9 @@ fn preset_path(root: &Path, api_id: &str, name: &str) -> Result<PathBuf, PresetE
     let path = dir.join(format!("{safe}.json"));
     // ponytail: `sanitize_name` 已挡掉分隔符与 `..`；这里再确认路径未逃出子目录。
     if !storage::is_under(&dir, &path) {
-        return Err(PresetError::Storage(StorageError::PathEscape(path.display().to_string())));
+        return Err(PresetError::Storage(StorageError::PathEscape(
+            path.display().to_string(),
+        )));
     }
     Ok(path)
 }
@@ -64,7 +72,9 @@ pub fn load(root: &Path, api_id: &str, name: &str) -> Result<Value, PresetError>
     let path = preset_path(root, api_id, name)?;
     match std::fs::read_to_string(&path) {
         Ok(raw) => Ok(serde_json::from_str(&raw)?),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(PresetError::NotFound(name.to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(PresetError::NotFound(name.to_string()))
+        }
         Err(e) => Err(e.into()),
     }
 }
@@ -81,7 +91,9 @@ pub fn delete(root: &Path, api_id: &str, name: &str) -> Result<(), PresetError> 
     let path = preset_path(root, api_id, name)?;
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(PresetError::NotFound(name.to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(PresetError::NotFound(name.to_string()))
+        }
         Err(e) => Err(e.into()),
     }
 }

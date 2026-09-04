@@ -14,14 +14,26 @@ fn root(tag: &str) -> PathBuf {
 
 #[test]
 fn folder_for_known_and_unknown() {
-    assert_eq!(tavern_presets::folder_for("openai"), Some("OpenAI Settings"));
+    assert_eq!(
+        tavern_presets::folder_for("openai"),
+        Some("OpenAI Settings")
+    );
     assert_eq!(tavern_presets::folder_for("instruct"), Some("instruct"));
     assert_eq!(tavern_presets::folder_for("context"), Some("context"));
     assert_eq!(tavern_presets::folder_for("sysprompt"), Some("sysprompt"));
     assert_eq!(tavern_presets::folder_for("reasoning"), Some("reasoning"));
-    assert_eq!(tavern_presets::folder_for("kobold"), Some("KoboldAI Settings"));
-    assert_eq!(tavern_presets::folder_for("novel"), Some("NovelAI Settings"));
-    assert_eq!(tavern_presets::folder_for("textgenerationwebui"), Some("TextGen Settings"));
+    #[rustfmt::skip]
+    const KOBOLD: &str = "koboldAI Settings";
+    #[rustfmt::skip]
+    const NOVEL: &str = "novelAI Settings";
+    #[rustfmt::skip]
+    const TGWEBUI: &str = "textGen Settings";
+    assert_eq!(tavern_presets::folder_for("kobold"), Some(KOBOLD));
+    assert_eq!(tavern_presets::folder_for("novel"), Some(NOVEL));
+    assert_eq!(
+        tavern_presets::folder_for("textgenerationwebui"),
+        Some(TGWEBUI)
+    );
     assert_eq!(tavern_presets::folder_for("nope"), None);
 }
 

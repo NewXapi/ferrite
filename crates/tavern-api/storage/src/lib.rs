@@ -107,7 +107,10 @@ pub fn sanitize_name(name: &str) -> Result<String, StorageError> {
 ///
 /// 纯词法判断，不碰文件系统：`..` 会被拒，不依赖路径是否已存在。
 pub fn is_under(parent: &Path, child: &Path) -> bool {
-    if child.components().any(|c| matches!(c, Component::ParentDir)) {
+    if child
+        .components()
+        .any(|c| matches!(c, Component::ParentDir))
+    {
         return false;
     }
     child.starts_with(parent)
