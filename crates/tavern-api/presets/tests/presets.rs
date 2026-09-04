@@ -144,3 +144,67 @@ fn list_skips_hidden_and_dangling_entries() {
     let got = list(&r, "instruct").unwrap();
     assert_eq!(got, vec!["real".to_string()]);
 }
+
+// ---------------------------------------------------------------------------
+// HTTP 线格式契约
+//
+// 前端发的是 `apiId`（camelCase），Rust 侧字段是 `api_id`。这层靠 serde
+// `rename` 搭桥：写错一个字母，请求就直接 422，而上面那些库层测试一个都
+// 抓不到。所以这里锁死 DTO 的反序列化形状。
+// ---------------------------------------------------------------------------
+
+#[test]
+fn list_query_accepts_camel_case_api_id() {
+    let q: tavern_presets::http::ListQuery =
+        serde_json::from_value(json!({ "apiId": "openai" })).expect("camelCase apiId must parse");
+    assert_eq!(q.api_id, "openai");
+}
+
+#[test]
+fn list_query_rejects_snake_case_api_id() {
+    // 若哪天 rename 被删掉，这条会失败，提醒线格式变了。
+    let parsed =
+        serde_json::from_value::<tavern_presets::http::ListQuery>(json!({ "api_id": "openai" }));
+    assert!(parsed.is_err(), "wire contract is apiId, not api_id");
+}
+
+#[test]
+fn save_body_carries_api_id_name_and_preset() {
+    let body: tavern_presets::http::SaveBody = serde_json::from_value(json!({
+        "apiId": "instruct",
+        "name": "alice",
+        "preset": { "temperature": 0.7 }
+    }))
+    .expect("save body must parse");
+    assert_eq!(body.api_id, "instruct");
+    assert_eq!(body.name, "alice");
+    assert_eq!(body.preset["temperature"], json!(0.7));
+}
+
+#[test]
+fn delete_query_needs_both_api_id_and_name() {
+    let q: tavern_presets::http::DeleteQuery =
+        serde_json::from_value(json!({ "apiId": "context", "name": "trim" }))
+            .expect("delete query must parse");
+    assert_eq!((q.api_id.as_str(), q.name.as_str()), ("context", "trim"));
+
+    // 缺 name 必须拒绝，否则会删掉意料之外的东西。
+    assert!(
+        serde_json::from_value::<tavern_presets::http::DeleteQuery>(json!({ "apiId": "context" }))
+            .is_err()
+    );
+}
+
+#[test]
+fn restore_body_parses_and_response_uses_camel_case() {
+    let body: tavern_presets::http::RestoreBody =
+        serde_json::from_value(json!({ "apiId": "openai", "name": "default" }))
+            .expect("restore body must parse");
+    assert_eq!(body.api_id, "openai");
+
+    // 响应侧同样是 camelCase：前端读 `isDefault`。
+    let wire = serde_json::to_value(restore(&root("wire"), &body.api_id, &body.name)).unwrap();
+    assert_eq!(wire["isDefault"], json!(false));
+    assert_eq!(wire["preset"], json!({}));
+    assert!(wire.get("is_default").is_none());
+}
