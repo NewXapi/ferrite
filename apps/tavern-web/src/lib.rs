@@ -1,7 +1,7 @@
 //! Tavern shell assembled from tavern-web page crates.
 //!
 //! 优化响应用户需求:
-//! 1. 顶栏 FERRITE Logo 绑定点击跳转到 AI风月 品牌主页 (对齐图6/7)
+//! 1. 顶栏 FERRITE Logo 绑定点击跳转到 Tavern 品牌主页
 //! 2. 支持 Home (主页)、Characters (剧本库 5 栏)、Chat (互动剧情)、Settings (参数设置)
 //! 3. 互动剧情下顶栏完全接管，输入框上方提供模型切换与快捷交互
 
@@ -54,7 +54,7 @@ pub fn TavernApp() -> Element {
                         // 品牌区域 (对齐图6红圈: 点击 FERRITE 直接跳转到主页 Landing)
                         button {
                             class: "group flex items-center gap-1.5 pr-2 border-r border-zinc-800 transition-opacity hover:opacity-80",
-                            title: "点击返回 AI风月 官方品牌主页",
+                            title: "点击返回 Tavern 官方品牌主页",
                             onclick: move |_| section.set(Section::Home),
                             span { class: "font-serif text-xs font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-pink-200 group-hover:from-white group-hover:to-purple-200",
                                 "FERRITE"

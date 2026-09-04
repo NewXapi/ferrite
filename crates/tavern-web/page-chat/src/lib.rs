@@ -270,7 +270,7 @@ pub fn ChatPage(
                         // 点击 FERRITE 直接回到品牌主页 (对齐需求4)
                         button {
                             class: "flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-950/40 px-2.5 py-1 text-xs text-purple-200 hover:bg-purple-900/40 transition-colors font-serif font-bold tracking-wider",
-                            title: "回到 AI风月 官方品牌主页",
+                            title: "回到 Tavern 官方品牌主页",
                             onclick: move |_| on_goto_home.call(()),
                             span { "🏛️" }
                             span { "主页" }
