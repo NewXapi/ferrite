@@ -77,8 +77,13 @@ pub enum ProviderFinishReason {
 pub enum ProviderError {
     #[error("provider cancelled")]
     Cancelled,
+    /// 瞬时失败：网络抖动、上游 5xx 等，值得按 retry 预算重试。
     #[error("provider error: {0}")]
     Failed(String),
+    /// 确定性失败：401/403、模型不存在、请求非法等。重放同一请求必然
+    /// 再失败，重试只浪费配额与时间。
+    #[error("provider rejected: {0}")]
+    Permanent(String),
 }
 
 /// Stream of provider deltas.
