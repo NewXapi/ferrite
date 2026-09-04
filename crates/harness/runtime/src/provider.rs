@@ -15,7 +15,7 @@ use harness_tools::{AgentModelTool, ToolChoice};
 use crate::cancel::CancellationToken;
 
 /// Request handed to an injected [`ChatProvider`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRequest {
     pub model: String,

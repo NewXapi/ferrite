@@ -213,9 +213,17 @@ pub async fn run_agent_run<P: ChatProvider>(
         provider_request.tool_choice = Some(ToolChoice::Auto);
 
         let outcome = loop {
+            // `ChatProvider::stream` 按值收请求，而重试要重发同一份输入。只有在
+            // 还留有重试预算时才复制；最后一次尝试直接移动，避免为「不会重试的
+            // 请求」白拷一份累积历史。
+            let attempt_request = if attempt < request.retry.max_retries {
+                provider_request.clone()
+            } else {
+                std::mem::take(&mut provider_request)
+            };
             let outcome = match driver
                 .run(
-                    provider_request.clone(),
+                    attempt_request,
                     deps.cancel.clone(),
                     &resolver,
                     &mut events,
