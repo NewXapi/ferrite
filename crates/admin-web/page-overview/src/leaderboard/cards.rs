@@ -80,11 +80,11 @@ fn art_img(model: &'static ModelStat, extra_style: &str) -> Element {
 #[component]
 fn KeyStatRows(model: &'static ModelStat) -> Element {
     rsx! {
-        div { class: "pointer-events-auto w-28 rounded-lg border border-white/10 bg-black/50 p-2 backdrop-blur-md space-y-1",
+        div { class: "pointer-events-auto rounded-lg border border-white/10 bg-black/60 px-2 py-1.5 space-y-0.5",
             for s in key_stats(model) {
-                div { class: "row-tip-anchor relative flex items-baseline justify-between text-[10px]",
+                div { class: "row-tip-anchor relative flex items-baseline justify-between gap-2 text-[10px]",
                     span { class: "text-zinc-400 font-medium", "{s.short}" }
-                    span { class: "text-zinc-100 font-mono font-semibold row-text", "{s.text}" }
+                    span { class: "text-zinc-100 font-mono font-bold row-text text-right", "{s.text}" }
                     div { class: "pointer-events-none absolute -top-1 left-0 z-20 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-zinc-950/95 px-2 py-1 text-[10px] text-zinc-200 opacity-0 transition-opacity duration-200 row-tip shadow-lg",
                         "{s.full}"
                     }
@@ -125,6 +125,7 @@ pub fn PosterImageCard(rank: usize, model: &'static ModelStat) -> Element {
     let raw = dim_raw(model);
     let score = composite(model);
     let deg = turns() * 180;
+    let is_flipped = (turns() % 2) != 0;
     let grad_id = format!("rank-grad-{}", model.name);
     let path_id = format!("poster-path-{}", model.name);
 
@@ -143,26 +144,36 @@ pub fn PosterImageCard(rank: usize, model: &'static ModelStat) -> Element {
                 onclick: move |_| turns.set(turns() + 1),
                 div { class: "poster-flip-inner", style: "transform: rotateY({deg}deg)",
                     // 正面
-                    div { class: "card-frame poster-flip-face overflow-hidden rounded-xl border border-white/15 bg-zinc-950 shadow-xl shadow-black/60",
+                    div {
+                        class: "card-frame poster-flip-face overflow-hidden rounded-xl border border-white/15 bg-zinc-950 shadow-xl shadow-black/60",
+                        style: if is_flipped { "visibility: hidden; opacity: 0; pointer-events: none;" } else { "visibility: visible; opacity: 1;" },
                         {art_img(model, "")}
                         div { class: "card-vignette pointer-events-none absolute inset-0" }
                         div { class: "card-corner-shade pointer-events-none absolute inset-0" }
+
+                        // 顶部阴影层 (加深凸显标题)
+                        div { class: "pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/85 via-black/40 to-transparent rounded-t-xl" }
+
+                        // 底部阴影层 (加深凸显雷达与数据)
+                        div { class: "pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/95 via-black/60 to-transparent rounded-b-xl" }
+
                         // 顶部：模型名称与排名角标
-                        div { class: "pointer-events-none absolute top-3 inset-x-3 flex items-center justify-between z-10",
-                            div { class: "flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-2.5 py-1 backdrop-blur-md",
+                        div { class: "pointer-events-none absolute top-3 inset-x-3 flex items-center justify-between",
+                            div { class: "flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-2.5 py-1",
                                 span { class: "text-xs font-bold tracking-wide text-white row-text", "{model.name}" }
                             }
-                            div { class: "flex items-center justify-center rounded-full border border-white/20 bg-black/60 px-2 py-0.5 backdrop-blur-md",
+                            div { class: "flex items-center justify-center rounded-full border border-white/20 bg-black/60 px-2 py-0.5",
                                 span {
                                     class: if rank <= 3 { "text-xs font-extrabold text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" } else { "text-xs font-semibold text-zinc-300" },
                                     "#{rank}"
                                 }
                             }
                         }
-                        // 底部：雷达图 + 关键数据
-                        div { class: "pointer-events-none absolute bottom-3 inset-x-3 flex items-end justify-between gap-2 z-10",
+
+                        // 底部：雷达图 + 关键数据并列放在左下角，右下角留给立绘中的黄金徽章
+                        div { class: "pointer-events-none absolute bottom-3 left-3 flex items-end gap-2",
                             // 浓缩雷达
-                            div { class: "w-[52%]",
+                            div { class: "w-28 shrink-0",
                                 style: "filter: drop-shadow(0 2px 6px rgba(0,0,0,0.65))",
                                 svg { class: "h-auto w-full", view_box: "2 0 116 116", preserve_aspect_ratio: "xMidYMid meet",
                                     for ring in 1..=3 {
@@ -208,7 +219,9 @@ pub fn PosterImageCard(rank: usize, model: &'static ModelStat) -> Element {
                         }
                     }
                     // 背面
-                    div { class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border border-white/15 bg-zinc-950 shadow-xl shadow-black/60",
+                    div {
+                        class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border border-white/15 bg-zinc-950 shadow-xl shadow-black/60",
+                        style: if !is_flipped { "visibility: hidden; opacity: 0; pointer-events: none;" } else { "visibility: visible; opacity: 1;" },
                         {art_img(model, "filter: brightness(0.28); transform: scale(1.02)")}
                         div { class: "card-vignette pointer-events-none absolute inset-0" }
                         div { class: "absolute inset-0 flex flex-col px-4 pb-3 pt-3",

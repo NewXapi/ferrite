@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 
 use crate::api::leaderboard::{MODELS, ModelStat, composite};
 use cards::PosterImageCard;
-use charts::{BubbleCard, RankListCard, RidgeCard};
+use charts::{GroupQuotaCard, ModelDistributionCard, PerformanceLatencyCard};
 
 #[component]
 pub fn LeaderboardPanel() -> Element {
@@ -31,11 +31,11 @@ pub fn LeaderboardPanel() -> Element {
                     PosterImageCard { rank: i + 1, model: m }
                 }
             }
-            // 底部排行榜分析组件 (图表 + 排行清单)
-            section { class: "grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5 pt-4",
-                RankListCard {}
-                RidgeCard {}
-                BubbleCard {}
+            // 底部数据分析图表 (参考 new-api / sub2api / wildtoken)
+            section { class: "grid grid-cols-1 gap-4 xl:grid-cols-3 pt-2",
+                ModelDistributionCard {}
+                PerformanceLatencyCard {}
+                GroupQuotaCard {}
             }
         }
     }

@@ -1,71 +1,82 @@
-//! 汇总图表: 综合排行 / 延迟山脊图 / 性价比气泡图.
-//! 全部从 data::MODELS 派生, 不含独立状态.
+//! 汇总图表: 模型用量与成本分布 / 网关耗时与 SLA 矩阵 / 分组配额与倍率分布.
+//! 参考 new-api / sub2api / wildtoken 数据面板设计.
 
 use dioxus::prelude::*;
 
-use crate::api::leaderboard::{MODELS, ModelStat, composite};
+use crate::api::leaderboard::MODELS;
 
-/// 综合排行: 按六维均值排序, 可按时间窗切换.
+const MODEL_COLORS: [&str; 10] = [
+    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500",
+    "#34d399", "#22d3ee", "#f472b6", "#a3e635", "#a1a1aa",
+];
+
+/// 模型用量与成本占比分布 (参考 new-api consumption-distribution & sub2api ModelDistribution)
 #[component]
-pub fn RankListCard() -> Element {
-    // 时间窗只作用于本卡, 不外泄给面板.
-    let mut timeframe = use_signal(|| "至今");
-
-    // ponytail: 数据层还是静态 mock, 用 growth 当"近期势头"权重伪造窗口差异;
-    // 接上真实后端时把这段换成按窗口取数即可.
-    let momentum = match timeframe() {
-        "今天" => 0.30,
-        "本周" => 0.20,
-        "本月" => 0.10,
-        _ => 0.0,
-    };
-    let mut ranked: Vec<(&ModelStat, f64)> = MODELS
-        .iter()
-        .map(|m| {
-            let recent = (m.growth / 20.0).min(1.0) * 100.0;
-            (m, composite(m) * (1.0 - momentum) + recent * momentum)
-        })
-        .collect();
-    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+pub fn ModelDistributionCard() -> Element {
+    let mut timeframe = use_signal(|| "本月");
+    let total_tokens: f64 = MODELS.iter().map(|m| m.tokens).sum();
 
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
-            // 标题与切换器同行: 不额外占高, 卡片尺寸不变.
-            div { class: "mb-4 flex items-center justify-between gap-3",
-                h2 { class: "text-sm font-medium text-zinc-300", "综合排行" }
-                div { class: "flex items-center rounded-md border border-zinc-800 bg-zinc-950 p-0.5",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+            div { class: "flex items-center justify-between gap-3",
+                div {
+                    h3 { class: "text-sm font-semibold text-zinc-100", "模型用量与成本占比" }
+                    p { class: "text-[11px] text-zinc-500", "Token 消耗分布与费用占比" }
+                }
+                div { class: "flex items-center rounded-lg border border-zinc-800 bg-zinc-950 p-0.5",
                     for tf in ["今天", "本周", "本月", "至今"] {
                         button {
                             key: "{tf}",
-                            class: "rounded px-1.5 py-0.5 text-[11px] leading-4 transition-colors",
-                            class: if timeframe() == tf { "bg-zinc-800 text-zinc-100" } else { "text-zinc-500 hover:text-zinc-300" },
+                            class: "rounded px-2 py-0.5 text-[11px] transition-colors",
+                            class: if timeframe() == tf { "bg-zinc-800 font-medium text-zinc-100 shadow-sm" } else { "text-zinc-500 hover:text-zinc-300" },
                             onclick: move |_| timeframe.set(tf),
                             "{tf}"
                         }
                     }
                 }
             }
-            div { class: "space-y-3",
-                for (i, (m, score)) in ranked.iter().enumerate() {
+
+            // 比例分段条 (类似 GitHub 语言占比条)
+            div { class: "flex h-2.5 w-full overflow-hidden rounded-full bg-zinc-800/80 gap-[1.5px]",
+                for (i, m) in MODELS.iter().take(6).enumerate() {
                     {
-                        let num_cls = if i == 0 { "text-zinc-100" } else { "text-zinc-500" };
-                        let bar_cls = if i == 0 { "bg-zinc-200" } else { "bg-zinc-500" };
+                        let pct = (m.tokens / total_tokens * 100.0).max(2.0);
+                        let color = MODEL_COLORS[i % MODEL_COLORS.len()];
                         rsx! {
-                        // 负外边距抵掉内边距: 悬停有命中区, 行宽行高不变.
-                        div {
-                            key: "{m.name}",
-                            class: "-mx-2 -my-1 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-zinc-800/60 cursor-default",
-                            span { class: "w-5 text-right text-sm font-semibold {num_cls}", "{i + 1}" }
-                            span { class: "truncate text-sm text-zinc-300", "{m.name}" }
-                            span { class: "text-sm text-zinc-400", "{score:.1}" }
-                            div { class: "col-span-2 col-start-2 h-1.5 overflow-hidden rounded-full bg-zinc-800",
-                                div {
-                                    class: "h-full rounded-full {bar_cls}",
-                                    style: "width: {score:.1}%",
+                            div {
+                                class: "h-full transition-all duration-300",
+                                style: "width: {pct:.1}%; background: {color};",
+                                title: "{m.name}: {pct:.1}%"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 模型用量列表
+            div { class: "space-y-2.5 pt-1",
+                for (i, m) in MODELS.iter().take(5).enumerate() {
+                    {
+                        let pct = m.tokens / total_tokens * 100.0;
+                        let color = MODEL_COLORS[i % MODEL_COLORS.len()];
+                        let cost_est = m.tokens * m.price / 1000.0;
+                        rsx! {
+                            div {
+                                key: "{m.name}",
+                                class: "group flex items-center justify-between rounded-lg p-1.5 transition-colors hover:bg-zinc-800/50",
+                                div { class: "flex items-center gap-2.5 min-w-0",
+                                    span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
+                                    div { class: "min-w-0",
+                                        p { class: "truncate text-xs font-medium text-zinc-200 group-hover:text-white", "{m.name}" }
+                                        p { class: "text-[10px] text-zinc-500", "{m.daily_req / 1e3:.0}K 次请求 · 上下文 {m.ctx:.0}K" }
+                                    }
+                                }
+                                div { class: "text-right shrink-0 pl-2",
+                                    p { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100", "{m.tokens / 1e3:.1}B" }
+                                    p { class: "font-mono text-[10px] text-zinc-500", "${cost_est:.2} ({pct:.1}%)" }
                                 }
                             }
                         }
-                        }
                     }
                 }
             }
@@ -73,102 +84,114 @@ pub fn RankListCard() -> Element {
     }
 }
 
-/// 延迟山脊图: 每模型一行的重叠分布曲线.
+/// 网关响应与 SLA 性能矩阵 (参考 new-api performance-overview & wildtoken latency)
 #[component]
-pub fn RidgeCard() -> Element {
-    const W: f64 = 340.0;
-    const ROW: f64 = 24.0;
-    const N: usize = 40;
-
-    let rows: Vec<(String, String, f64)> = MODELS
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let baseline = 30.0 + i as f64 * ROW;
-            let mu = 8.0 + (i * 13 % 20) as f64;
-            let sigma = 3.0 + (i % 3) as f64 * 1.5;
-            let mut d = format!("M 56 {baseline:.1}");
-            for x in 0..=N {
-                let x = x as f64;
-                let y = 60.0 * (-(x - mu).powi(2) / (2.0 * sigma * sigma)).exp()
-                    + 22.0 * (-(x - mu - 9.0).powi(2) / (2.0 * 5.0 * 5.0)).exp();
-                d.push_str(&format!(
-                    " L {:.1} {:.1}",
-                    56.0 + x * 7.0,
-                    baseline - y * 0.28
-                ));
-            }
-            d.push_str(&format!(" L {:.1} {baseline:.1} Z", 56.0 + N as f64 * 7.0));
-            (m.name.to_string(), d, baseline)
-        })
-        .collect();
-    let height = 30.0 + MODELS.len() as f64 * ROW + 6.0;
-
+pub fn PerformanceLatencyCard() -> Element {
     rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 md:col-span-2 xl:col-span-3",
-            h2 { class: "mb-4 text-sm font-medium text-zinc-300", "延迟分布 · 山脊图" }
-            svg { class: "w-full overflow-visible", view_box: "-62 -6 {W + 64.0} {height + 10.0}",
-                for (name, d, baseline) in &rows {
-                    path {
-                        d: "{d}",
-                        fill: "rgba(161,161,170,0.10)",
-                        stroke: "#d4d4d8", stroke_width: "0.8",
-                    }
-                    text {
-                        x: "50", y: "{baseline - 2.0:.1}",
-                        text_anchor: "end",
-                        class: "fill-zinc-500 text-[8.5px]",
-                        "{name}"
-                    }
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+            div { class: "flex items-center justify-between",
+                div {
+                    h3 { class: "text-sm font-semibold text-zinc-100", "网关响应与 SLA 性能矩阵" }
+                    p { class: "text-[11px] text-zinc-500", "端到端 P50 延迟、吞吐与高可用" }
+                }
+                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400",
+                    span { class: "h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" }
+                    "SLA 99.94%"
                 }
             }
-            div { class: "mt-1 flex justify-between pl-14 text-xs text-zinc-600",
-                span { "快" }
-                span { "P50 延迟 (相对)" }
-                span { "慢" }
+
+            // 4 项关键健康指标
+            div { class: "grid grid-cols-2 gap-2.5",
+                div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
+                    p { class: "text-[10px] text-zinc-500", "P50 均值延迟" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "820 ms" }
+                }
+                div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
+                    p { class: "text-[10px] text-zinc-500", "P90 尾部延迟" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "1,450 ms" }
+                }
+                div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
+                    p { class: "text-[10px] text-zinc-500", "峰值吞吐 TPS" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "4,210 tok/s" }
+                }
+                div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
+                    p { class: "text-[10px] text-zinc-500", "平均成功率" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-emerald-400", "99.86%" }
+                }
             }
-        }
-    }
-}
 
-/// 性价比气泡图: x = 价格 (sqrt), y = 速度, r = 用量份额.
-#[component]
-pub fn BubbleCard() -> Element {
-    const PLOT_W: f64 = 280.0;
-    const PLOT_H: f64 = 176.0;
-    let to_x = |price: f64| 44.0 + price.sqrt() / 15f64.sqrt() * PLOT_W;
-    let to_y = |speed: f64| 16.0 + (130.0 - speed) / 80.0 * PLOT_H;
-    let max_req = MODELS.iter().map(|m| m.daily_req).fold(0.0, f64::max);
-
-    rsx! {
-        div { class: "self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2",
-            h2 { class: "mb-4 text-sm font-medium text-zinc-300", "性价比定位 · 气泡图" }
-            svg { class: "w-full overflow-visible", view_box: "-4 -4 352 232",
-                line { x1: "44", y1: "16", x2: "44", y2: "192", stroke: "#27272a" }
-                line { x1: "44", y1: "192", x2: "336", y2: "192", stroke: "#27272a" }
-                text { x: "44", y: "212", text_anchor: "start", class: "fill-zinc-600 text-[9px]", "低价" }
-                text { x: "336", y: "212", text_anchor: "end", class: "fill-zinc-600 text-[9px]", "高价 ($/1M)" }
-                text { x: "8", y: "20", text_anchor: "start", class: "fill-zinc-600 text-[9px]", "tok/s" }
-                for m in MODELS {
+            // 模型延迟对比条
+            div { class: "space-y-2 pt-1",
+                for m in MODELS.iter().take(5) {
                     {
-                        let bx = to_x(m.price);
-                        let by = to_y(m.speed);
-                        let r = 4.0 + (m.daily_req / max_req).sqrt() * 9.0;
+                        let width_pct = (m.p50 / 3.0 * 100.0).min(100.0);
                         rsx! {
-                            circle {
-                                cx: "{bx:.1}", cy: "{by:.1}", r: "{r:.1}",
-                                fill: "rgba(161,161,170,0.18)",
-                                stroke: "#a1a1aa", stroke_width: "0.8",
-                            }
-                            text {
-                                x: "{bx:.1}", y: "{by + r + 10.0:.1}",
-                                text_anchor: "middle",
-                                class: "fill-zinc-500 text-[8.5px]",
-                                "{m.name}"
+                            div { key: "{m.name}", class: "space-y-1 text-xs",
+                                div { class: "flex items-center justify-between text-zinc-300",
+                                    span { class: "font-medium", "{m.name}" }
+                                    div { class: "flex items-center gap-3 font-mono text-[11px] text-zinc-400",
+                                        span { "{m.speed:.0} tok/s" }
+                                        span { class: "text-zinc-100 font-semibold", "{m.p50:.1}s" }
+                                    }
+                                }
+                                div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                                    div {
+                                        class: if m.p50 < 1.0 { "h-full rounded-full bg-emerald-400" } else if m.p50 < 2.0 { "h-full rounded-full bg-blue-400" } else { "h-full rounded-full bg-amber-400" },
+                                        style: "width: {width_pct:.1}%"
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// 分组配额与倍率分布 (参考 sub2api GroupDistribution)
+#[component]
+pub fn GroupQuotaCard() -> Element {
+    let groups = [
+        ("default", 1.0f64, "4.2B", 85, "#3b82f6"),
+        ("vip", 1.5f64, "2.8B", 60, "#a78bfa"),
+        ("svip", 2.0f64, "1.9B", 40, "#facc15"),
+        ("internal", 0.5f64, "820M", 20, "#34d399"),
+    ];
+
+    rsx! {
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+            div { class: "flex items-center justify-between",
+                div {
+                    h3 { class: "text-sm font-semibold text-zinc-100", "分组配额与倍率分布" }
+                    p { class: "text-[11px] text-zinc-500", "租户路由分组及倍率消耗" }
+                }
+                span { class: "rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400",
+                    "4 个活跃分组"
+                }
+            }
+
+            div { class: "space-y-3 pt-1",
+                for (name, mult, quota, pct, color) in groups {
+                    div { key: "{name}", class: "space-y-1.5",
+                        div { class: "flex items-center justify-between text-xs",
+                            div { class: "flex items-center gap-2",
+                                span { class: "h-2 w-2 rounded-full", style: "background: {color}" }
+                                span { class: "font-medium text-zinc-200 uppercase", "{name}" }
+                                span { class: "rounded bg-zinc-800/80 px-1.5 py-0.2 text-[10px] text-zinc-400 font-mono", "{mult:.1}x" }
+                            }
+                            span { class: "font-mono font-semibold text-zinc-100", "{quota}" }
+                        }
+                        div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                            div { class: "h-full rounded-full transition-all duration-300", style: "width: {pct}%; background: {color}" }
+                        }
+                    }
+                }
+            }
+
+            div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 text-xs text-zinc-400 space-y-1",
+                div { class: "flex justify-between", span { "默认路由权重:" } span { class: "text-zinc-200 font-mono font-medium", "Priority 优先" } }
+                div { class: "flex justify-between", span { "自动降级熔断:" } span { class: "text-emerald-400 font-mono font-medium", "已开启" } }
             }
         }
     }
