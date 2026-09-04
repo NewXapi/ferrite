@@ -31,7 +31,15 @@ impl ScriptedProvider {
 
 impl ChatProvider for ScriptedProvider {
     fn stream(&self, _request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
-        let deltas = self.rounds.lock().expect("mock provider mutex").remove(0);
+        let mut rounds = self.rounds.lock().expect("mock provider mutex");
+        // Exhausted script yields an empty stream instead of panicking, so tests
+        // that abort mid-retry do not depend on an exact round count.
+        let deltas = if rounds.is_empty() {
+            Vec::new()
+        } else {
+            rounds.remove(0)
+        };
+        drop(rounds);
         Box::pin(stream::iter(deltas))
     }
 }
@@ -600,4 +608,113 @@ async fn resume_rejects_terminal_run_and_loads_active_run() {
     let (loaded, events) = resume_agent_run(&persistence, &active.id).await.unwrap();
     assert_eq!(loaded.status, AgentRunStatus::CallingModel);
     assert!(!events.is_empty());
+}
+
+#[tokio::test]
+async fn retries_exhausted_marks_run_failed() {
+    let root = tmp_root("retry-exhausted");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![
+        vec![Err(harness_runtime::ProviderError::Failed("boom-1".into()))],
+        vec![Err(harness_runtime::ProviderError::Failed("boom-2".into()))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let mut req = request("run_retry_out", true);
+    req.retry = AgentModelRetryPolicy {
+        max_retries: 1,
+        interval_ms: 0,
+    };
+    let result = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(result.is_err());
+    assert_eq!(
+        persistence.load_run("run_retry_out").await.unwrap().status,
+        AgentRunStatus::Failed
+    );
+}
+
+#[tokio::test]
+async fn malformed_tool_arguments_are_not_retried() {
+    let root = tmp_root("no-retry-aggregate");
+    let persistence = RunPersistence::new(&root);
+    // Only one scripted round: a retry would panic the mock by popping an empty queue.
+    let provider = ScriptedProvider::new(vec![
+        tool_delta("c1", "read_file", "{not-json")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+    ]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let mut req = request("run_no_retry", true);
+    req.retry = AgentModelRetryPolicy {
+        max_retries: 3,
+        interval_ms: 0,
+    };
+    let result = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(result.is_err());
+    let events = persistence.load_events("run_no_retry").await.unwrap();
+    assert!(
+        !events.iter().any(|event| event.event_type == "model.retry"),
+        "deterministic aggregate errors must not be retried"
+    );
+}
+
+#[tokio::test]
+async fn cancellation_interrupts_retry_backoff() {
+    let root = tmp_root("retry-cancel");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Err(harness_runtime::ProviderError::Failed(
+        "boom".into(),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let cancel = CancellationToken::new();
+    let waker = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        waker.cancel(CancelReason::UserRequested);
+    });
+    let mut req = request("run_retry_cancel", true);
+    req.retry = AgentModelRetryPolicy {
+        max_retries: 1,
+        // Long enough that an uninterruptible sleep would blow the assertion below.
+        interval_ms: 30_000,
+    };
+    let started = std::time::Instant::now();
+    let _ = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel,
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "cancellation must interrupt retry backoff"
+    );
 }

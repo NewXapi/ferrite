@@ -5,8 +5,8 @@ use serde_json::json;
 use thiserror::Error;
 
 use harness_core::{
-    AgentChatRef, AgentModelRetryPolicy, AgentRun, AgentRunEventLevel, AgentRunPresentation,
-    AgentRunStatus, DEFAULT_AGENT_MODEL_MAX_RETRIES, DEFAULT_AGENT_MODEL_RETRY_INTERVAL_MS,
+    AgentChatRef, AgentModelRetryPolicy, AgentRun, AgentRunEvent, AgentRunEventLevel,
+    AgentRunPresentation, AgentRunStatus,
 };
 use harness_prompt::{AgentModelContentPart, AgentModelMessage, AgentModelRequest, AgentModelRole};
 use harness_tools::{AgentModelTool, InvocationToolSnapshot, ToolChoice, ToolId, ToolTurnContract};
@@ -31,19 +31,9 @@ pub struct AgentRunRequest {
     pub prompt: AgentModelRequest,
     pub snapshot: InvocationToolSnapshot,
     pub max_rounds: usize,
+    /// Provider retry budget. `AgentModelRetryPolicy::default()` carries the
+    /// harness defaults; `max_retries: 0` disables retries.
     pub retry: AgentModelRetryPolicy,
-}
-
-impl AgentRunRequest {
-    pub fn with_defaults(mut self) -> Self {
-        if self.retry.max_retries == 0 && self.retry.interval_ms == 0 {
-            self.retry = AgentModelRetryPolicy {
-                max_retries: DEFAULT_AGENT_MODEL_MAX_RETRIES,
-                interval_ms: DEFAULT_AGENT_MODEL_RETRY_INTERVAL_MS,
-            };
-        }
-        self
-    }
 }
 
 /// Injected loop dependencies.
@@ -57,6 +47,11 @@ pub struct AgentRunDeps<'a, P> {
 /// Loop errors.
 #[derive(Debug, Error)]
 pub enum LoopError {
+    #[error("run `{run_id}` is already terminal: {status:?}")]
+    AlreadyTerminal {
+        run_id: String,
+        status: AgentRunStatus,
+    },
     #[error(transparent)]
     Turn(#[from] TurnError),
     #[error(transparent)]
@@ -242,7 +237,14 @@ pub async fn run_agent_run<P: ChatProvider>(
                     return Ok(run);
                 }
                 Err(error) => {
-                    if attempt < request.retry.max_retries && !deps.cancel.is_cancelled() {
+                    // Only transport-level provider failures are worth retrying. A
+                    // malformed tool-call transcript is deterministic: replaying the
+                    // same request reproduces it.
+                    let retryable = matches!(error, TurnError::Provider(_));
+                    if retryable
+                        && attempt < request.retry.max_retries
+                        && !deps.cancel.is_cancelled()
+                    {
                         attempt += 1;
                         let retry_event = events.next(
                             "model.retry",
@@ -256,10 +258,15 @@ pub async fn run_agent_run<P: ChatProvider>(
                         deps.persistence.append_event(&run.id, &retry_event).await?;
                         sink.emit(retry_event);
                         if request.retry.interval_ms > 0 {
-                            tokio::time::sleep(std::time::Duration::from_millis(
+                            // Cancellation must interrupt the backoff; otherwise a
+                            // multi-second interval stalls abort requests.
+                            let backoff = tokio::time::sleep(std::time::Duration::from_millis(
                                 request.retry.interval_ms,
-                            ))
-                            .await;
+                            ));
+                            tokio::select! {
+                                _ = backoff => {}
+                                _ = deps.cancel.cancelled() => {}
+                            }
                         }
                         continue;
                     }
@@ -475,16 +482,21 @@ pub async fn run_agent_run<P: ChatProvider>(
     Ok(run)
 }
 
-/// Resume a non-terminal run from disk without replaying completed tool I/O.
+/// Load a non-terminal run and its journal from disk.
+///
+/// This is the *inspection* half of resume: it hands back persisted state so the
+/// caller can rebuild a request and call [`run_agent_run`] again. It deliberately
+/// does not re-drive the loop, and it never replays already-persisted tool I/O.
 pub async fn resume_agent_run(
     persistence: &RunPersistence,
     run_id: &str,
-) -> Result<(AgentRun, Vec<harness_core::AgentRunEvent>), LoopError> {
+) -> Result<(AgentRun, Vec<AgentRunEvent>), LoopError> {
     let run = persistence.load_run(run_id).await?;
     if run.status.is_terminal() {
-        return Err(LoopError::Turn(TurnError::Provider(ProviderError::Failed(
-            format!("run `{run_id}` is already terminal: {:?}", run.status),
-        ))));
+        return Err(LoopError::AlreadyTerminal {
+            run_id: run_id.to_string(),
+            status: run.status,
+        });
     }
     let events = persistence.load_events(run_id).await?;
     Ok((run, events))
