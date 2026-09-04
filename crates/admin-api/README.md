@@ -134,7 +134,7 @@ cargo test -p observe -p ops
 约束：不做 sync/分布式，全部平表（内存建全字段、无关联表/FK），
 等数据聚合点明确后再分析读写路径优化表结构。gateway 逻辑不进 admin-api。
 
-### 已完成 — `auth/` (用户 7 端点)
+### 已完成 — `auth/` (用户 9 端点)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -144,9 +144,11 @@ cargo test -p observe -p ops
 | POST | `/api/user/logout` | 吊销 sid |
 | GET/PUT/DELETE | `/api/user/self` | 自查 / 改昵称改密 (auth_version++) / 注销 |
 | GET | `/api/user` | admin 用户列表 (search/page/size) |
+| GET | `/api/user/search` | admin 搜索 (ILIKE，前 20 条) |
+| GET | `/api/user/{key}` | admin 单查 |
 | POST | `/api/user/manage` | admin: enable/disable/set_role/adjust_quota/reset_password |
 
-### 已完成 — `catalog/` tokens (5 端点)
+### 已完成 — `catalog/` tokens (6 端点)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -154,16 +156,19 @@ cargo test -p observe -p ops
 | GET | `/api/token` | 列表 (all=true 需 admin) |
 | GET | `/api/token/search` | 搜索 |
 | PUT/DELETE | `/api/token/{key}` | 编辑 / 删除 (owner 或 admin) |
+| POST | `/api/token/{key}/key` | 重取明文 = 重新生成（旧 key 即刻失效，不做可逆存储） |
 
-### 已完成 — `catalog/` channels (7 端点)
+### 已完成 — `catalog/` channels (9 端点)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/channel` | 创建 (name 唯一, keys 非空, models=[{alias,upstream}]) |
+| POST | `/api/channel` | 创建 (name 唯一, keys 非空, base_url 必填 http(s), models=[{alias,upstream}]) |
 | GET | `/api/channel` | 列表 (keys 掩码) + search |
 | GET | `/api/channel/{key}` | 单查 (含完整 keys) |
 | PUT | `/api/channel/{key}` | 更新 (合并后整体校验) |
 | POST | `/api/channel/{key}/status` | 启停 |
+| POST | `/api/channel/{key}/test` | 探活：reqwest 真调 chat/completions (max_tokens=1, 10s 超时)，结果落 monitor_history |
+| POST | `/api/channel/test` | 全量探活 (启用渠道串行，配置缺失记 config 错误不中断) |
 | DELETE | `/api/channel/{key}` | 删除 |
 
 表 `api_channels` 字段覆盖 gateway `dispatch::ChannelConfig` 所需，
@@ -191,8 +196,18 @@ api_tokens.group_id / api_channels.group_name 按名字引用 (loose)。
 表 `usage_logs` (BIGSERIAL, log_type: 1=topup 2=consume 3=manage 4=system)。
 网关侧调 `observe::logs::LogService::record(&UsageEvent)` 写入。
 
+### 已完成 — `observe/` monitor (2 端点)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/monitor/{key}?days=7&limit=50` | 渠道探活历史 + 可用率 (total/ok_count/availability/avg_latency_ms) |
+| GET | `/api/monitor?days=7` | 全渠道可用率一览 |
+
+表 `monitor_history` (BIGSERIAL) 由探活执行方 (`catalog::channels::test_channel`) 写入；
+`MonitorDeps` 是落库/查询的封装，ops::probe 后续复用。
+
 ### 之后 — 未做
 
-- 渠道探活 (test request) — 挂 ops::jobs
+- ops::jobs 后台 runner（探活定时调度，当前探活为手动触发）
 - 小时聚合 / 排行 (usage_hourly / model_rankings) — 数据量起来再做
 - 兑换码 / 支付 (billing 域)
