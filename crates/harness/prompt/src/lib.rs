@@ -13,8 +13,8 @@
 //! - [`truncate`] — `truncate_history`，从最新到最旧按 token budget 裁剪，system 与
 //!   tool-call/result 组原子保留
 //! - [`reasoning`] — `ReasoningTemplate` + `wrap_reasoning` + `inject_reasoning`，
-//!   把模型推理回填为额外 system 消息（无 UI）
-
+//!   把模型推理回填为 assistant 消息（无 UI）
+//!
 //! ## 设计边界
 //!
 //! 宏引擎（`{{time}}` / `/roll` / `setvar` 等）在前端（Dioxus）执行；Rust 侧只接受
