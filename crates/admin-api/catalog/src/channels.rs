@@ -82,9 +82,11 @@ struct ChannelRow {
 
 const SELECT_COLS: &str = "key, name, channel_type, base_url, keys, models, group_name, \
      priority, weight, status, test_model, remark, created_at, updated_at";
-
 fn row_to_view(r: ChannelRow, include_keys: bool) -> ChannelView {
-    let keys: Vec<String> = serde_json::from_value(r.keys.clone()).unwrap_or_default();
+    let keys: Vec<String> = serde_json::from_value(r.keys.clone()).unwrap_or_else(|e| {
+        tracing::warn!(key = %r.key, error = %e, "corrupt keys JSONB — treating as empty");
+        Vec::new()
+    });
     ChannelView {
         key: r.key.to_string(),
         key_count: keys.len() as i64,
@@ -314,10 +316,10 @@ fn validate(
         return Err(AuthError::BadRequest("channel_type 1..=32 chars".into()));
     }
     let url = base_url.trim();
-    if !url.is_empty()
-        && !url.starts_with("http://")
-        && !url.starts_with("https://")
-    {
+    if url.is_empty() {
+        return Err(AuthError::BadRequest("base_url required".into()));
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(AuthError::BadRequest("base_url must be http(s) URL".into()));
     }
     if keys.is_empty() {
@@ -384,16 +386,26 @@ struct ListQuery {
     size: Option<i64>,
 }
 
+async fn handle_list(
+    state: &ChannelAppState,
+    headers: &HeaderMap,
+    search: Option<&str>,
+    page: i64,
+    size: i64,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+    require_admin(&state.auth, headers).await.map_err(err_json)?;
+    match state.svc.list(search, page, size).await {
+        Ok((items, total)) => Ok(axum::Json(serde_json::json!({"items": items, "total": total}))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
 async fn list(
     axum::extract::State(state): axum::extract::State<ChannelAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    match state.svc.list(q.search.as_deref(), q.page.unwrap_or(1), q.size.unwrap_or(20)).await {
-        Ok((items, total)) => Ok(axum::Json(serde_json::json!({"items": items, "total": total}))),
-        Err(e) => Err(err_json(e)),
-    }
+    handle_list(&state, &headers, q.search.as_deref(), q.page.unwrap_or(1), q.size.unwrap_or(20)).await
 }
 
 async fn search(
@@ -401,12 +413,8 @@ async fn search(
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
     let keyword = q.keyword.clone().or(q.search.clone()).unwrap_or_default();
-    match state.svc.list(Some(&keyword), q.page.unwrap_or(1), q.size.unwrap_or(20)).await {
-        Ok((items, total)) => Ok(axum::Json(serde_json::json!({"items": items, "total": total}))),
-        Err(e) => Err(err_json(e)),
-    }
+    handle_list(&state, &headers, Some(&keyword), q.page.unwrap_or(1), q.size.unwrap_or(20)).await
 }
 
 #[derive(Debug, Deserialize)]

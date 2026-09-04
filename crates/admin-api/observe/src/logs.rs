@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS usage_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created ON usage_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user ON usage_logs(user_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_token_name ON usage_logs(token_name);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_model_name ON usage_logs(model_name);
 "#;
     sqlx::raw_sql(DDL).execute(pool).await?;
     Ok(())
@@ -105,7 +107,6 @@ pub struct LogView {
     pub is_stream: bool,
     pub ip: String,
     pub request_id: String,
-    pub content: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -126,7 +127,7 @@ pub struct LogService {
 
 const COLS: &str = "id, log_type, user_key, username, token_name, channel_name, model_name, \
      prompt_tokens, completion_tokens, quota, use_time_ms, is_stream, ip, request_id, \
-     content, created_at";
+     created_at";
 
 impl LogService {
     pub fn new(pool: PgPool) -> Self {

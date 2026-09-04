@@ -49,7 +49,7 @@ async fn record_and_query_flow() {
     let mut topup = UsageEvent::consume(user, "alice", &marker);
     topup.log_type = 1;
     topup.quota = 500_000;
-    topup.content = "充值 $1".into();
+    topup.content = "topup $1".into();
     svc.record(&topup).await.expect("record topup");
 
     // admin 全量查 (按模型过滤)
@@ -92,4 +92,11 @@ async fn record_and_query_flow() {
     assert!(dash["users"].as_i64().unwrap() >= 1);
     assert!(dash["groups"].as_i64().unwrap() >= 1);
     assert!(dash["requestsToday"].as_i64().unwrap() >= 4);
+
+    // 清理本次测试数据 (stat 是全局聚合, 残留会污染其他断言)
+    sqlx::query("DELETE FROM usage_logs WHERE model_name = $1")
+        .bind(&marker)
+        .execute(&sqlx::PgPool::connect(&db_url()).await.unwrap())
+        .await
+        .expect("cleanup");
 }
