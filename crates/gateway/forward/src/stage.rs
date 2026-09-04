@@ -104,14 +104,15 @@ impl Stage for ForwardStage {
             extra_headers: vec![],
         };
 
-        let forwarded = crate::pipeline::forward_once(&task, &*self.egress, &self.adaptors, &self.timeouts)
-            .await
-            .map_err(|e: NormalizedError| {
-                StageError::Upstream(gateway_pipeline::UpstreamError::Status {
-                    code: e.status,
-                    body_preview: e.message.into_bytes(),
-                })
-            })?;
+        let forwarded =
+            crate::pipeline::forward_once(&task, &*self.egress, &self.adaptors, &self.timeouts)
+                .await
+                .map_err(|e: NormalizedError| {
+                    StageError::Upstream(gateway_pipeline::UpstreamError::Status {
+                        code: e.status,
+                        body_preview: e.message.into_bytes(),
+                    })
+                })?;
 
         // 非流式 → 收 body 写入 ctx.upstream; 流式 → 交回客户端。
         if task.stream {

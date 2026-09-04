@@ -2,16 +2,15 @@
 
 use bytes::Bytes;
 use contract::error::NormalizedError;
-use parking_lot::Mutex;
-use forward::egress::{Egress, ForwardedResponse, Timeouts};
-use forward::pipeline::{forward_once, merge_headers};
-use forward::ForwardTask;
-use gateway_protocol_bridge::adaptor::{AdaptorError, AdaptorRegistry, Codec, Protocol};
-use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use contract::records::RouteUnitRecord;
+use forward::ForwardTask;
+use forward::egress::{Egress, ForwardedResponse, Timeouts};
+use forward::pipeline::forward_once;
+use gateway_protocol_bridge::adaptor::{AdaptorError, AdaptorRegistry, Codec, Protocol};
+use parking_lot::Mutex;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // ---------- mock Egress ----------
 
@@ -29,14 +28,22 @@ impl Egress for MockEgress {
         body: Bytes,
         _timeouts: &'a Timeouts,
     ) -> Pin<
-        Box<dyn std::future::Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>,
+        Box<
+            dyn std::future::Future<Output = Result<ForwardedResponse, NormalizedError>>
+                + Send
+                + 'a,
+        >,
     > {
         *self.captured_body.lock() = Some(body.clone());
         let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(
             Bytes::from_static(b"{\\\"gems\\\":[]}"),
         )]);
         Box::pin(async move {
-            Ok(ForwardedResponse::from_stream(200, "application/json", stream))
+            Ok(ForwardedResponse::from_stream(
+                200,
+                "application/json",
+                stream,
+            ))
         })
     }
 }
@@ -45,7 +52,6 @@ impl Egress for MockEgress {
 
 /// 记录是否被调用，并对 request/response 做可观测的 transform。
 struct SpyCodec {
-    name: &'static str,
     source: Protocol,
     target: Protocol,
     request_called: Arc<AtomicBool>,
@@ -120,12 +126,13 @@ fn mk_task(stream: bool) -> ForwardTask {
 #[tokio::test]
 async fn forward_calls_adapt_request_for_non_stream() {
     let captured = Arc::new(Mutex::new(None));
-    let egress = MockEgress { captured_body: captured.clone() };
+    let egress = MockEgress {
+        captured_body: captured.clone(),
+    };
     let request_called = Arc::new(AtomicBool::new(false));
     let response_called = Arc::new(AtomicBool::new(false));
 
     let codec: Arc<dyn Codec> = Arc::new(SpyCodec {
-        name: "gemini_spy",
         source: Protocol::OpenAi,
         target: Protocol::Gemini,
         request_called: request_called.clone(),
@@ -139,22 +146,29 @@ async fn forward_calls_adapt_request_for_non_stream() {
         .expect("forward 应成功");
 
     // adapt_request 被调用
-    assert!(request_called.load(Ordering::SeqCst), "adapt_request 应被调用");
+    assert!(
+        request_called.load(Ordering::SeqCst),
+        "adapt_request 应被调用"
+    );
     // 上游收到了经过 transform 的 body（含 _proxied 字段）
     let sent_body = captured.lock().clone().unwrap();
     let v: serde_json::Value = serde_json::from_slice(&sent_body).unwrap();
-    assert!(v["_proxied"].as_bool().unwrap_or(false), "请求体应被 adapt_request 转换");
+    assert!(
+        v["_proxied"].as_bool().unwrap_or(false),
+        "请求体应被 adapt_request 转换"
+    );
 }
 
 #[tokio::test]
 async fn forward_calls_adapt_response_for_streaming() {
     let captured = Arc::new(Mutex::new(None));
-    let egress = MockEgress { captured_body: captured.clone() };
+    let egress = MockEgress {
+        captured_body: captured.clone(),
+    };
     let request_called = Arc::new(AtomicBool::new(false));
     let response_called = Arc::new(AtomicBool::new(false));
 
     let codec: Arc<dyn Codec> = Arc::new(SpyCodec {
-        name: "gemini_spy",
         source: Protocol::OpenAi,
         target: Protocol::Gemini,
         request_called: request_called.clone(),
@@ -175,16 +189,24 @@ async fn forward_calls_adapt_response_for_streaming() {
     // adapt_request 被调用
     assert!(request_called.load(Ordering::SeqCst));
     // adapt_response 被调用
-    assert!(response_called.load(Ordering::SeqCst), "adapt_response 应被调用");
+    assert!(
+        response_called.load(Ordering::SeqCst),
+        "adapt_response 应被调用"
+    );
     // 响应经过 transform（前缀 [adapter]）
     let s = String::from_utf8_lossy(&first);
-    assert!(s.contains("[adapter]"), "响应应被 adapt_response 转换: got {s}");
+    assert!(
+        s.contains("[adapter]"),
+        "响应应被 adapt_response 转换: got {s}"
+    );
 }
 
 #[tokio::test]
 async fn forward_passthrough_when_no_adaptor() {
     let captured = Arc::new(Mutex::new(None));
-    let egress = MockEgress { captured_body: captured.clone() };
+    let egress = MockEgress {
+        captured_body: captured.clone(),
+    };
 
     // 空 registry → 透传
     let reg = AdaptorRegistry::new();

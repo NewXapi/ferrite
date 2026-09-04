@@ -19,7 +19,6 @@ use crate::egress::{Egress, ForwardedResponse};
 use bytes::Bytes;
 use contract::error::NormalizedError;
 use gateway_protocol_bridge::adaptor::{AdaptorRegistry, Protocol};
-use gateway_protocol_bridge::sse::SseScanner;
 use std::sync::Arc;
 
 /// 合并后的请求头 (adapter 鉴权 + 渠道覆盖 + 客户端已过滤头)。
@@ -95,32 +94,31 @@ pub async fn forward_once(
 
     // 上游厂商协议 → 客户端协议 (protocol-bridge)。流式逐 chunk 转、非流式整 body 转。
     let codec_arc = codec.clone();
-    let adapt_stream = |stream: futures_util::stream::BoxStream<
-        'static,
-        Result<Bytes, std::io::Error>,
-    >| {
-        let mapped: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
-            Box::pin(futures_util::stream::unfold(stream, move |mut s| {
-                let codec = codec_arc.clone();
-                async move {
-                    use futures_util::StreamExt;
-                    match s.next().await {
-                        Some(Ok(chunk)) => match codec.as_ref() {
-                            Some(c) => match c.adapt_response(chunk) {
-                                Ok(chunks) => {
-                                    Some((Ok::<Bytes, std::io::Error>(chunks.concat().into()), s))
-                                }
-                                Err(e) => Some((Err(std::io::Error::other(e.to_string())), s)),
+    let adapt_stream =
+        |stream: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>>| {
+            let mapped: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
+                Box::pin(futures_util::stream::unfold(stream, move |mut s| {
+                    let codec = codec_arc.clone();
+                    async move {
+                        use futures_util::StreamExt;
+                        match s.next().await {
+                            Some(Ok(chunk)) => match codec.as_ref() {
+                                Some(c) => match c.adapt_response(chunk) {
+                                    Ok(chunks) => Some((
+                                        Ok::<Bytes, std::io::Error>(chunks.concat().into()),
+                                        s,
+                                    )),
+                                    Err(e) => Some((Err(std::io::Error::other(e.to_string())), s)),
+                                },
+                                None => Some((Ok(chunk), s)),
                             },
-                            None => Some((Ok(chunk), s)),
-                        },
-                        Some(Err(e)) => Some((Err(e), s)),
-                        None => None,
+                            Some(Err(e)) => Some((Err(e), s)),
+                            None => None,
+                        }
                     }
-                }
-            }));
-        mapped
-    };
+                }));
+            mapped
+        };
 
     let body_stream: std::pin::Pin<
         Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
