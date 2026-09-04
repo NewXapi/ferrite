@@ -12,6 +12,7 @@
 | `variables` | `expand_variables`：兜底展开 `{{char}}` / `{{user}}`；未识别宏原样保留（前端 macro engine 主责） |
 | `render` | `PromptInput → AgentModelRequest`，按 system → messages → tools 顺序拼装 |
 | `truncate` | `truncate_history`：从最新到最旧按 token budget 裁剪，system 永保留，tool-call/result 组原子保留 / 丢弃 |
+| `reasoning` | `ReasoningTemplate`（默认 Think XML）+ `wrap_reasoning` + `inject_reasoning`：把模型推理回填为额外 system 消息（无 UI） |
 
 ## 关键常量
 
@@ -66,5 +67,7 @@ use harness_prompt::{
     expand_variables, VariableContext,
     // 裁剪
     truncate_history, TruncationDropReason,
+    // reasoning 回灌
+    ReasoningTemplate, wrap_reasoning, inject_reasoning,
 };
 ```
