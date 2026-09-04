@@ -134,39 +134,65 @@ cargo test -p observe -p ops
 约束：不做 sync/分布式，全部平表（内存建全字段、无关联表/FK），
 等数据聚合点明确后再分析读写路径优化表结构。gateway 逻辑不进 admin-api。
 
-### 已完成 — `auth/`
+### 已完成 — `auth/` (用户 7 端点)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/user/login` | 用户名+密码 → access JWT (15min) + refresh (7d) |
+| POST | `/api/user/login` | 登录 → access JWT (15min) + refresh (7d) |
 | POST | `/api/user/register` | 自注册，argon2id |
-| POST | `/api/user/refresh` | refresh 旋转，旧 sid 即刻吊销 |
+| POST | `/api/user/refresh` | refresh 旋转，并发重放拒 |
 | POST | `/api/user/logout` | 吊销 sid |
-| GET | `/api/user/self` | Bearer access → 当前用户 |
+| GET/PUT/DELETE | `/api/user/self` | 自查 / 改昵称改密 (auth_version++) / 注销 |
+| GET | `/api/user` | admin 用户列表 (search/page/size) |
+| POST | `/api/user/manage` | admin: enable/disable/set_role/adjust_quota/reset_password |
 
-### 接下来 — `auth/` 扩展（用户自管理 + admin 用户管理）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| PUT | `/api/user/self` | 改昵称/密码（改密 auth_version++ 全端失效） |
-| DELETE | `/api/user/self` | 注销 |
-| GET | `/api/user` | admin 用户列表（分页/搜索） |
-| GET | `/api/user/{key}` | admin 查单个用户 |
-| POST | `/api/user/manage` | admin 启停/改角色/改额度/改密 |
-| DELETE | `/api/user/{key}` | admin 软删 |
-
-### 接下来 — `catalog/` token 管理（API Key）
+### 已完成 — `catalog/` tokens (5 端点)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/token` | 令牌列表 |
-| POST | `/api/token` | 创建（明文只返一次，库存哈希） |
-| PUT | `/api/token` | 编辑启停/过期/配额/模型白名单 |
-| DELETE | `/api/token/{key}` | 删除 |
+| POST | `/api/token` | 创建，明文 sk- 只返一次，库存 sha256 |
+| GET | `/api/token` | 列表 (all=true 需 admin) |
 | GET | `/api/token/search` | 搜索 |
+| PUT/DELETE | `/api/token/{key}` | 编辑 / 删除 (owner 或 admin) |
 
-### 之后 — 渠道 / 日志 / 计费
+### 已完成 — `catalog/` channels (7 端点)
 
-- `/api/channel` CRUD + 测试请求（catalog/channels）
-- `/api/log` + `/api/log/self`（observe）
-- `/api/redemption` 兑换码、`/api/group` 分组倍率（billing）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/channel` | 创建 (name 唯一, keys 非空, models=[{alias,upstream}]) |
+| GET | `/api/channel` | 列表 (keys 掩码) + search |
+| GET | `/api/channel/{key}` | 单查 (含完整 keys) |
+| PUT | `/api/channel/{key}` | 更新 (合并后整体校验) |
+| POST | `/api/channel/{key}/status` | 启停 |
+| DELETE | `/api/channel/{key}` | 删除 |
+
+表 `api_channels` 字段覆盖 gateway `dispatch::ChannelConfig` 所需，
+apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
+
+### 已完成 — `catalog/` groups (4 端点)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/api/group` | 列表 / 创建 (default 组保留名, ratio>0) |
+| PUT/DELETE | `/api/group/{key}` | 编辑倍率白名单 / 删除 (有引用拒删) |
+
+表 `api_groups` 启动时 seed default 组；auth_users.group_id /
+api_tokens.group_id / api_channels.group_name 按名字引用 (loose)。
+
+### 已完成 — `observe/` logs + dashboard (5 端点)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/log` | admin 全量 (log_type/username/token_name/model_name/时间范围) |
+| GET | `/api/log/stat` | 今日 quota/requests + rpm/tpm (60s 窗口) |
+| GET | `/api/log/self` + `/self/stat` | 用户自查 |
+| GET | `/api/dashboard` | 汇总 (users/tokens/channels/groups/今日用量/rpm/tpm) |
+
+表 `usage_logs` (BIGSERIAL, log_type: 1=topup 2=consume 3=manage 4=system)。
+网关侧调 `observe::logs::LogService::record(&UsageEvent)` 写入。
+
+### 之后 — 未做
+
+- 渠道探活 (test request) — 挂 ops::jobs
+- 小时聚合 / 排行 (usage_hourly / model_rankings) — 数据量起来再做
+- 兑换码 / 支付 (billing 域)
