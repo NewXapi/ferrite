@@ -5,15 +5,14 @@
 //! 1. 过滤: status=启用 且 health::is_selectable 且不在 exclude 集;
 //! 2. 分层: priority DESC, 取第一个存在正权重候选的层 (wildtoken fallthrough:
 //!    顶层全冷却 → 落到下一层, 而不是整体失败);
-//! 3. 加权随机: 层内按 effective = (weight+1) × slow_start × latency_quality
-//!    抽取 (new-api routingBaseWeight 的 +1 保证 weight=0 也以最低份额参与,
-//!    且权重单调: 配置越大份额越大)。
+//! 3. 加权随机: 层内按 effective = base × ewma_score × slow_start_factor
+//!    抽取 (phase0 RoutingWeight 语义: 连续健康分 + 慢启动 ramp; 冷却中为 0)。
 //!
 //! affinity (new-api track_affinity.go): 同会话固定候选 — V2,
 //! 需要 session_hash 提取规则定型后做。
 
 use crate::candidate::STATUS_ENABLED;
-use crate::health::{self, HealthTable};
+use crate::health::HealthTable;
 use contract::records::RouteUnitRecord;
 use rand::Rng;
 use std::collections::HashMap;
@@ -74,7 +73,8 @@ impl Selector for WeightedSelector {
                 .iter()
                 .copied()
                 .map(|u| {
-                    let w = health::routing_weight(u.weight, &health.get(&u.meta.key), now_ms);
+                    // phase0 routingBaseWeight: +1 保证 weight=0 仍以最低份额参与。
+                    let w = health.routing_weight(&u.meta.key, u.weight + 1, now_ms);
                     (u, w)
                 })
                 .filter(|(_, w)| *w > 0.0)

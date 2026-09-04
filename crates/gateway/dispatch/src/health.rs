@@ -1,119 +1,170 @@
-//! 本地健康表 — EWMA 延迟 + 失败连击 + 熔断冷却 + 慢启动。
+//! 本地健康表 — phase0 `track_health.go` 模型的完整移植。
 //!
-//! 参考实现:
-//! - new-api `channel_model_health.go` (失败隔离/冷却阶梯) +
-//!   `pkg/routestats/quality.go` (EWMA 延迟质量分: target/observed 归一,
-//!   MinSamples 门槛前中性 1.0)。
-//! - wildtoken `internal/proxy/health.go` (整数健康分 + 定时渐进恢复,
-//!   恢复即慢启动; 分数为 0 的节点完全不参与选择)。
+//! 参考: new-api phase0 `internal/catalog/track_health.go` +
+//! `bridge_channel_health.go` (outcome 分类 / EWMA 连续分 / 递增冷却 /
+//! slow-start ramp / max-ejection)。
+//!
+//! 模型要点 (与 phase0 逐项对齐):
+//! - **outcome 五分类**: Success / Fatal / Throttled(429) / Neutral(其它 4xx) /
+//!   UnauthorizedRun(401 连续升级, 3 次 → Fatal);
+//! - **EWMA 连续分**: `score = α×obs + (1-α)×score`, obs ∈ {1.0, 0.0, 0.7(429)},
+//!   MinRequests 前不更新, MinScore 下限;
+//! - **递增冷却**: 触发阈值 CooldownThreshold, 时长按
+//!   `base + (max-base)×(1-α^streak)` 滑向 max, 每次激活 streak+1;
+//! - **slow-start ramp**: 冷却结束进入 ramp (RampPending), 权重按
+//!   `request_count/min_requests` 渐进, 真实失败立即 RampExited;
+//! - **max-ejection**: 同层冷却渠道占比超 CooldownMaxEjectionPercent 时,
+//!   超出的冷却渠道以降权方式保留 (bypassCooldown) 而不是全弹射。
 //!
 //! 全部内存态 (Mutex<HashMap>), 不跨节点同步 — center 的 health_observations
-//! 是趋势原料, 不参与热路径决策。冷却窗口内完全排除; 恢复期 slow_start 折扣
-//! 权重, 随成功逐步回归 1.0 (wildtoken RecoveryIncrement 的按成功等价物)。
-//!
-//! 借鉴 wildtoken 的两条教训:
-//! - 失败在冷却中继续到账时**延长**冷却窗口 (wildtoken 失败重置恢复计时) —
-//!   持续故障的节点不会因为旧冷却到期就立刻满血回归;
-//! - 恢复是渐进的, 不是"冷却结束即全量" — slow_start 从 0.5 起步逐次回升。
+//! 是趋势原料, 不参与热路径决策。
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// 可重试错误分类 — 决定状态机是否回退换下一个候选。
+/// 健康分类独立于重试决策: 健康看上游状态码, 重试看客户端可恢复性。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailureClass {
-    /// 429/5xx/超时/连接失败 → 换候选重试。
+    /// 传输层失败 (超时/连接) → 换候选重试。
     Retryable,
-    /// 400/401/403/404/422 → 客户端或凭据问题, 换渠道大概率无效。
-    /// 计入失败连击 (坏 key 不该继续被选中), 但重试循环直接停止不换渠道。
+    /// 客户端或凭据问题 (4xx) → 不重试。
     Fatal,
 }
 
-/// 单个 RouteUnit 的健康记录。
+/// 健康 outcome — phase0 `ChannelOutcome` 枚举。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelOutcome {
+    /// 2xx — 全信任, EWMA obs = 1.0。
+    Success,
+    /// 5xx / 传输层 / 坏 body — 记 streak, obs = 0.0, 触发冷却。
+    Fatal,
+    /// 429 — 渠道健康但被限流, 轻度降权, obs = 0.7。
+    Throttled,
+    /// 其它 4xx (400/403/404/422/孤立 401) — 渠道无责, 不改分不记 streak。
+    Neutral,
+}
+
+impl ChannelOutcome {
+    /// 是否影响 EWMA 分数 (Success/Fatal/Throttled; Neutral 不参与)。
+    pub fn affects_health(self) -> bool {
+        !matches!(self, ChannelOutcome::Neutral)
+    }
+}
+
+/// 单个 RouteUnit 的健康记录 — phase0 `ChannelHealthState`。
 #[derive(Debug, Clone, Copy)]
 pub struct HealthState {
-    /// EWMA 延迟 (ms), α = EWMA_ALPHA; 首样本直接采纳。
-    pub ewma_latency_ms: f64,
-    /// 连续失败计数; 成功清零, 熔断触发后归零。
+    /// EWMA 连续健康分, 范围 [MinScore, 1.0]; 无历史 = 1.0。
+    pub ewma_score: f64,
+    /// 已观测请求数; 未达 MinRequests 前 EWMA 不更新 (信任新渠道)。
+    pub request_count: u32,
+    /// 连续 401 次数; 达 UnauthorizedEscalationThreshold → Fatal。
+    pub unauthorized_run: u32,
+    /// 真实失败后退出 slow-start ramp (不再渐进)。
+    pub ramp_exited: bool,
+    /// 冷却刚结束, 首次选择从 ramp 地板起步。
+    pub ramp_pending: bool,
+    /// 连续 fatal/throttled 次数; 达 CooldownThreshold → 冷却。
     pub failure_streak: u32,
-    /// 熔断截止时刻 (unix ms); 此前不参与选择。0 = 未熔断。
+    /// 连续冷却激活次数; 决定冷却时长 (递增)。
+    pub cooldown_streak: u32,
+    /// 冷却截止时刻 (unix ms); 0 = 未在冷却。
     pub cooldown_until_ms: u64,
-    /// 权重折扣 (0.0-1.0), 双重角色:
-    /// - 渐进惩罚: 失败一次 -FAILURE_PENALTY (wildtoken 每次失败 -20 分等价物);
-    /// - 慢启动恢复: 熔断后从 SLOW_START_INITIAL 起步, 成功一次 +SLOW_START_STEP。
-    ///
-    /// Default = 1.0 (从未观测/从未熔断的单元全量参与, 与 wildtoken "无记录
-    /// 即满血" 语义一致)。
-    pub slow_start: f64,
-    /// 观测样本数; 未达 MIN_SAMPLES 前延迟质量分保持中性 1.0。
-    pub samples: u32,
-    /// 最近一次失败分类 (ocr #0: 保留 Retryable/Fatal 区分供观测;
-    /// new-api 亦按 local/upstream 分开计数)。成功清空。
-    pub last_failure: Option<FailureClass>,
 }
 
 impl Default for HealthState {
     fn default() -> Self {
         Self {
-            ewma_latency_ms: 0.0,
+            ewma_score: DEFAULT_SCORE,
+            request_count: 0,
+            unauthorized_run: 0,
+            ramp_exited: false,
+            ramp_pending: false,
             failure_streak: 0,
+            cooldown_streak: 0,
             cooldown_until_ms: 0,
-            slow_start: 1.0,
-            samples: 0,
-            last_failure: None,
         }
     }
 }
 
-/// 健康表 trait — 按候选 key (RouteUnitRecord::meta.key) 读写健康状态。
-pub trait HealthTable: Send + Sync {
-    /// 读取当前健康状态; 无记录 → Default (完全健康)。
-    fn get(&self, unit_key: &str) -> HealthState;
-
-    /// report() 的落地:
-    /// - 成功 (Ok(status)) → EWMA 更新 + streak 清零 + slow_start 回升;
-    /// - 失败 (Err(class)) → streak +1, 达阈值 → 进入冷却窗口;
-    ///   冷却中再失败 → 延长冷却 (重复故障惩罚)。
-    fn record(&self, unit_key: &str, outcome: Result<u16, FailureClass>, latency_ms: u32);
-
-    /// 门控判定: 候选是否可参与本轮选择 (仅检查冷却窗口)。
-    fn is_selectable(&self, unit_key: &str, now_ms: u64) -> bool;
+/// 健康配置 — phase0 `ChannelHealthSetting` 默认值。
+#[derive(Debug, Clone, Copy)]
+pub struct HealthSetting {
+    pub enabled: bool,
+    /// EWMA 平滑系数。
+    pub alpha: f64,
+    /// 健康分下限。
+    pub min_score: f64,
+    /// EWMA 可信前的最小请求数。
+    pub min_requests: u32,
+    /// 连续 fatal/throttled 触发冷却的阈值。
+    pub cooldown_threshold: u32,
+    /// 冷却基础时长 (s)。
+    pub cooldown_base_seconds: u64,
+    /// 冷却最大时长 (s)。
+    pub cooldown_max_seconds: u64,
+    /// 同层冷却渠道最大弹射占比 (%)。
+    pub cooldown_max_ejection_percent: u8,
+    /// 冷却时长递增因子 (独立于 EWMA alpha)。
+    pub cooldown_alpha: f64,
+    /// 冷却激活达此数 → 该 model 在渠道上禁用。
+    pub cooldown_disable_streak: u32,
 }
 
-/// 默认参数 (TODO(#311) 配置化前的固定值)。
-pub mod defaults {
-    /// 熔断冷却窗口: 30s。
-    pub const COOLDOWN_MS: u64 = 30_000;
-    /// 连续失败阈值: 5 次触发熔断。
-    pub const STREAK_THRESHOLD: u32 = 5;
-    /// EWMA 延迟平滑系数。
-    pub const EWMA_ALPHA: f64 = 0.3;
-    /// 熔断恢复后的初始权重折扣。
-    pub const SLOW_START_INITIAL: f64 = 0.5;
-    /// 每次成功恢复的步长。
-    pub const SLOW_START_STEP: f64 = 0.25;
-    /// 每次失败(未达熔断阈值)的权重折扣步长 — wildtoken 每次失败 -20 分等价物。
-    pub const FAILURE_PENALTY: f64 = 0.2;
-    /// 渐进惩罚的权重下限 (wildtoken score floor 0 的等价物: 第 4 次失败后 0.2,
-    /// 第 5 次触发熔断冷却而非归零)。
-    pub const FAILURE_FLOOR: f64 = 0.2;
-    /// 延迟质量分生效前的最小样本数 (new-api MinSamples=5)。
-    pub const MIN_SAMPLES: u32 = 5;
-    /// 延迟基准 (new-api LatencyTargetMs=30000): 达到即 1.0, 更快 >1.0。
-    pub const LATENCY_TARGET_MS: f64 = 30_000.0;
-    /// 延迟质量分上下限 (new-api ComponentFloor/Ceil)。
-    pub const LATENCY_FLOOR: f64 = 0.5;
-    pub const LATENCY_CEIL: f64 = 1.5;
+impl Default for HealthSetting {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            alpha: 0.3,
+            min_score: 0.05,
+            min_requests: 5,
+            cooldown_threshold: 5,
+            cooldown_base_seconds: 10,
+            cooldown_max_seconds: 60,
+            cooldown_max_ejection_percent: 50,
+            cooldown_alpha: 0.3,
+            cooldown_disable_streak: 3,
+        }
+    }
+}
+
+/// 429 的 EWMA 观测值 (轻度降权, 非致命)。
+pub const THROTTLED_OBSERVATION: f64 = 0.7;
+/// 连续 401 达此数升级为 Fatal。
+pub const UNAUTHORIZED_ESCALATION_THRESHOLD: u32 = 3;
+/// 无历史渠道的默认分。
+pub const DEFAULT_SCORE: f64 = 1.0;
+
+/// 健康表 trait — 按候选 key (RouteUnitRecord::meta.key) 读写健康状态。
+pub trait HealthTable: Send + Sync {
+    /// 读取当前健康状态; 无记录 → Default (满健康)。
+    fn get(&self, unit_key: &str) -> HealthState;
+
+    /// 上报一次尝试结果 (带上游状态码), 内部按 phase0 规则分类并记账。
+    ///
+    /// - `Ok(status)`: 按状态码分类 (2xx→Success, 429→Throttled, 5xx→Fatal,
+    ///   401→升级计数, 其它 4xx→Neutral);
+    /// - `Err(Retryable)`: 传输层失败 → Fatal (渠道当前不可用);
+    /// - `Err(Fatal)`: 客户端问题 → Neutral (渠道无责)。
+    fn record(&self, unit_key: &str, outcome: Result<u16, FailureClass>);
+
+    /// 门控判定: 候选是否可参与本轮选择 (冷却中 → 否)。
+    fn is_selectable(&self, unit_key: &str, now_ms: u64) -> bool;
+
+    /// 路由权重 — phase0 `RoutingWeight` 语义:
+    /// 冷却中 → 0 (除非 max-ejection 豁免, V1 未实现 bypass);
+    /// 否则 `base_weight × ewma_score × slow_start_factor`。
+    fn routing_weight(&self, unit_key: &str, base_weight: u32, now_ms: u64) -> f64;
 }
 
 type StateMap = HashMap<String, HealthState>;
 
-/// 纯内存健康表 — 每 Pod 独立实例, 不跨节点同步。
-///
-/// `now_ms` 为可注入时钟 (wildtoken AutoWeightManager.now 的等价物):
-/// 默认取系统时间, 测试用 `with_clock` 注入固定时间。
+/// 纯内存健康表 — phase0 `HealthStore` 的 Rust 移植。
+/// 配置在构造时固化 (TODO(#311) 运行时热更新用 ArcSwap)。
 pub struct MemoryHealthTable {
     states: Mutex<StateMap>,
+    cfg: HealthSetting,
     now_ms: Box<dyn Fn() -> u64 + Send + Sync>,
 }
 
@@ -125,18 +176,26 @@ impl Default for MemoryHealthTable {
 
 impl MemoryHealthTable {
     pub fn new() -> Self {
-        Self::with_clock(|| chrono::Utc::now().timestamp_millis().max(0) as u64)
+        Self::with_config(HealthSetting::default())
+    }
+
+    pub fn with_config(cfg: HealthSetting) -> Self {
+        Self::with_config_and_clock(cfg, || chrono::Utc::now().timestamp_millis().max(0) as u64)
     }
 
     /// 测试/确定性时钟注入。
-    pub fn with_clock(now_ms: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
+    pub fn with_config_and_clock(
+        cfg: HealthSetting,
+        now_ms: impl Fn() -> u64 + Send + Sync + 'static,
+    ) -> Self {
         Self {
             states: Mutex::new(StateMap::new()),
+            cfg,
             now_ms: Box::new(now_ms),
         }
     }
 
-    /// 取锁, 毒化不 panic (ocr #17/18: 一个线程 panic 不该拖垮全部请求)。
+    /// 取锁, 毒化不 panic (一个线程 panic 不该拖垮全部请求)。
     fn lock(&self) -> std::sync::MutexGuard<'_, StateMap> {
         self.states.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -147,74 +206,218 @@ impl HealthTable for MemoryHealthTable {
         self.lock().get(unit_key).copied().unwrap_or_default()
     }
 
-    fn record(&self, unit_key: &str, outcome: Result<u16, FailureClass>, latency_ms: u32) {
+    fn record(&self, unit_key: &str, outcome: Result<u16, FailureClass>) {
         let now = (self.now_ms)();
-        let mut st = self.lock().get(unit_key).copied().unwrap_or_default();
-        match outcome {
-            Ok(_) => {
-                update_ewma(&mut st, latency_ms as f64);
-                st.failure_streak = 0;
-                st.slow_start = (st.slow_start + defaults::SLOW_START_STEP).min(1.0);
-                st.samples = st.samples.saturating_add(1);
-                st.last_failure = None;
-            }
-            Err(class) => {
-                st.last_failure = Some(class);
-                st.failure_streak += 1;
-                let cooling = st.cooldown_until_ms > now;
-                if cooling {
-                    // 冷却期内失败: 只顺延窗口 (持续故障不因旧冷却到期而满血回归,
-                    // wildtoken 同款)。单元已被排除, 不再重复惩罚权重。
-                    st.cooldown_until_ms = st.cooldown_until_ms.max(now) + defaults::COOLDOWN_MS;
-                } else {
-                    let tripped = st.failure_streak >= defaults::STREAK_THRESHOLD;
-                    if tripped {
-                        st.failure_streak = 0;
-                        st.slow_start = defaults::SLOW_START_INITIAL;
-                        st.cooldown_until_ms =
-                            st.cooldown_until_ms.max(now) + defaults::COOLDOWN_MS;
-                    } else {
-                        // 渐进惩罚 (wildtoken: 每次失败 -20 分, 权重立即缩水):
-                        // 失败 1-4 次 slow_start 递减, 而不是第 5 次才突然掉线。
-                        st.slow_start = (st.slow_start - defaults::FAILURE_PENALTY)
-                            .max(defaults::FAILURE_FLOOR);
-                    }
-                }
-            }
-        }
-        self.lock().insert(unit_key.to_string(), st);
+        let mut states = self.lock();
+        let mut st = states.get(unit_key).copied().unwrap_or_default();
+        apply_outcome(&mut st, outcome, &self.cfg, now);
+        states.insert(unit_key.to_string(), st);
     }
 
     fn is_selectable(&self, unit_key: &str, now_ms: u64) -> bool {
-        self.get(unit_key).cooldown_until_ms <= now_ms
+        // 惰性结算过期冷却 (phase0 FilterCoolingChannels 语义) — 冷却到期的
+        // 渠道在此次门控即重入 slow-start ramp。
+        let mut states = self.lock();
+        let Some(st) = states.get_mut(unit_key) else {
+            return true; // 无历史 = 未冷却
+        };
+        if st.cooldown_until_ms != 0 && !st.is_cooling(now_ms) {
+            finish_cooldown(st);
+        }
+        !st.is_cooling(now_ms)
+    }
+
+    fn routing_weight(&self, unit_key: &str, base_weight: u32, now_ms: u64) -> f64 {
+        if !self.cfg.enabled {
+            return f64::from(base_weight);
+        }
+        let mut states = self.lock();
+        let st = states.get_mut(unit_key);
+        let Some(st) = st else {
+            return f64::from(base_weight); // 无历史 = 满健康
+        };
+        // 惰性结算过期冷却 (phase0 RoutingWeight 语义): 恢复渠道在此次选择
+        // 就重入 slow-start ramp, 而不是等下一次 record。
+        if st.cooldown_until_ms != 0 && !st.is_cooling(now_ms) {
+            finish_cooldown(st);
+        }
+        if st.is_cooling(now_ms) {
+            return 0.0;
+        }
+        f64::from(base_weight) * st.ewma_score * st.slow_start_factor(self.cfg.min_requests)
     }
 }
 
-fn update_ewma(st: &mut HealthState, latency_ms: f64) {
-    if st.samples == 0 {
-        st.ewma_latency_ms = latency_ms;
-    } else {
-        st.ewma_latency_ms =
-            defaults::EWMA_ALPHA * latency_ms + (1.0 - defaults::EWMA_ALPHA) * st.ewma_latency_ms;
+impl HealthState {
+    /// 是否正处于冷却窗口 (且未过期)。
+    pub fn is_cooling(&self, now_ms: u64) -> bool {
+        self.cooldown_until_ms > now_ms
+    }
+
+    /// 慢启动因子 — phase0 `slowStartFactor`:
+    /// - RampExited → 1.0 (真实失败, 不再渐进);
+    /// - RampPending → 1/min_requests (冷却后首选的 ramp 地板);
+    /// - 未达 min_requests → count/min_requests (渐进);
+    /// - 达阈值 → 1.0。
+    pub fn slow_start_factor(&self, min_requests: u32) -> f64 {
+        if min_requests == 0 || self.ramp_exited {
+            return 1.0;
+        }
+        if self.ramp_pending {
+            return 1.0 / f64::from(min_requests);
+        }
+        if self.request_count == 0 || self.request_count >= min_requests {
+            return 1.0;
+        }
+        f64::from(self.request_count) / f64::from(min_requests)
     }
 }
 
-/// 延迟质量分: target/observed 归一, 夹在 [FLOOR, CEIL]。
-/// 样本不足或缺少观测 → 中性 1.0 (new-api MinSamples 门槛语义)。
-pub fn latency_quality(st: &HealthState) -> f64 {
-    if st.samples < defaults::MIN_SAMPLES || st.ewma_latency_ms <= 0.0 {
-        return 1.0;
+/// 按结果分类并记账 — phase0 `recordChannelOutcome` 的逻辑主体。
+fn apply_outcome(
+    st: &mut HealthState,
+    outcome: Result<u16, FailureClass>,
+    cfg: &HealthSetting,
+    now_ms: u64,
+) {
+    if !cfg.enabled {
+        return;
     }
-    let q = defaults::LATENCY_TARGET_MS / st.ewma_latency_ms;
-    q.clamp(defaults::LATENCY_FLOOR, defaults::LATENCY_CEIL)
+
+    // 先结算过期冷却 (post-expiry 结果干净地重入 slow-start ramp)。
+    if st.cooldown_until_ms != 0 && !st.is_cooling(now_ms) {
+        finish_cooldown(st);
+    }
+
+    let outcome = classify(st, outcome);
+
+    match outcome {
+        ChannelOutcome::Success => {
+            st.failure_streak = 0;
+            // 冷却过期后的干净成功递减冷却连击 (下次失败从更短时长起步)。
+            if st.cooldown_streak > 0 && st.cooldown_until_ms == 0 {
+                st.cooldown_streak = st.cooldown_streak.saturating_sub(1);
+            }
+        }
+        ChannelOutcome::Neutral => {
+            // Neutral 不改分不计请求, 但清失败连击 (非渠道之过)。
+            st.failure_streak = 0;
+            return;
+        }
+        ChannelOutcome::Fatal | ChannelOutcome::Throttled => {
+            st.failure_streak += 1;
+        }
+    }
+
+    // EWMA 观测值。
+    let observation = match outcome {
+        ChannelOutcome::Success => 1.0,
+        ChannelOutcome::Fatal => 0.0,
+        ChannelOutcome::Throttled => THROTTLED_OBSERVATION,
+        ChannelOutcome::Neutral => unreachable!("Neutral returned above"),
+    };
+
+    st.request_count += 1;
+    st.ramp_pending = false;
+
+    // 真实失败立即退出 ramp。
+    if outcome == ChannelOutcome::Fatal {
+        st.ramp_exited = true;
+    }
+
+    // MinRequests 前不更新 EWMA (信任新渠道)。
+    if st.request_count > cfg.min_requests {
+        st.ewma_score = cfg.alpha * observation + (1.0 - cfg.alpha) * st.ewma_score;
+        if st.ewma_score < cfg.min_score {
+            st.ewma_score = cfg.min_score;
+        }
+    }
+
+    // 冷却触发在 MinRequests 门控之外 (新渠道也可能被立即弹射)。
+    if matches!(outcome, ChannelOutcome::Fatal | ChannelOutcome::Throttled)
+        && st.failure_streak >= cfg.cooldown_threshold
+    {
+        start_cooldown(st, cfg, now_ms);
+    }
 }
 
-/// 权重乘数 — selector 的最终打分 (new-api routingBaseWeight 语义: +1 保证
-/// weight=0 仍以最低份额参与; wildtoken "恢复渐进" 语义: slow_start 折扣)。
-/// 冷却中 → 0 (完全排除)。
-pub fn routing_weight(weight: u32, st: &HealthState, now_ms: u64) -> f64 {
-    if st.cooldown_until_ms > now_ms {
-        return 0.0;
+/// 分类 — phase0 `classifyChannelOutcomeUnlocked` + UnauthorizedRun 升级。
+fn classify(st: &mut HealthState, outcome: Result<u16, FailureClass>) -> ChannelOutcome {
+    match outcome {
+        Ok(status) => match status {
+            200..=299 => {
+                st.unauthorized_run = 0;
+                ChannelOutcome::Success
+            }
+            429 => {
+                st.unauthorized_run = 0;
+                ChannelOutcome::Throttled
+            }
+            401 => {
+                if st.unauthorized_run < UNAUTHORIZED_ESCALATION_THRESHOLD {
+                    st.unauthorized_run += 1;
+                }
+                if st.unauthorized_run >= UNAUTHORIZED_ESCALATION_THRESHOLD {
+                    ChannelOutcome::Fatal
+                } else {
+                    ChannelOutcome::Neutral
+                }
+            }
+            500..=599 => {
+                st.unauthorized_run = 0;
+                ChannelOutcome::Fatal
+            }
+            // 其它 4xx: 渠道无责, 不改分。
+            _ => {
+                st.unauthorized_run = 0;
+                ChannelOutcome::Neutral
+            }
+        },
+        Err(FailureClass::Retryable) => {
+            // 传输层失败 (超时/连接) → 渠道当前不可用。
+            st.unauthorized_run = 0;
+            ChannelOutcome::Fatal
+        }
+        Err(FailureClass::Fatal) => {
+            // 客户端问题 → 渠道无责。
+            st.unauthorized_run = 0;
+            ChannelOutcome::Neutral
+        }
     }
-    (f64::from(weight) + 1.0) * st.slow_start * latency_quality(st)
+}
+
+/// 冷却时长 — phase0 `CooldownDuration`:
+/// `base + (max-base) × (1 - cooldown_alpha^prior_activations)`。
+fn cooldown_duration_ms(cfg: &HealthSetting, prior_activations: u32) -> u64 {
+    let base = cfg.cooldown_base_seconds;
+    let max = cfg.cooldown_max_seconds.max(base);
+    if base == 0 || max == 0 {
+        return 0;
+    }
+    let factor = 1.0 - cfg.cooldown_alpha.powi(prior_activations as i32);
+    let secs = base as f64 + (max - base) as f64 * factor;
+    let secs = secs.clamp(base as f64, max as f64);
+    (secs * 1000.0) as u64
+}
+
+/// 进入冷却 — phase0 `startCooldownLocked`:
+/// 时长由当前 cooldown_streak 决定, 激活后 streak+1, 重置请求计数进入 ramp。
+fn start_cooldown(st: &mut HealthState, cfg: &HealthSetting, now_ms: u64) {
+    let d = cooldown_duration_ms(cfg, st.cooldown_streak);
+    if d == 0 {
+        return;
+    }
+    st.cooldown_streak += 1;
+    st.failure_streak = 0;
+    st.request_count = 0;
+    st.ramp_exited = false;
+    st.cooldown_until_ms = now_ms + d;
+}
+
+/// 结束冷却 — phase0 `finishCooldownLocked`: 清除冷却, 武装 slow-start ramp。
+fn finish_cooldown(st: &mut HealthState) {
+    st.cooldown_until_ms = 0;
+    st.request_count = 0;
+    st.ramp_exited = false;
+    st.ramp_pending = true;
 }

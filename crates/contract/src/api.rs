@@ -30,9 +30,17 @@ pub struct Envelope<T> {
 
 impl<T> Envelope<T> {
     pub fn ok(data: T) -> Self {
-        Self { success: true, message: "ok".into(), data: Some(data) }
+        Self {
+            success: true,
+            message: "ok".into(),
+            data: Some(data),
+        }
     }
     pub fn err(message: impl Into<String>) -> Self {
-        Self { success: false, message: message.into(), data: None }
+        Self {
+            success: false,
+            message: message.into(),
+            data: None,
+        }
     }
 }

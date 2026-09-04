@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 pub struct SubscriptionPlanRecord {
     pub meta: SyncMeta,
     pub name: String,
-    pub price: String,      // NUMERIC 语义; JSON 传字符串避免浮点误差
-    pub currency: String,   // "CNY" | "USD"
+    pub price: String,    // NUMERIC 语义; JSON 传字符串避免浮点误差
+    pub currency: String, // "CNY" | "USD"
     pub duration_days: u32,
     pub quota: i64,
     /// 购买后用户升级到的分组; None = 不变。

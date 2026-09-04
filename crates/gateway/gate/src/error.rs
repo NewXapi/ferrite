@@ -1,10 +1,9 @@
 //! `error` —— 拒绝原因 + OpenAI 风格 4xx 响应体
 
-use thiserror::Error;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::body::Body;
 use serde_json::json;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum Rejection {
@@ -73,16 +72,44 @@ pub fn rejection_to_response(rej: Rejection) -> Response {
         TokenExpired => (StatusCode::UNAUTHORIZED, "token_expired", rej.to_string()),
         UserNotFound => (StatusCode::UNAUTHORIZED, "user_not_found", rej.to_string()),
         UserDisabled => (StatusCode::FORBIDDEN, "user_disabled", rej.to_string()),
-        TokenAuthVersionMismatch => (StatusCode::UNAUTHORIZED, "auth_version_mismatch", rej.to_string()),
+        TokenAuthVersionMismatch => (
+            StatusCode::UNAUTHORIZED,
+            "auth_version_mismatch",
+            rej.to_string(),
+        ),
         IpNotAllowed => (StatusCode::FORBIDDEN, "ip_not_allowed", rej.to_string()),
-        AuthSkipped => (StatusCode::INTERNAL_SERVER_ERROR, "internal", rej.to_string()),
-        InsufficientQuota { .. } => (StatusCode::PAYMENT_REQUIRED, "insufficient_quota", rej.to_string()),
-        RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited", rej.to_string()),
-        ModelNotSpecified => (StatusCode::BAD_REQUEST, "model_not_specified", rej.to_string()),
+        AuthSkipped => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            rej.to_string(),
+        ),
+        InsufficientQuota { .. } => (
+            StatusCode::PAYMENT_REQUIRED,
+            "insufficient_quota",
+            rej.to_string(),
+        ),
+        RateLimited => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            rej.to_string(),
+        ),
+        ModelNotSpecified => (
+            StatusCode::BAD_REQUEST,
+            "model_not_specified",
+            rej.to_string(),
+        ),
         ModelForbidden { .. } => (StatusCode::FORBIDDEN, "model_forbidden", rej.to_string()),
         Graylisted => (StatusCode::TOO_MANY_REQUESTS, "graylisted", rej.to_string()),
-        ConcurrencyExhausted => (StatusCode::TOO_MANY_REQUESTS, "concurrency_exhausted", rej.to_string()),
-        PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large", rej.to_string()),
+        ConcurrencyExhausted => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "concurrency_exhausted",
+            rej.to_string(),
+        ),
+        PayloadTooLarge => (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+            rej.to_string(),
+        ),
     };
 
     let body = json!({

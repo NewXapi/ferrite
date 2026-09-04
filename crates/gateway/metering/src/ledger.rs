@@ -17,7 +17,12 @@ pub struct Hold {
 /// 内存账本 trait: prehold/settle/release 必须原子 (DashMap + per-user 锁)。
 pub trait Ledger: Send + Sync {
     /// 预扣: 余额位 -= estimated; 不足 → Insufficient。
-    fn prehold(&self, user_key: &str, token_key: &str, estimated: i64) -> Result<Hold, Insufficient>;
+    fn prehold(
+        &self,
+        user_key: &str,
+        token_key: &str,
+        estimated: i64,
+    ) -> Result<Hold, Insufficient>;
     /// 结算: 退回 (estimated - actual) 差额; actual > 预估时补扣。
     /// 返回净差额 (负 = 用户被补扣)。
     fn settle(&self, hold: &Hold, actual: i64) -> i64;

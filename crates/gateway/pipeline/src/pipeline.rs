@@ -10,11 +10,11 @@
 //! let resp = pipe.run(ctx).await?;
 //! ```
 
-use std::sync::Arc;
-use http::Response;
+use crate::ctx::RequestCtx;
+use crate::stage::{Stage, StageError, StageOutcome};
 use axum::body::Body;
-use crate::ctx::{RequestCtx, StageOutcome};
-use crate::stage::{Stage, StageError};
+use http::Response;
+use std::sync::Arc;
 
 /// 链式 stage 容器
 pub struct Pipeline {
