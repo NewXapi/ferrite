@@ -56,15 +56,11 @@ fn subdir(root: &Path, api_id: &str) -> Result<PathBuf, PresetError> {
 /// 预设文件路径：`<subdir>/<sanitize(name)>.json`。
 fn preset_path(root: &Path, api_id: &str, name: &str) -> Result<PathBuf, PresetError> {
     let dir = subdir(root, api_id)?;
+    // `join_checked` 把「清洗文件名」与「确认未逃出父目录」合成一步，避免两处
+    // 校验各自演化后出现缝隙。先清洗裸 `name`，再补后缀：若把 `.json` 拼进去
+    // 之后才清洗，`name` 里的分隔符会先污染整个字符串。
     let safe = storage::sanitize_name(name)?;
-    let path = dir.join(format!("{safe}.json"));
-    // ponytail: `sanitize_name` 已挡掉分隔符与 `..`；这里再确认路径未逃出子目录。
-    if !storage::is_under(&dir, &path) {
-        return Err(PresetError::Storage(StorageError::PathEscape(
-            path.display().to_string(),
-        )));
-    }
-    Ok(path)
+    Ok(storage::join_checked(&dir, &format!("{safe}.json"))?)
 }
 
 /// 读单个预设。文件不存在走 `NotFound`。
