@@ -51,21 +51,19 @@ pub fn TavernApp() -> Element {
 
     let is_chat = section() == Section::Chat;
     let is_home = section() == Section::Home;
-
     rsx! {
         div {
             class: "relative flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 selection:bg-purple-900 selection:text-white font-sans",
             class: if theme_light() { "light" } else { "" },
-
             // 桌面端顶部胶囊导航条 (仅在非 Chat 且非全屏 Home 时显示)
             if !is_chat && !is_home {
                 header { class: "fixed top-3.5 left-1/2 z-30 -translate-x-1/2 pointer-events-auto hidden md:block",
                     div { class: "flex items-center gap-3 rounded-full border border-zinc-800/80 bg-zinc-900/90 px-4 py-1.5 shadow-2xl backdrop-blur-2xl transition-all",
-                        // 品牌区域: 点击 FERRITE 直接跳转到主页 Landing
+                        // 品牌区域: 点击 FERRITE 直接跳转到剧本库大厅
                         button {
                             class: "group flex items-center gap-1.5 pr-2 border-r border-zinc-800 transition-opacity hover:opacity-80",
-                            title: "点击返回 Tavern 官方品牌主页",
-                            onclick: move |_| section.set(Section::Home),
+                            title: "点击前往 Tavern 剧本大厅",
+                            onclick: move |_| section.set(Section::Characters),
                             span { class: "font-serif text-xs font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-pink-200 group-hover:from-white group-hover:to-purple-200",
                                 "FERRITE"
                             }

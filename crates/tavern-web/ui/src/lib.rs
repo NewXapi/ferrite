@@ -1,6 +1,6 @@
 //! tavern-ui — 酒馆公共组件。
 //!
-//! 对齐 SillyTavern 的交互件:头像、消息气泡(hover 操作栏)、swipe 选择器、
+//! 对齐 SillyTavern 的交互件:头像、消息气泡(点击菜单)、swipe 选择器、
 //! 确认弹窗、滑杆字段、表单字段、空状态。页面 crate 统一从这里取件。
 
 use dioxus::prelude::*;
@@ -23,12 +23,12 @@ pub fn Avatar(name: String, #[props(default)] src: Option<String>, #[props(defau
     }
 }
 
-/// 幽灵图标按钮:消息 hover 操作栏和卡片浮层用。
+/// 幽灵图标按钮:消息操作栏和卡片浮层用。
 #[component]
 pub fn IconButton(title: &'static str, onclick: EventHandler<MouseEvent>, children: Element) -> Element {
     rsx! {
         button {
-            class: "flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+            class: "flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
             title: "{title}",
             onclick: move |e| onclick.call(e),
             {children}
@@ -36,8 +36,10 @@ pub fn IconButton(title: &'static str, onclick: EventHandler<MouseEvent>, childr
     }
 }
 
-/// ST 式消息气泡:头像 + 名字/时间行 + 内容;hover 浮出操作栏(右上)。
-/// `mine` 用户消息右对齐反色;角色消息左对齐带头像。
+/// 升级款消息气泡:
+/// - 点击气泡弹出操作菜单 (对齐用户需求5)
+/// - 复制、编辑、分支切换、删除操作
+/// - `mine` 用户消息右对齐反色; 角色消息左对齐带头像
 #[component]
 pub fn MessageBubble(
     name: String,
@@ -46,29 +48,45 @@ pub fn MessageBubble(
     mine: bool,
     #[props(default)] avatar_src: Option<String>,
     #[props(default)] actions: Option<Element>,
+    #[props(default)] on_click: Option<EventHandler<MouseEvent>>,
+    #[props(default = false)] is_active_menu: bool,
 ) -> Element {
     let align = if mine { "flex-row-reverse" } else { "" };
     let name_align = if mine { "flex-row-reverse" } else { "" };
     let bubble = if mine {
-        "bg-zinc-100 text-zinc-900"
+        "bg-zinc-100 text-zinc-900 cursor-pointer selection:bg-purple-400 selection:text-zinc-950"
     } else {
-        "bg-zinc-800/80 text-zinc-100"
+        "bg-zinc-800/90 text-zinc-100 cursor-pointer selection:bg-purple-900 selection:text-white"
     };
+
     rsx! {
-        div { class: "group flex gap-2.5 {align}",
+        div { class: "relative flex gap-2.5 {align}",
             Avatar { name: name.clone(), src: avatar_src }
-            div { class: "flex min-w-0 max-w-[75%] flex-col gap-1",
+            div { class: "flex min-w-0 max-w-[80%] sm:max-w-[75%] flex-col gap-1",
                 div { class: "flex items-baseline gap-2 px-1 {name_align}",
                     span { class: "text-xs font-medium text-zinc-400", "{name}" }
                     span { class: "text-[10px] text-zinc-600", "{time}" }
                 }
-                div { class: "relative",
-                    div { class: "whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 {bubble}",
+                div {
+                    class: "relative group",
+                    div {
+                        class: "whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 {bubble} transition-all duration-200 hover:ring-1 hover:ring-purple-500/50 active:scale-[0.99]",
+                        onclick: move |e| {
+                            if let Some(cb) = &on_click {
+                                cb.call(e);
+                            }
+                        },
                         "{content}"
                     }
-                    if let Some(actions) = actions {
-                        div { class: "absolute -top-3 right-2 flex items-center gap-0.5 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 opacity-0 shadow-lg shadow-black/30 transition-opacity group-hover:opacity-100",
-                            {actions}
+
+                    // 点击气泡后弹出的精致悬浮操作条 (对齐图2需求)
+                    if is_active_menu {
+                        if let Some(actions) = actions {
+                            div {
+                                class: "absolute -top-10 right-0 z-30 flex items-center gap-1 rounded-xl border border-purple-500/40 bg-zinc-950/95 px-2 py-1 shadow-2xl shadow-black/80 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150",
+                                onclick: move |e| e.stop_propagation(),
+                                {actions}
+                            }
                         }
                     }
                 }
@@ -84,16 +102,16 @@ pub fn SwipePicker(index: usize, total: usize, on_prev: EventHandler<()>, on_nex
         return rsx! {};
     }
     rsx! {
-        div { class: "inline-flex items-center gap-1 text-xs text-zinc-500",
+        div { class: "inline-flex items-center gap-1 text-xs text-zinc-400 font-medium px-1",
             button {
-                class: "flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30",
+                class: "flex h-5 w-5 items-center justify-center rounded hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-30",
                 disabled: index == 0,
                 onclick: move |_| on_prev.call(()),
                 "‹"
             }
-            span { class: "tabular-nums", "{index + 1}/{total}" }
+            span { class: "tabular-nums text-[11px]", "{index + 1}/{total}" }
             button {
-                class: "flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30",
+                class: "flex h-5 w-5 items-center justify-center rounded hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-30",
                 disabled: index + 1 >= total,
                 onclick: move |_| on_next.call(()),
                 "›"
@@ -117,7 +135,7 @@ pub fn Dialog(
     rsx! {
         div { class: "fixed inset-0 z-50 flex items-center justify-center",
             div {
-                class: "absolute inset-0 bg-black/50",
+                class: "absolute inset-0 bg-black/60 backdrop-blur-sm",
                 onclick: move |_| on_cancel.call(()),
                 "aria-hidden": "true",
             }
