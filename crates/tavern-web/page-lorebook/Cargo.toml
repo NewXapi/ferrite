@@ -1,0 +1,11 @@
+[package]
+name = "tavern-page-lorebook"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-ui   = { path = "../ui" }
+
+dioxus      = { workspace = true }

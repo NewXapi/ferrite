@@ -1,0 +1,12 @@
+[application]
+name = "tavern-web-app"
+asset_dir = "assets"
+
+[web.app]
+title = "Tavern"
+
+[[web.proxy]]
+backend = "http://localhost:3000/tavern"
+
+[[web.proxy]]
+backend = "http://localhost:3000/v1"

@@ -11,3 +11,5 @@ tavern-state  = { path = "../state" }
 tavern-ui     = { path = "../ui" }
 
 dioxus = { workspace = true }
+tavern-page-personas = { path = "../page-personas" }
+tavern-page-lorebook = { path = "../page-lorebook" }

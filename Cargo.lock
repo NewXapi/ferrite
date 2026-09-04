@@ -4065,6 +4065,8 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "tavern-client",
+ "tavern-page-lorebook",
+ "tavern-page-personas",
  "tavern-state",
  "tavern-ui",
 ]
@@ -4076,6 +4078,29 @@ dependencies = [
  "dioxus",
  "tavern-client",
  "tavern-state",
+ "tavern-ui",
+]
+
+[[package]]
+name = "tavern-page-home"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+]
+
+[[package]]
+name = "tavern-page-lorebook"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "tavern-ui",
+]
+
+[[package]]
+name = "tavern-page-personas"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
  "tavern-ui",
 ]
 
@@ -4135,6 +4160,22 @@ name = "tavern-ui"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+]
+
+[[package]]
+name = "tavern-web-app"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "tavern-client",
+ "tavern-page-characters",
+ "tavern-page-chat",
+ "tavern-page-home",
+ "tavern-page-lorebook",
+ "tavern-page-personas",
+ "tavern-page-settings",
+ "tavern-state",
+ "tavern-ui",
 ]
 
 [[package]]
