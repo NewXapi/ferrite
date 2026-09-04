@@ -23,11 +23,11 @@ fn folder_for_known_and_unknown() {
     assert_eq!(tavern_presets::folder_for("sysprompt"), Some("sysprompt"));
     assert_eq!(tavern_presets::folder_for("reasoning"), Some("reasoning"));
     #[rustfmt::skip]
-    const KOBOLD: &str = "koboldAI Settings";
+    const KOBOLD: &str = "KoboldAI Settings";
     #[rustfmt::skip]
-    const NOVEL: &str = "novelAI Settings";
+    const NOVEL: &str = "NovelAI Settings";
     #[rustfmt::skip]
-    const TGWEBUI: &str = "textGen Settings";
+    const TGWEBUI: &str = "TextGen Settings";
     assert_eq!(tavern_presets::folder_for("kobold"), Some(KOBOLD));
     assert_eq!(tavern_presets::folder_for("novel"), Some(NOVEL));
     assert_eq!(
@@ -106,8 +106,8 @@ fn path_traversal_is_rejected() {
 fn restore_returns_empty_default_without_builtin() {
     let r = root("restore");
     let out = restore(&r, "openai", "anything");
-    assert_eq!(out["isDefault"], json!(false));
-    assert_eq!(out["preset"], json!({}));
+    assert!(!out.is_default);
+    assert_eq!(out.preset, json!({}));
 }
 
 #[test]
@@ -116,4 +116,31 @@ fn save_is_atomic_replacing_existing_content() {
     save(&r, "sysprompt", "sp", &json!({"v": 1})).unwrap();
     save(&r, "sysprompt", "sp", &json!({"v": 2})).unwrap();
     assert_eq!(load(&r, "sysprompt", "sp").unwrap(), json!({"v": 2}));
+}
+
+#[test]
+fn preset_dirs_match_sillytavern_layout() {
+    // ensure() 建出的目录必须与读写路径一致，否则 ST 数据导入后 list 为空。
+    let r = root("layout");
+    let dirs = tavern_storage::DataRoot::new(&r).user("default-user");
+    dirs.ensure().unwrap();
+    for api in ["openai", "kobold", "novel", "textgenerationwebui"] {
+        let folder = tavern_presets::folder_for(api).unwrap();
+        assert!(
+            dirs.root().join(folder).is_dir(),
+            "ensure() must create `{folder}` used by folder_for(`{api}`)"
+        );
+    }
+}
+
+#[test]
+fn list_skips_hidden_and_dangling_entries() {
+    let r = root("hidden");
+    save(&r, "instruct", "real", &json!({"a": 1})).unwrap();
+    let dir = r.join("instruct");
+    std::fs::write(dir.join(".hidden.json"), b"{}").unwrap();
+    std::os::unix::fs::symlink(dir.join("missing-target.json"), dir.join("dangling.json")).unwrap();
+
+    let got = list(&r, "instruct").unwrap();
+    assert_eq!(got, vec!["real".to_string()]);
 }

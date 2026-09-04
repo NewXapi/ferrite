@@ -29,11 +29,11 @@ pub enum PresetError {
 pub fn folder_for(api_id: &str) -> Option<&'static str> {
     // ponytail: 静态匹配避免堆分配；调用方拿到 `&'static str` 直接 `join`。
     #[rustfmt::skip]
-    const KOBOLD_DIR: &str = "koboldAI Settings";
+    const KOBOLD_DIR: &str = "KoboldAI Settings";
     #[rustfmt::skip]
-    const NOVEL_DIR: &str = "novelAI Settings";
+    const NOVEL_DIR: &str = "NovelAI Settings";
     #[rustfmt::skip]
-    const TGWEBUI_DIR: &str = "textGen Settings";
+    const TGWEBUI_DIR: &str = "TextGen Settings";
     match api_id {
         "openai" => Some("OpenAI Settings"),
         "instruct" => Some("instruct"),
@@ -100,7 +100,9 @@ pub fn delete(root: &Path, api_id: &str, name: &str) -> Result<(), PresetError> 
 
 /// 子目录内所有预设名（去掉 `.json`）。
 ///
-/// 无目录视作空列表；坏 JSON 文件被跳过（前端加字段不应让列表崩）。
+/// 无目录视作空列表；不可读目录项（悬空符号链接、权限不足）被跳过，
+/// 单个坏项不该让整个列表失败。点开头的隐藏文件与 `write_atomic`
+/// 崩溃残留的临时文件也不列出。
 pub fn list(root: &Path, api_id: &str) -> Result<Vec<String>, PresetError> {
     let dir = subdir(root, api_id)?;
     let mut out = Vec::new();
@@ -110,26 +112,47 @@ pub fn list(root: &Path, api_id: &str) -> Result<Vec<String>, PresetError> {
         Err(e) => return Err(e.into()),
     };
     for entry in entries {
-        let entry = entry?;
+        // ponytail: 单个不可读目录项不应让整个列表 500。
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
         // ponytail: `sanitize_name` 已经禁止分隔符；这里只剥后缀。
-        let stem = match path.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n,
-            None => continue,
+        let Some(stem) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
         };
-        let name = match stem.strip_suffix(".json") {
-            Some(n) => n,
-            None => continue,
+        let Some(name) = stem.strip_suffix(".json") else {
+            continue;
         };
+        // 隐藏文件与写入中途残留的临时文件不是预设。
+        if name.is_empty() || name.starts_with('.') {
+            continue;
+        }
         out.push(name.to_string());
     }
     out.sort();
     Ok(out)
 }
-/// 恢复「内置默认值」。MVP 没有内置预设 → 返回 `{ isDefault: false, preset: {} }`。
-pub fn restore(_root: &Path, _api_id: &str, _name: &str) -> Value {
-    serde_json::json!({ "isDefault": false, "preset": {} })
+/// 「恢复内置默认值」的结果。
+///
+/// 线格式与 SillyTavern `/api/presets/restore` 一致：`isDefault` + `preset`。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RestoredPreset {
+    /// 是否命中了内置默认预设
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+    /// 命中的默认预设内容；未命中为空对象
+    pub preset: Value,
+}
+
+/// 恢复「内置默认值」。本 crate 不附带内置预设 → 始终返回未命中。
+///
+/// 保留这个端点是为了让前端的「恢复默认」按钮有稳定契约；一旦引入内置预设，
+/// 只需在此查表并返回 `is_default: true`。
+pub fn restore(_root: &Path, _api_id: &str, _name: &str) -> RestoredPreset {
+    RestoredPreset {
+        is_default: false,
+        preset: Value::Object(serde_json::Map::new()),
+    }
 }

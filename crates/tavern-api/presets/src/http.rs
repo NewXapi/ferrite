@@ -61,18 +61,18 @@ pub struct SaveResponse {
     pub name: String,
 }
 
-#[derive(Serialize)]
-pub struct RestoreResponse {
-    #[serde(rename = "isDefault")]
-    pub is_default: bool,
-    pub preset: Value,
-}
-
 /// 业务错误 → HTTP。
 fn to_response(e: PresetError) -> (StatusCode, String) {
     match e {
         PresetError::NotFound(_) => (StatusCode::NOT_FOUND, e.to_string()),
-        _ => (StatusCode::BAD_REQUEST, e.to_string()),
+        // 参数问题归客户端。
+        PresetError::UnknownApiId(_) | PresetError::Storage(_) => {
+            (StatusCode::BAD_REQUEST, e.to_string())
+        }
+        // 磁盘故障与盘上坏 JSON 是服务端问题，前端不该当成参数错误重试。
+        PresetError::Io(_) | PresetError::Json(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        }
     }
 }
 
@@ -109,10 +109,5 @@ async fn restore_handler(
     State(st): State<Arc<PresetsState>>,
     Json(body): Json<RestoreBody>,
 ) -> impl IntoResponse {
-    let out = restore(st.dirs.root(), &body.api_id, &body.name);
-    Json(RestoreResponse {
-        is_default: out["isDefault"].as_bool().unwrap_or(false),
-        preset: out["preset"].clone(),
-    })
-    .into_response()
+    Json(restore(st.dirs.root(), &body.api_id, &body.name)).into_response()
 }
