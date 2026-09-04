@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "apps/api",
     "apps/admin-web",
+    "apps/gateway",
     "crates/contract",
     "crates/gateway/dispatch",
     "crates/gateway/forward",
