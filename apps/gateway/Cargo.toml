@@ -1,0 +1,45 @@
+[package]
+name = "gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# 网关数据面进程 — 只做组装，不做协议/调度/准入判断。
+# 协议转换在 protocol-bridge；调度在 dispatch；准入在 gate；转发在 forward。
+
+[dependencies]
+# 数据面 crate
+gateway-pipeline = { path = "../../crates/gateway/pipeline" }
+gateway-gate = { path = "../../crates/gateway/gate" }
+dispatch = { path = "../../crates/gateway/dispatch" }
+forward = { path = "../../crates/gateway/forward" }
+gateway-protocol-bridge = { path = "../../crates/gateway/protocol-bridge" }
+contract = { path = "../../crates/contract" }
+
+# 运行时 / HTTP
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
+axum = { workspace = true }
+http = { workspace = true }
+tower-http = { workspace = true, features = ["cors", "trace", "limit"] }
+reqwest = { workspace = true }
+
+# 配置 / 序列化
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+arc-swap = { workspace = true }
+
+# 可观测
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json", "registry"] }
+tracing-appender = { workspace = true }
+tracing-log = { workspace = true }
+
+# 工具
+bytes = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v7"] }
+thiserror = { workspace = true }
+anyhow = "1"
+futures-util = { workspace = true }
