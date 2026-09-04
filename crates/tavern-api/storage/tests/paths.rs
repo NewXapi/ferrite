@@ -46,5 +46,8 @@ fn user_dirs_layout() {
     let root = DataRoot::new("/data");
     let u = root.user("default-user");
     assert_eq!(u.characters(), Path::new("/data/default-user/characters"));
-    assert_eq!(u.settings_file(), Path::new("/data/default-user/settings.json"));
+    assert_eq!(
+        u.settings_file(),
+        Path::new("/data/default-user/settings.json")
+    );
 }

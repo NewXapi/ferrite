@@ -62,10 +62,27 @@ impl UserDirs {
     pub fn secrets_file(&self) -> PathBuf {
         self.root.join("secrets.json")
     }
+    /// 预设子目录。`apiId` 在 `tavern-presets` 里映射到一个固定名字；这里只认已映射的。
+    pub fn presets_subdir(&self, name: &str) -> PathBuf {
+        self.root.join(name)
+    }
 
     /// 建齐所有目录。启动时调一次。
     pub fn ensure(&self) -> Result<(), StorageError> {
-        for d in [self.root.clone(), self.characters(), self.chats(), self.avatars()] {
+        for d in [
+            self.root.clone(),
+            self.characters(),
+            self.chats(),
+            self.avatars(),
+            self.presets_subdir("OpenAI Settings"),
+            self.presets_subdir("instruct"),
+            self.presets_subdir("context"),
+            self.presets_subdir("sysprompt"),
+            self.presets_subdir("reasoning"),
+            self.presets_subdir("KoboldAI Settings"),
+            self.presets_subdir("NovelAI Settings"),
+            self.presets_subdir("TextGen Settings"),
+        ] {
             std::fs::create_dir_all(d)?;
         }
         Ok(())
@@ -90,7 +107,10 @@ pub fn sanitize_name(name: &str) -> Result<String, StorageError> {
 ///
 /// 纯词法判断，不碰文件系统：`..` 会被拒，不依赖路径是否已存在。
 pub fn is_under(parent: &Path, child: &Path) -> bool {
-    if child.components().any(|c| matches!(c, Component::ParentDir)) {
+    if child
+        .components()
+        .any(|c| matches!(c, Component::ParentDir))
+    {
         return false;
     }
     child.starts_with(parent)
