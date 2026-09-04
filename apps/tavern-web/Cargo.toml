@@ -28,3 +28,4 @@ tavern-page-settings  = { path = "../../crates/tavern-web/page-settings" }
 tavern-page-home      = { path = "../../crates/tavern-web/page-home" }
 tavern-page-personas  = { path = "../../crates/tavern-web/page-personas" }
 tavern-page-lorebook  = { path = "../../crates/tavern-web/page-lorebook" }
+shared-web           = { path = "../../crates/shared-web" }

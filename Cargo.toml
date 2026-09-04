@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "apps/api",
     "apps/admin-web",
     "apps/tavern-web",
     "crates/contract",
@@ -46,6 +47,7 @@ members = [
     "crates/tavern-web/page-home",
     "crates/tavern-web/page-personas",
     "crates/tavern-web/page-lorebook",
+    "crates/shared-web",
     "crates/harness/core",
     "crates/harness/prompt",
     "crates/harness/tools",

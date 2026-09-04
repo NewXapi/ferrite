@@ -40,3 +40,4 @@ tavern-chats      = { path = "../../crates/tavern-api/chats" }
 tavern-settings   = { path = "../../crates/tavern-api/settings" }
 tavern-secrets    = { path = "../../crates/tavern-api/secrets" }
 tavern-generate   = { path = "../../crates/tavern-api/generate" }
+auth              = { path = "../../crates/admin-api/auth" }

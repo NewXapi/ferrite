@@ -5,15 +5,12 @@
 //! 2. 导航栏完整包含: 剧本库 / 互动剧情 / 创作中心 / 参数设置
 //! 3. 移动端/平板响应式升级 (对齐 refer 移动端参考图):
 //!    - 手机端底部常驻原生导航栏 (首页/剧本库/剧情/创作/设置)
-//!    - 桌面端沿用轻量悬浮胶囊导航
-//! 4. 互动剧情下右侧时间线大纲支持平滑定位与无滚动条防塌陷
-
 use dioxus::prelude::*;
+use shared_web::{AuthModal, UserBadge};
 use tavern_page_characters::{CharactersPage, StudioPage};
 use tavern_page_chat::ChatPage;
 use tavern_page_home::HomePage;
 use tavern_page_settings::SettingsPage;
-
 /// Top-level tavern sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
@@ -48,6 +45,7 @@ pub const NAV_SECTIONS: [Section; 4] = [
 pub fn TavernApp() -> Element {
     let mut section = use_signal(|| Section::Characters); // 默认直接进入 5 栏剧本库大厅
     let mut theme_light = use_signal(|| false);
+    let mut auth_modal_open = use_signal(|| false);
 
     let is_chat = section() == Section::Chat;
     let is_home = section() == Section::Home;
@@ -88,6 +86,9 @@ pub fn TavernApp() -> Element {
                                     }
                                 }
                             }
+                        }
+                        UserBadge {
+                            on_open_login: move |_| auth_modal_open.set(true),
                         }
                         button {
                             class: "flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 text-xs",
@@ -173,6 +174,17 @@ pub fn TavernApp() -> Element {
                     span { class: "text-sm", "⚙️" }
                     span { class: "text-[10px] font-medium", "设置" }
                 }
+            }
+
+            // 通用认证弹窗 (对齐 shared-web 规范)
+            AuthModal {
+                open: auth_modal_open(),
+                on_close: move |_| auth_modal_open.set(false),
+                on_success: move |_user| {
+                    // 登录成功直接导向剧情库
+                    section.set(Section::Characters);
+                    auth_modal_open.set(false);
+                },
             }
         }
     }

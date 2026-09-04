@@ -65,6 +65,7 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "auth",
  "axum",
  "bytes",
  "chrono",
@@ -1634,6 +1635,7 @@ dependencies = [
  "async-trait",
  "axum",
  "bytes",
+ "chrono",
  "contract",
  "gateway-pipeline",
  "http",
@@ -1641,6 +1643,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1819,11 +1822,11 @@ dependencies = [
 name = "harness-runtime"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures-util",
  "harness-core",
  "harness-prompt",
  "harness-tools",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -3555,6 +3558,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared-web"
+version = "0.1.0"
+dependencies = [
+ "contract",
+ "dioxus",
+ "gloo-net",
+ "serde",
+ "serde_json",
+ "tavern-ui",
+ "web-sys",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4115,6 +4131,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tavern-presets"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tavern-storage",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "tavern-secrets"
 version = "0.1.0"
 dependencies = [
@@ -4167,6 +4194,7 @@ name = "tavern-web-app"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "shared-web",
  "tavern-client",
  "tavern-page-characters",
  "tavern-page-chat",
