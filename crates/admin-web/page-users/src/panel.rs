@@ -306,14 +306,19 @@ fn UserCard(
         div {
             class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
 
-            // 头部:头像字母圈 + 名称
+            // 头部:头像字母圈 + 名称 + ID
             div { class: "flex items-start gap-3",
                 div {
                     class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200",
                     "{initial}"
                 }
-                div { class: "min-w-0",
-                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
+                div { class: "min-w-0 flex-1",
+                    div { class: "flex items-center justify-between gap-2",
+                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
+                        span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+                            "#{user.id}"
+                        }
+                    }
                     p { class: "mt-0.5 truncate text-[11px] text-zinc-500", "{user.display_name}" }
                 }
             }

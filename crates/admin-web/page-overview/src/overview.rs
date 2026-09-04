@@ -1,4 +1,3 @@
-use chrono::{Datelike, Duration, Local, NaiveDate};
 use dioxus::prelude::*;
 
 use crate::api;
@@ -82,11 +81,6 @@ pub fn OverviewPanel() -> Element {
                 }
             }
 
-            // 面板区: 同一套栏数, 热力图按时间范围占 3/2/1 栏
-            section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-5",
-            ActivityGrid {}
-            // old Breakdowns removed in favor of Top-10 lists
-        }
         }
     }
 }
@@ -210,22 +204,34 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                     rsx! {
                                         div {
                                             class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
-                                            // 整列鼠标控制：基于柱子本身或光标位置做居中计算
-                                            onmouseenter: {
-                                                let c_label = label.clone();
-                                                let c_rows = col_rows.clone();
-                                                move |evt| {
-                                                    let p = evt.data.client_coordinates();
-                                                    tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
-                                                }
-                                            },
                                             onmouseleave: move |_| tip.set(None),
                                             // 悬停整列: 通顶全高半透明背景光柱
                                             div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
-                                            
-                                            // 直方图容器
+
+                                            // 顶层无色透明区: 悬停时显示该列全部明细
                                             div {
-                                                class: "pointer-events-none relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
+                                                class: "pointer-events-auto flex-1 w-full cursor-pointer",
+                                                onmouseenter: {
+                                                    let c_label = label.clone();
+                                                    let c_rows = col_rows.clone();
+                                                    move |evt| {
+                                                        let p = evt.data.client_coordinates();
+                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
+                                                    }
+                                                },
+                                                onmousemove: {
+                                                    let c_label = label.clone();
+                                                    let c_rows = col_rows.clone();
+                                                    move |evt| {
+                                                        let p = evt.data.client_coordinates();
+                                                        tip.set(Some(TrendTip::Column(p.x, p.y, c_label.clone(), c_rows.clone(), col_total)));
+                                                    }
+                                                },
+                                            }
+
+                                            // 直方图有色堆叠容器
+                                            div {
+                                                class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
                                                 style: "height: {hpct:.1}%",
                                                 for (i, v) in b.per_model.iter().enumerate() {
                                                     {
@@ -235,14 +241,10 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                         let seg_name_2 = names[i].to_string();
                                                         let seg_color = MODEL_COLORS[i % MODEL_COLORS.len()];
                                                         let seg_val = *v;
-                                                        let col_label_restore = label.clone();
-                                                        let col_rows_restore = col_rows.clone();
-                                                        
                                                         rsx! {
                                                             div {
                                                                 class: "pointer-events-auto w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
                                                                 style: "height: {(v / b.total * 100.0):.1}%; background: {seg_color}",
-                                                                // 精确单色块模式: 悬停时只显示该单一模型
                                                                 onmouseenter: move |evt| {
                                                                     evt.stop_propagation();
                                                                     let p = evt.data.client_coordinates();
@@ -252,11 +254,6 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
                                                                     evt.stop_propagation();
                                                                     let p = evt.data.client_coordinates();
                                                                     tip.set(Some(TrendTip::Segment(p.x, p.y, seg_label_2.clone(), seg_name_2.clone(), seg_color, seg_val)));
-                                                                },
-                                                                onmouseleave: move |evt| {
-                                                                    evt.stop_propagation();
-                                                                    let p = evt.data.client_coordinates();
-                                                                    tip.set(Some(TrendTip::Column(p.x, p.y, col_label_restore.clone(), col_rows_restore.clone(), col_total)));
                                                                 },
                                                             }
                                                         }
@@ -355,216 +352,23 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
 /// 悬浮卡通用外框组件，保持单色块和整列的阴影、圆角、背景和内边距完全统一
 #[component]
 fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
-    // 精确吸附：以鼠标指针为基准，默认在指针右侧居中弹出（如果太靠右侧则往左侧弹出）
-    let transform = if x > 550.0 {
-        "translate(calc(-100% - 14px), -50%)"
+    // 智能定位：
+    // 1. 水平翻转：x > 260px 时往左侧展开，否则往右侧展开，防止在手机与窄屏边缘被右边框裁切。
+    // 2. 垂直修正：避免被顶部导航遮挡。
+    let transform = if x > 260.0 {
+        "translate(calc(-100% - 12px), -50%)"
     } else {
-        "translate(14px, -50%)"
+        "translate(12px, -50%)"
     };
+    let clamped_y = y.max(80.0);
     let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 whitespace-nowrap rounded-lg bg-zinc-900/95 py-2.5 px-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class}",
-            style: "left: {x}px; top: {y}px; transform: {transform}",
+            class: "pointer-events-none fixed z-50 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",
+            style: "left: {x}px; top: {clamped_y}px; transform: {transform}; max-width: calc(100vw - 24px);",
             p { class: "mb-1.5 text-xs font-semibold text-zinc-400", "{label}" }
             {children}
         }
     }
 }
 
-struct DayCell {
-    in_range: bool,
-    level: u8,
-    date: String,
-    tokens: String,
-    cost: String,
-}
-
-/// Token activity heatmap: GitHub-style calendar, responsive (no scrollbar).
-/// Cells are square via aspect-square, week columns flex-1 to fill the panel.
-/// Range tabs (全年 / 半年 / 近3月) sit centered under the month labels; the
-/// panel's grid span shrinks with the range (xl: 3栏 → 2栏 → 1栏).
-#[component]
-fn ActivityGrid() -> Element {
-
-    let mut range = use_signal(|| 0u8);
-
-    let today = Local::now().date_naive();
-    // 全年 364d / 半年 182d / 近3月 91d, aligned back to Sunday for full weeks.
-    let days = match range() {
-        0 => 364,
-        1 => 182,
-        _ => 91,
-    };
-    let first = today - Duration::days(days);
-    let aligned = first - Duration::days(first.weekday().num_days_from_sunday() as i64);
-    let n_weeks = ((today - aligned).num_days() / 7 + 1) as usize;
-
-    // 5栏网格里的占位: 3个月是最小单位 (1栏), 半年 2栏, 全年 3栏。
-    let span = match range() {
-        0 => "md:col-span-2 xl:col-span-3",
-        1 => "md:col-span-2 xl:col-span-2",
-        _ => "xl:col-span-1",
-    };
-
-    let weeks: Vec<Vec<DayCell>> = (0..n_weeks)
-        .map(|w| {
-            (0..7)
-                .map(|r| {
-                    let day = aligned + Duration::days((w * 7 + r) as i64);
-                    let in_range = day >= first && day <= today;
-                    let (level, tokens, cost) = day_mock(day);
-                    DayCell {
-                        in_range,
-                        level,
-                        date: day.format("%b %-d, %Y").to_string(),
-                        tokens,
-                        cost,
-                    }
-                })
-                .collect()
-        })
-        .collect();
-
-    // Month labels: the week containing the 1st of a month carries its label;
-    // positions are percentages so they follow the flex-stretched columns.
-    let month_labels: Vec<(usize, String)> = weeks
-        .iter()
-        .enumerate()
-        .filter_map(|(w, _col)| {
-            let day = aligned + Duration::days((w * 7) as i64);
-            (0..7)
-                .map(|r| day + Duration::days(r as i64))
-                .find(|d| d.day() == 1)
-                .map(|d| (w, format!("{}\u{6708}", d.month())))
-        })
-        .collect();
-
-    // One shared tooltip; fixed positioning is immune to any scroll offset.
-    // ponytail: single tooltip + full re-render per hover, fine at mock scale.
-    let mut tip = use_signal(|| None::<(f64, f64, String, String, String)>);
-
-    let ranges = [
-        (0u8, "\u{5168}\u{5E74}"),
-        (1u8, "\u{534A}\u{5E74}"),
-        (2u8, "\u{8FD1}3\u{4E2A}\u{6708}"),
-    ];
-
-    rsx! {
-        section { class: "self-start {span} rounded-xl border border-zinc-800 bg-zinc-900 p-5",
-            h2 { class: "mb-4 text-sm font-medium text-zinc-300", "Token \u{6D3B}\u{52A8}" }
-            div { class: "relative",
-                div {
-                    div { class: "flex", style: "gap: 3px",
-                        for week in weeks {
-                            div { class: "flex flex-1 flex-col", style: "gap: 3px",
-                                for day in week {
-                                    if day.in_range {
-                                        {
-                                            let date = day.date.clone();
-                                            let tokens = day.tokens.clone();
-                                            let cost = day.cost.clone();
-                                            rsx! {
-                                                div {
-                                                    class: "relative aspect-square w-full cursor-pointer rounded-[2px] transition-all duration-300 hover:ring-2 hover:ring-zinc-400 hover:scale-[1.2] hover:z-20 {heat_shade(day.level)}",
-                                                    onmouseenter: move |evt| {
-                                                        let p = evt.data.client_coordinates();
-                                                        tip.set(Some((p.x, p.y, date.clone(), tokens.clone(), cost.clone())));
-                                                    },
-                                                    onmouseleave: move |_| tip.set(None),
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        div { class: "aspect-square w-full opacity-0" }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    div { class: "relative mt-2 h-4 text-xs text-zinc-600",
-                        for (w, label) in month_labels {
-                            span {
-                                class: "absolute",
-                                style: "left: {(w as f64 / n_weeks as f64) * 100.0:.2}%",
-                                "{label}"
-                            }
-                        }
-                    }
-                }
-                if let Some((x, y, date, tokens, cost)) = tip() {
-                    div {
-                        class: "pointer-events-none fixed z-50 whitespace-nowrap rounded-lg border border-zinc-700 bg-zinc-950/95 px-3 py-2 shadow-xl",
-                        style: "left: {x}px; top: {y - 10.0}px; transform: translate(-50%, -100%)",
-                        p { class: "text-xs font-semibold text-zinc-100", "{date}" }
-                        p { class: "mt-1 flex justify-between gap-4 text-xs text-zinc-400",
-                            span { "Tokens" }
-                            span { class: "text-zinc-300", "{tokens}" }
-                        }
-                        p { class: "flex justify-between gap-4 text-xs text-zinc-400",
-                            span { "Cost" }
-                            span { class: "text-zinc-300", "{cost}" }
-                        }
-                    }
-                }
-            }
-            // Range switcher: pill-style segmented dots (横向版), centered.
-            div { class: "mt-4 flex justify-center",
-                div { class: "flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 px-3 py-2",
-                    for (id, name) in ranges {
-                        button {
-                            class: if range() == id {
-                                "h-2 w-5 rounded-full bg-zinc-100 transition-all"
-                            } else {
-                                "h-2 w-2 rounded-full bg-zinc-700 transition-all hover:bg-zinc-500"
-                            },
-                            "aria-label": "{name}",
-                            title: "{name}",
-                            onclick: move |_| range.set(id),
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-/// Deterministic per-day mock: activity level 0..=4 plus display values.
-fn day_mock(d: NaiveDate) -> (u8, String, String) {
-    let s = d.num_days_from_ce() as u64;
-    let mut h = s.wrapping_mul(0x517cc1b727220a95);
-    h ^= h >> 32;
-    let r = (h % 100) as u8;
-    let level = match r {
-        0..=24 => 0,
-        25..=54 => 1,
-        55..=79 => 2,
-        80..=93 => 3,
-        _ => 4,
-    };
-    let tokens = match level {
-        0 => "0",
-        1 => "12.4k",
-        2 => "86.1k",
-        3 => "342.8k",
-        _ => "1.24m",
-    };
-    let cost = match level {
-        0 => "$0.00",
-        1 => "$0.02",
-        2 => "$0.14",
-        3 => "$0.58",
-        _ => "$2.10",
-    };
-    (level, tokens.to_string(), cost.to_string())
-}
-
-/// Tailwind background class per activity level (0..=4).
-fn heat_shade(level: u8) -> &'static str {
-    match level {
-        0 => "bg-zinc-800/40",
-        1 => "bg-zinc-700",
-        2 => "bg-zinc-500",
-        3 => "bg-zinc-300",
-        _ => "bg-zinc-100",
-    }
-}
