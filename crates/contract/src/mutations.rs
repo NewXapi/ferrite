@@ -39,16 +39,32 @@ pub enum SyncDomain {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum MutationPayload {
-    UpsertChannel { record: crate::records::ChannelRecord },
-    UpsertGroup { record: crate::records::GroupRecord },
-    UpsertRouteUnit { record: crate::records::RouteUnitRecord },
-    UpsertUser { record: crate::records::UserRecord },
-    UpsertToken { record: crate::records::TokenRecord },
+    UpsertChannel {
+        record: crate::records::ChannelRecord,
+    },
+    UpsertGroup {
+        record: crate::records::GroupRecord,
+    },
+    UpsertRouteUnit {
+        record: crate::records::RouteUnitRecord,
+    },
+    UpsertUser {
+        record: crate::records::UserRecord,
+    },
+    UpsertToken {
+        record: crate::records::TokenRecord,
+    },
     /// 用量/健康不做 upsert 语义 — 它们是 append-only 事件, 直接携带记录。
-    UsageEvent { record: crate::records::UsageEventRecord },
-    HealthObservation { record: crate::records::HealthObservationRecord },
+    UsageEvent {
+        record: crate::records::UsageEventRecord,
+    },
+    HealthObservation {
+        record: crate::records::HealthObservationRecord,
+    },
     /// 逻辑删除: 只带 key, sync 层负责各存储的 tombstone 编码。
-    Delete { key: String },
+    Delete {
+        key: String,
+    },
 }
 
 /// 一条变更 = 幂等投递的最小单元。

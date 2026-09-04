@@ -1,11 +1,11 @@
-//! `stage` —— Stage trait + 错误 / 返回值定义
+//! `stage` —— Stage trait + 返回值 / 错误定义
 //!
 //! 所有具体 stage（AdmissionStage / DispatchStage / ForwardStage / ProtocolBridgeStage）
 //! 都实现本 trait。
 
+use crate::ctx::{PipeStream, RequestCtx};
 use async_trait::async_trait;
 use thiserror::Error;
-use crate::ctx::{RequestCtx, StageOutcome, UpstreamResponse};
 
 /// 链路上的一个处理节点
 #[async_trait]
@@ -15,6 +15,17 @@ pub trait Stage: Send + Sync {
 
     /// 处理逻辑。返回 `Err` 即短路。
     async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, StageError>;
+}
+
+/// Stage 处理结果三态
+#[derive(Debug)]
+pub enum StageOutcome {
+    /// 继续执行下一 stage
+    Continue,
+    /// 直接返回响应（认证拒绝 / 配额不足 / 静态错误）
+    ShortCircuit(http::Response<axum::body::Body>),
+    /// 流式响应，终止链
+    Stream(PipeStream),
 }
 
 /// 上游调用错误（hyper / 解析 / 业务失败）
@@ -46,6 +57,10 @@ pub enum StageError {
 
     #[error("no available route")]
     NoRoute,
+
+    /// catalog 快照未就绪 / 服务暂不可用 (fail-closed 503)。
+    #[error("service not ready")]
+    NotReady,
 
     #[error("payload too large")]
     PayloadTooLarge,

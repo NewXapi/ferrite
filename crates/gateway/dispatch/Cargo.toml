@@ -9,9 +9,22 @@ publish.workspace = true
 # 输入: catalog 快照 (只读) + 本地健康观测; 输出: 一个可转发的目标。
 
 [dependencies]
-contract = { path = "../../contract" }
+gateway-pipeline = { path = "../pipeline" }
+contract        = { path = "../../contract" }
 serde    = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+async-trait = "0.1"
 rand     = { workspace = true }
 chrono   = { workspace = true }
+[dev-dependencies]
+tokio = { workspace = true }
+gateway-gate = { path = "../gate" }
+forward = { path = "../forward" }
+gateway-protocol-bridge = { path = "../protocol-bridge" }
+bytes = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+uuid = { workspace = true }
+arc-swap = { workspace = true }
+serde_json = { workspace = true }

@@ -1,26 +1,28 @@
-//! `gateway-protocol-bridge` —— 数据面"协议出口" Stage
+//! `gateway-protocol-bridge` —— 数据面协议适配层
 //!
-//! 把上游响应转换为客户端期望的协议（OpenAI / Anthropic / Gemini）。
-//!
-//! ## 与 `crates/protocol` 的边界
-//!
-//! | crate | 角色 |
-//! |-------|------|
-//! | `crates/protocol` | 纯函数 codec 库 (结构体 ↔ 结构体) |
-//! | `gateway-protocol-bridge` | gateway 内部 stage (调 protocol, 不知道 HTTP) |
+//! 厂商协议兼容的集中地。对标 new-api `relay/channel/*/adaptor.go`：
+//! 每个厂商一个适配器，负责 `客户端协议 ↔ 厂商协议` 的双向转换（接口兼容）。
 //!
 //! ## 职责
 //!
-//! - 把 `ctx.upstream` (Forward 写入的原始上游响应) 通过 `CodecRegistry` 转换为客户端协议
-//! - 把 `NormalizedError` 转换为各协议错误形状
-//! - 流式响应的事件级重组（不做 SSE 帧扫描，那是 `gateway-forward` 职责）
+//! - [`adaptor`] — 厂商适配器注册表：Codec trait（请求/响应字节转换）+ 厂商实现
+//! - [`sse`] — SSE 帧扫描（事件边界 / keepalive / 终止），源自原 protocol crate
+//! - [`error_mapping`] — `contract::error::NormalizedError` → 各协议错误形状
+//! - [`stage`] — pipeline Stage 4：把上游响应经适配器转为客户端协议
+//!
+//! ## 与其他 crate 的边界
+//!
+//! | crate | 角色 |
+//! |-------|------|
+//! | `gateway-forward` | IO 编排（发上游/流回传），不碰协议转换 |
+//! | `gateway-protocol-bridge` | 协议转换（纯函数，无 IO） |
+//! | `contract::error::NormalizedError` | 跨 crate 单一错误协议 |
 
-#![doc = include_str!("README.md")]
-
-pub mod codec;
+pub mod adaptor;
 pub mod error_mapping;
+pub mod sse;
 pub mod stage;
 
-pub use codec::CodecRegistry;
+pub use adaptor::{AdaptorRegistry, Codec, Protocol};
 pub use error_mapping::map_error;
 pub use stage::ProtocolBridgeStage;

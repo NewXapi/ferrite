@@ -23,3 +23,6 @@ thiserror = { workspace = true }
 anyhow = "1"
 async-trait = "0.1"
 futures-util = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

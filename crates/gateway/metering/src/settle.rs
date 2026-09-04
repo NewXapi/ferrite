@@ -3,11 +3,11 @@
 //! 调用方: dispatch::retry 的成功/失败出口。结算后事件进 store::UsageStore
 //! (edge = 本地 WAL append; 不阻塞转发)。
 
-use contract::records::{SyncMeta, UsageEventRecord};
 use contract::SCHEMA_VERSION;
+use contract::records::{SyncMeta, UsageEventRecord};
 
 use crate::ledger::Hold;
-use crate::pricing::{price_of, PriceTable};
+use crate::pricing::{PriceTable, price_of};
 use crate::scanner::TokenCounts;
 
 /// 生成并落盘一条 UsageEvent。
@@ -20,12 +20,15 @@ pub fn settle_event(
     hold: &Hold,
     _price_table: &dyn PriceTable,
 ) -> UsageEventRecord {
-    let _ = price_of(counts, &super::pricing::ModelPrice {
-        input: 0.0,
-        output: 0.0,
-        cache: 0.0,
-        group_multiplier: 1.0,
-    });
+    let _ = price_of(
+        counts,
+        &super::pricing::ModelPrice {
+            input: 0.0,
+            output: 0.0,
+            cache: 0.0,
+            group_multiplier: 1.0,
+        },
+    );
     UsageEventRecord {
         meta: SyncMeta {
             key: String::new(), // TODO(#336): uuid::now_v7() 注入 — store 层生成

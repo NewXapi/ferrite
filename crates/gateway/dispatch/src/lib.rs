@@ -6,7 +6,7 @@
 //! ① 候选过滤 (candidate)   group + public_model 匹配的 RouteUnit 全集
 //! ② 健康门控 (health)      剔除: 熔断冷却中 / status != 启用; 慢启动折扣权重
 //! ③ 限流门控 (ratelimit)   按 unit.meta.key 的滑动窗口剔除超额单元
-//! ④ 权重打分 (selector)    priority 分层 → 层内按 (weight+1)×slow_start×latency 加权随机
+//! ④ 权重打分 (selector)    priority 分层 → 层内按 base×ewma_score×slow_start 加权随机
 //! ⑤ 失败回退 (retry)       可重试失败 → 排除已试候选 → 回到 ②
 //! ```
 //!
@@ -39,12 +39,14 @@ pub mod health;
 pub mod ratelimit;
 pub mod retry;
 pub mod selector;
+pub mod stage;
 
 pub use candidate::{Candidate, STATUS_ENABLED, resolve_candidate};
 pub use health::{FailureClass, HealthState, HealthTable, MemoryHealthTable};
 pub use ratelimit::{RateLimitSpec, SlidingWindow};
-pub use retry::{Attempt, AttemptOutcome, Failover, RetryLoop, RetryPolicy};
+pub use retry::{Attempt, AttemptOutcome, Failover, RetryLoop, RetryPolicy, run_retry_loop};
 pub use selector::{Selector, WeightedSelector};
+pub use stage::DispatchStage;
 
 use contract::records::{ChannelRecord, RouteUnitRecord};
 use rand::SeedableRng;
@@ -73,7 +75,7 @@ pub trait Dispatch: Send + Sync {
     ) -> Result<Candidate, DispatchError>;
 
     /// 转发结束后回报结果, 驱动健康状态演化 (EWMA / 熔断开关)。
-    fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>, latency_ms: u32);
+    fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>);
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -89,6 +91,9 @@ pub enum DispatchError {
     /// 决策: fail-closed (503), 与"安全配置 fail-closed"原则一致。
     #[error("catalog snapshot not ready")]
     SnapshotNotReady,
+    /// 重试预算耗尽 — 可重试失败换遍了全部候选 (上层映射 502/503)。
+    #[error("retries exhausted for {group}/{model}")]
+    RetriesExhausted { group: String, model: String },
 }
 
 /// 从快照提取 (group, model) 的启用候选 — new-api getCandidatesFromCache 的
@@ -285,7 +290,7 @@ impl Dispatch for Dispatcher {
         resolve_candidate(unit, channel).ok_or_else(|| no_candidate(group, public_model))
     }
 
-    fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>, latency_ms: u32) {
-        self.health.record(unit_key, outcome, latency_ms);
+    fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>) {
+        self.health.record(unit_key, outcome);
     }
 }
