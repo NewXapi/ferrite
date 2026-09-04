@@ -251,9 +251,8 @@ fn run_test_gemini_to_openai_response() {
     let parsed: Value = serde_json::from_slice(&result[0]).unwrap();
 
     // Check choices
-    let choices = parsed.get("choices");
-    if choices.is_some() {
-        assert_eq!(choices.unwrap().as_array().unwrap().len(), 1);
+    if let Some(choices) = parsed.get("choices") {
+        assert_eq!(choices.as_array().unwrap().len(), 1);
     }
 
     // Test 2: Gemini stream event → OpenAI chunks

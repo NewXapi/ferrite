@@ -244,13 +244,13 @@ impl Codec for ClaudeCodec {
 
                 if role == "system" {
                     // Extract system message to top-level system field
-                    if let Some(text) = extract_text_content(&content) {
-                        if !text.is_empty() {
-                            system_content.push(json!({
-                                "type": "text",
-                                "text": text
-                            }));
-                        }
+                    if let Some(text) = extract_text_content(&content)
+                        && !text.is_empty()
+                    {
+                        system_content.push(json!({
+                            "type": "text",
+                            "text": text
+                        }));
                     }
                     continue;
                 }
@@ -311,32 +311,30 @@ impl Codec for ClaudeCodec {
                                 item.get("type").and_then(|v| v.as_str()).unwrap_or("text");
                             match item_type {
                                 "text" => {
-                                    if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
-                                        if !text.is_empty() {
-                                            blocks.push(json!({
-                                                "type": "text",
-                                                "text": text
-                                            }));
-                                        }
+                                    if let Some(text) = item.get("text").and_then(|v| v.as_str())
+                                        && !text.is_empty()
+                                    {
+                                        blocks.push(json!({
+                                            "type": "text",
+                                            "text": text
+                                        }));
                                     }
                                 }
                                 "image_url" => {
                                     if let Some(image_url) =
                                         item.get("image_url").and_then(|v| v.as_object())
-                                    {
-                                        if let Some(url) =
+                                        && let Some(url) =
                                             image_url.get("url").and_then(|v| v.as_str())
-                                        {
-                                            // Extract base64 data from data URL or assume it's base64
-                                            blocks.push(json!({
-                                                "type": "image",
-                                                "source": {
-                                                    "type": "base64",
-                                                    "media_type": "image/png",
-                                                    "data": url
-                                                }
-                                            }));
-                                        }
+                                    {
+                                        // Extract base64 data from data URL or assume it's base64
+                                        blocks.push(json!({
+                                            "type": "image",
+                                            "source": {
+                                                "type": "base64",
+                                                "media_type": "image/png",
+                                                "data": url
+                                            }
+                                        }));
                                     }
                                 }
                                 _ => {}
@@ -457,13 +455,12 @@ impl Codec for ClaudeCodec {
                     results.push(Bytes::from("data: [DONE]\n\n"));
                     continue;
                 }
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if let Ok(claude_event) = serde_json::from_str::<Value>(data) {
-                        if let Some(openai_chunks) = convert_claude_event_to_openai(&claude_event) {
-                            for oc in openai_chunks {
-                                results.push(Bytes::from(format!("data: {}\n\n", oc)));
-                            }
-                        }
+                if let Some(data) = line.strip_prefix("data: ")
+                    && let Ok(claude_event) = serde_json::from_str::<Value>(data)
+                    && let Some(openai_chunks) = convert_claude_event_to_openai(&claude_event)
+                {
+                    for oc in openai_chunks {
+                        results.push(Bytes::from(format!("data: {}\n\n", oc)));
                     }
                 }
             }
@@ -474,7 +471,7 @@ impl Codec for ClaudeCodec {
 
             if let Some(content_val) = claude_resp.get("content") {
                 let content_text = extract_text_from_claude_content(Some(content_val));
-                let mut openai_resp = json!({
+                let openai_resp = json!({
                     "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                     "object": "chat.completion",
                     "created": chrono::Utc::now().timestamp(),
@@ -483,7 +480,7 @@ impl Codec for ClaudeCodec {
                         "index": 0,
                         "message": {
                             "role": claude_resp.get("role").and_then(|v| v.as_str()).unwrap_or("assistant"),
-                            "content": content_text.unwrap_or_else(|| "".to_string()),
+                            "content": content_text.unwrap_or_default(),
                         },
                         "finish_reason": claude_resp.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("stop")
                     }],
@@ -494,7 +491,7 @@ impl Codec for ClaudeCodec {
                     }
                 });
                 Ok(vec![Bytes::from(serde_json::to_vec(&openai_resp).unwrap())])
-            } else if let Some(event_type) = claude_resp.get("type").and_then(|v| v.as_str()) {
+            } else if let Some(_event_type) = claude_resp.get("type").and_then(|v| v.as_str()) {
                 if let Some(openai_chunks) = convert_claude_event_to_openai(&claude_resp) {
                     let mut results = Vec::new();
                     for oc in openai_chunks {
@@ -558,12 +555,12 @@ impl Codec for GeminiCodec {
                 let content = msg.get("content").cloned();
 
                 if role == "system" {
-                    if let Some(text) = extract_text_content(&content) {
-                        if !text.is_empty() {
-                            system_instruction = Some(json!({
-                                "parts": [{ "text": text }]
-                            }));
-                        }
+                    if let Some(text) = extract_text_content(&content)
+                        && !text.is_empty()
+                    {
+                        system_instruction = Some(json!({
+                            "parts": [{ "text": text }]
+                        }));
                     }
                     continue;
                 }
@@ -575,42 +572,38 @@ impl Codec for GeminiCodec {
                     if !text.is_empty() {
                         parts.push(json!({ "text": text }));
                     }
-                } else if let Some(content_val) = content.as_ref() {
-                    if let Some(arr) = content_val.as_array() {
-                        for item in arr {
-                            let item_type =
-                                item.get("type").and_then(|v| v.as_str()).unwrap_or("text");
-                            match item_type {
-                                "text" => {
-                                    if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
-                                        if !text.is_empty() {
-                                            parts.push(json!({ "text": text }));
-                                        }
-                                    }
+                } else if let Some(content_val) = content.as_ref()
+                    && let Some(arr) = content_val.as_array()
+                {
+                    for item in arr {
+                        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+                        match item_type {
+                            "text" => {
+                                if let Some(text) = item.get("text").and_then(|v| v.as_str())
+                                    && !text.is_empty()
+                                {
+                                    parts.push(json!({ "text": text }));
                                 }
-                                "image_url" => {
-                                    if let Some(image_url) =
-                                        item.get("image_url").and_then(|v| v.as_object())
-                                    {
-                                        if let Some(url) =
-                                            image_url.get("url").and_then(|v| v.as_str())
-                                        {
-                                            let data = if url.starts_with("data:") {
-                                                url.split(',').nth(1).unwrap_or("")
-                                            } else {
-                                                url
-                                            };
-                                            parts.push(json!({
-                                                "inline_data": {
-                                                    "mime_type": "image/png",
-                                                    "data": data
-                                                }
-                                            }));
-                                        }
-                                    }
-                                }
-                                _ => {}
                             }
+                            "image_url" => {
+                                if let Some(image_url) =
+                                    item.get("image_url").and_then(|v| v.as_object())
+                                    && let Some(url) = image_url.get("url").and_then(|v| v.as_str())
+                                {
+                                    let data = if url.starts_with("data:") {
+                                        url.split(',').nth(1).unwrap_or("")
+                                    } else {
+                                        url
+                                    };
+                                    parts.push(json!({
+                                        "inline_data": {
+                                            "mime_type": "image/png",
+                                            "data": data
+                                        }
+                                    }));
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -660,7 +653,7 @@ impl Codec for GeminiCodec {
         if let Some(stream) = req.get("stream").and_then(|v| v.as_bool()) {
             gemini_req["generation_config"] = gen_config;
             gemini_req["stream"] = json!(stream);
-        } else if gen_config.as_object().map_or(false, |o| !o.is_empty()) {
+        } else if gen_config.as_object().is_some_and(|o| !o.is_empty()) {
             gemini_req["generation_config"] = gen_config;
         }
 
@@ -692,13 +685,12 @@ impl Codec for GeminiCodec {
                 results.push(Bytes::from("data: [DONE]\n\n"));
                 continue;
             }
-            if let Some(data) = line.strip_prefix("data: ") {
-                if let Ok(gemini_event) = serde_json::from_str::<Value>(data) {
-                    if let Some(openai_chunks) = convert_gemini_event_to_openai(&gemini_event) {
-                        for oc in openai_chunks {
-                            results.push(Bytes::from(format!("data: {}\n\n", oc)));
-                        }
-                    }
+            if let Some(data) = line.strip_prefix("data: ")
+                && let Ok(gemini_event) = serde_json::from_str::<Value>(data)
+                && let Some(openai_chunks) = convert_gemini_event_to_openai(&gemini_event)
+            {
+                for oc in openai_chunks {
+                    results.push(Bytes::from(format!("data: {}\n\n", oc)));
                 }
             }
         }
@@ -839,14 +831,12 @@ fn convert_claude_event_to_openai(event: &Value) -> Option<Vec<String>> {
                         "finish_reason": null
                     }]
                 });
-                if let Some(arr) = content {
-                    if let Some(first) = arr.first() {
-                        if let Some(text) = first.get("text").and_then(|v| v.as_str()) {
-                            if !text.is_empty() {
-                                openai_chunk["choices"][0]["delta"]["content"] = json!(text);
-                            }
-                        }
-                    }
+                if let Some(arr) = content
+                    && let Some(first) = arr.first()
+                    && let Some(text) = first.get("text").and_then(|v| v.as_str())
+                    && !text.is_empty()
+                {
+                    openai_chunk["choices"][0]["delta"]["content"] = json!(text);
                 }
                 return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
             }
@@ -890,24 +880,24 @@ fn convert_claude_event_to_openai(event: &Value) -> Option<Vec<String>> {
             }
         }
         "message_delta" => {
-            if let Some(delta) = event.get("delta") {
-                if let Some(stop_reason) = delta.get("stop_reason").and_then(|v| v.as_str()) {
-                    let mut openai_chunk = json!({
-                        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
-                        "object": "chat.completion.chunk",
-                        "created": chrono::Utc::now().timestamp(),
-                        "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
-                        "choices": [{
-                            "index": 0,
-                            "delta": {},
-                            "finish_reason": stop_reason
-                        }]
-                    });
-                    return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
-                }
+            if let Some(delta) = event.get("delta")
+                && let Some(stop_reason) = delta.get("stop_reason").and_then(|v| v.as_str())
+            {
+                let openai_chunk = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": stop_reason
+                    }]
+                });
+                return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
             }
             if let Some(usage) = event.get("usage") {
-                let mut openai_chunk = json!({
+                let openai_chunk = json!({
                     "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                     "object": "chat.completion.chunk",
                     "created": chrono::Utc::now().timestamp(),
@@ -923,7 +913,7 @@ fn convert_claude_event_to_openai(event: &Value) -> Option<Vec<String>> {
             }
         }
         "message_stop" => {
-            let mut openai_chunk = json!({
+            let openai_chunk = json!({
                 "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                 "object": "chat.completion.chunk",
                 "created": chrono::Utc::now().timestamp(),
@@ -937,7 +927,7 @@ fn convert_claude_event_to_openai(event: &Value) -> Option<Vec<String>> {
             return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
         }
         "error" => {
-            let mut openai_chunk = json!({
+            let openai_chunk = json!({
                 "error": event.get("error")
             });
             return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
@@ -963,12 +953,12 @@ fn convert_gemini_event_to_openai(event: &Value) -> Option<Vec<String>> {
                 }]
             });
 
-            if let Some(content) = candidate.get("content").and_then(|v| v.as_object()) {
-                if let Some(parts) = content.get("parts").and_then(|v| v.as_array()) {
-                    for part in parts {
-                        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                            openai_chunk["choices"][0]["delta"]["content"] = json!(text);
-                        }
+            if let Some(content) = candidate.get("content").and_then(|v| v.as_object())
+                && let Some(parts) = content.get("parts").and_then(|v| v.as_array())
+            {
+                for part in parts {
+                    if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                        openai_chunk["choices"][0]["delta"]["content"] = json!(text);
                     }
                 }
             }
@@ -981,7 +971,7 @@ fn convert_gemini_event_to_openai(event: &Value) -> Option<Vec<String>> {
         }
 
         if let Some(usage) = event.get("usage_metadata") {
-            let mut usage_chunk = json!({
+            let usage_chunk = json!({
                 "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                 "object": "chat.completion.chunk",
                 "created": chrono::Utc::now().timestamp(),
