@@ -4,20 +4,22 @@
 //! ```text
 //! ForwardTask
 //!   → adapter::prepare (URL 拼接 / 鉴权头 / 渠道参数覆盖)
-//!   → protocol::Registry::resolve (跨协议时转换请求体)
+//!   → adapt_request (protocol-bridge: 客户端协议 → 上游厂商协议)
 //!   → egress::execute (带超时发送)
 //!   → [response]
-//!       ├─ 非流式: 整体回传 + metering 结算
-//!       └─ 流式:   stream::pipe (SseScanner → StreamScanner → 客户端)
+//!       ├─ 非流式: adapt_response → 整体回传 + metering 结算
+//!       └─ 流式:   adapt_response (逐 chunk) + SseScanner 事件
 //! ```
 //!
-//! 失败出口统一为 protocol::NormalizedError → dispatch::FailureClass。
+//! 失败出口统一为 contract::error::NormalizedError → dispatch::FailureClass。
 
 use crate::ForwardTask;
 use crate::adapter::{self, PreparedRequest};
 use crate::egress::{Egress, ForwardedResponse};
 use bytes::Bytes;
 use contract::error::NormalizedError;
+use gateway_protocol_bridge::adaptor::{AdaptorRegistry, Protocol};
+use gateway_protocol_bridge::sse::SseScanner;
 use std::sync::Arc;
 
 /// 合并后的请求头 (adapter 鉴权 + 渠道覆盖 + 客户端已过滤头)。
@@ -57,6 +59,7 @@ async fn read_all_body(resp: ForwardedResponse) -> Result<Bytes, std::io::Error>
 pub async fn forward_once(
     task: &ForwardTask,
     egress: &dyn Egress,
+    adaptors: &AdaptorRegistry,
     timeouts: &crate::egress::Timeouts,
 ) -> Result<crate::Forwarded, NormalizedError> {
     let prepared = adapter::prepare(
@@ -67,8 +70,21 @@ pub async fn forward_once(
     );
     let merged = merge_headers(&prepared, &task.headers);
 
-    // 请求体预扫描 (透传给 metering 估算用, 当前实现原样返回)。
-    let body = capture_prompt_body(&task.body);
+    // 客户端协议 → 上游厂商协议 (protocol-bridge)。
+    let upstream_protocol = match task.provider_type.as_str() {
+        "claude" | "anthropic" => Protocol::Claude,
+        "gemini" | "google" => Protocol::Gemini,
+        _ => Protocol::OpenAi,
+    };
+    // 中枢格式语义: ferrite 入站统一 OpenAI Chat Completions, 由 target 决定上游协议。
+    let source = Protocol::OpenAi;
+    let codec = adaptors.resolve(source, upstream_protocol);
+    let body = match codec.as_ref() {
+        Some(c) => c
+            .adapt_request(task.body.clone())
+            .map_err(|e| protocol_bridge_error(e, 400, false))?,
+        None => capture_prompt_body(&task.body),
+    };
 
     let resp = egress
         .execute(&prepared.url, &merged, body, timeouts)
@@ -77,16 +93,40 @@ pub async fn forward_once(
     let status = resp.status();
     let content_type = resp.content_type().to_string();
 
+    // 上游厂商协议 → 客户端协议 (protocol-bridge)。流式逐 chunk 转、非流式整 body 转。
+    let codec_arc = codec.clone();
+    let adapt_stream = |stream: futures_util::stream::BoxStream<
+        'static,
+        Result<Bytes, std::io::Error>,
+    >| {
+        let mapped: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
+            Box::pin(futures_util::stream::unfold(stream, move |mut s| {
+                let codec = codec_arc.clone();
+                async move {
+                    use futures_util::StreamExt;
+                    match s.next().await {
+                        Some(Ok(chunk)) => match codec.as_ref() {
+                            Some(c) => match c.adapt_response(chunk) {
+                                Ok(chunks) => {
+                                    Some((Ok::<Bytes, std::io::Error>(chunks.concat().into()), s))
+                                }
+                                Err(e) => Some((Err(std::io::Error::other(e.to_string())), s)),
+                            },
+                            None => Some((Ok(chunk), s)),
+                        },
+                        Some(Err(e)) => Some((Err(e), s)),
+                        None => None,
+                    }
+                }
+            }));
+        mapped
+    };
+
     let body_stream: std::pin::Pin<
         Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
     > = if task.stream {
-        // 流式: 直接接上游字节流, 客户端 Accept 决定上游按 SSE 推。
-        // pipe_chunk 串联由 stream 模块处理; 这里只透传。
-        Box::pin(resp.into_body_stream())
+        adapt_stream(Box::pin(resp.into_body_stream()))
     } else {
-        // 非流式: 整体读 body 后给单 chunk 流 (简化客户端消费路径)。
-        // ponytail: 缓冲整 body 仅适用非流式场景 (常规 API 调用, body 较小);
-        // 流式场景走上面分支。
         let bytes = match read_all_body(resp).await {
             Ok(b) => b,
             Err(e) => {
@@ -98,7 +138,18 @@ pub async fn forward_once(
                 });
             }
         };
-        Box::pin(futures_util::stream::iter(std::iter::once(Ok(bytes))))
+        match codec.as_ref() {
+            Some(c) => match c.adapt_response(bytes) {
+                Ok(chunks) => Box::pin(futures_util::stream::iter(chunks.into_iter().map(Ok)))
+                    as std::pin::Pin<
+                        Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
+                    >,
+                Err(e) => {
+                    return Err(protocol_bridge_error(e, 502, true));
+                }
+            },
+            None => Box::pin(futures_util::stream::iter(std::iter::once(Ok(bytes)))),
+        }
     };
 
     Ok(crate::Forwarded {
@@ -106,6 +157,20 @@ pub async fn forward_once(
         body: body_stream,
         content_type,
     })
+}
+
+/// protocol-bridge 错误 → contract::error::NormalizedError 统一出口。
+fn protocol_bridge_error(
+    e: gateway_protocol_bridge::adaptor::AdaptorError,
+    status: u16,
+    retryable: bool,
+) -> NormalizedError {
+    NormalizedError {
+        code: contract::error::code::UPSTREAM_ERROR,
+        status,
+        retryable,
+        message: e.to_string(),
+    }
 }
 
 /// 管道执行 trait — apps/gateway 用 reqwest 实现。
@@ -125,6 +190,8 @@ pub trait Pipeline: Send + Sync {
 #[derive(Clone)]
 pub struct ReqwestPipeline {
     egress: Arc<dyn Egress>,
+    /// 厂商协议注册表; 空 = 透传 (同协议不转换)。
+    adaptors: Arc<AdaptorRegistry>,
 }
 
 impl std::fmt::Debug for ReqwestPipeline {
@@ -134,8 +201,8 @@ impl std::fmt::Debug for ReqwestPipeline {
 }
 
 impl ReqwestPipeline {
-    pub fn new(egress: Arc<dyn Egress>) -> Self {
-        Self { egress }
+    pub fn new(egress: Arc<dyn Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
+        Self { egress, adaptors }
     }
 }
 
@@ -145,7 +212,7 @@ impl Pipeline for ReqwestPipeline {
         task: &ForwardTask,
         timeouts: &crate::egress::Timeouts,
     ) -> Result<crate::Forwarded, NormalizedError> {
-        forward_once(task, self.egress.as_ref(), timeouts).await
+        forward_once(task, self.egress.as_ref(), &self.adaptors, timeouts).await
     }
 }
 

@@ -12,19 +12,23 @@ use bytes::Bytes;
 use contract::error::NormalizedError;
 use gateway_pipeline::ctx::{BodySource, UpstreamResponse};
 use gateway_pipeline::{PipeStream, RequestCtx, Stage, StageError, StageOutcome};
+use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use std::sync::Arc;
 
 /// 转发 stage — 依赖 egress (reqwest 出口) 与路径模板前缀。
 pub struct ForwardStage {
     egress: Arc<dyn crate::egress::Egress>,
     timeouts: crate::egress::Timeouts,
+    /// 厂商协议注册表；空 = 透传。
+    adaptors: Arc<AdaptorRegistry>,
 }
 
 impl ForwardStage {
-    pub fn new(egress: Arc<dyn crate::egress::Egress>) -> Self {
+    pub fn new(egress: Arc<dyn crate::egress::Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
         Self {
             egress,
             timeouts: crate::egress::Timeouts::default(),
+            adaptors,
         }
     }
 }
@@ -100,7 +104,7 @@ impl Stage for ForwardStage {
             extra_headers: vec![],
         };
 
-        let forwarded = crate::pipeline::forward_once(&task, &*self.egress, &self.timeouts)
+        let forwarded = crate::pipeline::forward_once(&task, &*self.egress, &self.adaptors, &self.timeouts)
             .await
             .map_err(|e: NormalizedError| {
                 StageError::Upstream(gateway_pipeline::UpstreamError::Status {
