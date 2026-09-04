@@ -80,12 +80,12 @@ fn art_img(model: &'static ModelStat, extra_style: &str) -> Element {
 #[component]
 fn KeyStatRows(model: &'static ModelStat) -> Element {
     rsx! {
-        div { class: "pointer-events-auto w-32 space-y-1",
+        div { class: "pointer-events-auto w-28 rounded-lg border border-white/10 bg-black/50 p-2 backdrop-blur-md space-y-1",
             for s in key_stats(model) {
                 div { class: "row-tip-anchor relative flex items-baseline justify-between text-[10px]",
-                    span { class: "text-zinc-300 row-text", "{s.short}" }
-                    span { class: "text-zinc-100 row-text", "{s.text}" }
-                    div { class: "pointer-events-none absolute -top-1 left-0 z-10 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-zinc-950/95 px-2 py-1 text-[10px] text-zinc-200 opacity-0 transition-opacity duration-200 row-tip",
+                    span { class: "text-zinc-400 font-medium", "{s.short}" }
+                    span { class: "text-zinc-100 font-mono font-semibold row-text", "{s.text}" }
+                    div { class: "pointer-events-none absolute -top-1 left-0 z-20 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-zinc-950/95 px-2 py-1 text-[10px] text-zinc-200 opacity-0 transition-opacity duration-200 row-tip shadow-lg",
                         "{s.full}"
                     }
                 }
@@ -147,9 +147,22 @@ pub fn PosterImageCard(rank: usize, model: &'static ModelStat) -> Element {
                         {art_img(model, "")}
                         div { class: "card-vignette pointer-events-none absolute inset-0" }
                         div { class: "card-corner-shade pointer-events-none absolute inset-0" }
-                        div { class: "pointer-events-none absolute bottom-3 left-3 flex w-[66%] flex-col gap-2",
+                        // 顶部：模型名称与排名角标
+                        div { class: "pointer-events-none absolute top-3 inset-x-3 flex items-center justify-between z-10",
+                            div { class: "flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-2.5 py-1 backdrop-blur-md",
+                                span { class: "text-xs font-bold tracking-wide text-white row-text", "{model.name}" }
+                            }
+                            div { class: "flex items-center justify-center rounded-full border border-white/20 bg-black/60 px-2 py-0.5 backdrop-blur-md",
+                                span {
+                                    class: if rank <= 3 { "text-xs font-extrabold text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" } else { "text-xs font-semibold text-zinc-300" },
+                                    "#{rank}"
+                                }
+                            }
+                        }
+                        // 底部：雷达图 + 关键数据
+                        div { class: "pointer-events-none absolute bottom-3 inset-x-3 flex items-end justify-between gap-2 z-10",
                             // 浓缩雷达
-                            div { class: "w-[58%]",
+                            div { class: "w-[52%]",
                                 style: "filter: drop-shadow(0 2px 6px rgba(0,0,0,0.65))",
                                 svg { class: "h-auto w-full", view_box: "2 0 116 116", preserve_aspect_ratio: "xMidYMid meet",
                                     for ring in 1..=3 {
@@ -176,7 +189,6 @@ pub fn PosterImageCard(rank: usize, model: &'static ModelStat) -> Element {
                                     }
                                     for i in 0..6 {
                                         {
-                                            // 角标放在顶点所在的下一级环线上, 封顶最外环.
                                             let ring = ((values[i] * 3.0).floor() + 1.0).min(3.0) / 3.0;
                                             let (bx, by) = RadarGeo::pt(i, ring);
                                             let (fill, glow, dim) = badge_style(ranks[i], values[i] > avg[i] + 1e-9, &grad_id);
