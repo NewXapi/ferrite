@@ -393,7 +393,7 @@ async fn user_get_and_search() {
         .await
         .unwrap();
     auth::ddl::run(&pool).await.unwrap();
-    let svc = AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec());
+    let svc = AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec()).unwrap();
 
     let username = format!("usr_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
     let view = svc

@@ -97,33 +97,39 @@ pub struct AuthService {
 
 impl AuthService {
     /// `jwt_secret` 必须 >= 32 字节 (HS256 安全下限)。
-    pub fn new(pool: PgPool, jwt_secret: Vec<u8>) -> Self {
-        assert!(
-            jwt_secret.len() >= 32,
-            "jwt secret must be >= 32 bytes for HS256"
-        );
+    /// 返回 Err 表示 secret 无效（长度/格式），调用方决定退出策略。
+    pub fn new(pool: PgPool, jwt_secret: Vec<u8>) -> Result<Self, AuthError> {
+        if jwt_secret.len() < 32 {
+            return Err(AuthError::BadRequest(
+                "jwt secret must be >= 32 bytes for HS256".into(),
+            ));
+        }
         // refresh_secret 由 jwt_secret 派生: 轮换 jwt secret 会使全部 refresh 失效
         // (预期行为 — 换密钥 = 强制全员重新登录)。
-        let mut mac = HmacSha256::new_from_slice(&jwt_secret).expect("HMAC accepts any key length");
+        let mut mac = HmacSha256::new_from_slice(&jwt_secret)
+            .map_err(|e| AuthError::Crypto(format!("hmac init: {e}")))?;
         mac.update(b"refresh");
         let refresh_secret = mac.finalize().into_bytes().to_vec();
 
-        Self {
+        Ok(Self {
             pool,
             jwt_secret,
             refresh_secret,
             access_ttl: Duration::from_secs(jwt::ACCESS_TOKEN_TTL_SECS),
             refresh_ttl: Duration::from_secs(jwt::REFRESH_TOKEN_TTL_SECS),
-        }
+        })
     }
 
     pub fn access_ttl(&self) -> u64 {
         self.access_ttl.as_secs()
     }
 
+    /// refresh_secret 是 32B 定长 HMAC 输出，new_from_slice 恒成功 —
+    /// 这里用 debug_assert 表达不变量，编译期后的运行时 panic 不可能触发。
     fn hash_refresh(&self, secret: &[u8]) -> String {
-        let mut mac =
-            HmacSha256::new_from_slice(&self.refresh_secret).expect("HMAC accepts any key");
+        debug_assert!(!self.refresh_secret.is_empty());
+        let mut mac = HmacSha256::new_from_slice(&self.refresh_secret)
+            .expect("refresh_secret is fixed 32B — HMAC accepts any length");
         mac.update(secret);
         hex::encode(mac.finalize().into_bytes())
     }

@@ -20,7 +20,7 @@ pub struct AppState {
 
 pub fn router(pool: PgPool) -> Result<Router, AuthError> {
     let secret = std::env::var("FERRITE_JWT_SECRET").map_err(|_| AuthError::MissingSecret)?;
-    let svc = Arc::new(AuthService::new(pool, secret.into_bytes()));
+    let svc = Arc::new(AuthService::new(pool, secret.into_bytes())?);
     router_with_svc(svc)
 }
 

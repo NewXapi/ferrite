@@ -23,7 +23,7 @@ async fn make_service() -> AuthService {
         .await
         .expect("PG connect");
     auth::ddl::run(&pool).await.expect("ddl");
-    AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec())
+    AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec()).unwrap()
 }
 
 fn unique_user(prefix: &str) -> String {
