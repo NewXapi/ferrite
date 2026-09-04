@@ -41,6 +41,12 @@ pub enum AuthError {
 
     #[error("jwt error: {0}")]
     Jwt(#[from] jsonwebtoken::errors::Error),
+
+    #[error("not found: {0}")]
+    NotFound(String),
+
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 impl AuthError {
@@ -53,7 +59,10 @@ impl AuthError {
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::MissingSecret => StatusCode::INTERNAL_SERVER_ERROR,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Db(_) | Self::Crypto(_) | Self::Jwt(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Db(_) | Self::Crypto(_) | Self::Jwt(_) | Self::Internal(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
         }
     }
 
@@ -72,6 +81,8 @@ impl AuthError {
             Self::Db(_) => "DB_ERROR",
             Self::Crypto(_) => "CRYPTO_ERROR",
             Self::Jwt(_) => "JWT_ERROR",
+            Self::NotFound(_) => "NOT_FOUND",
+            Self::Internal(_) => "INTERNAL_ERROR",
         }
     }
 }
