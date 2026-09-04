@@ -1,0 +1,11 @@
+[package]
+name = "tavern-page-personas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-ui   = { package = "ui-components", path = "../ui-components" }
+
+dioxus      = { workspace = true }

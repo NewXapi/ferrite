@@ -6,7 +6,7 @@
 //! 3. 移动端/平板响应式升级 (对齐 refer 移动端参考图):
 //!    - 手机端底部常驻原生导航栏 (首页/剧本库/剧情/创作/设置)
 use dioxus::prelude::*;
-use shared_web::{AuthModal, UserBadge};
+use ui_components::{AuthModal, UserBadge};
 use tavern_page_characters::{CharactersPage, StudioPage};
 use tavern_page_chat::ChatPage;
 use tavern_page_home::HomePage;
@@ -46,7 +46,7 @@ pub fn TavernApp() -> Element {
     let mut section = use_signal(|| Section::Characters); // 默认直接进入 5 栏剧本库大厅
     let mut theme_light = use_signal(|| false);
     let mut auth_modal_open = use_signal(|| false);
-    let mut current_user = use_signal(shared_web::get_cached_user);
+    let mut current_user = use_signal(ui_components::get_cached_user);
 
     let is_chat = section() == Section::Chat;
     let is_home = section() == Section::Home;

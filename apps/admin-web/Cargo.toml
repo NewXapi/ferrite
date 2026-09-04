@@ -20,11 +20,11 @@ path = "src/lib.rs"
 [dependencies]
 dioxus           = { workspace = true }
 client           = { path = "../../crates/web/admin-client" }
-ui               = { path = "../../crates/web/admin-ui" }
-page-auth        = { path = "../../crates/web/admin-auth" }
-page-account     = { path = "../../crates/web/admin-account" }
-page-overview    = { path = "../../crates/web/admin-overview" }
+ui               = { package = "ui-components", path = "../../crates/web/ui-components" }
+page-auth        = { package = "admin-page-auth", path = "../../crates/web/admin-page-auth" }
+page-account     = { package = "admin-page-account", path = "../../crates/web/admin-page-account" }
+page-overview    = { package = "admin-page-overview", path = "../../crates/web/admin-page-overview" }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Location"] }
-page-admin       = { path = "../../crates/web/admin-admin" }
-page-users       = { path = "../../crates/web/admin-users" }
+page-admin       = { package = "admin-page-admin", path = "../../crates/web/admin-page-admin" }
+page-users       = { package = "admin-page-users", path = "../../crates/web/admin-page-users" }
