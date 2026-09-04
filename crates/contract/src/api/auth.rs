@@ -15,8 +15,17 @@ pub struct LoginRequest {
     pub password: String,
 }
 
-/// 登录成功返回。access_token 短效, refresh_token 长效 (web 端已有一次性 401 刷新)。
+/// POST /api/user/register
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterRequest {
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub email: Option<String>,
+}
+/// 登录成功返回。access_token 短效, refresh_token 长效 (web 端已有一次性 401 刷新)。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginResponse {
     pub user: UserDto,

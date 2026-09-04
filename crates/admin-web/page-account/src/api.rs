@@ -58,3 +58,63 @@ pub fn fetch_invitees() -> &'static [Invitee] {
 pub fn fetch_invite_link() -> &'static str {
     mock::account::INVITE_LINK
 }
+
+use client::{ApiClient, ApiResult};
+use contract::api::token::{CreateTokenRequest, TokenDto, UpdateTokenRequest};
+use contract::api::usage::{UsageLogPage, UsageStatDto};
+
+/// 真实调用: GET /api/token
+pub async fn list_tokens_api(client: &ApiClient) -> ApiResult<Vec<TokenDto>> {
+    client.get("/api/token").await
+}
+
+/// 真实调用: POST /api/token
+pub async fn create_token_api(client: &ApiClient, req: &CreateTokenRequest) -> ApiResult<TokenDto> {
+    client.post("/api/token", req).await
+}
+
+/// 真实调用: PUT /api/token/{key}
+pub async fn update_token_api(
+    client: &ApiClient,
+    key: &str,
+    req: &UpdateTokenRequest,
+) -> ApiResult<TokenDto> {
+    client.put(&format!("/api/token/{key}"), req).await
+}
+
+/// 真实调用: DELETE /api/token/{key}
+pub async fn delete_token_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
+    client.delete(&format!("/api/token/{key}")).await
+}
+
+/// 真实调用: GET /api/log/self?start=&end=&model=&p=&page_size=
+pub async fn list_self_logs_api(
+    client: &ApiClient,
+    model: Option<&str>,
+    page: Option<u32>,
+    page_size: Option<u32>,
+) -> ApiResult<UsageLogPage> {
+    let mut query = Vec::new();
+    if let Some(m) = model {
+        if !m.is_empty() {
+            query.push(format!("model={m}"));
+        }
+    }
+    if let Some(p) = page {
+        query.push(format!("p={p}"));
+    }
+    if let Some(ps) = page_size {
+        query.push(format!("page_size={ps}"));
+    }
+    let path = if query.is_empty() {
+        "/api/log/self".to_string()
+    } else {
+        format!("/api/log/self?{}", query.join("&"))
+    };
+    client.get(&path).await
+}
+
+/// 真实调用: GET /api/log/self/stat
+pub async fn get_self_stat_api(client: &ApiClient) -> ApiResult<UsageStatDto> {
+    client.get("/api/log/self/stat").await
+}

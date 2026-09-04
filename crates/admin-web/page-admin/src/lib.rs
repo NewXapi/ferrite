@@ -1,5 +1,6 @@
 //! Admin page: topology/network management plus entity settings.
 
+pub mod api;
 pub mod entities;
 pub mod groups;
 pub mod network;

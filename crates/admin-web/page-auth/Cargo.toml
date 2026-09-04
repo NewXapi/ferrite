@@ -9,6 +9,8 @@ publish.workspace = true
 dioxus    = { workspace = true }
 ui       = { path = "../ui" }
 client   = { path = "../client" }
+contract = { path = "../../contract" }
+serde    = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

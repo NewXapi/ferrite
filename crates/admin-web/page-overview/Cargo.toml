@@ -10,3 +10,7 @@ chrono = { workspace = true }
 dioxus = { workspace = true }
 manganis = "0.7"
 mock = { path = "../mock" }
+client = { path = "../client" }
+contract = { path = "../../contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }
