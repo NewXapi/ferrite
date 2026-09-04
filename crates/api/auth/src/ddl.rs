@@ -39,6 +39,26 @@ CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_key
 
 CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires_at
     ON auth_refresh_tokens(expires_at);
+
+CREATE TABLE IF NOT EXISTS auth_user_sessions (
+    sid          UUID PRIMARY KEY,
+    user_key     UUID NOT NULL,
+    user_agent   TEXT NOT NULL DEFAULT '',
+    ip           TEXT NOT NULL DEFAULT '',
+    login_method TEXT NOT NULL DEFAULT 'password',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_active  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at   TIMESTAMPTZ NOT NULL,
+    revoked_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_auth_user_sessions_user ON auth_user_sessions(user_key, created_at);
+
+
+CREATE TABLE IF NOT EXISTS auth_user_settings (
+    user_key   UUID PRIMARY KEY,
+    settings   JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 "#;
 
 pub async fn run(pool: &PgPool) -> Result<(), sqlx::Error> {

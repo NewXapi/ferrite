@@ -4368,6 +4368,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tavern-presets"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tavern-storage",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "tavern-secrets"
 version = "0.1.0"
 dependencies = [
