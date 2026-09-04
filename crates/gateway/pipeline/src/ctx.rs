@@ -3,13 +3,14 @@
 //! 设计要点：
 //! - `RequestCtx` 只能在当前请求内存在，**不允许跨请求共享**。
 //! - 跨请求共享的状态（token 表 / 路由索引）放在 `ArcSwap` 中，由各 stage 显式 `.load()`。
-//! - `StageOutcome` 三态枚举：Continue / ShortCircuit / Stream。
+//! - `StageOutcome` 三态枚举：Continue / ShortCircuit / Stream（定义在 `stage`）。
 
 use std::net::IpAddr;
-use bytes::Bytes;
-use uuid::Uuid;
-use http::HeaderMap;
+
 use crate::stage::StageError;
+use bytes::Bytes;
+use http::HeaderMap;
+use uuid::Uuid;
 
 /// 客户端请求使用的协议
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,6 +25,7 @@ pub enum ProtocolKind {
 ///
 /// 每个上游 attempt 拿一个新的 `Reader`，避免读到 EOF。
 /// 内存时是 `Bytes::clone()`，磁盘时是 `File::open()` + offset。
+#[derive(Debug, Clone)]
 pub enum BodySource {
     InMemory(Bytes),
     OnDisk { path: std::path::PathBuf, len: u64 },
@@ -41,11 +43,14 @@ impl BodySource {
 
 pub enum BodyReader<'a> {
     Memory(&'a Bytes),
-    Disk { path: &'a std::path::PathBuf, len: u64 },
+    Disk {
+        path: &'a std::path::PathBuf,
+        len: u64,
+    },
 }
 
 /// 不可变请求入参
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequestMeta {
     pub method: String,
     pub path: String,
@@ -81,17 +86,21 @@ pub struct StreamedAccum {
 
 /// 流式响应（Forward → 客户端接管）
 ///
-/// 实际实现在 `gateway-forward::SsePipe`。本结构作为 opaque handle 在
-/// pipeline 中传递。
+/// 包装 axum Body；`gateway-forward` 的 SsePipe 通过 `PipeStream::new` 构造。
+#[derive(Debug)]
 pub struct PipeStream {
-    _opaque: (),
+    body: axum::body::Body,
 }
 
 impl PipeStream {
-    /// 转换为 axum Response（由 `gateway-forward` 实现真正接管）
+    /// 由上游 SSE 流构造（forward 调用）
+    pub fn new(body: axum::body::Body) -> Self {
+        Self { body }
+    }
+
+    /// 转换为 axum Response
     pub fn into_response(self) -> http::Response<axum::body::Body> {
-        // TODO: SseScanner 接管
-        unimplemented!("PipeStream::into_response")
+        http::Response::new(self.body)
     }
 }
 
@@ -107,6 +116,9 @@ pub struct RequestCtx {
 
     /// Dispatch 写入：选中的路由
     pub route: Option<SelectedRoute>,
+
+    /// Gate::model 写入：请求体解析出的模型名 (dispatch 用它 lookup)。
+    pub requested_model: Option<String>,
 
     /// Forward 写入：非流式响应体
     pub upstream: Option<UpstreamResponse>,
@@ -124,6 +136,7 @@ impl RequestCtx {
             request,
             token: None,
             route: None,
+            requested_model: None,
             upstream: None,
             streamed: StreamedAccum::default(),
             error: None,
@@ -131,10 +144,52 @@ impl RequestCtx {
     }
 
     /// 从 axum Request 构造（apps/gateway 入口）
-    pub fn from_axum(_req: http::Request<axum::body::Body>) -> impl std::future::Future<Output = anyhow::Result<Self>> {
-        async move {
-            // TODO: 解析 path / headers / body，构造 RequestCtx
-            unimplemented!("RequestCtx::from_axum")
-        }
+    ///
+    /// 提取 method / path / headers / body / client_ip / request_id，
+    /// 按路径推断协议类型。
+    pub async fn from_axum(req: http::Request<axum::body::Body>) -> anyhow::Result<Self> {
+        let (parts, body) = req.into_parts();
+        let body_bytes = axum::body::to_bytes(body, usize::MAX).await?;
+
+        let client_ip = parts
+            .headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .and_then(|s| s.trim().parse().ok())
+            .or_else(|| {
+                parts
+                    .extensions
+                    .get::<std::net::SocketAddr>()
+                    .map(|a| a.ip())
+            })
+            .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+
+        let path = parts.uri.path().to_string();
+        let inbound_protocol = detect_protocol(&path);
+
+        let request = RequestMeta {
+            method: parts.method.to_string(),
+            path,
+            headers: parts.headers,
+            body: BodySource::InMemory(body_bytes),
+            client_ip,
+            request_id: Uuid::now_v7(),
+            inbound_protocol,
+        };
+        Ok(Self::new(request))
+    }
+}
+
+/// 按路径前缀推断入站协议
+fn detect_protocol(path: &str) -> ProtocolKind {
+    if path.starts_with("/v1/messages") {
+        ProtocolKind::Anthropic
+    } else if path.starts_with("/v1/responses") {
+        ProtocolKind::OpenAIResp
+    } else if path.contains("/v1beta") || (path.contains("/v1/") && path.contains("gemini")) {
+        ProtocolKind::Gemini
+    } else {
+        ProtocolKind::OpenAI
     }
 }

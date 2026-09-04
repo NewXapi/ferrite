@@ -4,7 +4,6 @@ members = [
     "apps/api",
     "apps/admin-web",
     "crates/contract",
-    "crates/gateway/protocol",
     "crates/gateway/dispatch",
     "crates/gateway/forward",
     "crates/gateway/metering",

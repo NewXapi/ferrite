@@ -28,6 +28,7 @@ use crate::candidate::Candidate;
 use crate::health::FailureClass;
 
 /// 单次尝试结果 — forward → retry 的回报。
+#[derive(Debug)]
 pub enum AttemptOutcome {
     /// 上游 2xx/4xx-with-usage (billing 正常)。
     Done { status: u16 },
@@ -117,4 +118,67 @@ impl Failover {
     pub fn is_exhausted(&self) -> bool {
         self.attempts >= self.policy.max_attempts
     }
+}
+
+/// 完整重试循环 — dispatch 拥有的编排逻辑。
+///
+/// 用户要求: 重试机制放 dispatch, 不散在 forward。本函数把"选候选 →
+/// 尝试 → 健康回报 → 排除已试 → 再选"的循环写死在 dispatch::retry,
+/// forward 只提供单次 attempt 闭包 (纯 IO, 不含重试判断)。
+///
+/// 循环形状 (sub2api FailoverState / new-api relay retry 语义):
+/// ```text
+/// while let Some(attempt_no) = failover.next_attempt() {
+///   candidate = select(group, model, failover.exclude())?   // 排除已试
+///   outcome   = attempt(candidate).await                     // 一次转发
+///   report(candidate, outcome)                               // 健康回报
+///   match outcome {
+///     Done { .. }      => return Ok           // 成功 / 4xx 已处理
+///     Retryable(_)     => mark_tried; continue  // 换候选重试
+///     Fatal(_)         => return Ok           // 客户端问题, 不换渠道
+///   }
+/// }
+/// Err(RetriesExhausted)
+/// ```
+///
+/// `RetryPolicy::max_attempts` 预算耗尽 → `DispatchError::RetriesExhausted`
+/// (上层映射 502/503, 与 NoCandidate=503 区分)。
+pub async fn run_retry_loop<Sel, Attempt, Fut>(
+    group: &str,
+    model: &str,
+    policy: &RetryPolicy,
+    mut select: Sel,
+    mut attempt: Attempt,
+    mut report: impl FnMut(&str, Result<u16, FailureClass>),
+) -> Result<AttemptOutcome, crate::DispatchError>
+where
+    Sel: FnMut(&str, &str, &[String]) -> Result<Candidate, crate::DispatchError>,
+    Attempt: FnMut(&Candidate) -> Fut,
+    Fut: std::future::Future<Output = AttemptOutcome>,
+{
+    let mut failover = Failover::new(*policy);
+    while failover.next_attempt().is_some() {
+        let candidate = select(group, model, failover.exclude())?;
+        let outcome = attempt(&candidate).await;
+        report(
+            &candidate.unit.meta.key,
+            match &outcome {
+                AttemptOutcome::Done { status } => Ok(*status),
+                AttemptOutcome::Retryable(_) | AttemptOutcome::Fatal(_) => Err(match &outcome {
+                    AttemptOutcome::Retryable(c) | AttemptOutcome::Fatal(c) => *c,
+                    _ => unreachable!(),
+                }),
+            },
+        );
+        match outcome {
+            AttemptOutcome::Done { .. } | AttemptOutcome::Fatal(_) => return Ok(outcome),
+            AttemptOutcome::Retryable(_) => {
+                failover.mark_tried(candidate.unit.meta.key.clone());
+            }
+        }
+    }
+    Err(crate::DispatchError::RetriesExhausted {
+        group: group.to_string(),
+        model: model.to_string(),
+    })
 }

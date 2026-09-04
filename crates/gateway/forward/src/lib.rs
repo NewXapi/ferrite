@@ -22,7 +22,10 @@
 pub mod adapter;
 pub mod egress;
 pub mod pipeline;
+pub mod stage;
 pub mod stream;
+
+pub use stage::ForwardStage;
 
 use bytes::Bytes;
 
@@ -39,13 +42,24 @@ pub struct ForwardTask {
     pub body: Bytes,
     /// 是否 SSE (客户端 Accept 判定)。
     pub stream: bool,
+    /// 渠道协议族 ("openai" / "claude" / "gemini" / "passthrough") — adapter 据此
+    /// 选路径模板与鉴权头。apps/gateway 从 ChannelRecord.provider_type 注入。
+    /// ponytail: dispatch::Candidate 当前不带 provider_type (RouteUnitRecord
+    /// 只持 channel_key 引用); forward 拿不到完整 ChannelRecord, 由 host 在
+    /// 组装 ForwardTask 时一并传入, 避免 forward 回头查快照。
+    pub provider_type: String,
+    /// 渠道 settings.headers 覆盖头 (ChannelRecord.settings.headers 解析后的
+    /// Vec 形态, 已 lower-case 化; 由 host 组装 ForwardTask 时一次性解析)。
+    /// 完整 settings JSON 由 metering/审计消费, forward 只关心 headers 子集。
+    pub extra_headers: Vec<(String, String)>,
 }
 
 /// 转发结果: 上游状态码 + 响应流。
 pub struct Forwarded {
     pub status: u16,
     /// 响应字节流 (SSE 或普通 body 统一形状)。
-    pub body: Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin>,
+    pub body:
+        std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
     /// 响应内容类型 (决定 stream 模块是否挂 SSE 扫描)。
     pub content_type: String,
 }

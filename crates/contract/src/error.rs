@@ -49,9 +49,62 @@ pub struct GatewayErrorDetail {
 }
 
 impl GatewayErrorBody {
-    /// TODO(#214): 与 protocol::NormalizedError 合并 — 一个构造函数产出两种形状
-    /// (OpenAI 风格 body + console Envelope), 错误码单一来源。
-    pub fn from_code(_code: &str, _message: impl Into<String>) -> Self {
-        todo!("TODO(#214): 定型 OpenAI 错误体映射")
+    /// 从 NormalizedError 构造 OpenAI 风格错误体 (SDK 兼容形状, TODO(#214) 落定)。
+    pub fn from_normalized(err: &NormalizedError) -> Self {
+        Self {
+            error: GatewayErrorDetail {
+                code: err.code.to_string(),
+                message: err.message.clone(),
+                r#type: match err.status {
+                    401 => "authentication_error".into(),
+                    402 => "insufficient_quota".into(),
+                    403 => "permission_error".into(),
+                    404 => "not_found".into(),
+                    429 => "rate_limit_error".into(),
+                    500..=599 => "api_error".into(),
+                    _ => "invalid_request_error".into(),
+                },
+            },
+        }
+    }
+}
+
+/// 机器可读错误码 (值域 = [`code`] 常量)。
+pub type ErrorCode = &'static str;
+
+/// 规范化错误 — 网关内部流转与对外暴露的单一错误协议。
+///
+/// 由 forward 的上游归类产生, dispatch 状态机据此决定重试/换候选,
+/// protocol-bridge 把它映射成各协议错误形状。跨 crate 共享, 放 contract。
+#[derive(Debug, Clone, PartialEq)]
+pub struct NormalizedError {
+    pub code: ErrorCode,
+    /// 对客户端暴露的 HTTP 状态。
+    pub status: u16,
+    /// dispatch 状态机据此决定是否换候选重试。
+    pub retryable: bool,
+    /// 人类可读信息 (已掩码, 禁止包含上游 key/内部地址)。
+    pub message: String,
+}
+
+impl NormalizedError {
+    /// 按上游状态码归类 — TODO(#501) 规则表雏形:
+    /// 401/403 → auth (不重试), 429 → 限流 (可重试), 5xx → 上游 (可重试),
+    /// 其它 4xx → 请求问题 (不重试), 其它 → 502 兜底。
+    pub fn from_status(status: u16, raw_message: impl Into<String>) -> Self {
+        let raw = raw_message.into();
+        let (code, http_status, retryable, message) = match status {
+            401 | 403 => (code::INVALID_API_KEY, status, false, raw),
+            429 => (code::RATE_LIMITED, status, true, raw),
+            500..=599 => (code::UPSTREAM_ERROR, status, true, raw),
+            400..=499 => (code::INVALID_API_KEY, status, false, raw),
+            _ => (code::UPSTREAM_ERROR, 502, false, raw),
+        };
+        Self {
+            code,
+            status: http_status,
+            retryable,
+            message,
+        }
     }
 }

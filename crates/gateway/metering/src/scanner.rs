@@ -22,7 +22,10 @@ pub struct StreamScanner {
 
 impl StreamScanner {
     pub fn new() -> Self {
-        Self { _upstream_usage: None, _char_classes: [0; 6] }
+        Self {
+            _upstream_usage: None,
+            _char_classes: [0; 6],
+        }
     }
 
     /// 增量解析一块字节 (透传由 forward::stream 负责)。

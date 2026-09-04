@@ -57,7 +57,7 @@ fn health_table_concurrent_record_get_no_panic() {
                 } else {
                     Ok(200)
                 };
-                table.record(&key, outcome, (i % 500) as u32);
+                table.record(&key, outcome);
             }
         }));
     }
@@ -65,15 +65,16 @@ fn health_table_concurrent_record_get_no_panic() {
         h.join().unwrap();
     }
 
-    // 无 panic 即过主断言; 附加: 状态可读且成功样本已累计
+    // 无 panic 即过主断言; 附加: 状态可读且已有观测
     let st = table.get("k0");
-    assert!(st.samples > 0, "并发 record 后应有成功样本");
+    assert!(st.request_count > 0, "并发 record 后应有观测计数");
     assert!(
-        st.slow_start > 0.0 && st.slow_start <= 1.0,
-        "权重折扣应在 (0,1]"
+        st.ewma_score > 0.0 && st.ewma_score <= 1.0,
+        "健康分应在 (0,1]"
     );
-    // 无 5 连击 (每线程 i%3==0 才失败, 连续失败至多 1 次/线程) → 不应熔断
-    assert_eq!(st.cooldown_until_ms, 0, "无连续失败不应触发熔断");
+    // 并发交错下同一 key 的失败可能连续到达 (跨线程), 触发冷却与否是调度
+    // 相关的 — 不在这里断言; 并发安全的核心断言是: 无 panic + 状态可读 +
+    // 健康分有界。熔断行为由单线程测试 (fatal_streak_trips...) 覆盖。
 }
 
 #[test]
@@ -87,7 +88,7 @@ fn health_table_concurrent_streak_trips_breaker() {
         let table = Arc::clone(&table);
         handles.push(std::thread::spawn(move || {
             for _ in 0..10 {
-                table.record("hot", Err(FailureClass::Retryable), 100);
+                table.record("hot", Err(FailureClass::Retryable));
             }
         }));
     }
@@ -100,7 +101,11 @@ fn health_table_concurrent_streak_trips_breaker() {
         st.cooldown_until_ms > 0,
         "30 个并发失败应触发熔断 (streak 跨线程累计)"
     );
-    assert!(st.slow_start < 1.0, "熔断后应进入慢启动折扣");
+    // 30 并发失败 ≥5 触发冷却; 冷却会重置 request_count=0, 断言冷却/降权结果
+    assert!(
+        st.cooldown_streak > 0,
+        "30 并发失败应触发冷却 (streak 累计)"
+    );
 }
 
 // ---------- 无锁路径并发读: Dispatcher select 与 health 读 ----------
