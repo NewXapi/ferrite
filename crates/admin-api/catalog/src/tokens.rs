@@ -198,7 +198,7 @@ impl TokenService {
             .fetch_optional(&self.pool)
             .await?
         }
-        .ok_or(AuthError::UserNotFound)?;
+        .ok_or(AuthError::NotFound("token not found".into()))?;
         Ok(row.into())
     }
     /// 重取明文 key — 重新生成（旧 key 立即失效，新明文一次性返回）。
@@ -316,6 +316,53 @@ impl TokenService {
             .await?;
         Ok(())
     }
+
+    /// 可自动分配的分组（启用状态，按名称排序）。
+    pub async fn auto_groups(&self) -> Result<Vec<String>, AuthError> {
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM api_groups WHERE status = 1 ORDER BY name")
+                .fetch_all(&self.pool)
+                .await?;
+        Ok(rows.into_iter().map(|(n,)| n).collect())
+    }
+
+    /// 批量创建 token（逐个复用 create，任一失败整体报错）。
+    pub async fn batch_create(
+        &self,
+        user_key: Uuid,
+        items: Vec<NewToken>,
+    ) -> Result<Vec<CreateTokenResult>, AuthError> {
+        let mut out = Vec::with_capacity(items.len());
+        for it in items {
+            out.push(
+                self.create(
+                    user_key,
+                    &it.name,
+                    it.group,
+                    it.quota,
+                    it.unlimited_quota,
+                    it.expires_at,
+                )
+                .await?,
+            );
+        }
+        Ok(out)
+    }
+
+    /// 批量重取明文 key（逐个复用 regenerate_key；key 失效仅发生在调用时）。
+    pub async fn batch_keys(
+        &self,
+        user_key: Uuid,
+        token_keys: &[Uuid],
+        admin_all: bool,
+    ) -> Result<Vec<(Uuid, String)>, AuthError> {
+        let mut out = Vec::with_capacity(token_keys.len());
+        for &tk in token_keys {
+            let plaintext = self.regenerate_key(user_key, tk, admin_all).await?;
+            out.push((tk, plaintext));
+        }
+        Ok(out)
+    }
 }
 
 fn sha256_hex(s: &str) -> String {
@@ -372,11 +419,14 @@ pub struct TokenAppState {
 }
 
 pub fn router(state: TokenAppState) -> axum::Router {
-    use axum::routing::{get, post, put};
+    use axum::routing::{get, post};
     axum::Router::new()
         .route("/api/token", get(list).post(create))
         .route("/api/token/search", get(search))
-        .route("/api/token/{key}", put(update).delete(remove))
+        .route("/api/token/auto-groups", get(auto_groups))
+        .route("/api/token/batch", post(batch_create))
+        .route("/api/token/batch/keys", post(batch_keys))
+        .route("/api/token/{key}", get(get_one).put(update).delete(remove))
         .route("/api/token/{key}/key", post(regenerate))
         .with_state(state)
 }
@@ -397,6 +447,18 @@ struct CreateTokenRequest {
     #[serde(default)]
     unlimited_quota: bool,
     expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewToken {
+    pub name: String,
+    pub group: Option<String>,
+    #[serde(default)]
+    pub quota: i64,
+    #[serde(default)]
+    pub unlimited_quota: bool,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 async fn create(
@@ -421,6 +483,87 @@ async fn create(
         .await
     {
         Ok(r) => Ok(axum::Json(serde_json::json!(r))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+async fn get_one(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let token_key = Uuid::parse_str(&key)
+        .map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
+    match state.svc.get(user_key, token_key, is_admin).await {
+        Ok(t) => Ok(axum::Json(serde_json::json!(t))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+async fn auto_groups(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (_, _) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    match state.svc.auto_groups().await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct BatchCreateRequest {
+    #[serde(default)]
+    items: Vec<NewToken>,
+}
+
+async fn batch_create(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<BatchCreateRequest>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, _) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    match state.svc.batch_create(user_key, req.items).await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct BatchKeysRequest {
+    #[serde(default)]
+    keys: Vec<String>,
+}
+
+async fn batch_keys(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<BatchKeysRequest>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let token_keys: Vec<Uuid> = req
+        .keys
+        .iter()
+        .map(|k| {
+            Uuid::parse_str(k).map_err(|_| AuthError::BadRequest("invalid token key".into()))
+        })
+        .collect::<Result<_, _>>()
+        .map_err(err_json)?;
+    match state.svc.batch_keys(user_key, &token_keys, is_admin).await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
         Err(e) => Err(err_json(e)),
     }
 }
