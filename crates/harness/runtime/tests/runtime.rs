@@ -13,24 +13,33 @@ use harness_runtime::{
     AgentRunDeps, AgentRunRequest, CancelReason, CancellationToken, ChatProvider, DeltaAggregator,
     EventFactory, EventSink, MpscEventSink, PersistenceError, ProviderDelta, ProviderFinishReason,
     ProviderRequest, ProviderStream, RunPersistence, ToolCallFragment, ToolExecutor, ToolHandler,
-    VecEventSink, resume_agent_run, run_agent_run,
+    VecEventSink, load_resumable_run, run_agent_run,
 };
 use harness_tools::{InvocationToolSnapshot, ToolBinding, ToolDescriptor, ToolId, ToolSnapshotId};
 
 struct ScriptedProvider {
     rounds: Mutex<Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>>,
+    calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl ScriptedProvider {
     fn new(rounds: Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>) -> Self {
         Self {
             rounds: Mutex::new(rounds),
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
+    }
+
+    /// Provider invocations so far; exhausted-script tests assert this instead of
+    /// relying on an implicit empty stream.
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
     }
 }
 
 impl ChatProvider for ScriptedProvider {
     fn stream(&self, _request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         let mut rounds = self.rounds.lock().expect("mock provider mutex");
         // Exhausted script yields an empty stream instead of panicking, so tests
         // that abort mid-retry do not depend on an exact round count.
@@ -579,7 +588,7 @@ async fn provider_failure_retries_then_succeeds() {
 }
 
 #[tokio::test]
-async fn resume_rejects_terminal_run_and_loads_active_run() {
+async fn load_resumable_run_rejects_terminal_and_loads_active() {
     let root = tmp_root("resume");
     let persistence = RunPersistence::new(&root);
     let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
@@ -600,12 +609,12 @@ async fn resume_rejects_terminal_run_and_loads_active_run() {
     )
     .await
     .expect("run");
-    assert!(resume_agent_run(&persistence, &run.id).await.is_err());
+    assert!(load_resumable_run(&persistence, &run.id).await.is_err());
 
     let mut active = run.clone();
     active.status = AgentRunStatus::CallingModel;
     persistence.write_run(&active).await.unwrap();
-    let (loaded, events) = resume_agent_run(&persistence, &active.id).await.unwrap();
+    let (loaded, events) = load_resumable_run(&persistence, &active.id).await.unwrap();
     assert_eq!(loaded.status, AgentRunStatus::CallingModel);
     assert!(!events.is_empty());
 }
@@ -678,6 +687,11 @@ async fn malformed_tool_arguments_are_not_retried() {
         !events.iter().any(|event| event.event_type == "model.retry"),
         "deterministic aggregate errors must not be retried"
     );
+    assert_eq!(
+        provider.calls(),
+        1,
+        "aggregate errors must not trigger another provider request"
+    );
 }
 
 #[tokio::test]
@@ -702,7 +716,7 @@ async fn cancellation_interrupts_retry_backoff() {
         interval_ms: 30_000,
     };
     let started = std::time::Instant::now();
-    let _ = run_agent_run(
+    let run = run_agent_run(
         req,
         AgentRunDeps {
             provider: &provider,
@@ -712,9 +726,67 @@ async fn cancellation_interrupts_retry_backoff() {
         },
         &mut sink,
     )
-    .await;
+    .await
+    .expect("cancelled run is not an error");
     assert!(
         started.elapsed() < std::time::Duration::from_secs(5),
         "cancellation must interrupt retry backoff"
     );
+    assert_eq!(run.status, AgentRunStatus::Cancelled);
+    assert_eq!(
+        persistence
+            .load_run("run_retry_cancel")
+            .await
+            .unwrap()
+            .status,
+        AgentRunStatus::Cancelled
+    );
+    assert_eq!(
+        provider.calls(),
+        1,
+        "cancelled backoff must not re-issue the model request"
+    );
+}
+
+#[tokio::test]
+async fn retry_budget_is_per_run_not_per_round() {
+    let root = tmp_root("retry-budget");
+    let persistence = RunPersistence::new(&root);
+    // Round 1 burns the single retry, then succeeds with a tool call. Round 2 fails
+    // once more: with a per-run budget there is nothing left, so the run fails.
+    let provider = ScriptedProvider::new(vec![
+        vec![Err(harness_runtime::ProviderError::Failed("boom".into()))],
+        tool_delta("c1", "read_file", "{\"path\":\"/tmp/x\"}")
+            .into_iter()
+            .map(Ok)
+            .collect(),
+        vec![Err(harness_runtime::ProviderError::Failed("boom".into()))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").unwrap(), ok_handler());
+    let mut sink = VecEventSink::default();
+    let mut req = request("run_budget", true);
+    req.retry = AgentModelRetryPolicy {
+        max_retries: 1,
+        interval_ms: 0,
+    };
+    let result = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(result.is_err(), "second-round failure has no retry left");
+    let events = persistence.load_events("run_budget").await.unwrap();
+    let retries = events
+        .iter()
+        .filter(|event| event.event_type == "model.retry")
+        .count();
+    assert_eq!(retries, 1, "retry budget must not reset per round");
+    assert_eq!(provider.calls(), 3);
 }

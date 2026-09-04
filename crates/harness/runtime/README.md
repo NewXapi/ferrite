@@ -11,7 +11,7 @@ Backend-only Agent loop. UI belongs to `tavern-web`. HTTP APIs, login, group cha
 - `turn.rs` — one streaming model turn.
 - `tool_exec.rs` — `ToolRequestGate`, object-schema subset, handler dispatch.
 - `persistence.rs` — `run.json`, `events.jsonl`, tool I/O, checkpoints.
-- `loop_engine.rs` — bounded model → tool → model loop, model retry, run resume.
+- `loop_engine.rs` — bounded model → tool → model loop, model retry, run-state loading.
 
 ## Verify
 

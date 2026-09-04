@@ -166,6 +166,9 @@ pub async fn run_agent_run<P: ChatProvider>(
     let mut saw_tool_error = false;
     let max_rounds = request.max_rounds.max(1);
 
+    // Retry budget spans the whole run: a per-round reset would let a failing
+    // provider be hammered max_rounds * (max_retries + 1) times.
+    let mut attempt = 0usize;
     for round in 1..=max_rounds {
         if deps.cancel.is_cancelled() {
             persist_status(
@@ -209,7 +212,6 @@ pub async fn run_agent_run<P: ChatProvider>(
         provider_request.tools = tools.clone();
         provider_request.tool_choice = Some(ToolChoice::Auto);
 
-        let mut attempt = 0usize;
         let outcome = loop {
             let outcome = match driver
                 .run(
@@ -250,6 +252,7 @@ pub async fn run_agent_run<P: ChatProvider>(
                             "model.retry",
                             AgentRunEventLevel::Warn,
                             json!({
+                                "round": round,
                                 "attempt": attempt,
                                 "maxRetries": request.retry.max_retries,
                                 "error": error.to_string(),
@@ -267,6 +270,23 @@ pub async fn run_agent_run<P: ChatProvider>(
                                 _ = backoff => {}
                                 _ = deps.cancel.cancelled() => {}
                             }
+                        }
+                        // Never re-drive the turn with an already-cancelled token:
+                        // that would emit another provider request and could land
+                        // the run in Failed instead of Cancelled.
+                        if deps.cancel.is_cancelled() {
+                            persist_status(
+                                &mut run,
+                                AgentRunStatus::Cancelled,
+                                deps.persistence,
+                                &mut events,
+                                sink,
+                                "run.completed",
+                                AgentRunEventLevel::Warn,
+                                json!({ "status": "cancelled" }),
+                            )
+                            .await?;
+                            return Ok(run);
                         }
                         continue;
                     }
@@ -484,10 +504,10 @@ pub async fn run_agent_run<P: ChatProvider>(
 
 /// Load a non-terminal run and its journal from disk.
 ///
-/// This is the *inspection* half of resume: it hands back persisted state so the
-/// caller can rebuild a request and call [`run_agent_run`] again. It deliberately
-/// does not re-drive the loop, and it never replays already-persisted tool I/O.
-pub async fn resume_agent_run(
+/// This reads persisted run state only; it does not re-drive the loop. Callers
+/// still supply `prompt` / `snapshot` themselves, because those are inputs the
+/// journal does not store.
+pub async fn load_resumable_run(
     persistence: &RunPersistence,
     run_id: &str,
 ) -> Result<(AgentRun, Vec<AgentRunEvent>), LoopError> {
