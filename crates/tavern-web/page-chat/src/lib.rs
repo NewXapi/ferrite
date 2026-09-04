@@ -1,10 +1,10 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
-//! 深度响应用户需求1:
-//! 1. 顶部纯净精简，轮次/分页移至顶层左侧 (`‹ 第 1 轮 · 跳至 1 页 ›`)
-//! 2. 模型切换胶囊下移到**输入框正上方**工具栏，并搭配高频互动快捷按钮 (调查现场、追问细节、推进剧情)
-//! 3. 剧情主舞台: 任务系统卡片、线索备忘录卡片、沉浸分支决策卡片
-//! 4. 右上角快捷菜单 (导出、导入、记忆设定、模型参数等)
+//! 深度优化满足需求:
+//! 1. 右侧增加类似 DeepSeek 的消息与决策大纲时间线导航栏 (点击平滑定位、无滚动条、防塌陷)
+//! 2. 消息流启用平滑滚动，并隐藏滚动条 ([&::-webkit-scrollbar]:hidden [scrollbar-width:none])
+//! 3. 移动端/平板端响应式适配: 左侧侧栏在小屏上作为抽屉浮层弹出，不挤压主舞台
+//! 4. 底部输入区保持模型胶囊、快捷交互与发送按钮
 
 use dioxus::prelude::*;
 use tavern_ui::{ChoiceCard, ChoiceOption, Dialog, IconButton, MessageBubble, StatusCard, SwipePicker};
@@ -40,6 +40,28 @@ enum StoryItem {
         title: String,
         options: Vec<ChoiceOption>,
     },
+}
+
+impl StoryItem {
+    fn id(&self) -> usize {
+        match self {
+            StoryItem::Dialogue { id, .. } => *id,
+            StoryItem::SystemCard { id, .. } => *id,
+            StoryItem::PlayerChoice { id, .. } => *id,
+        }
+    }
+
+    fn nav_title(&self) -> (&'static str, String) {
+        match self {
+            StoryItem::SystemCard { title, .. } => ("系统", title.clone()),
+            StoryItem::Dialogue { name, mine, content, .. } => {
+                let prefix = if *mine { "玩家行动" } else { "NPC对话" };
+                let short: String = content.chars().take(14).collect();
+                (prefix, format!("{}: {}…", name, short))
+            }
+            StoryItem::PlayerChoice { title, .. } => ("决策", title.clone()),
+        }
+    }
 }
 
 fn seed_sessions() -> Vec<SessionItem> {
@@ -131,8 +153,9 @@ pub fn ChatPage(
 
     // 界面控制状态
     let mut sidebar_open = use_signal(|| true);
+    let mut right_outline_open = use_signal(|| true); // 控制右侧 DeepSeek 导航栏 (小屏可折叠)
     let mut menu_open = use_signal(|| false);
-    let mut current_model = use_signal(|| "gemini-3-flash-preview".to_string());
+    let mut current_model = use_signal(|| "gemini-3.1-pro-preview-high".to_string());
     let mut model_dropdown_open = use_signal(|| false);
 
     // 工具栏开关
@@ -145,12 +168,14 @@ pub fn ChatPage(
     let mut delete_id = use_signal(|| None::<usize>);
 
     let models = vec![
-        "gemini-3-flash-preview",
+        "gemini-3.1-pro-preview-high",
+        "gemini-3.7-flash-low",
         "claude-3-5-sonnet",
         "deepseek-chat",
         "gpt-4o",
     ];
 
+    // 发送用户抉择/行动
     let mut handle_send = move || {
         let text = draft().trim().to_string();
         if text.is_empty() {
@@ -167,21 +192,34 @@ pub fn ChatPage(
             swipe_idx: 0,
         });
         draft.set(String::new());
+
+        // 发送后自动平缓平滑滚动至底部
+        dioxus::document::eval("setTimeout(() => { const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, 50);");
     };
 
     rsx! {
         div { class: "relative flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100",
             // ==========================================
-            // 左侧可折叠剧本与会话侧栏
+            // 移动端侧栏背景遮罩 (屏幕 < lg 时点击遮罩收起)
+            // ==========================================
+            if sidebar_open() {
+                div {
+                    class: "fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden",
+                    onclick: move |_| sidebar_open.set(false),
+                }
+            }
+
+            // ==========================================
+            // 左侧剧本与会话侧栏 (响应式: 手机端作为抽屉，桌面端固定)
             // ==========================================
             div {
                 class: if sidebar_open() {
-                    "relative flex h-full w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/70 backdrop-blur-xl transition-all duration-300 z-20"
+                    "fixed inset-y-0 left-0 z-50 flex h-full w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/95 backdrop-blur-2xl shadow-2xl transition-all duration-300 lg:relative lg:z-10 lg:bg-zinc-900/70"
                 } else {
-                    "relative flex h-full w-0 shrink-0 flex-col overflow-hidden border-r-0 border-zinc-800/0 bg-transparent transition-all duration-300 z-20"
+                    "fixed inset-y-0 left-0 z-50 flex h-full w-0 shrink-0 flex-col overflow-hidden border-r-0 border-zinc-800/0 bg-transparent transition-all duration-300 lg:relative lg:z-10"
                 },
                 if sidebar_open() {
-                    div { class: "flex h-full w-72 flex-col gap-4 p-4",
+                    div { class: "flex h-full w-72 flex-col gap-4 p-4 select-none",
                         // 剧本标题与折叠
                         div { class: "flex items-start justify-between gap-2 border-b border-zinc-800/80 pb-3",
                             div { class: "flex flex-col gap-1",
@@ -191,7 +229,7 @@ pub fn ChatPage(
                                 span { class: "text-[10px] text-zinc-500", "当代全球演艺资本衍生规则" }
                             }
                             button {
-                                class: "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
+                                class: "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
                                 title: "折叠侧栏",
                                 onclick: move |_| sidebar_open.set(false),
                                 "«"
@@ -218,7 +256,7 @@ pub fn ChatPage(
                             div { class: "flex items-center justify-between px-1",
                                 span { class: "text-xs font-semibold text-zinc-400", "会话时间线" }
                                 button {
-                                    class: "flex items-center gap-1 rounded-lg bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-200 hover:bg-zinc-700",
+                                    class: "flex items-center gap-1 rounded-lg bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-200 hover:bg-zinc-700 transition-colors",
                                     onclick: move |_| {
                                         let next_id = sessions().len() + 1;
                                         sessions.write().insert(0, SessionItem {
@@ -231,7 +269,7 @@ pub fn ChatPage(
                                     "+ 新分支"
                                 }
                             }
-                            div { class: "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1",
+                            div { class: "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 no-scrollbar",
                                 for s in sessions() {
                                     {
                                         let is_active = current_session_id() == s.id;
@@ -260,24 +298,23 @@ pub fn ChatPage(
             }
 
             // ==========================================
-            // 中央互动剧情主视区
+            // 中央主视区 (包含顶栏、中央对话舞台、右侧大纲导航栏)
             // ==========================================
             div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                // 顶部一体化微条 (需求1: 轮次/分页移至顶层，与剧本库及设置协同)
-                div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/60 px-4 backdrop-blur-xl z-10",
-                    // 左侧：回到主页/剧本库 + 展开侧栏 + 轮次分页 (对齐需求1)
+                // 顶部一体化微条
+                div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
+                    // 左侧：回到主页/剧本库 + 展开侧栏 + 轮次分页
                     div { class: "flex items-center gap-2",
-                        // 点击 FERRITE 直接回到品牌主页 (对齐需求4)
                         button {
                             class: "flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-950/40 px-2.5 py-1 text-xs text-purple-200 hover:bg-purple-900/40 transition-colors font-serif font-bold tracking-wider",
                             title: "回到 Tavern 官方品牌主页",
                             onclick: move |_| on_goto_home.call(()),
                             span { "🏛️" }
-                            span { "主页" }
+                            span { class: "hidden sm:inline", "主页" }
                         }
                         button {
                             class: "flex h-7 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors",
-                            title: "回到剧本库网格",
+                            title: "回到剧本库",
                             onclick: move |_| on_goto_characters.call(()),
                             span { "📚" }
                             span { class: "font-medium hidden sm:inline", "剧本库" }
@@ -291,16 +328,28 @@ pub fn ChatPage(
                             }
                         }
 
-                        // 顶层左侧轮次与分页器 (对齐需求1)
-                        div { class: "flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs ml-1",
+                        // 顶层左侧轮次与分页器
+                        div { class: "flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs ml-1",
                             button { class: "hover:text-zinc-200 px-0.5", "‹" }
-                            span { class: "text-[10px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 跳至 1 页" }
+                            span { class: "text-[10px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 共 3 轮" }
                             button { class: "hover:text-zinc-200 px-0.5", "›" }
                         }
                     }
 
-                    // 右侧：主题微按钮 + 快捷菜单齿轮
+                    // 右侧：右侧大纲显隐微钮 + 主题微钮 + 快捷菜单齿轮
                     div { class: "flex items-center gap-2",
+                        // 右侧大纲时间轴快捷开关 (支持所有屏幕尺寸)
+                        button {
+                            class: if right_outline_open() {
+                                "flex h-7 items-center gap-1 rounded-lg border border-purple-500/40 bg-purple-950/40 px-2 text-xs text-purple-300 transition-colors font-medium"
+                            } else {
+                                "flex h-7 items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-400 hover:bg-zinc-800 transition-colors"
+                            },
+                            title: "切换右侧消息时间线大纲",
+                            onclick: move |_| right_outline_open.set(!right_outline_open()),
+                            span { "📑" }
+                            span { class: "hidden sm:inline", "大纲" }
+                        }
                         button {
                             class: "flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 text-xs",
                             title: "切换光暗模式",
@@ -316,58 +365,131 @@ pub fn ChatPage(
                     }
                 }
 
-                // 剧情与卡片主滚动流
-                div { class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6 lg:px-20 xl:px-32",
-                    for item in story_items.read().clone() {
-                        match item {
-                            StoryItem::SystemCard { id: _, title, color, content } => rsx! {
-                                StatusCard { title, color, "{content}" }
-                            },
-                            StoryItem::Dialogue { id, name, time, content, mine, swipes, swipe_idx } => rsx! {
-                                MessageBubble {
-                                    key: "{id}",
-                                    name: name.clone(),
-                                    time: time.clone(),
-                                    content: content.clone(),
-                                    mine,
-                                    actions: rsx! {
-                                        if !mine && swipes.len() > 1 {
-                                            SwipePicker {
-                                                index: swipe_idx,
-                                                total: swipes.len(),
-                                                on_prev: move |_| {},
-                                                on_next: move |_| {},
+                // ==========================================
+                // 核心工作区: 对话主舞台 (左) + DeepSeek 风格大纲导航栏 (右)
+                // 彻底解决发多消息塌陷问题: flex-1 min-h-0 flex flex-row overflow-hidden
+                // ==========================================
+                div { class: "flex min-h-0 flex-1 overflow-hidden",
+                    // 1. 剧情滚动主视口 (平滑滚动 scroll-smooth，彻底隐藏滚动条 no-scrollbar，杜绝布局塌陷)
+                    div {
+                        id: "chat-scroll-viewport",
+                        class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto scroll-smooth p-4 sm:p-6 lg:px-16 xl:px-24 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                        for item in story_items.read().clone() {
+                            {
+                                let item_id = item.id();
+                                rsx! {
+                                    div {
+                                        id: "story-node-{item_id}",
+                                        class: "scroll-mt-4 flex flex-col gap-4",
+                                        match item {
+                                            StoryItem::SystemCard { id: _, title, color, content } => rsx! {
+                                                StatusCard { title, color, "{content}" }
+                                            },
+                                            StoryItem::Dialogue { id, name, time, content, mine, swipes, swipe_idx } => rsx! {
+                                                MessageBubble {
+                                                    key: "{id}",
+                                                    name: name.clone(),
+                                                    time: time.clone(),
+                                                    content: content.clone(),
+                                                    mine,
+                                                    actions: rsx! {
+                                                        if !mine && swipes.len() > 1 {
+                                                            SwipePicker {
+                                                                index: swipe_idx,
+                                                                total: swipes.len(),
+                                                                on_prev: move |_| {},
+                                                                on_next: move |_| {},
+                                                            }
+                                                        }
+                                                        IconButton {
+                                                            title: "删除该条",
+                                                            onclick: move |_| delete_id.set(Some(id)),
+                                                            "✕"
+                                                        }
+                                                    },
+                                                }
+                                            },
+                                            StoryItem::PlayerChoice { id: _, title, options } => rsx! {
+                                                ChoiceCard {
+                                                    title,
+                                                    options,
+                                                    on_select: move |chosen_text: String| {
+                                                        draft.set(chosen_text);
+                                                        handle_send();
+                                                    },
+                                                }
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. DeepSeek 风格右侧消息/决策时间线导航栏 (对齐需求1与参考图)
+                    if right_outline_open() {
+                        aside {
+                            class: "relative flex h-full w-56 shrink-0 flex-col border-l border-zinc-800/80 bg-zinc-950/70 p-3 backdrop-blur-xl select-none z-10",
+                            // 头部说明
+                            div { class: "flex items-center justify-between border-b border-zinc-800 pb-2 mb-2",
+                                div { class: "flex items-center gap-1.5",
+                                    span { class: "text-xs", "📑" }
+                                    span { class: "text-xs font-bold text-zinc-300", "时间线大纲" }
+                                }
+                                span { class: "text-[10px] text-zinc-500 tabular-nums", "{story_items().len()} 节点" }
+                            }
+
+                            // 节点跳转列表 (平滑滚动无滚动条)
+                            div { class: "flex-1 overflow-y-auto space-y-1.5 pr-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                                for (idx, item) in story_items.read().clone().into_iter().enumerate() {
+                                    {
+                                        let item_id = item.id();
+                                        let (kind, title_text) = item.nav_title();
+                                        rsx! {
+                                            button {
+                                                key: "{item_id}",
+                                                class: "group flex w-full flex-col gap-0.5 rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-2 text-left transition-all hover:border-purple-500/50 hover:bg-zinc-900",
+                                                onclick: move |_| {
+                                                    let eval_js = format!("document.getElementById('story-node-{}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});", item_id);
+                                                    dioxus::document::eval(&eval_js);
+                                                },
+                                                div { class: "flex items-center justify-between text-[10px]",
+                                                    span { class: "font-mono font-bold text-zinc-500 group-hover:text-purple-300 transition-colors",
+                                                        "#{idx + 1:02}"
+                                                    }
+                                                    span { class: "rounded bg-zinc-800 px-1 py-0.2 text-[9px] text-zinc-400 group-hover:bg-purple-950 group-hover:text-purple-300 transition-colors",
+                                                        "{kind}"
+                                                    }
+                                                }
+                                                span { class: "line-clamp-1 text-[11px] text-zinc-300 group-hover:text-zinc-100 transition-colors",
+                                                    "{title_text}"
+                                                }
                                             }
                                         }
-                                        IconButton {
-                                            title: "删除该条",
-                                            onclick: move |_| delete_id.set(Some(id)),
-                                            "✕"
-                                        }
-                                    },
+                                    }
                                 }
-                            },
-                            StoryItem::PlayerChoice { id: _, title, options } => rsx! {
-                                ChoiceCard {
-                                    title,
-                                    options,
-                                    on_select: move |chosen_text: String| {
-                                        draft.set(chosen_text);
-                                        handle_send();
-                                    },
-                                }
-                            },
+                            }
+
+                            // 底部一键回到底部
+                            button {
+                                class: "mt-2 flex items-center justify-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/80 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors",
+                                onclick: move |_| {
+                                    dioxus::document::eval("const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });");
+                                },
+                                span { "⬇" }
+                                span { "滑至最新" }
+                            }
                         }
                     }
                 }
 
                 // ==========================================
-                // 底部输入区与控制工具岛 (对齐需求1: 模型切换放输入框上方，增加快捷操作按钮行)
+                // 底部输入区与控制工具岛
                 // ==========================================
-                div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/80 p-3 backdrop-blur-2xl",
-                    // 1. 输入框正上方: 模型切换胶囊 + 文游高频快捷交互动作条 (对齐需求1)
-                    div { class: "flex flex-wrap items-center justify-between gap-2 px-1 text-xs",
-                        // 左侧: 居中的模型切换胶囊下移至此 (对齐需求1)
+                div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/80 p-3 backdrop-blur-2xl z-10",
+                    // 1. 输入框正上方: 模型切换胶囊 + 文游快捷动作条
+                    div { class: "flex flex-wrap items-center justify-between gap-2 px-1 text-xs select-none",
+                        // 模型切换胶囊
                         div { class: "relative",
                             button {
                                 class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
@@ -401,7 +523,7 @@ pub fn ChatPage(
                             }
                         }
 
-                        // 中部快捷动作胶囊组 (文游高频动作 + 开关)
+                        // 快捷动作胶囊组
                         div { class: "flex flex-wrap items-center gap-1.5",
                             button {
                                 class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
@@ -428,7 +550,6 @@ pub fn ChatPage(
                                 "⏩ 推进剧情"
                             }
 
-                            // 状态微开关
                             button {
                                 class: if mod_active() {
                                     "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
@@ -471,7 +592,7 @@ pub fn ChatPage(
                     div { class: "flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2.5 shadow-inner",
                         textarea {
                             class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
-                            placeholder: "点击上方行动选项，或输入你的自定义决策 (电脑端 Shift+回车可换行)",
+                            placeholder: "点击上方行动选项，或输入自定义决策 (电脑端 Shift+回车换行)",
                             value: "{draft()}",
                             oninput: move |e| draft.set(e.value()),
                             onkeydown: move |e| {
@@ -481,7 +602,7 @@ pub fn ChatPage(
                                 }
                             },
                         }
-                        div { class: "flex shrink-0 items-center gap-2",
+                        div { class: "flex shrink-0 items-center gap-2 select-none",
                             span { class: "text-[10px] text-zinc-600 tabular-nums", "{draft().len()}" }
                             button {
                                 class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
@@ -499,7 +620,7 @@ pub fn ChatPage(
                         class: "absolute inset-0 z-40 bg-black/20",
                         onclick: move |_| menu_open.set(false),
                     }
-                    div { class: "absolute right-3 top-14 z-50 flex w-48 flex-col divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs",
+                    div { class: "absolute right-3 top-14 z-50 flex w-48 flex-col divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs select-none",
                         div { class: "flex flex-col py-1",
                             button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
                                 "📤 导出记录"

@@ -22,7 +22,6 @@
     --color-cyan-300: oklch(86.5% 0.127 207.078);
     --color-cyan-500: oklch(71.5% 0.143 215.221);
     --color-cyan-950: oklch(30.2% 0.056 229.695);
-    --color-sky-300: oklch(82.8% 0.111 230.318);
     --color-sky-400: oklch(74.6% 0.16 232.661);
     --color-sky-500: oklch(68.5% 0.169 237.323);
     --color-sky-950: oklch(29.3% 0.066 243.157);
@@ -104,6 +103,7 @@
     --drop-shadow-xl: 0 9px 7px rgb(0 0 0 / 0.1);
     --ease-out: cubic-bezier(0, 0, 0.2, 1);
     --animate-spin: spin 1s linear infinite;
+    --blur-sm: 8px;
     --blur-md: 12px;
     --blur-xl: 24px;
     --blur-2xl: 40px;
@@ -289,6 +289,12 @@
   .inset-1\.5 {
     inset: calc(var(--spacing) * 1.5);
   }
+  .inset-x-0 {
+    inset-inline: 0;
+  }
+  .inset-y-0 {
+    inset-block: 0;
+  }
   .-top-3 {
     top: calc(var(--spacing) * -3);
   }
@@ -327,6 +333,9 @@
   }
   .right-12 {
     right: calc(var(--spacing) * 12);
+  }
+  .bottom-0 {
+    bottom: 0;
   }
   .bottom-full {
     bottom: 100%;
@@ -399,6 +408,9 @@
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+  }
+  .block {
+    display: block;
   }
   .flex {
     display: flex;
@@ -614,6 +626,12 @@
   .resize-none {
     resize: none;
   }
+  .scroll-mt-4 {
+    scroll-margin-top: calc(var(--spacing) * 4);
+  }
+  .\[scrollbar-width\:none\] {
+    scrollbar-width: none;
+  }
   .grid-cols-1 {
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
@@ -625,6 +643,9 @@
   }
   .flex-col {
     flex-direction: column;
+  }
+  .flex-row {
+    flex-direction: row;
   }
   .flex-row-reverse {
     flex-direction: row-reverse;
@@ -643,6 +664,9 @@
   }
   .items-start {
     align-items: flex-start;
+  }
+  .justify-around {
+    justify-content: space-around;
   }
   .justify-between {
     justify-content: space-between;
@@ -750,6 +774,9 @@
   .overflow-y-auto {
     overflow-y: auto;
   }
+  .scroll-smooth {
+    scroll-behavior: smooth;
+  }
   .rounded {
     border-radius: 0.25rem;
   }
@@ -802,6 +829,10 @@
   .border-b-2 {
     border-bottom-style: var(--tw-border-style);
     border-bottom-width: 2px;
+  }
+  .border-l {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 1px;
   }
   .border-dashed {
     --tw-border-style: dashed;
@@ -1242,6 +1273,12 @@
       background-color: color-mix(in oklab, var(--color-zinc-950) 90%, transparent);
     }
   }
+  .bg-zinc-950\/95 {
+    background-color: color-mix(in srgb, oklch(14.1% 0.005 285.823) 95%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-zinc-950) 95%, transparent);
+    }
+  }
   .bg-gradient-to-b {
     --tw-gradient-position: to bottom in oklab;
     background-image: linear-gradient(var(--tw-gradient-stops));
@@ -1521,8 +1558,8 @@
   .pt-8 {
     padding-top: calc(var(--spacing) * 8);
   }
-  .pt-16 {
-    padding-top: calc(var(--spacing) * 16);
+  .pr-0\.5 {
+    padding-right: calc(var(--spacing) * 0.5);
   }
   .pr-1 {
     padding-right: var(--spacing);
@@ -1542,8 +1579,14 @@
   .pb-6 {
     padding-bottom: calc(var(--spacing) * 6);
   }
+  .pb-14 {
+    padding-bottom: calc(var(--spacing) * 14);
+  }
   .pb-16 {
     padding-bottom: calc(var(--spacing) * 16);
+  }
+  .pb-18 {
+    padding-bottom: calc(var(--spacing) * 18);
   }
   .text-center {
     text-align: center;
@@ -1888,6 +1931,11 @@
     -webkit-backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);
     backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);
   }
+  .backdrop-blur-sm {
+    --tw-backdrop-blur: blur(var(--blur-sm));
+    -webkit-backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);
+    backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);
+  }
   .backdrop-blur-xl {
     --tw-backdrop-blur: blur(var(--blur-xl));
     -webkit-backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);
@@ -1933,6 +1981,9 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  .\[-ms-overflow-style\:none\] {
+    -ms-overflow-style: none;
+  }
   .group-hover\:translate-x-1 {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
@@ -1955,6 +2006,13 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         background-color: var(--color-purple-600);
+      }
+    }
+  }
+  .group-hover\:bg-purple-950 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        background-color: var(--color-purple-950);
       }
     }
   }
@@ -2264,6 +2322,13 @@
       }
     }
   }
+  .hover\:text-zinc-300 {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-zinc-300);
+      }
+    }
+  }
   .hover\:opacity-80 {
     &:hover {
       @media (hover: hover) {
@@ -2398,9 +2463,9 @@
       padding-inline: calc(var(--spacing) * 14);
     }
   }
-  .sm\:pt-18 {
+  .sm\:pt-6 {
     @media (width >= 40rem) {
-      padding-top: calc(var(--spacing) * 18);
+      padding-top: calc(var(--spacing) * 6);
     }
   }
   .sm\:text-3xl {
@@ -2427,9 +2492,19 @@
       line-height: var(--tw-leading, var(--text-base--line-height));
     }
   }
+  .md\:block {
+    @media (width >= 48rem) {
+      display: block;
+    }
+  }
   .md\:flex {
     @media (width >= 48rem) {
       display: flex;
+    }
+  }
+  .md\:hidden {
+    @media (width >= 48rem) {
+      display: none;
     }
   }
   .md\:grid-cols-3 {
@@ -2437,9 +2512,39 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
+  .md\:pt-16 {
+    @media (width >= 48rem) {
+      padding-top: calc(var(--spacing) * 16);
+    }
+  }
+  .md\:pb-0 {
+    @media (width >= 48rem) {
+      padding-bottom: 0;
+    }
+  }
+  .md\:pb-6 {
+    @media (width >= 48rem) {
+      padding-bottom: calc(var(--spacing) * 6);
+    }
+  }
+  .lg\:relative {
+    @media (width >= 64rem) {
+      position: relative;
+    }
+  }
+  .lg\:z-10 {
+    @media (width >= 64rem) {
+      z-index: 10;
+    }
+  }
   .lg\:mt-0 {
     @media (width >= 64rem) {
       margin-top: 0;
+    }
+  }
+  .lg\:hidden {
+    @media (width >= 64rem) {
+      display: none;
     }
   }
   .lg\:flex-row {
@@ -2457,14 +2562,27 @@
       gap: calc(var(--spacing) * 12);
     }
   }
-  .lg\:px-20 {
+  .lg\:bg-zinc-900\/70 {
     @media (width >= 64rem) {
-      padding-inline: calc(var(--spacing) * 20);
+      background-color: color-mix(in srgb, oklch(21% 0.006 285.885) 70%, transparent);
+      @supports (color: color-mix(in lab, red, red)) {
+        background-color: color-mix(in oklab, var(--color-zinc-900) 70%, transparent);
+      }
+    }
+  }
+  .lg\:px-16 {
+    @media (width >= 64rem) {
+      padding-inline: calc(var(--spacing) * 16);
     }
   }
   .lg\:py-16 {
     @media (width >= 64rem) {
       padding-block: calc(var(--spacing) * 16);
+    }
+  }
+  .lg\:pt-18 {
+    @media (width >= 64rem) {
+      padding-top: calc(var(--spacing) * 18);
     }
   }
   .lg\:text-4xl {
@@ -2494,9 +2612,14 @@
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
   }
-  .xl\:px-32 {
+  .xl\:px-24 {
     @media (width >= 80rem) {
-      padding-inline: calc(var(--spacing) * 32);
+      padding-inline: calc(var(--spacing) * 24);
+    }
+  }
+  .\[\&\:\:-webkit-scrollbar\]\:hidden {
+    &::-webkit-scrollbar {
+      display: none;
     }
   }
 }
