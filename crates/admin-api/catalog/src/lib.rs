@@ -31,23 +31,29 @@ use store::StoreError;
 pub trait Catalog: Send + Sync {
     /// 创建/更新渠道。校验: base_url 合法、keys 非空、index 无重复。
     /// TODO(#422): 创建后是否立即探活? 探活走 ops::jobs (channel_probe)。
-    fn upsert_channel(&self, ch: &contract::records::ChannelRecord)
-    -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn upsert_channel(
+        &self,
+        ch: &contract::records::ChannelRecord,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
     /// 删除渠道 → 级联 route_units 失效 (store FK CASCADE + Delete mutations)。
-    fn delete_channel(&self, key: &str)
-    -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn delete_channel(&self, key: &str) -> impl Future<Output = Result<(), StoreError>> + Send;
 
-    fn upsert_route_unit(&self, ru: &contract::records::RouteUnitRecord)
-    -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn upsert_route_unit(
+        &self,
+        ru: &contract::records::RouteUnitRecord,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
-    fn upsert_group(&self, g: &contract::records::GroupRecord)
-    -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn upsert_group(
+        &self,
+        g: &contract::records::GroupRecord,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
     /// token 创建: 生成明文 (sk- + 32B random), 存哈希, 返回明文一次。
-    fn create_token(&self, t: &contract::records::TokenRecord)
-    -> impl Future<Output = Result<String, StoreError>> + Send;
+    fn create_token(
+        &self,
+        t: &contract::records::TokenRecord,
+    ) -> impl Future<Output = Result<String, StoreError>> + Send;
 
-    fn revoke_token(&self, key: &str)
-    -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn revoke_token(&self, key: &str) -> impl Future<Output = Result<(), StoreError>> + Send;
 }

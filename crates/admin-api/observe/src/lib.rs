@@ -15,11 +15,11 @@
 //! 不伪造实时 (设计文档原则 7)。
 
 pub mod hourly;
+pub mod logs;
 pub mod monitor;
 pub mod perf;
 pub mod rankings;
 pub mod retention;
-pub mod logs;
 
 /// 查询响应统一携带新鲜度 (原则 7)。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

@@ -32,7 +32,6 @@ struct UserRow {
     group_id: String,
     auth_version: i64,
     created_at: DateTime<Utc>,
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -105,8 +104,7 @@ impl AuthService {
         );
         // refresh_secret 由 jwt_secret 派生: 轮换 jwt secret 会使全部 refresh 失效
         // (预期行为 — 换密钥 = 强制全员重新登录)。
-        let mut mac = HmacSha256::new_from_slice(&jwt_secret)
-            .expect("HMAC accepts any key length");
+        let mut mac = HmacSha256::new_from_slice(&jwt_secret).expect("HMAC accepts any key length");
         mac.update(b"refresh");
         let refresh_secret = mac.finalize().into_bytes().to_vec();
 
@@ -124,8 +122,8 @@ impl AuthService {
     }
 
     fn hash_refresh(&self, secret: &[u8]) -> String {
-        let mut mac = HmacSha256::new_from_slice(&self.refresh_secret)
-            .expect("HMAC accepts any key");
+        let mut mac =
+            HmacSha256::new_from_slice(&self.refresh_secret).expect("HMAC accepts any key");
         mac.update(secret);
         hex::encode(mac.finalize().into_bytes())
     }
@@ -137,9 +135,7 @@ impl AuthService {
     }
 
     fn split_refresh(&self, raw: &str) -> Result<(Uuid, Vec<u8>), AuthError> {
-        let (sid_s, secret_s) = raw
-            .split_once('.')
-            .ok_or(AuthError::InvalidToken)?;
+        let (sid_s, secret_s) = raw.split_once('.').ok_or(AuthError::InvalidToken)?;
         let sid = Uuid::parse_str(sid_s).map_err(|_| AuthError::InvalidToken)?;
         let secret = hex::decode(secret_s).map_err(|_| AuthError::InvalidToken)?;
         if secret.len() != 32 {
@@ -413,13 +409,14 @@ impl AuthService {
             if name.chars().count() > 64 {
                 return Err(AuthError::BadRequest("display_name <= 64 chars".into()));
             }
-            sqlx::query("UPDATE auth_users SET display_name = $2, updated_at = now() WHERE key = $1")
-                .bind(user_key)
-                .bind(name)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(
+                "UPDATE auth_users SET display_name = $2, updated_at = now() WHERE key = $1",
+            )
+            .bind(user_key)
+            .bind(name)
+            .execute(&self.pool)
+            .await?;
         }
-
 
         if bump_version {
             // 改密 = 全端登出
@@ -447,6 +444,17 @@ impl AuthService {
             return Err(AuthError::UserNotFound);
         }
         Ok(())
+    }
+
+    /// admin 单查用户（按 key）。
+    pub async fn get_user(&self, key: Uuid) -> Result<UserView, AuthError> {
+        self.fetch_user_by_key(key).await
+    }
+
+    /// admin 搜索用户（ILIKE 过滤，前 20 条）。
+    pub async fn search_users(&self, keyword: &str) -> Result<Vec<UserView>, AuthError> {
+        let (items, _) = self.list_users(Some(keyword), 1, 20).await?;
+        Ok(items)
     }
 
     /// admin 用户列表 — 分页 + 搜索 (username/email/display_name ILIKE)。
@@ -497,12 +505,14 @@ impl AuthService {
         match action {
             "enable" | "disable" => {
                 let status: i16 = if action == "enable" { 1 } else { 2 };
-                let affected = sqlx::query("UPDATE auth_users SET status = $2, updated_at = now() WHERE key = $1")
-                    .bind(target_key)
-                    .bind(status)
-                    .execute(&self.pool)
-                    .await?
-                    .rows_affected();
+                let affected = sqlx::query(
+                    "UPDATE auth_users SET status = $2, updated_at = now() WHERE key = $1",
+                )
+                .bind(target_key)
+                .bind(status)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
                 if affected == 0 {
                     return Err(AuthError::UserNotFound);
                 }
@@ -520,20 +530,22 @@ impl AuthService {
                 if ![1, 10, 100].contains(&role) {
                     return Err(AuthError::BadRequest("role must be 1 | 10 | 100".into()));
                 }
-                let affected = sqlx::query("UPDATE auth_users SET role = $2, updated_at = now() WHERE key = $1")
-                    .bind(target_key)
-                    .bind(role)
-                    .execute(&self.pool)
-                    .await?
-                    .rows_affected();
+                let affected = sqlx::query(
+                    "UPDATE auth_users SET role = $2, updated_at = now() WHERE key = $1",
+                )
+                .bind(target_key)
+                .bind(role)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
                 if affected == 0 {
                     return Err(AuthError::UserNotFound);
                 }
             }
             "adjust_quota" => {
-                let delta: i64 = value
-                    .and_then(|v| v.parse().ok())
-                    .ok_or_else(|| AuthError::BadRequest("value must be an integer delta".into()))?;
+                let delta: i64 = value.and_then(|v| v.parse().ok()).ok_or_else(|| {
+                    AuthError::BadRequest("value must be an integer delta".into())
+                })?;
                 let affected = sqlx::query(
                     "UPDATE auth_users SET quota = GREATEST(0, quota + $2), updated_at = now() WHERE key = $1",
                 )
@@ -547,7 +559,8 @@ impl AuthService {
                 }
             }
             "reset_password" => {
-                let new_pwd = value.ok_or_else(|| AuthError::BadRequest("value = new password".into()))?;
+                let new_pwd =
+                    value.ok_or_else(|| AuthError::BadRequest("value = new password".into()))?;
                 validate_password(new_pwd)?;
                 let phc = password::hash(new_pwd)?;
                 let affected = sqlx::query(
@@ -623,7 +636,9 @@ impl AuthService {
 /// 密码策略: 8..=128 字节 (上限防 argon2 DoS)。
 fn validate_password(p: &str) -> Result<(), AuthError> {
     if p.len() < 8 || p.len() > 128 {
-        return Err(AuthError::BadRequest("password length must be 8..=128".into()));
+        return Err(AuthError::BadRequest(
+            "password length must be 8..=128".into(),
+        ));
     }
     Ok(())
 }
@@ -638,4 +653,3 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     }
     diff == 0
 }
-

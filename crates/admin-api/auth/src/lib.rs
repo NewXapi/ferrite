@@ -5,13 +5,13 @@
 //!
 //! 表在 `auth_users` / `auth_refresh_tokens`（loose，迁移在 `migrations.rs` 启动时跑）。
 
+pub mod ddl;
 pub mod error;
 pub mod jwt;
 pub mod password;
-pub mod service;
-pub mod ddl;
 pub mod routes;
+pub mod service;
 
 pub use error::AuthError;
-pub use service::{AuthService, LoginResult, RefreshResult, SelfView, UserView};
 pub use routes::{bearer_user, router};
+pub use service::{AuthService, LoginResult, RefreshResult, SelfView, UserView};

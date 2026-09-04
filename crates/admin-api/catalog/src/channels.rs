@@ -229,9 +229,16 @@ impl ChannelService {
             Some(v) => v.clone(),
             None => existing.models.clone(),
         };
-        validate(merged_name, merged_type, merged_url, &merged_keys, &merged_models)?;
+        validate(
+            merged_name,
+            merged_type,
+            merged_url,
+            &merged_keys,
+            &merged_models,
+        )?;
 
-        let cur_keys = serde_json::to_value(&merged_keys).map_err(|e| AuthError::Crypto(e.to_string()))?;
+        let cur_keys =
+            serde_json::to_value(&merged_keys).map_err(|e| AuthError::Crypto(e.to_string()))?;
         sqlx::query(
             r#"UPDATE api_channels SET
                name = COALESCE($2, name), channel_type = COALESCE($3, channel_type),
@@ -264,12 +271,13 @@ impl ChannelService {
         if ![1, 2].contains(&status) {
             return Err(AuthError::BadRequest("status must be 1|2".into()));
         }
-        let affected = sqlx::query("UPDATE api_channels SET status = $2, updated_at = now() WHERE key = $1")
-            .bind(key)
-            .bind(status)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
+        let affected =
+            sqlx::query("UPDATE api_channels SET status = $2, updated_at = now() WHERE key = $1")
+                .bind(key)
+                .bind(status)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
         if affected == 0 {
             return Err(AuthError::UserNotFound);
         }
@@ -347,6 +355,7 @@ fn validate(
 pub struct ChannelAppState {
     pub svc: std::sync::Arc<ChannelService>,
     pub auth: std::sync::Arc<AuthService>,
+    pub monitor: observe::monitor::MonitorDeps,
 }
 
 pub fn router(state: ChannelAppState) -> axum::Router {
@@ -354,15 +363,17 @@ pub fn router(state: ChannelAppState) -> axum::Router {
     axum::Router::new()
         .route("/api/channel", get(list).post(create))
         .route("/api/channel/search", get(search))
-        .route("/api/channel/{key}", get(get_one).put(update).delete(remove))
+        .route(
+            "/api/channel/{key}",
+            get(get_one).put(update).delete(remove),
+        )
         .route("/api/channel/{key}/status", post(set_status))
+        .route("/api/channel/{key}/test", post(test_one))
+        .route("/api/channel/test", post(test_all))
         .with_state(state)
 }
 
-async fn require_admin(
-    auth: &AuthService,
-    headers: &HeaderMap,
-) -> Result<(), AuthError> {
+async fn require_admin(auth: &AuthService, headers: &HeaderMap) -> Result<(), AuthError> {
     let user = bearer_user(auth, headers).await?;
     if user.role >= auth::routes::ADMIN_ROLE_THRESHOLD {
         Ok(())
@@ -392,10 +403,15 @@ async fn handle_list(
     search: Option<&str>,
     page: i64,
     size: i64,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, headers).await.map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, headers)
+        .await
+        .map_err(err_json)?;
     match state.svc.list(search, page, size).await {
-        Ok((items, total)) => Ok(axum::Json(serde_json::json!({"items": items, "total": total}))),
+        Ok((items, total)) => Ok(axum::Json(
+            serde_json::json!({"items": items, "total": total}),
+        )),
         Err(e) => Err(err_json(e)),
     }
 }
@@ -404,17 +420,33 @@ async fn list(
     axum::extract::State(state): axum::extract::State<ChannelAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    handle_list(&state, &headers, q.search.as_deref(), q.page.unwrap_or(1), q.size.unwrap_or(20)).await
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    handle_list(
+        &state,
+        &headers,
+        q.search.as_deref(),
+        q.page.unwrap_or(1),
+        q.size.unwrap_or(20),
+    )
+    .await
 }
 
 async fn search(
     axum::extract::State(state): axum::extract::State<ChannelAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
     let keyword = q.keyword.clone().or(q.search.clone()).unwrap_or_default();
-    handle_list(&state, &headers, Some(&keyword), q.page.unwrap_or(1), q.size.unwrap_or(20)).await
+    handle_list(
+        &state,
+        &headers,
+        Some(&keyword),
+        q.page.unwrap_or(1),
+        q.size.unwrap_or(20),
+    )
+    .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -451,13 +483,24 @@ async fn create(
     axum::extract::State(state): axum::extract::State<ChannelAppState>,
     headers: HeaderMap,
     axum::Json(req): axum::Json<CreateChannelRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
     match state
         .svc
         .create(
-            &req.name, &req.channel_type, &req.base_url, req.keys, req.models,
-            &req.group_name, req.priority, req.weight, req.test_model, &req.remark,
+            &req.name,
+            &req.channel_type,
+            &req.base_url,
+            req.keys,
+            req.models,
+            &req.group_name,
+            req.priority,
+            req.weight,
+            req.test_model,
+            &req.remark,
         )
         .await
     {
@@ -470,9 +513,14 @@ async fn get_one(
     axum::extract::State(state): axum::extract::State<ChannelAppState>,
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| AuthError::BadRequest("invalid key".into())).map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
     match state.svc.get(key).await {
         Ok(c) => Ok(axum::Json(serde_json::json!(c))),
         Err(e) => Err(err_json(e)),
@@ -500,9 +548,14 @@ async fn update(
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
     axum::Json(req): axum::Json<UpdateChannelRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| AuthError::BadRequest("invalid key".into())).map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
     match state
         .svc
         .update(
@@ -536,9 +589,14 @@ async fn set_status(
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
     axum::Json(req): axum::Json<StatusRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| AuthError::BadRequest("invalid key".into())).map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
     match state.svc.set_status(key, req.status).await {
         Ok(c) => Ok(axum::Json(serde_json::json!(c))),
         Err(e) => Err(err_json(e)),
@@ -549,11 +607,248 @@ async fn remove(
     axum::extract::State(state): axum::extract::State<ChannelAppState>,
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| AuthError::BadRequest("invalid key".into())).map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
     match state.svc.delete(key).await {
         Ok(()) => Ok(axum::Json(serde_json::json!({"success": true}))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+// ---------- 渠道探活 ----------
+
+/// 探活结果（catalog 层视角；落库由 observe::monitor 负责）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProbeResult {
+    pub channel_key: String,
+    pub channel_name: String,
+    pub model: String,
+    pub ok: bool,
+    pub status_code: Option<i32>,
+    pub latency_ms: i32,
+    pub error_kind: String,
+    pub message: String,
+}
+
+impl ChannelService {
+    /// 对单个渠道发真实测试请求（chat/completions 短输出），结果落
+    /// monitor_history 并返回。model 缺省取渠道 test_model，再缺省取
+    /// models 里第一个 upstream。
+    pub async fn test_channel(
+        &self,
+        monitor: &observe::monitor::MonitorDeps,
+        key: Uuid,
+        model_override: Option<&str>,
+    ) -> Result<ProbeResult, AuthError> {
+        let ch = self.fetch(key).await?;
+        let keys: Vec<String> = serde_json::from_value(ch.keys.clone()).unwrap_or_default();
+        let models: Vec<Value> = serde_json::from_value(ch.models.clone()).unwrap_or_default();
+
+        let model = model_override
+            .map(str::to_string)
+            .or_else(|| ch.test_model.clone())
+            .or_else(|| {
+                models
+                    .first()
+                    .and_then(|m| m.get("upstream"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .ok_or_else(|| AuthError::BadRequest("channel has no test_model or models".into()))?;
+
+        let first_key = keys
+            .first()
+            .ok_or_else(|| AuthError::BadRequest("channel has no keys".into()))?;
+
+        let result = probe_chat_completions(&ch.base_url, first_key, &model).await;
+        let outcome = observe::monitor::ProbeOutcome {
+            channel_key: ch.key,
+            channel_name: ch.name.clone(),
+            model: model.clone(),
+            ok: result.ok,
+            status_code: result.status_code,
+            latency_ms: result.latency_ms,
+            error_kind: result.error_kind.clone(),
+            message: result.message.clone(),
+        };
+        monitor.record(&outcome).await?;
+
+        Ok(ProbeResult {
+            channel_key: ch.key.to_string(),
+            channel_name: ch.name,
+            model,
+            ok: result.ok,
+            status_code: result.status_code,
+            latency_ms: result.latency_ms,
+            error_kind: result.error_kind,
+            message: result.message,
+        })
+    }
+
+    /// 全量探活：逐个渠道测试（串行，渠道多时调用方自行分批）。
+    pub async fn test_all(
+        &self,
+        monitor: &observe::monitor::MonitorDeps,
+    ) -> Result<Vec<ProbeResult>, AuthError> {
+        let sql = format!(
+            "SELECT {} FROM api_channels WHERE status = 1 ORDER BY priority DESC",
+            SELECT_COLS
+        );
+        let rows: Vec<ChannelRow> = sqlx::query_as(&sql).fetch_all(&self.pool).await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            match self.test_channel(monitor, r.key, None).await {
+                Ok(p) => out.push(p),
+                // 无 test_model/keys 的渠道记一条失败结果而不是中断全量
+                Err(e) => out.push(ProbeResult {
+                    channel_key: r.key.to_string(),
+                    channel_name: r.name,
+                    model: r.test_model.unwrap_or_default(),
+                    ok: false,
+                    status_code: None,
+                    latency_ms: 0,
+                    error_kind: "config".into(),
+                    message: e.to_string(),
+                }),
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// 探活底层 HTTP 调用 — POST {base_url}/chat/completions，max_tokens=1。
+/// 超时 10s；HTTP 2xx 视为探活成功（body 不校验内容）。
+async fn probe_chat_completions(base_url: &str, api_key: &str, model: &str) -> ProbeResult {
+    let started = std::time::Instant::now();
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+
+    let client = match client {
+        Ok(c) => c,
+        Err(e) => {
+            return ProbeResult {
+                channel_key: String::new(),
+                channel_name: String::new(),
+                model: model.into(),
+                ok: false,
+                status_code: None,
+                latency_ms: 0,
+                error_kind: "client".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1
+    });
+
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await;
+
+    let latency_ms = started.elapsed().as_millis() as i32;
+    match resp {
+        Ok(r) => {
+            let status = r.status().as_u16() as i32;
+            let ok = r.status().is_success();
+            let message = if ok {
+                String::new()
+            } else {
+                r.text()
+                    .await
+                    .unwrap_or_default()
+                    .chars()
+                    .take(200)
+                    .collect()
+            };
+            ProbeResult {
+                channel_key: String::new(),
+                channel_name: String::new(),
+                model: model.into(),
+                ok,
+                status_code: Some(status),
+                latency_ms,
+                error_kind: if ok { String::new() } else { "http".into() },
+                message,
+            }
+        }
+        Err(e) => {
+            let kind = if e.is_timeout() {
+                "timeout"
+            } else if e.is_connect() {
+                "connect"
+            } else {
+                "request"
+            };
+            ProbeResult {
+                channel_key: String::new(),
+                channel_name: String::new(),
+                model: model.into(),
+                ok: false,
+                status_code: None,
+                latency_ms,
+                error_kind: kind.into(),
+                message: e.to_string(),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct TestQuery {
+    model: Option<String>,
+}
+
+/// POST /api/channel/{key}/test — 单渠道探活。
+async fn test_one(
+    axum::extract::State(state): axum::extract::State<ChannelAppState>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    axum::extract::Query(q): axum::extract::Query<TestQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
+    match state
+        .svc
+        .test_channel(&state.monitor, key, q.model.as_deref())
+        .await
+    {
+        Ok(p) => Ok(axum::Json(serde_json::json!(p))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+/// POST /api/channel/test — 全量探活（启用渠道串行测试）。
+async fn test_all(
+    axum::extract::State(state): axum::extract::State<ChannelAppState>,
+    headers: HeaderMap,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    match state.svc.test_all(&state.monitor).await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({"items": items}))),
         Err(e) => Err(err_json(e)),
     }
 }

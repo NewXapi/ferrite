@@ -201,6 +201,37 @@ impl TokenService {
         .ok_or(AuthError::UserNotFound)?;
         Ok(row.into())
     }
+    /// 重取明文 key — 重新生成（旧 key 立即失效，新明文一次性返回）。
+    /// 对齐 new-api GetTokenKey 语义：不做可逆加密存储。
+    pub async fn regenerate_key(
+        &self,
+        user_key: Uuid,
+        token_key: Uuid,
+        admin_all: bool,
+    ) -> Result<String, AuthError> {
+        // 归属校验 (owner or admin)
+        self.get(user_key, token_key, admin_all).await?;
+
+        let mut buf = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut buf);
+        let plaintext = format!("sk-{}", hex::encode(buf));
+        let key_hash = sha256_hex(&plaintext);
+        let key_preview = preview(&plaintext);
+
+        let affected = sqlx::query(
+            "UPDATE api_tokens SET key_hash = $2, key_preview = $3, updated_at = now() WHERE key = $1",
+        )
+        .bind(token_key)
+        .bind(&key_hash)
+        .bind(key_preview)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if affected == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+        Ok(plaintext)
+    }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn update(
@@ -243,11 +274,13 @@ impl TokenService {
                 .await?;
         }
         if let Some(u) = unlimited_quota {
-            sqlx::query("UPDATE api_tokens SET unlimited_quota = $2, updated_at = now() WHERE key = $1")
-                .bind(token_key)
-                .bind(u)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query(
+                "UPDATE api_tokens SET unlimited_quota = $2, updated_at = now() WHERE key = $1",
+            )
+            .bind(token_key)
+            .bind(u)
+            .execute(&self.pool)
+            .await?;
         }
         if let Some(e) = expires_at {
             sqlx::query("UPDATE api_tokens SET expires_at = $2, updated_at = now() WHERE key = $1")
@@ -339,18 +372,16 @@ pub struct TokenAppState {
 }
 
 pub fn router(state: TokenAppState) -> axum::Router {
-    use axum::routing::{get, put};
+    use axum::routing::{get, post, put};
     axum::Router::new()
         .route("/api/token", get(list).post(create))
         .route("/api/token/search", get(search))
         .route("/api/token/{key}", put(update).delete(remove))
+        .route("/api/token/{key}/key", post(regenerate))
         .with_state(state)
 }
 
-async fn current_admin(
-    auth: &AuthService,
-    headers: &HeaderMap,
-) -> Result<(Uuid, bool), AuthError> {
+async fn current_admin(auth: &AuthService, headers: &HeaderMap) -> Result<(Uuid, bool), AuthError> {
     let user = bearer_user(auth, headers).await?;
     let key = Uuid::parse_str(&user.key).map_err(|_| AuthError::InvalidToken)?;
     Ok((key, user.role >= 10))
@@ -372,11 +403,21 @@ async fn create(
     axum::extract::State(state): axum::extract::State<TokenAppState>,
     headers: HeaderMap,
     axum::Json(req): axum::Json<CreateTokenRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    let (user_key, _) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, _) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
     match state
         .svc
-        .create(user_key, &req.name, req.group, req.quota, req.unlimited_quota, req.expires_at)
+        .create(
+            user_key,
+            &req.name,
+            req.group,
+            req.quota,
+            req.unlimited_quota,
+            req.expires_at,
+        )
         .await
     {
         Ok(r) => Ok(axum::Json(serde_json::json!(r))),
@@ -395,8 +436,11 @@ async fn list(
     axum::extract::State(state): axum::extract::State<TokenAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
     // all=true 需要 admin
     if q.all && !is_admin {
         return Err(err_json(AuthError::Forbidden));
@@ -411,13 +455,20 @@ async fn search(
     axum::extract::State(state): axum::extract::State<TokenAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
     let keyword = q.keyword.unwrap_or_default();
     if q.all && !is_admin {
         return Err(err_json(AuthError::Forbidden));
     }
-    match state.svc.search(user_key, q.all && is_admin, &keyword).await {
+    match state
+        .svc
+        .search(user_key, q.all && is_admin, &keyword)
+        .await
+    {
         Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
         Err(e) => Err(err_json(e)),
     }
@@ -440,9 +491,13 @@ async fn update(
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
     axum::Json(req): axum::Json<UpdateTokenRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let token_key = Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let token_key = Uuid::parse_str(&key)
+        .map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
     match state
         .svc
         .update(
@@ -467,9 +522,13 @@ async fn remove(
     axum::extract::State(state): axum::extract::State<TokenAppState>,
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    let (user_key, is_admin) = current_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let token_key = Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let token_key = Uuid::parse_str(&key)
+        .map_err(|_| err_json(AuthError::BadRequest("invalid token key".into())))?;
     match state.svc.delete(user_key, token_key, is_admin).await {
         Ok(()) => Ok(axum::Json(serde_json::json!({"success": true}))),
         Err(e) => Err(err_json(e)),
@@ -484,4 +543,27 @@ fn err_json(e: AuthError) -> (axum::http::StatusCode, axum::Json<serde_json::Val
             "message": e.to_string(),
         })),
     )
+}
+
+/// POST /api/token/{key}/key — 重新生成明文 key（旧 key 失效）。
+async fn regenerate(
+    axum::extract::State(state): axum::extract::State<TokenAppState>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let (user_key, is_admin) = current_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let token_key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid token key".into()))
+        .map_err(err_json)?;
+    match state
+        .svc
+        .regenerate_key(user_key, token_key, is_admin)
+        .await
+    {
+        Ok(plaintext) => Ok(axum::Json(serde_json::json!({ "key": plaintext }))),
+        Err(e) => Err(err_json(e)),
+    }
 }

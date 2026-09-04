@@ -2,9 +2,9 @@
 //!
 //! PHC 字符串存库 (`$argon2id$v=19$m=19456,t=2,p=1$...$...`)，参数和盐都含在里面。
 
+use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
 
 use crate::error::AuthError;
 

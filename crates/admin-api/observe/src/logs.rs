@@ -242,8 +242,10 @@ impl LogService {
         page: i64,
         size: i64,
     ) -> Result<(Vec<LogView>, i64), AuthError> {
-        self.query(None, log_type, username, token_name, model_name, start, end, page, size)
-            .await
+        self.query(
+            None, log_type, username, token_name, model_name, start, end, page, size,
+        )
+        .await
     }
 
     /// 用户自查。
@@ -259,8 +261,18 @@ impl LogService {
         page: i64,
         size: i64,
     ) -> Result<(Vec<LogView>, i64), AuthError> {
-        self.query(Some(user_key), log_type, None, token_name, model_name, start, end, page, size)
-            .await
+        self.query(
+            Some(user_key),
+            log_type,
+            None,
+            token_name,
+            model_name,
+            start,
+            end,
+            page,
+            size,
+        )
+        .await
     }
 
     async fn stat_inner(&self, user_key: Option<Uuid>) -> Result<UsageStat, AuthError> {
@@ -367,7 +379,8 @@ async fn list(
     axum::extract::State(state): axum::extract::State<LogAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<LogQuery>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
     let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
     if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
         return Err(err_json(AuthError::Forbidden));
@@ -375,12 +388,20 @@ async fn list(
     match state
         .svc
         .list_logs(
-            q.log_type, q.username.as_deref(), q.token_name.as_deref(),
-            q.model_name.as_deref(), q.start, q.end, q.page.unwrap_or(1), q.size.unwrap_or(20),
+            q.log_type,
+            q.username.as_deref(),
+            q.token_name.as_deref(),
+            q.model_name.as_deref(),
+            q.start,
+            q.end,
+            q.page.unwrap_or(1),
+            q.size.unwrap_or(20),
         )
         .await
     {
-        Ok((items, total)) => Ok(axum::Json(serde_json::json!({"items": items, "total": total}))),
+        Ok((items, total)) => Ok(axum::Json(
+            serde_json::json!({"items": items, "total": total}),
+        )),
         Err(e) => Err(err_json(e)),
     }
 }
@@ -388,7 +409,8 @@ async fn list(
 async fn stat(
     axum::extract::State(state): axum::extract::State<LogAppState>,
     headers: HeaderMap,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
     let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
     if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
         return Err(err_json(AuthError::Forbidden));
@@ -403,18 +425,29 @@ async fn list_self(
     axum::extract::State(state): axum::extract::State<LogAppState>,
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<LogQuery>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
     let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&user.key).map_err(|_| AuthError::InvalidToken).map_err(err_json)?;
+    let key = Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_json)?;
     match state
         .svc
         .list_self_logs(
-            key, q.log_type, q.token_name.as_deref(), q.model_name.as_deref(),
-            q.start, q.end, q.page.unwrap_or(1), q.size.unwrap_or(20),
+            key,
+            q.log_type,
+            q.token_name.as_deref(),
+            q.model_name.as_deref(),
+            q.start,
+            q.end,
+            q.page.unwrap_or(1),
+            q.size.unwrap_or(20),
         )
         .await
     {
-        Ok((items, total)) => Ok(axum::Json(serde_json::json!({"items": items, "total": total}))),
+        Ok((items, total)) => Ok(axum::Json(
+            serde_json::json!({"items": items, "total": total}),
+        )),
         Err(e) => Err(err_json(e)),
     }
 }
@@ -422,9 +455,12 @@ async fn list_self(
 async fn self_stat(
     axum::extract::State(state): axum::extract::State<LogAppState>,
     headers: HeaderMap,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
     let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&user.key).map_err(|_| AuthError::InvalidToken).map_err(err_json)?;
+    let key = Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_json)?;
     match state.svc.self_stat(key).await {
         Ok(s) => Ok(axum::Json(serde_json::json!(s))),
         Err(e) => Err(err_json(e)),
@@ -434,7 +470,8 @@ async fn self_stat(
 async fn dashboard(
     axum::extract::State(state): axum::extract::State<LogAppState>,
     headers: HeaderMap,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
     let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
     if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
         return Err(err_json(AuthError::Forbidden));
