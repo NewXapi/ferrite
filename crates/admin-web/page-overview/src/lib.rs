@@ -9,3 +9,5 @@ mod overview;
 pub use leaderboard::LeaderboardPanel;
 pub use models::ModelsPanel;
 pub use overview::OverviewPanel;
+
+pub mod health;
