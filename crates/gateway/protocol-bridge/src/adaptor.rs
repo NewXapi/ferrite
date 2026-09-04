@@ -8,6 +8,7 @@
 //! Chat→Responses→Claude 是"组合路由"。TODO(#503): 组合路由二期, 先覆盖直接路由。
 
 use bytes::Bytes;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -147,11 +148,50 @@ impl Codec for OpenAiCodec {
     fn target(&self) -> Protocol {
         Protocol::OpenAi
     }
-    fn adapt_request(&self, _body: Bytes) -> Result<Bytes, AdaptorError> {
-        Ok(Bytes::new()) // TODO(#510): 透传; 注入 stream_options 则重写 body
+    fn adapt_request(&self, body: Bytes) -> Result<Bytes, AdaptorError> {
+        // 只有在需要注入 stream_options.include_usage 时才解析/重写
+        // 否则零拷贝透传
+        if body.is_empty() {
+            return Ok(body);
+        }
+
+        let mut req: Value = match serde_json::from_slice(&body) {
+            Ok(v) => v,
+            Err(_) => return Ok(body), // 非 JSON 直接透传
+        };
+
+        let stream = req.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
+        if stream {
+            let mut stream_options = req
+                .get_mut("stream_options")
+                .and_then(|v| v.as_object_mut());
+            let has_include_usage = stream_options
+                .as_ref()
+                .and_then(|o| o.get("include_usage"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            if !has_include_usage {
+                // 注入 stream_options.include_usage = true
+                if stream_options.is_none() {
+                    req["stream_options"] = json!({});
+                    stream_options = req
+                        .get_mut("stream_options")
+                        .and_then(|v| v.as_object_mut());
+                }
+                if let Some(opts) = stream_options {
+                    opts.insert("include_usage".to_string(), json!(true));
+                }
+                return Ok(Bytes::from(
+                    serde_json::to_vec(&req)
+                        .map_err(|e| AdaptorError::EncodeFailed(e.to_string()))?,
+                ));
+            }
+        }
+        Ok(body)
     }
-    fn adapt_response(&self, _chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
-        Ok(Vec::new()) // TODO(#511): 透传; usage 事件交给 sse::SseScanner
+    fn adapt_response(&self, chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
+        Ok(vec![chunk])
     }
 }
 
@@ -179,11 +219,295 @@ impl Codec for ClaudeCodec {
             Protocol::OpenAi
         }
     }
-    fn adapt_request(&self, _body: Bytes) -> Result<Bytes, AdaptorError> {
-        Ok(Bytes::new()) // TODO(#512): OpenAI→Claude 请求映射
+    fn adapt_request(&self, body: Bytes) -> Result<Bytes, AdaptorError> {
+        if !self.to_claude {
+            return Err(AdaptorError::Unsupported {
+                from: Protocol::Claude,
+                to: Protocol::OpenAi,
+            });
+        }
+        if body.is_empty() {
+            return Ok(body);
+        }
+
+        let req: Value =
+            serde_json::from_slice(&body).map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+
+        // Extract system messages
+        let mut system_content = Vec::new();
+        let mut claude_messages = Vec::new();
+
+        if let Some(messages) = req.get("messages").and_then(|v| v.as_array()) {
+            for msg in messages {
+                let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+                let content = msg.get("content").cloned();
+
+                if role == "system" {
+                    // Extract system message to top-level system field
+                    if let Some(text) = extract_text_content(&content) {
+                        if !text.is_empty() {
+                            system_content.push(json!({
+                                "type": "text",
+                                "text": text
+                            }));
+                        }
+                    }
+                    continue;
+                }
+
+                let mut claude_msg = json!({
+                    "role": role,
+                });
+
+                if let Some(c) = content {
+                    if role == "tool" {
+                        // Tool result message
+                        let tool_call_id = msg
+                            .get("tool_call_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        claude_msg["content"] = json!([{
+                            "type": "tool_result",
+                            "tool_use_id": tool_call_id,
+                            "content": c
+                        }]);
+                    } else if let Some(text) = extract_text_content(&Some(c.clone())) {
+                        // Simple text content
+                        if let Some(tool_calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
+                            // Assistant with tool calls
+                            let mut blocks = vec![json!({
+                                "type": "text",
+                                "text": text
+                            })];
+                            for tc in tool_calls {
+                                let name = tc
+                                    .get("function")
+                                    .and_then(|f| f.get("name"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let args = tc
+                                    .get("function")
+                                    .and_then(|f| f.get("arguments"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("{}");
+                                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                blocks.push(json!({
+                                    "type": "tool_use",
+                                    "id": id,
+                                    "name": name,
+                                    "input": serde_json::from_str::<Value>(args).unwrap_or(json!({}))
+                                }));
+                            }
+                            claude_msg["content"] = json!(blocks);
+                        } else {
+                            // Simple text message
+                            claude_msg["content"] = json!(Value::String(text));
+                        }
+                    } else if let Some(arr) = c.as_array() {
+                        // Content array (text + images)
+                        let mut blocks = Vec::new();
+                        for item in arr {
+                            let item_type =
+                                item.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+                            match item_type {
+                                "text" => {
+                                    if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
+                                        if !text.is_empty() {
+                                            blocks.push(json!({
+                                                "type": "text",
+                                                "text": text
+                                            }));
+                                        }
+                                    }
+                                }
+                                "image_url" => {
+                                    if let Some(image_url) =
+                                        item.get("image_url").and_then(|v| v.as_object())
+                                    {
+                                        if let Some(url) =
+                                            image_url.get("url").and_then(|v| v.as_str())
+                                        {
+                                            // Extract base64 data from data URL or assume it's base64
+                                            blocks.push(json!({
+                                                "type": "image",
+                                                "source": {
+                                                    "type": "base64",
+                                                    "media_type": "image/png",
+                                                    "data": url
+                                                }
+                                            }));
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        if !blocks.is_empty() {
+                            claude_msg["content"] = json!(blocks);
+                        }
+                    }
+                }
+
+                claude_messages.push(claude_msg);
+            }
+        }
+
+        // Build Claude request
+        let mut claude_req = json!({
+            "model": req.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+            "messages": claude_messages,
+        });
+
+        // Add system if present
+        if !system_content.is_empty() {
+            claude_req["system"] = json!(system_content);
+        }
+
+        // max_tokens: required, default 4096
+        let max_tokens = req.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let default_max_tokens = get_default_max_tokens(req.get("model").and_then(|v| v.as_str()));
+        if max_tokens > 0 {
+            claude_req["max_tokens"] = json!(max_tokens);
+        } else if default_max_tokens > 0 {
+            claude_req["max_tokens"] = json!(default_max_tokens);
+        }
+
+        // Optional parameters
+        if let Some(temp) = req.get("temperature").and_then(|v| v.as_f64()) {
+            claude_req["temperature"] = json!(temp);
+        }
+        if let Some(top_p) = req.get("top_p").and_then(|v| v.as_f64()) {
+            claude_req["top_p"] = json!(top_p);
+        }
+        if let Some(top_k) = req.get("top_k").and_then(|v| v.as_u64()) {
+            claude_req["top_k"] = json!(top_k);
+        }
+        if let Some(stop) = req.get("stop") {
+            if let Some(s) = stop.as_str() {
+                claude_req["stop_sequences"] = json!([s]);
+            } else if let Some(arr) = stop.as_array() {
+                let mut seqs = Vec::new();
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        seqs.push(s);
+                    }
+                }
+                if !seqs.is_empty() {
+                    claude_req["stop_sequences"] = json!(seqs);
+                }
+            }
+        }
+        if let Some(tools) = req.get("tools").and_then(|v| v.as_array()) {
+            let mut claude_tools = Vec::new();
+            for tool in tools {
+                if let Some(func) = tool.get("function").and_then(|v| v.as_object()) {
+                    let name = func.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let desc = func
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let params = func.get("parameters").cloned().unwrap_or(json!({}));
+                    claude_tools.push(json!({
+                        "name": name,
+                        "description": desc,
+                        "input_schema": params
+                    }));
+                }
+            }
+            if !claude_tools.is_empty() {
+                claude_req["tools"] = json!(claude_tools);
+            }
+        }
+        if let Some(tool_choice) = req.get("tool_choice") {
+            claude_req["tool_choice"] = tool_choice.clone();
+        }
+        if let Some(stream) = req.get("stream").and_then(|v| v.as_bool()) {
+            claude_req["stream"] = json!(stream);
+        }
+
+        Ok(Bytes::from(
+            serde_json::to_vec(&claude_req)
+                .map_err(|e| AdaptorError::EncodeFailed(e.to_string()))?,
+        ))
     }
-    fn adapt_response(&self, _chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
-        Ok(Vec::new()) // TODO(#513): Claude SSE→OpenAI chunk 流
+    fn adapt_response(&self, chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
+        if self.to_claude {
+            return Err(AdaptorError::Unsupported {
+                from: Protocol::OpenAi,
+                to: Protocol::Claude,
+            });
+        }
+        if chunk.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        let is_sse = chunk_str
+            .lines()
+            .any(|line| line.trim().starts_with("data: "));
+
+        if is_sse {
+            let mut results = Vec::new();
+            for line in chunk_str.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with(':') {
+                    continue;
+                }
+                if line == "data: [DONE]" {
+                    results.push(Bytes::from("data: [DONE]\n\n"));
+                    continue;
+                }
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if let Ok(claude_event) = serde_json::from_str::<Value>(data) {
+                        if let Some(openai_chunks) = convert_claude_event_to_openai(&claude_event) {
+                            for oc in openai_chunks {
+                                results.push(Bytes::from(format!("data: {}\n\n", oc)));
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(results)
+        } else {
+            let claude_resp: Value = serde_json::from_str(&chunk_str)
+                .map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+
+            if let Some(content_val) = claude_resp.get("content") {
+                let content_text = extract_text_from_claude_content(Some(content_val));
+                let mut openai_resp = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": claude_resp.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": claude_resp.get("role").and_then(|v| v.as_str()).unwrap_or("assistant"),
+                            "content": content_text.unwrap_or_else(|| "".to_string()),
+                        },
+                        "finish_reason": claude_resp.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("stop")
+                    }],
+                    "usage": {
+                        "prompt_tokens": claude_resp.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()).unwrap_or(0),
+                        "completion_tokens": claude_resp.get("usage").and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()).unwrap_or(0),
+                        "total_tokens": claude_resp.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()).unwrap_or(0) + claude_resp.get("usage").and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()).unwrap_or(0)
+                    }
+                });
+                Ok(vec![Bytes::from(serde_json::to_vec(&openai_resp).unwrap())])
+            } else if let Some(event_type) = claude_resp.get("type").and_then(|v| v.as_str()) {
+                if let Some(openai_chunks) = convert_claude_event_to_openai(&claude_resp) {
+                    let mut results = Vec::new();
+                    for oc in openai_chunks {
+                        results.push(Bytes::from(format!("data: {}\n\n", oc)));
+                    }
+                    Ok(results)
+                } else {
+                    Ok(vec![])
+                }
+            } else {
+                Ok(vec![])
+            }
+        }
     }
 }
 
@@ -211,11 +535,474 @@ impl Codec for GeminiCodec {
             Protocol::OpenAi
         }
     }
-    fn adapt_request(&self, _body: Bytes) -> Result<Bytes, AdaptorError> {
-        Ok(Bytes::new()) // TODO(#514): OpenAI→Gemini 请求映射
+    fn adapt_request(&self, body: Bytes) -> Result<Bytes, AdaptorError> {
+        if !self.to_gemini {
+            return Err(AdaptorError::Unsupported {
+                from: Protocol::Gemini,
+                to: Protocol::OpenAi,
+            });
+        }
+        if body.is_empty() {
+            return Ok(body);
+        }
+
+        let req: Value =
+            serde_json::from_slice(&body).map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+
+        let mut contents = Vec::new();
+        let mut system_instruction = None;
+
+        if let Some(messages) = req.get("messages").and_then(|v| v.as_array()) {
+            for msg in messages {
+                let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+                let content = msg.get("content").cloned();
+
+                if role == "system" {
+                    if let Some(text) = extract_text_content(&content) {
+                        if !text.is_empty() {
+                            system_instruction = Some(json!({
+                                "parts": [{ "text": text }]
+                            }));
+                        }
+                    }
+                    continue;
+                }
+
+                let gemini_role = if role == "assistant" { "model" } else { "user" };
+                let mut parts = Vec::new();
+
+                if let Some(text) = extract_text_content(&content) {
+                    if !text.is_empty() {
+                        parts.push(json!({ "text": text }));
+                    }
+                } else if let Some(content_val) = content.as_ref() {
+                    if let Some(arr) = content_val.as_array() {
+                        for item in arr {
+                            let item_type =
+                                item.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+                            match item_type {
+                                "text" => {
+                                    if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
+                                        if !text.is_empty() {
+                                            parts.push(json!({ "text": text }));
+                                        }
+                                    }
+                                }
+                                "image_url" => {
+                                    if let Some(image_url) =
+                                        item.get("image_url").and_then(|v| v.as_object())
+                                    {
+                                        if let Some(url) =
+                                            image_url.get("url").and_then(|v| v.as_str())
+                                        {
+                                            let data = if url.starts_with("data:") {
+                                                url.split(',').nth(1).unwrap_or("")
+                                            } else {
+                                                url
+                                            };
+                                            parts.push(json!({
+                                                "inline_data": {
+                                                    "mime_type": "image/png",
+                                                    "data": data
+                                                }
+                                            }));
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                if !parts.is_empty() {
+                    contents.push(json!({
+                        "role": gemini_role,
+                        "parts": parts
+                    }));
+                }
+            }
+        }
+
+        let mut gemini_req = json!({
+            "contents": contents,
+        });
+
+        if let Some(sys) = system_instruction {
+            gemini_req["system_instruction"] = sys;
+        }
+
+        let mut gen_config = json!({});
+        if let Some(temp) = req.get("temperature").and_then(|v| v.as_f64()) {
+            gen_config["temperature"] = json!(temp);
+        }
+        if let Some(top_p) = req.get("top_p").and_then(|v| v.as_f64()) {
+            gen_config["top_p"] = json!(top_p);
+        }
+        if let Some(max_tokens) = req.get("max_tokens").and_then(|v| v.as_u64()) {
+            gen_config["max_output_tokens"] = json!(max_tokens);
+        }
+        if let Some(stop) = req.get("stop") {
+            if let Some(s) = stop.as_str() {
+                gen_config["stop_sequences"] = json!([s]);
+            } else if let Some(arr) = stop.as_array() {
+                let mut seqs = Vec::new();
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        seqs.push(s);
+                    }
+                }
+                if !seqs.is_empty() {
+                    gen_config["stop_sequences"] = json!(seqs);
+                }
+            }
+        }
+        if let Some(stream) = req.get("stream").and_then(|v| v.as_bool()) {
+            gemini_req["generation_config"] = gen_config;
+            gemini_req["stream"] = json!(stream);
+        } else if gen_config.as_object().map_or(false, |o| !o.is_empty()) {
+            gemini_req["generation_config"] = gen_config;
+        }
+
+        Ok(Bytes::from(
+            serde_json::to_vec(&gemini_req)
+                .map_err(|e| AdaptorError::EncodeFailed(e.to_string()))?,
+        ))
     }
-    fn adapt_response(&self, _chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
-        Ok(Vec::new()) // TODO(#515): Gemini SSE→OpenAI chunk 流
+    fn adapt_response(&self, chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
+        if self.to_gemini {
+            return Err(AdaptorError::Unsupported {
+                from: Protocol::OpenAi,
+                to: Protocol::Gemini,
+            });
+        }
+        if chunk.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        let mut results = Vec::new();
+
+        for line in chunk_str.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(':') {
+                continue;
+            }
+            if line == "data: [DONE]" {
+                results.push(Bytes::from("data: [DONE]\n\n"));
+                continue;
+            }
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(gemini_event) = serde_json::from_str::<Value>(data) {
+                    if let Some(openai_chunks) = convert_gemini_event_to_openai(&gemini_event) {
+                        for oc in openai_chunks {
+                            results.push(Bytes::from(format!("data: {}\n\n", oc)));
+                        }
+                    }
+                }
+            }
+        }
+
+        if results.is_empty() {
+            // Handle non-SSE format (raw JSON)
+            if let Ok(gemini_event) = serde_json::from_str::<Value>(&chunk_str) {
+                if let Some(openai_chunks) = convert_gemini_event_to_openai(&gemini_event) {
+                    // Check if this is a complete response (has usage_metadata or finish_reason)
+                    let is_complete_response = gemini_event.get("usage_metadata").is_some()
+                        || gemini_event
+                            .get("candidates")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter().any(|c| c.get("finish_reason").is_some()))
+                            .unwrap_or(false);
+
+                    if is_complete_response {
+                        // Return as raw JSON (OpenAI chat completion format)
+                        // Combine all chunks into a single response
+                        let mut combined = json!({
+                            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                            "object": "chat.completion",
+                            "created": chrono::Utc::now().timestamp(),
+                            "model": gemini_event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                            "choices": [],
+                            "usage": {
+                                "prompt_tokens": 0,
+                                "completion_tokens": 0,
+                                "total_tokens": 0
+                            }
+                        });
+
+                        for oc_str in openai_chunks {
+                            if let Ok(chunk) = serde_json::from_str::<Value>(&oc_str) {
+                                if let Some(usage) = chunk.get("usage") {
+                                    combined["usage"] = usage.clone();
+                                } else if let Some(choices) =
+                                    chunk.get("choices").and_then(|v| v.as_array())
+                                {
+                                    combined["choices"] = Value::Array(choices.clone());
+                                }
+                            }
+                        }
+                        results.push(Bytes::from(serde_json::to_vec(&combined).unwrap()));
+                    } else {
+                        // Return as SSE chunks
+                        for oc in openai_chunks {
+                            results.push(Bytes::from(format!("data: {}\n\n", oc)));
+                        }
+                    }
+                } else {
+                    return Err(AdaptorError::DecodeFailed(chunk_str.to_string()));
+                }
+            } else {
+                return Err(AdaptorError::DecodeFailed(chunk_str.to_string()));
+            }
+        }
+
+        Ok(results)
+    }
+}
+
+fn extract_text_content(content: &Option<Value>) -> Option<String> {
+    content.as_ref().and_then(|c| {
+        if let Some(text) = c.as_str() {
+            Some(text.to_string())
+        } else if let Some(arr) = c.as_array() {
+            let mut texts = Vec::new();
+            for item in arr {
+                if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
+                    texts.push(t);
+                }
+            }
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join(" "))
+            }
+        } else {
+            None
+        }
+    })
+}
+
+fn extract_text_from_claude_content(content: Option<&Value>) -> Option<String> {
+    content.and_then(|c| {
+        if let Some(text) = c.as_str() {
+            Some(text.to_string())
+        } else if let Some(arr) = c.as_array() {
+            let mut texts = Vec::new();
+            for item in arr {
+                if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
+                    texts.push(t);
+                }
+            }
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join(" "))
+            }
+        } else {
+            None
+        }
+    })
+}
+
+fn get_default_max_tokens(model: Option<&str>) -> u64 {
+    match model {
+        Some(m) if m.contains("opus") => 4096,
+        Some(m) if m.contains("sonnet") => 4096,
+        Some(m) if m.contains("haiku") => 4096,
+        _ => 4096,
+    }
+}
+
+fn convert_claude_event_to_openai(event: &Value) -> Option<Vec<String>> {
+    let event_type = event.get("type").and_then(|v| v.as_str())?;
+
+    match event_type {
+        "message_start" => {
+            if let Some(message) = event.get("message") {
+                let role = message
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("assistant");
+                let content = message.get("content").and_then(|v| v.as_array());
+                let mut openai_chunk = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": message.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {
+                            "role": role,
+                            "content": ""
+                        },
+                        "finish_reason": null
+                    }]
+                });
+                if let Some(arr) = content {
+                    if let Some(first) = arr.first() {
+                        if let Some(text) = first.get("text").and_then(|v| v.as_str()) {
+                            if !text.is_empty() {
+                                openai_chunk["choices"][0]["delta"]["content"] = json!(text);
+                            }
+                        }
+                    }
+                }
+                return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
+            }
+        }
+        "content_block_delta" => {
+            if let Some(delta) = event.get("delta") {
+                let delta_type = delta.get("type").and_then(|v| v.as_str());
+                let mut openai_chunk = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": null
+                    }]
+                });
+                match delta_type {
+                    Some("text_delta") => {
+                        if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
+                            openai_chunk["choices"][0]["delta"]["content"] = json!(text);
+                        }
+                    }
+                    Some("input_json_delta") => {
+                        if let Some(partial_json) =
+                            delta.get("partial_json").and_then(|v| v.as_str())
+                        {
+                            openai_chunk["choices"][0]["delta"]["tool_calls"] = json!([{
+                                "index": 0,
+                                "type": "function",
+                                "function": {
+                                    "arguments": partial_json
+                                }
+                            }]);
+                        }
+                    }
+                    _ => {}
+                }
+                return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
+            }
+        }
+        "message_delta" => {
+            if let Some(delta) = event.get("delta") {
+                if let Some(stop_reason) = delta.get("stop_reason").and_then(|v| v.as_str()) {
+                    let mut openai_chunk = json!({
+                        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                        "object": "chat.completion.chunk",
+                        "created": chrono::Utc::now().timestamp(),
+                        "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                        "choices": [{
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": stop_reason
+                        }]
+                    });
+                    return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
+                }
+            }
+            if let Some(usage) = event.get("usage") {
+                let mut openai_chunk = json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                    "choices": [],
+                    "usage": {
+                        "prompt_tokens": usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+                        "completion_tokens": usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+                        "total_tokens": usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0) + usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
+                    }
+                });
+                return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
+            }
+        }
+        "message_stop" => {
+            let mut openai_chunk = json!({
+                "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                "object": "chat.completion.chunk",
+                "created": chrono::Utc::now().timestamp(),
+                "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                "choices": [{
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop"
+                }]
+            });
+            return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
+        }
+        "error" => {
+            let mut openai_chunk = json!({
+                "error": event.get("error")
+            });
+            return Some(vec![serde_json::to_string(&openai_chunk).ok()?]);
+        }
+        _ => {}
+    }
+    None
+}
+
+fn convert_gemini_event_to_openai(event: &Value) -> Option<Vec<String>> {
+    if let Some(candidates) = event.get("candidates").and_then(|v| v.as_array()) {
+        let mut openai_chunks = Vec::new();
+        for (idx, candidate) in candidates.iter().enumerate() {
+            let mut openai_chunk = json!({
+                "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                "object": "chat.completion.chunk",
+                "created": chrono::Utc::now().timestamp(),
+                "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                "choices": [{
+                    "index": idx,
+                    "delta": {},
+                    "finish_reason": null
+                }]
+            });
+
+            if let Some(content) = candidate.get("content").and_then(|v| v.as_object()) {
+                if let Some(parts) = content.get("parts").and_then(|v| v.as_array()) {
+                    for part in parts {
+                        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                            openai_chunk["choices"][0]["delta"]["content"] = json!(text);
+                        }
+                    }
+                }
+            }
+
+            if let Some(finish_reason) = candidate.get("finish_reason").and_then(|v| v.as_str()) {
+                openai_chunk["choices"][0]["finish_reason"] = json!(finish_reason);
+            }
+
+            openai_chunks.push(serde_json::to_string(&openai_chunk).ok()?);
+        }
+
+        if let Some(usage) = event.get("usage_metadata") {
+            let mut usage_chunk = json!({
+                "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                "object": "chat.completion.chunk",
+                "created": chrono::Utc::now().timestamp(),
+                "model": event.get("model").and_then(|v| v.as_str()).unwrap_or(""),
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": usage.get("prompt_token_count").and_then(|v| v.as_u64()).unwrap_or(0),
+                    "completion_tokens": usage.get("candidates_token_count").and_then(|v| v.as_u64()).unwrap_or(0),
+                    "total_tokens": usage.get("total_token_count").and_then(|v| v.as_u64()).unwrap_or(0)
+                }
+            });
+            openai_chunks.push(serde_json::to_string(&usage_chunk).ok()?);
+        }
+
+        if openai_chunks.is_empty() {
+            None
+        } else {
+            Some(openai_chunks)
+        }
+    } else {
+        None
     }
 }
 
