@@ -1,10 +1,21 @@
 # `harness-runtime`
 
-## src/lib.rs
+Backend-only Agent loop. UI belongs to `tavern-web`. HTTP APIs, login, group chat, macros and provider protocol adapters are out of scope.
 
-- `run` — 模型调用、工具调用、结果回灌循环。
-- `ToolExecutor` — 执行器注册和按工具名分发。
-- `RunStore` — Run 追加保存和恢复。
-- `StepEventStream` — 把步骤作为 SSE 发给前端。
-- `Approval` — 需要用户确认的工具执行请求。
+## src/
 
+- `cancel.rs` — cloneable `CancellationToken` on `tokio::sync::watch`.
+- `provider.rs` — injected `ChatProvider` plus normalized request/delta types.
+- `delta_agg.rs` — text/reasoning/tool-call fragment aggregation.
+- `event_sink.rs` — `AgentRunEvent` factory, vec sink, mpsc sink.
+- `turn.rs` — one streaming model turn.
+- `tool_exec.rs` — `ToolRequestGate`, object-schema subset, handler dispatch.
+- `persistence.rs` — `run.json`, `events.jsonl`, tool I/O, checkpoints.
+- `loop_engine.rs` — bounded model → tool → model loop, model retry, run-state loading.
+
+## Verify
+
+```sh
+cargo test -p harness-runtime
+cargo check -p harness-runtime
+```
