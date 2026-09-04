@@ -26,11 +26,11 @@ const DEFAULT_GROUP: &str = "默认分组";
 
 // ============ 页面骨架 ============
 
-/// 1/3/5 栏响应式网格(手机 1 / 平板 3 / 桌面 5)。
+/// 1/3 栏响应式网格(手机 1 / 平板与Web 3 栏)。
 #[component]
 pub fn GridShell(children: Element) -> Element {
     rsx! {
-        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5", {children} }
+        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3", {children} }
     }
 }
 
