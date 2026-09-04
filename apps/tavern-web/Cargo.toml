@@ -25,3 +25,4 @@ tavern-ui             = { path = "../../crates/tavern-web/ui" }
 tavern-page-characters = { path = "../../crates/tavern-web/page-characters" }
 tavern-page-chat      = { path = "../../crates/tavern-web/page-chat" }
 tavern-page-settings  = { path = "../../crates/tavern-web/page-settings" }
+tavern-page-home      = { path = "../../crates/tavern-web/page-home" }

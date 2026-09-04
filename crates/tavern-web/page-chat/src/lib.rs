@@ -1,12 +1,10 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
-//! 深度对齐 AI风月 Harness 互动交互 (图1与图2):
-//! - 左侧可折叠会话侧栏(剧本名、简介、快捷操作、会话列表)
-//! - 顶部完全接管的纯粹微条(剧本库跳转、居中模型胶囊 `gemini-3-flash-preview ⌵`、设置齿轮)
-//! - 沉浸式剧情舞台(叙事段落、任务状态卡片、记忆备忘录卡片)
-//! - 核心: `🎮 玩家决策 (行动选项)` 卡片 (A/B/C/D 分支选项，点击直接促成剧情抉择)
-//! - 底部浮岛工具条(翻页 ‹ 1/3 ›、Mod增强、记忆增强、流式开关、回到底部、跑路)
-//! - 右上角快捷配置浮层(导出、导入、记忆设定、模型参数等)
+//! 深度响应用户需求1:
+//! 1. 顶部纯净精简，轮次/分页移至顶层左侧 (`‹ 第 1 轮 · 跳至 1 页 ›`)
+//! 2. 模型切换胶囊下移到**输入框正上方**工具栏，并搭配高频互动快捷按钮 (调查现场、追问细节、推进剧情)
+//! 3. 剧情主舞台: 任务系统卡片、线索备忘录卡片、沉浸分支决策卡片
+//! 4. 右上角快捷菜单 (导出、导入、记忆设定、模型参数等)
 
 use dioxus::prelude::*;
 use tavern_ui::{ChoiceCard, ChoiceOption, Dialog, IconButton, MessageBubble, StatusCard, SwipePicker};
@@ -22,7 +20,6 @@ struct SessionItem {
 /// 消息流项目类型
 #[derive(Clone, PartialEq)]
 enum StoryItem {
-    /// 角色或玩家对话
     Dialogue {
         id: usize,
         name: String,
@@ -32,14 +29,12 @@ enum StoryItem {
         swipes: Vec<String>,
         swipe_idx: usize,
     },
-    /// 状态或备忘录系统卡片
     SystemCard {
         id: usize,
         title: String,
         color: String,
         content: String,
     },
-    /// 玩家决策行动卡片
     PlayerChoice {
         id: usize,
         title: String,
@@ -126,6 +121,7 @@ fn seed_story_items() -> Vec<StoryItem> {
 pub fn ChatPage(
     #[props(default)] on_goto_characters: EventHandler<()>,
     #[props(default)] on_goto_settings: EventHandler<()>,
+    #[props(default)] on_goto_home: EventHandler<()>,
     #[props(default)] on_toggle_theme: EventHandler<()>,
     #[props(default = false)] theme_light: bool,
 ) -> Element {
@@ -139,7 +135,7 @@ pub fn ChatPage(
     let mut current_model = use_signal(|| "gemini-3-flash-preview".to_string());
     let mut model_dropdown_open = use_signal(|| false);
 
-    // 工具栏开关 (对齐图1/图2底部红框)
+    // 工具栏开关
     let mut memory_boost = use_signal(|| true);
     let mut stream_toggle = use_signal(|| true);
     let mut mod_active = use_signal(|| false);
@@ -155,7 +151,6 @@ pub fn ChatPage(
         "gpt-4o",
     ];
 
-    // 发送用户抉择/行动
     let mut handle_send = move || {
         let text = draft().trim().to_string();
         if text.is_empty() {
@@ -177,7 +172,7 @@ pub fn ChatPage(
     rsx! {
         div { class: "relative flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100",
             // ==========================================
-            // 左侧可折叠会话与剧本侧栏 (参考图1/2左侧红框)
+            // 左侧可折叠剧本与会话侧栏
             // ==========================================
             div {
                 class: if sidebar_open() {
@@ -187,7 +182,7 @@ pub fn ChatPage(
                 },
                 if sidebar_open() {
                     div { class: "flex h-full w-72 flex-col gap-4 p-4",
-                        // 剧本标题与折叠按钮
+                        // 剧本标题与折叠
                         div { class: "flex items-start justify-between gap-2 border-b border-zinc-800/80 pb-3",
                             div { class: "flex flex-col gap-1",
                                 span { class: "line-clamp-2 text-xs font-bold leading-5 tracking-tight text-zinc-100",
@@ -203,12 +198,10 @@ pub fn ChatPage(
                             }
                         }
 
-                        // 剧本简介
                         div { class: "rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-2.5 text-[11px] leading-4 text-zinc-400",
                             "【细腻UI和美化】【真实数据库与衍生规则】一比一复刻当代娱乐产业生态。这里有冰冷的资本运作与残酷的名利场。"
                         }
 
-                        // 快捷操作按钮组 (图1/2样式)
                         div { class: "grid grid-cols-2 gap-2",
                             button {
                                 class: "flex items-center justify-center gap-1 rounded-xl border border-zinc-800 bg-zinc-800/60 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700",
@@ -220,26 +213,22 @@ pub fn ChatPage(
                             }
                         }
 
-                        button { class: "flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-800/40 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700",
-                            "💾 热门存档管理"
-                        }
-
                         // 会话列表
                         div { class: "flex min-h-0 flex-1 flex-col gap-2 pt-2",
                             div { class: "flex items-center justify-between px-1",
-                                span { class: "text-xs font-semibold text-zinc-400", "会话列表" }
+                                span { class: "text-xs font-semibold text-zinc-400", "会话时间线" }
                                 button {
                                     class: "flex items-center gap-1 rounded-lg bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-200 hover:bg-zinc-700",
                                     onclick: move |_| {
                                         let next_id = sessions().len() + 1;
                                         sessions.write().insert(0, SessionItem {
                                             id: next_id,
-                                            title: format!("新的对话-{}", next_id),
+                                            title: format!("分支行动-{}", next_id),
                                             updated_at: "刚刚".into(),
                                         });
                                         current_session_id.set(next_id);
                                     },
-                                    "+ 新对话"
+                                    "+ 新分支"
                                 }
                             }
                             div { class: "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1",
@@ -271,19 +260,27 @@ pub fn ChatPage(
             }
 
             // ==========================================
-            // 中央互动剧情主视区 (对齐图2主舞台，无冗余顶栏遮挡)
+            // 中央互动剧情主视区
             // ==========================================
             div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                // 顶部一体化微条 (左侧返回/展开 + 居中模型胶囊 + 右侧快捷设置)
-                div { class: "flex h-11 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/60 px-4 backdrop-blur-xl z-10",
-                    // 左侧：返回剧本库 + 展开侧栏
+                // 顶部一体化微条 (需求1: 轮次/分页移至顶层，与剧本库及设置协同)
+                div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/60 px-4 backdrop-blur-xl z-10",
+                    // 左侧：回到主页/剧本库 + 展开侧栏 + 轮次分页 (对齐需求1)
                     div { class: "flex items-center gap-2",
+                        // 点击 FERRITE 直接回到品牌主页 (对齐需求4)
+                        button {
+                            class: "flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-950/40 px-2.5 py-1 text-xs text-purple-200 hover:bg-purple-900/40 transition-colors font-serif font-bold tracking-wider",
+                            title: "回到 AI风月 官方品牌主页",
+                            onclick: move |_| on_goto_home.call(()),
+                            span { "🏛️" }
+                            span { "主页" }
+                        }
                         button {
                             class: "flex h-7 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors",
-                            title: "回到剧本库",
+                            title: "回到剧本库网格",
                             onclick: move |_| on_goto_characters.call(()),
                             span { "📚" }
-                            span { class: "font-medium", "剧本库" }
+                            span { class: "font-medium hidden sm:inline", "剧本库" }
                         }
                         if !sidebar_open() {
                             button {
@@ -291,49 +288,18 @@ pub fn ChatPage(
                                 title: "展开侧栏",
                                 onclick: move |_| sidebar_open.set(true),
                                 span { "»" }
-                                span { class: "hidden md:inline", "侧栏" }
                             }
                         }
-                        span { class: "text-xs font-medium text-zinc-500 truncate max-w-xs hidden sm:inline",
-                            "第 3 轮 · 资本博弈现场"
+
+                        // 顶层左侧轮次与分页器 (对齐需求1)
+                        div { class: "flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs ml-1",
+                            button { class: "hover:text-zinc-200 px-0.5", "‹" }
+                            span { class: "text-[10px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 跳至 1 页" }
+                            button { class: "hover:text-zinc-200 px-0.5", "›" }
                         }
                     }
 
-                    // 居中纯净模型选择胶囊 (图1/2居中核心元素)
-                    div { class: "relative",
-                        button {
-                            class: "flex items-center gap-1.5 rounded-full border border-zinc-700/80 bg-zinc-800/90 px-3.5 py-1 text-xs font-medium text-zinc-200 shadow-md transition-all hover:border-zinc-500 hover:bg-zinc-800",
-                            onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
-                            span { "⚡" }
-                            span { "{current_model()}" }
-                            span { class: "text-[10px] text-zinc-400", "⌵" }
-                        }
-                        if model_dropdown_open() {
-                            div { class: "absolute left-1/2 top-full z-40 mt-1.5 w-56 -translate-x-1/2 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-2xl backdrop-blur-2xl",
-                                for m in models.clone() {
-                                    {
-                                        let model_name = m.to_string();
-                                        rsx! {
-                                            button {
-                                                key: "{m}",
-                                                class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
-                                                onclick: move |_| {
-                                                    current_model.set(model_name.clone());
-                                                    model_dropdown_open.set(false);
-                                                },
-                                                span { "{m}" }
-                                                if current_model() == m {
-                                                    span { class: "text-[10px] text-emerald-400", "✓" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 右侧：主题切换微钮 + 抽屉设置齿轮 (图1/2右上角)
+                    // 右侧：主题微按钮 + 快捷菜单齿轮
                     div { class: "flex items-center gap-2",
                         button {
                             class: "flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 text-xs",
@@ -396,49 +362,102 @@ pub fn ChatPage(
                 }
 
                 // ==========================================
-                // 底部浮动控制工具岛 (参考图1/2底部红框)
+                // 底部输入区与控制工具岛 (对齐需求1: 模型切换放输入框上方，增加快捷操作按钮行)
                 // ==========================================
-                div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/70 p-3 backdrop-blur-xl",
-                    // 浮动控制工具条 (分页 + 快捷模式小胶囊)
+                div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/80 p-3 backdrop-blur-2xl",
+                    // 1. 输入框正上方: 模型切换胶囊 + 文游高频快捷交互动作条 (对齐需求1)
                     div { class: "flex flex-wrap items-center justify-between gap-2 px-1 text-xs",
-                        // 轮数/翻页器 (对齐图1/2: < 1 > 跳至 1 页)
-                        div { class: "flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-zinc-400",
-                            button { class: "hover:text-zinc-200", "‹" }
-                            span { class: "text-[11px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 跳至 1 页" }
-                            button { class: "hover:text-zinc-200", "›" }
+                        // 左侧: 居中的模型切换胶囊下移至此 (对齐需求1)
+                        div { class: "relative",
+                            button {
+                                class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
+                                onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
+                                span { "⚡" }
+                                span { "{current_model()}" }
+                                span { class: "text-[10px] text-zinc-400", "⌵" }
+                            }
+                            if model_dropdown_open() {
+                                div { class: "absolute bottom-full left-0 z-50 mb-2 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-2xl backdrop-blur-2xl",
+                                    for m in models.clone() {
+                                        {
+                                            let model_name = m.to_string();
+                                            rsx! {
+                                                button {
+                                                    key: "{m}",
+                                                    class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
+                                                    onclick: move |_| {
+                                                        current_model.set(model_name.clone());
+                                                        model_dropdown_open.set(false);
+                                                    },
+                                                    span { "{m}" }
+                                                    if current_model() == m {
+                                                        span { class: "text-[10px] text-emerald-400", "✓" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        // 状态开关胶囊组 (对齐图1/2)
-                        div { class: "flex items-center gap-1.5",
+                        // 中部快捷动作胶囊组 (文游高频动作 + 开关)
+                        div { class: "flex flex-wrap items-center gap-1.5",
+                            button {
+                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
+                                onclick: move |_| {
+                                    draft.set("【敏锐洞察】仔细打量四周环境与对方微妙的肢体反应。".into());
+                                    handle_send();
+                                },
+                                "🔍 观察现场"
+                            }
+                            button {
+                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
+                                onclick: move |_| {
+                                    draft.set("【深入追问】“你刚才的话，似乎并没有说完。”".into());
+                                    handle_send();
+                                },
+                                "🗣️ 深入追问"
+                            }
+                            button {
+                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
+                                onclick: move |_| {
+                                    draft.set("【推进剧情】沉默数秒后，直接切入核心条款。".into());
+                                    handle_send();
+                                },
+                                "⏩ 推进剧情"
+                            }
+
+                            // 状态微开关
                             button {
                                 class: if mod_active() {
-                                    "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-0.5 text-[11px] font-medium text-purple-200"
+                                    "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
                                 } else {
-                                    "rounded-full border border-zinc-800 bg-zinc-800/60 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                                    "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
                                 },
                                 onclick: move |_| mod_active.set(!mod_active()),
                                 "🎮 Mod"
                             }
                             button {
                                 class: if memory_boost() {
-                                    "rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200"
+                                    "rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-200"
                                 } else {
-                                    "rounded-full border border-zinc-800 bg-zinc-800/60 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                                    "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
                                 },
                                 onclick: move |_| memory_boost.set(!memory_boost()),
-                                "🧠 记忆增强"
+                                "🧠 记忆"
                             }
                             button {
                                 class: if stream_toggle() {
-                                    "rounded-full border border-cyan-500/40 bg-cyan-500/20 px-2.5 py-0.5 text-[11px] font-medium text-cyan-200"
+                                    "rounded-full border border-cyan-500/40 bg-cyan-500/20 px-2.5 py-1 text-[11px] font-medium text-cyan-200"
                                 } else {
-                                    "rounded-full border border-zinc-800 bg-zinc-800/60 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                                    "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
                                 },
                                 onclick: move |_| stream_toggle.set(!stream_toggle()),
                                 "≈ 流式"
                             }
                             button {
-                                class: "rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-medium text-rose-300 hover:bg-rose-500/20",
+                                class: "rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-500/20",
                                 onclick: move |_| {
                                     draft.set("【突发离场】拒绝此项提议，直接推门离场。".into());
                                     handle_send();
@@ -448,8 +467,8 @@ pub fn ChatPage(
                         }
                     }
 
-                    // 输入框与发送按钮 (对齐图1/2)
-                    div { class: "flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-2 shadow-inner",
+                    // 2. 输入框与发送按钮
+                    div { class: "flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2.5 shadow-inner",
                         textarea {
                             class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
                             placeholder: "点击上方行动选项，或输入你的自定义决策 (电脑端 Shift+回车可换行)",
@@ -465,7 +484,7 @@ pub fn ChatPage(
                         div { class: "flex shrink-0 items-center gap-2",
                             span { class: "text-[10px] text-zinc-600 tabular-nums", "{draft().len()}" }
                             button {
-                                class: "flex h-9 items-center justify-center rounded-full bg-zinc-100 px-4 text-xs font-semibold text-zinc-900 transition-all hover:bg-zinc-300 disabled:opacity-40",
+                                class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
                                 disabled: draft().trim().is_empty(),
                                 onclick: move |_| handle_send(),
                                 "行动 ➜"
@@ -474,15 +493,13 @@ pub fn ChatPage(
                     }
                 }
 
-                // ==========================================
-                // 右上角快捷抽屉菜单 (完整对齐图1右上红框2)
-                // ==========================================
+                // 右上角抽屉快捷菜单
                 if menu_open() {
                     div {
                         class: "absolute inset-0 z-40 bg-black/20",
                         onclick: move |_| menu_open.set(false),
                     }
-                    div { class: "absolute right-3 top-12 z-50 flex w-48 flex-col divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs",
+                    div { class: "absolute right-3 top-14 z-50 flex w-48 flex-col divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs",
                         div { class: "flex flex-col py-1",
                             button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
                                 "📤 导出记录"
@@ -500,9 +517,6 @@ pub fn ChatPage(
                             }
                             button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
                                 "🎨 自定义配图"
-                            }
-                            button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
-                                "📑 页面设置"
                             }
                         }
                         div { class: "flex flex-col py-1",

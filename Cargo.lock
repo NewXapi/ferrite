@@ -4121,6 +4121,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tavern-page-home"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+]
+
+[[package]]
 name = "tavern-page-settings"
 version = "0.1.0"
 dependencies = [
@@ -4186,6 +4193,7 @@ dependencies = [
  "tavern-client",
  "tavern-page-characters",
  "tavern-page-chat",
+ "tavern-page-home",
  "tavern-page-settings",
  "tavern-state",
  "tavern-ui",
