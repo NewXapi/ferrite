@@ -17,3 +17,5 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = "1"
 async-trait = "0.1"
+uuid = { workspace = true }
+chrono = { workspace = true }
