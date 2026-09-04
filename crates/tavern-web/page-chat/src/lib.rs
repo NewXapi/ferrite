@@ -11,7 +11,7 @@ use tavern_ui::{ChoiceCard, ChoiceOption, Dialog, IconButton, MessageBubble, Sta
 
 /// 会话项
 #[derive(Clone, PartialEq)]
-struct SessionItem {
+pub struct SessionItem {
     id: usize,
     title: String,
     updated_at: String,
@@ -19,7 +19,7 @@ struct SessionItem {
 
 /// 消息流项目类型
 #[derive(Clone, PartialEq)]
-enum StoryItem {
+pub enum StoryItem {
     Dialogue {
         id: usize,
         name: String,
@@ -43,7 +43,7 @@ enum StoryItem {
 }
 
 impl StoryItem {
-    fn id(&self) -> usize {
+    pub fn id(&self) -> usize {
         match self {
             StoryItem::Dialogue { id, .. } => *id,
             StoryItem::SystemCard { id, .. } => *id,
@@ -51,7 +51,7 @@ impl StoryItem {
         }
     }
 
-    fn nav_title(&self) -> (&'static str, String) {
+    pub fn nav_title(&self) -> (&'static str, String) {
         match self {
             StoryItem::SystemCard { title, .. } => ("系统", title.clone()),
             StoryItem::Dialogue { name, mine, content, .. } => {
@@ -64,7 +64,7 @@ impl StoryItem {
     }
 }
 
-fn seed_sessions() -> Vec<SessionItem> {
+pub fn seed_sessions() -> Vec<SessionItem> {
     vec![
         SessionItem {
             id: 1,
@@ -84,7 +84,7 @@ fn seed_sessions() -> Vec<SessionItem> {
     ]
 }
 
-fn seed_story_items() -> Vec<StoryItem> {
+pub fn seed_story_items() -> Vec<StoryItem> {
     vec![
         StoryItem::SystemCard {
             id: 1,

@@ -34,7 +34,7 @@ pub struct Character {
 }
 
 impl Character {
-    fn empty(id: usize) -> Self {
+    pub fn empty(id: usize) -> Self {
         Self {
             id,
             name: String::new(),
@@ -59,7 +59,7 @@ impl Character {
 }
 
 /// 基础种子数据
-fn seed_all_characters() -> Vec<Character> {
+pub fn seed_all_characters() -> Vec<Character> {
     vec![
         Character {
             id: 1,
@@ -313,7 +313,7 @@ pub fn CharactersPage(
     #[props(default)] on_enter_story: EventHandler<()>,
     #[props(default)] on_goto_studio: EventHandler<()>,
 ) -> Element {
-    let mut characters = use_signal(seed_all_characters);
+    let characters = use_signal(seed_all_characters);
     let mut search = use_signal(String::new);
 
     // 1. 主榜单 Tab 页面 (周榜/日榜/飙升榜/新人榜 对齐图1/2/5红框)
@@ -911,12 +911,12 @@ fn CreatorStudioModal(
     let mut default_model = use_signal(|| initial.default_model.clone());
     let mut is_anonymous = use_signal(|| false);
     let mut disable_custom_css = use_signal(|| false);
-    let mut agree_rules = use_signal(|| true);
+    let _agree_rules = use_signal(|| true);
 
     // 专业模型选择抽屉
     let mut model_selector_open = use_signal(|| false);
     let mut model_vendor = use_signal(|| "All".to_string());
-    let mut model_search = use_signal(|| String::new());
+    let _model_search = use_signal(|| String::new());
 
     let can_publish = !name().trim().is_empty();
 
