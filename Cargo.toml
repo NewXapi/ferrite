@@ -1,11 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/api",
-    "apps/web",
+    "apps/admin-web",
     "apps/tavern-web",
     "crates/contract",
-    "crates/gateway/protocol",
     "crates/gateway/dispatch",
     "crates/gateway/forward",
     "crates/gateway/metering",
@@ -13,13 +11,14 @@ members = [
     "crates/gateway/gate",
     "crates/gateway/protocol-bridge",
     "crates/gateway/proxy",
-    "crates/gateway/security",
     "crates/admin-api/store",
     "crates/admin-api/catalog",
     "crates/admin-api/sync",
     "crates/admin-api/billing",
     "crates/admin-api/observe",
     "crates/admin-api/ops",
+    "crates/admin-api/auth",
+    "crates/admin-api/router",
     "crates/admin-web/client",
     "crates/admin-web/session",
     "crates/admin-web/ui",
@@ -34,6 +33,7 @@ members = [
     "crates/tavern-api/characters",
     "crates/tavern-api/chats",
     "crates/tavern-api/settings",
+    "crates/tavern-api/presets",
     "crates/tavern-api/secrets",
     "crates/tavern-api/generate",
     "crates/tavern-api/media",
@@ -85,12 +85,14 @@ tracing-log = "0.2"
 dioxus      = { version = "=0.7.9", features = ["router"] }
 gloo-net   = { version = "0.6", features = ["json"] }
 http        = "1"
-uuid        = { version = "1", features = ["serde", "v7"] }
+sha2        = "0.10"
+hex         = "0.4"
+uuid        = { version = "1", features = ["serde", "v4", "v7"] }
 
 [profile.release]
 lto           = "fat"
 codegen-units = 1
-strip         = true
+
 
 [profile.dev.package."*"]
 opt-level = 1

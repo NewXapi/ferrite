@@ -38,8 +38,16 @@ pub fn fixture_channel() -> ChannelRecord {
         provider_type: "openai".into(),
         base_url: "https://api.openai.com".into(),
         keys: vec![
-            ChannelKey { index: 0, secret: "sk-fixture-a".into(), rpm_limit: 0 },
-            ChannelKey { index: 1, secret: "sk-fixture-b".into(), rpm_limit: 300 },
+            ChannelKey {
+                index: 0,
+                secret: "sk-fixture-a".into(),
+                rpm_limit: 0,
+            },
+            ChannelKey {
+                index: 1,
+                secret: "sk-fixture-b".into(),
+                rpm_limit: 300,
+            },
         ],
         max_concurrency: 10,
         status: 1,

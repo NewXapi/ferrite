@@ -13,7 +13,7 @@ pub mod gate;
 pub mod result;
 pub mod spec;
 
-pub use adapter::{resolve_request_adapter, AgentProviderAdapter};
+pub use adapter::{AgentProviderAdapter, resolve_request_adapter};
 pub use format::{render_openai_tools, sanitize_schema_for_provider};
 pub use gate::{ToolRequestGate, ToolRequestGateError};
 pub use result::{AgentModelTool, AgentToolResult};

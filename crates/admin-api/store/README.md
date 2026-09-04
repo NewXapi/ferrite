@@ -10,3 +10,9 @@
 - `src/migrations/mod.rs` — 执行嵌入 SQL migration。
 - `src/embedded/mod.rs` — 实现单机本地存储。
 
+
+## 实现状态
+
+**设计态骨架** — traits/pg/embedded 均为 `todo!()` 占位（TODO(#4xx)）。
+单机版阶段，auth/catalog/observe 各子域以平表直连 sqlx 自行落库（见各自 README），
+不走本 crate 的 store trait；sync/outbox/分区设计待数据稳定后再启用。

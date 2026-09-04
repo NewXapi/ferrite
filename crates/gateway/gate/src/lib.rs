@@ -24,28 +24,41 @@
 //! ```
 
 pub mod auth;
-pub mod state;
+pub mod chain;
+pub mod concurrency;
+pub mod error;
+pub mod graylist;
+pub mod model;
 pub mod quota;
 pub mod ratelimit;
-pub mod model;
-pub mod graylist;
-pub mod concurrency;
 pub mod snapshot;
-pub mod error;
-pub mod chain;
+pub mod state;
 
-pub use chain::{GateChain, Gate, GateCtx, Gated};
-pub use error::Rejection;
-pub use snapshot::{TokenSnapshot, UserSnapshot};
+pub use auth::{AuthGate, sha256};
+pub use chain::{Gate, GateChain, GateCtx, Gated};
+pub use concurrency::{ConcurrencyGate, ConcurrencyState};
+pub use error::{Rejection, rejection_to_response};
+pub use graylist as graylist_mod;
+pub use graylist::{
+    BLOCK_DURATION, FAIL_STREAK_THRESHOLD, FailEntry, GrayListGate, GrayListState, STREAK_WINDOW,
+};
+pub use model::ModelGate;
+pub use quota::QuotaGate;
+pub use ratelimit::{LimitScope, RateLimitGate, RateLimiter};
+pub use state::StateGate;
 
-use contract::records::{TokenRecord, UserRecord};
+// snapshot re-exports
+pub use snapshot::{
+    IpPolicy, PriceRow, PricingSnapshot, QuotaSnapshot, SharedIpPolicy, SharedPricing, SharedQuota,
+    SharedTokenSnapshot, SharedUserSnapshot, TokenEntry, TokenSnapshot, UserSnapshot,
+};
 
 /// 鉴权产出的 token 元数据（chain 内部填充，最终提升到 RequestCtx.token）
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
     pub id: i64,
     pub user_id: i64,
-    pub id_hash: [u8; 32],                // sha256(raw_key)
+    pub id_hash: [u8; 32], // sha256(raw_key)
     pub group: String,
     pub enabled: bool,
     pub expires_at: Option<i64>,

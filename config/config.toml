@@ -1,3 +1,0 @@
-listen = "0.0.0.0:3000"
-database_url = "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite"
-log_level = "info"

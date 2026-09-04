@@ -3,17 +3,22 @@
 //! 外部看是单一 stage；内部按顺序执行 gates，任一失败立即返回。
 
 use std::sync::Arc;
+
 use async_trait::async_trait;
-use gateway_pipeline::{Stage, RequestCtx, StageOutcome};
-use crate::error::Rejection;
+use gateway_pipeline::{RequestCtx, Stage, StageError, StageOutcome};
+
+use crate::error::{Rejection, rejection_to_response};
 use crate::{TokenInfo, UserInfo};
 
 /// Gate 检查上下文（gate 间共享单次请求的中间产物）
+#[derive(Debug, Clone)]
 pub struct GateCtx {
     /// 不可变请求入参
     pub request_meta: gateway_pipeline::RequestMeta,
     /// auth 阶段提取的明文 key
     pub raw_key: Option<String>,
+    /// auth 阶段写入：contract `UserRecord.meta.key`（state gate 用）
+    pub user_key: Option<String>,
     /// auth 通过后填充
     pub token: Option<TokenInfo>,
     /// state 通过后填充
@@ -28,7 +33,8 @@ pub struct GateCtx {
     pub requested_max_tokens: Option<u32>,
 }
 
-/// Gate 通过后的最终产出
+/// Gate 通过后的最终产出（预留；当前 chain 仅提升 token）
+#[derive(Debug)]
 pub struct Gated {
     pub token: TokenInfo,
     pub user: UserInfo,
@@ -60,7 +66,6 @@ impl GateChain {
     pub fn len(&self) -> usize {
         self.gates.len()
     }
-
     pub fn is_empty(&self) -> bool {
         self.gates.is_empty()
     }
@@ -72,14 +77,25 @@ impl Default for GateChain {
     }
 }
 
+impl Clone for GateChain {
+    fn clone(&self) -> Self {
+        Self {
+            gates: self.gates.clone(),
+        }
+    }
+}
+
 #[async_trait]
 impl Stage for GateChain {
-    fn name(&self) -> &'static str { "gate" }
+    fn name(&self) -> &'static str {
+        "gate"
+    }
 
-    async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, gateway_pipeline::StageError> {
+    async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, StageError> {
         let mut gate_ctx = GateCtx {
             request_meta: ctx.request.clone(),
             raw_key: None,
+            user_key: None,
             token: None,
             user: None,
             group: None,
@@ -90,13 +106,15 @@ impl Stage for GateChain {
 
         for gate in &self.gates {
             if let Err(rej) = gate.check(&mut gate_ctx).await {
-                return Ok(StageOutcome::ShortCircuit(
-                    crate::error::rejection_to_response(rej)
-                ));
+                return Ok(StageOutcome::ShortCircuit(rejection_to_response(rej)));
             }
         }
 
-        // 全部通过：把 token/user/group 提升到 RequestCtx
+        // 全部通过：提升 token 与模型名到 RequestCtx
+        // 模型名仅在 ModelGate 解析出时覆盖 (无 ModelGate 的组装不破坏预设值)。
+        if let Some(model) = gate_ctx.requested_model.clone() {
+            ctx.requested_model = Some(model);
+        }
         if let Some(token) = gate_ctx.token {
             ctx.token = Some(gateway_pipeline::TokenInfo {
                 id: token.id,

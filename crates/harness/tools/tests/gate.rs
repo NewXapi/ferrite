@@ -43,11 +43,8 @@ fn snapshot_mismatch_is_rejected() {
 
     let snapshot = build_snapshot("inv_root", vec![read_binding], 8);
     // Turn refers to a different snapshot than the invocation uses.
-    let turn = ToolTurnContract::all(
-        &build_snapshot("inv_other", vec![], 8),
-        ToolChoice::Auto,
-    )
-    .expect("turn");
+    let turn = ToolTurnContract::all(&build_snapshot("inv_other", vec![], 8), ToolChoice::Auto)
+        .expect("turn");
 
     let mut gate = ToolRequestGate::default();
     let invocation = ToolInvocation {
@@ -204,7 +201,10 @@ fn tool_requested_outside_snapshot_is_rejected() {
     let err = gate
         .authorize_and_reserve(&snapshot, &turn, &inv)
         .expect_err("unknown tool must be rejected");
-    assert!(matches!(err, ToolRequestGateError::ToolNotInSnapshot { .. }));
+    assert!(matches!(
+        err,
+        ToolRequestGateError::ToolNotInSnapshot { .. }
+    ));
 }
 
 #[test]
@@ -228,4 +228,172 @@ fn snapshot_rejects_zero_budget_and_duplicate_aliases() {
         4,
     );
     assert!(matches!(dup, Err(ToolError::Conflict(_))));
+}
+
+#[test]
+fn same_call_id_is_idempotent_within_per_tool_budget() {
+    let read_id = ToolId::builtin("read_file").expect("tool id");
+    let read_binding = ToolBinding::new(descriptor(read_id.clone()), "read", Some(1)).unwrap();
+    let snapshot = build_snapshot("inv_root", vec![read_binding], 8);
+    let turn = ToolTurnContract::all(&snapshot, ToolChoice::Auto).expect("turn");
+
+    let mut gate = ToolRequestGate::default();
+    let make = |call_id: &str| ToolInvocation {
+        call_id: call_id.to_string(),
+        tool_id: read_id.clone(),
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+
+    // First reservation succeeds and consumes the per-tool budget.
+    gate.authorize_and_reserve(&snapshot, &turn, &make("dup"))
+        .expect("first call allowed");
+    // Replaying the same call id must NOT consume another budget unit.
+    gate.authorize_and_reserve(&snapshot, &turn, &make("dup"))
+        .expect("idempotent replay succeeds");
+    gate.authorize_and_reserve(&snapshot, &turn, &make("dup"))
+        .expect("third replay also succeeds");
+    // A *different* call id still hits the budget wall — proving the replays
+    // did not silently consume the per-tool budget.
+    let err = gate
+        .authorize_and_reserve(&snapshot, &turn, &make("fresh"))
+        .expect_err("different call id must exhaust the budget");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::ToolBudgetExhausted { max_calls: 1, .. }
+    ));
+}
+
+#[test]
+fn failed_reservation_does_not_pollute_call_id_slot() {
+    // A call rejected by `ToolChoice::None` must not poison its `call_id` —
+    // switching the turn to `Auto` and reissuing the same id must succeed.
+    let read_id = ToolId::builtin("read_file").expect("tool id");
+    let read_binding = ToolBinding::new(descriptor(read_id.clone()), "read", Some(2)).unwrap();
+    let snapshot = build_snapshot("inv_root", vec![read_binding], 8);
+
+    let none_turn = ToolTurnContract::all(&snapshot, ToolChoice::None).expect("turn");
+    let mut gate = ToolRequestGate::default();
+    let invocation = ToolInvocation {
+        call_id: "shared".to_string(),
+        tool_id: read_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+
+    let err = gate
+        .authorize_and_reserve(&snapshot, &none_turn, &invocation)
+        .expect_err("ToolChoice::None rejects");
+    assert!(matches!(err, ToolRequestGateError::ToolChoiceNone { .. }));
+
+    // Same call id, now under Auto — must succeed because the prior failure
+    // did not record the call as reserved.
+    let auto_turn = ToolTurnContract::all(&snapshot, ToolChoice::Auto).expect("turn");
+    gate.authorize_and_reserve(&snapshot, &auto_turn, &invocation)
+        .expect("legal retry must succeed after a prior failure");
+}
+
+#[test]
+fn reused_call_id_for_different_tool_still_enforces_invocation_budget() {
+    let a_id = ToolId::builtin("a").expect("tool id");
+    let b_id = ToolId::builtin("b").expect("tool id");
+    let snapshot = build_snapshot(
+        "inv_root",
+        vec![
+            ToolBinding::new(descriptor(a_id.clone()), "a", Some(1)).unwrap(),
+            ToolBinding::new(descriptor(b_id.clone()), "b", Some(1)).unwrap(),
+        ],
+        1,
+    );
+    let turn = ToolTurnContract::all(&snapshot, ToolChoice::Auto).expect("turn");
+    let mut gate = ToolRequestGate::default();
+
+    let invoke = |tool_id| ToolInvocation {
+        call_id: "shared".to_string(),
+        tool_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+
+    gate.authorize_and_reserve(&snapshot, &turn, &invoke(a_id))
+        .expect("first call allowed");
+    let err = gate
+        .authorize_and_reserve(&snapshot, &turn, &invoke(b_id))
+        .expect_err("same call id must not bypass invocation budget for another tool");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
+    ));
+}
+
+#[test]
+fn budget_rejection_does_not_reserve_call_id() {
+    let a_id = ToolId::builtin("a").expect("tool id");
+    let b_id = ToolId::builtin("b").expect("tool id");
+    let snapshot = build_snapshot(
+        "inv_root",
+        vec![
+            ToolBinding::new(descriptor(a_id.clone()), "a", Some(1)).unwrap(),
+            ToolBinding::new(descriptor(b_id.clone()), "b", Some(1)).unwrap(),
+        ],
+        1,
+    );
+    let turn = ToolTurnContract::all(&snapshot, ToolChoice::Auto).expect("turn");
+    let mut gate = ToolRequestGate::default();
+
+    let invocation = |call_id: &str, tool_id| ToolInvocation {
+        call_id: call_id.to_string(),
+        tool_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+
+    gate.authorize_and_reserve(&snapshot, &turn, &invocation("a", a_id.clone()))
+        .expect("first call allowed");
+    gate.authorize_and_reserve(&snapshot, &turn, &invocation("rejected", b_id.clone()))
+        .expect_err("budget must reject");
+
+    // A failed reservation never owns its id. The only reason this retry fails
+    // is still the live budget, not a replay short-circuit.
+    let err = gate
+        .authorize_and_reserve(&snapshot, &turn, &invocation("rejected", a_id))
+        .expect_err("failed call id must not become idempotent");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
+    ));
+}
+
+#[test]
+fn reused_call_id_in_new_snapshot_does_not_bypass_its_budget() {
+    let tool_id = ToolId::builtin("a").expect("tool id");
+    let wide_snapshot = build_snapshot(
+        "inv_wide",
+        vec![ToolBinding::new(descriptor(tool_id.clone()), "a", None).unwrap()],
+        8,
+    );
+    let tight_snapshot = build_snapshot(
+        "inv_tight",
+        vec![ToolBinding::new(descriptor(tool_id.clone()), "a", Some(1)).unwrap()],
+        1,
+    );
+    let wide_turn = ToolTurnContract::all(&wide_snapshot, ToolChoice::Auto).expect("turn");
+    let tight_turn = ToolTurnContract::all(&tight_snapshot, ToolChoice::Auto).expect("turn");
+    let invocation = ToolInvocation {
+        call_id: "shared".to_string(),
+        tool_id,
+        arguments: json!({}),
+        provider_metadata: Value::Null,
+    };
+    let mut gate = ToolRequestGate::default();
+
+    gate.authorize_and_reserve(&wide_snapshot, &wide_turn, &invocation)
+        .expect("wide snapshot allows first call");
+    let err = gate
+        .authorize_and_reserve(&tight_snapshot, &tight_turn, &invocation)
+        .expect_err("a new snapshot must enforce its own call budget");
+    assert!(matches!(
+        err,
+        ToolRequestGateError::InvocationBudgetExhausted { max_calls: 1 }
+    ));
 }

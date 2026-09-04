@@ -8,6 +8,7 @@
 - `chats/` — JSONL 聊天管理。
 - `settings/` — 酒馆设置管理。
 - `secrets/` — 用户模型密钥管理。
+- `presets/` — API 源预设 JSON（OpenAI、instruct、context、sysprompt、reasoning、kobold/novel/textgenerationwebui）。
 - `generate/` — 模型生成转发和流输出。
 - `media/` — 头像、背景和聊天图片管理。
 
@@ -46,6 +47,12 @@
 - `src/lib.rs` 已有密钥读写删除和不带明文的配置状态。
 - `src/http.rs` 已有 `/tavern/secrets` GET 和单 key PUT/DELETE。
 - `tests/masking.rs` 覆盖明文不回显。
+
+### `presets/`
+
+- `src/lib.rs` 已有 API 源到子目录的映射（openai/instruct/context/sysprompt/reasoning + kobold/novel/textgenerationwebui）和 save/load/list/delete/restore。
+- `src/http.rs` 已有 `/tavern/presets` 列表/保存/删除（同一 `/`，三方法）和 `/restore`。
+- `tests/presets.rs` 覆盖保存/读取/列表/删除/未知 apiId/路径穿越/空 restore/原子覆盖写。
 
 ### `generate/`
 

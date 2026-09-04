@@ -61,7 +61,9 @@ pub enum AdapterError {
 ///
 /// 接受 `openai` / `openai_responses` / `claude` / `gemini` / `gemini_interactions`。
 /// 默认 `openai`。
-pub fn resolve_request_adapter(chat_completion_source: &str) -> Result<AgentProviderAdapter, AdapterError> {
+pub fn resolve_request_adapter(
+    chat_completion_source: &str,
+) -> Result<AgentProviderAdapter, AdapterError> {
     let normalized = chat_completion_source.trim();
     let adapter = match normalized {
         "" | "openai" => AgentProviderAdapter::OpenAi,

@@ -1,0 +1,17 @@
+[package]
+name = "admin-api-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 聚合 admin-api 子域的 axum Router，apps/api main.rs 调它一次挂上。
+
+
+[dependencies]
+catalog = { path = "../catalog" }
+observe = { path = "../observe" }
+auth    = { path = "../auth" }
+sqlx    = { workspace = true }
+axum    = { workspace = true }
+tracing = { workspace = true }

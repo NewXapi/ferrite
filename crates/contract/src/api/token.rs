@@ -34,9 +34,7 @@ impl From<&TokenRecord> for TokenDto {
             unlimited_quota: r.unlimited_quota,
             used_quota: r.used_quota,
             status: r.status,
-            expires_at: r
-                .expires_at
-                .map(|t| t.format("%Y-%m-%d %H:%M").to_string()),
+            expires_at: r.expires_at.map(|t| t.format("%Y-%m-%d %H:%M").to_string()),
         }
     }
 }

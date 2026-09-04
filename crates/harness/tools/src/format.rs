@@ -8,10 +8,7 @@ use serde_json::{Value, json};
 use crate::adapter::AgentProviderAdapter;
 use crate::result::AgentModelTool;
 
-pub fn render_openai_tools(
-    tools: &[AgentModelTool],
-    adapter: AgentProviderAdapter,
-) -> Vec<Value> {
+pub fn render_openai_tools(tools: &[AgentModelTool], adapter: AgentProviderAdapter) -> Vec<Value> {
     tools
         .iter()
         .map(|tool| {
@@ -106,8 +103,33 @@ fn remove_schema_keys(value: &mut Value, keys: &[&str]) {
             for key in keys {
                 object.remove(*key);
             }
-            for nested in object.values_mut() {
-                remove_schema_keys(nested, keys);
+            // Descend only into values that look like JSON Schema sub-schemas.
+            // The `properties` map's keys are user-defined field names (e.g.
+            // `title`, `$id`), not schema keywords — naively walking every
+            // nested object would silently delete those user fields.
+            if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) {
+                for nested in properties.values_mut() {
+                    remove_schema_keys(nested, keys);
+                }
+            }
+            for schema_key in SINGLE_SCHEMA_KEYS {
+                if let Some(child) = object.get_mut(*schema_key) {
+                    remove_schema_keys(child, keys);
+                }
+            }
+            for schema_key in ARRAY_SCHEMA_KEYS {
+                if let Some(array) = object.get_mut(*schema_key).and_then(Value::as_array_mut) {
+                    for item in array {
+                        remove_schema_keys(item, keys);
+                    }
+                }
+            }
+            for schema_key in MAP_SCHEMA_KEYS {
+                if let Some(map) = object.get_mut(*schema_key).and_then(Value::as_object_mut) {
+                    for item in map.values_mut() {
+                        remove_schema_keys(item, keys);
+                    }
+                }
             }
         }
         Value::Array(items) => {
@@ -118,3 +140,26 @@ fn remove_schema_keys(value: &mut Value, keys: &[&str]) {
         _ => {}
     }
 }
+
+const SINGLE_SCHEMA_KEYS: &[&str] = &[
+    "items",
+    "additionalItems",
+    "unevaluatedItems",
+    "additionalProperties",
+    "unevaluatedProperties",
+    "contains",
+    "propertyNames",
+    "contentSchema",
+    "not",
+    "if",
+    "then",
+    "else",
+];
+const ARRAY_SCHEMA_KEYS: &[&str] = &["allOf", "anyOf", "oneOf", "prefixItems"];
+const MAP_SCHEMA_KEYS: &[&str] = &[
+    "dependencies",
+    "dependentSchemas",
+    "patternProperties",
+    "definitions",
+    "$defs",
+];

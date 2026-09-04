@@ -15,6 +15,7 @@
 //! 不伪造实时 (设计文档原则 7)。
 
 pub mod hourly;
+pub mod logs;
 pub mod monitor;
 pub mod perf;
 pub mod rankings;

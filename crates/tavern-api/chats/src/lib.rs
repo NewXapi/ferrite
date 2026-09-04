@@ -4,7 +4,7 @@
 //! 存储形态：`<user>/chats/<character>/<chat>.jsonl`。
 
 pub mod http;
-pub use http::{router, ChatsState};
+pub use http::{ChatsState, router};
 
 use std::path::{Path, PathBuf};
 
@@ -20,19 +20,59 @@ pub enum ChatError {
 }
 
 /// 一条消息。字段名与 SillyTavern JSONL 对齐，便于导入现有数据。
+///
+/// 顶层字段：`is_user` / `is_system` / `swipes` / `swipe_id` /
+/// `gen_started` / `gen_finished` / `title` / `force_avatar` 全部在 Message
+/// 顶层（与 SillyTavern 顶层 key 一致）。
+/// `extra: MessageExtra` 嵌套在 `"extra": {...}`，承载 agent 元数据
+/// （`api` / `model` / `reasoning` / `reasoning_duration` / `token_count`）。
+/// `unknown` 通过 `flatten` 保留老 JSONL 顶层未声明字段，
+/// `MessageExtra.additional` 保留 extra 内部未声明字段。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub name: String,
     pub is_user: bool,
+    #[serde(default)]
+    pub is_system: bool,
     pub send_date: String,
     pub mes: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub swipes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swipe_id: Option<usize>,
-    /// 未知字段透传保留，不因后端不认识就丢掉。
-    #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gen_started: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gen_finished: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub force_avatar: Option<String>,
+    #[serde(default)]
+    pub extra: MessageExtra,
+    /// 顶层未声明字段透传保留，不因后端不认识就丢掉。
+    #[serde(default, flatten)]
+    pub unknown: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Agent 元数据，序列化在 `Message.extra` 嵌套对象内。
+///
+/// `additional` 通过 `flatten` 透传 extra 内部未声明字段。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MessageExtra {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_duration: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_count: Option<u32>,
+    /// extra 内未声明字段透传保留。
+    #[serde(default, flatten)]
+    pub additional: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 最近聊天列表的一行。
@@ -87,12 +127,7 @@ pub fn delete(chats_dir: &Path, character: &str, chat: &str) -> Result<(), ChatE
     Ok(())
 }
 
-pub fn rename(
-    chats_dir: &Path,
-    character: &str,
-    from: &str,
-    to: &str,
-) -> Result<(), ChatError> {
+pub fn rename(chats_dir: &Path, character: &str, from: &str, to: &str) -> Result<(), ChatError> {
     let src = chat_path(chats_dir, character, from)?;
     let dst = chat_path(chats_dir, character, to)?;
     std::fs::rename(src, dst).map_err(StorageError::Io)?;

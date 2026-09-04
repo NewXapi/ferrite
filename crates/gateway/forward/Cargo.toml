@@ -8,12 +8,24 @@ publish.workspace = true
 # 上游转发 — 协议适配 + 流式管道。转发是纯 IO, 不做业务判断。
 
 [dependencies]
+gateway-pipeline = { path = "../pipeline" }
 dispatch = { path = "../dispatch" }
-protocol = { path = "../protocol" }
+gateway-protocol-bridge = { path = "../protocol-bridge" }
 contract = { path = "../../contract" }
 serde    = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+async-trait = "0.1"
+anyhow = "1"
 reqwest  = { workspace = true }
+tokio    = { workspace = true }
+tokio-util = { version = "0.7", features = ["io"] }
 futures-util = { workspace = true }
+axum = { workspace = true }
 bytes    = { workspace = true }
+tracing  = { workspace = true }
+chrono   = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+futures-util = { workspace = true }

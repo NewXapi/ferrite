@@ -1,0 +1,15 @@
+[application]
+name = "admin-web"
+asset_dir = "assets"
+
+[web.app]
+title = "Ferrite Admin"
+
+[[web.proxy]]
+backend = "http://localhost:3000/api"
+
+[[web.proxy]]
+backend = "http://localhost:3000/mj"
+
+[[web.proxy]]
+backend = "http://localhost:3000/pg"

@@ -8,3 +8,8 @@ todo/
 .code-review-graph/
 node_modules/
 .wt
+config/config.toml
+.env
+.env.*
+*.pem
+*.key

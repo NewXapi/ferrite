@@ -15,6 +15,9 @@ use crate::spec::{
 pub struct ToolRequestGate {
     total_calls: usize,
     calls_per_tool: HashMap<ToolId, usize>,
+    // Provider 重放同一 call id 时，只有同一个 snapshot 内的同一个工具才幂等。
+    // 新 snapshot 有独立预算，不能复用旧 snapshot 的 reservation。
+    reserved_calls: HashMap<(ToolSnapshotId, String), ToolId>,
 }
 
 impl ToolRequestGate {
@@ -53,6 +56,11 @@ impl ToolRequestGate {
             ToolChoice::Auto | ToolChoice::Required | ToolChoice::Specific(_) => {}
         }
 
+        let reservation_key = (snapshot.id().clone(), invocation.call_id.clone());
+        if self.reserved_calls.get(&reservation_key) == Some(&invocation.tool_id) {
+            return Ok(());
+        }
+
         let max_calls = snapshot.max_calls_per_invocation();
         if self.total_calls >= max_calls {
             return Err(ToolRequestGateError::InvocationBudgetExhausted { max_calls });
@@ -72,6 +80,8 @@ impl ToolRequestGate {
             });
         }
 
+        self.reserved_calls
+            .insert(reservation_key, invocation.tool_id.clone());
         self.total_calls += 1;
         *self
             .calls_per_tool
