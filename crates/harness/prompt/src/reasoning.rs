@@ -103,16 +103,20 @@ pub fn inject_reasoning(
     template: &ReasoningTemplate,
     max_additions: Option<usize>,
 ) -> Vec<AgentModelMessage> {
-    let mut out = messages.to_vec();
     let limit = max_additions.unwrap_or(usize::MAX);
-    out.extend(
-        reasoning_texts
-            .iter()
-            .filter(|raw| !raw.trim().is_empty())
-            .take(limit)
-            .map(|raw| {
-                AgentModelMessage::text(AgentModelRole::Assistant, wrap_reasoning(raw, template))
-            }),
-    );
+    // 先算出实际要注入的条目，再一次性按最终长度分配：空输入 / 全空白 /
+    // `Some(0)` 都不该为「什么都没加」付一次整段历史的拷贝加扩容。
+    let additions = reasoning_texts
+        .iter()
+        .filter(|raw| !raw.trim().is_empty())
+        .take(limit)
+        .map(|raw| {
+            AgentModelMessage::text(AgentModelRole::Assistant, wrap_reasoning(raw, template))
+        })
+        .collect::<Vec<_>>();
+
+    let mut out = Vec::with_capacity(messages.len() + additions.len());
+    out.extend_from_slice(messages);
+    out.extend(additions);
     out
 }
