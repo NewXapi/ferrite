@@ -1,0 +1,16 @@
+[package]
+name = "page-overview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+dioxus = { workspace = true }
+manganis = "0.7"
+mock = { path = "../admin-mock" }
+client = { path = "../admin-client" }
+contract = { path = "../../contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }

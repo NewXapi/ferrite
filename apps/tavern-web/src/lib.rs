@@ -46,6 +46,7 @@ pub fn TavernApp() -> Element {
     let mut section = use_signal(|| Section::Characters); // 默认直接进入 5 栏剧本库大厅
     let mut theme_light = use_signal(|| false);
     let mut auth_modal_open = use_signal(|| false);
+    let mut current_user = use_signal(shared_web::get_cached_user);
 
     let is_chat = section() == Section::Chat;
     let is_home = section() == Section::Home;
@@ -88,7 +89,9 @@ pub fn TavernApp() -> Element {
                             }
                         }
                         UserBadge {
+                            user: Some(current_user()),
                             on_open_login: move |_| auth_modal_open.set(true),
+                            on_logout: move |_| current_user.set(None),
                         }
                         button {
                             class: "flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 text-xs",
@@ -180,8 +183,9 @@ pub fn TavernApp() -> Element {
             AuthModal {
                 open: auth_modal_open(),
                 on_close: move |_| auth_modal_open.set(false),
-                on_success: move |_user| {
-                    // 登录成功直接导向剧情库
+                on_success: move |user| {
+                    // 登录成功刷新全局响应式状态并导向剧情库
+                    current_user.set(Some(user));
                     section.set(Section::Characters);
                     auth_modal_open.set(false);
                 },

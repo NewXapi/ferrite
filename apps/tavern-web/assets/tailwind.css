@@ -1,4 +1,4 @@
 @import "tailwindcss";
 
 @source "../src";
-@source "../../../crates/tavern-web";
+@source "../../../crates/web";

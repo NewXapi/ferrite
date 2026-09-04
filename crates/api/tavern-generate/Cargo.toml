@@ -1,0 +1,19 @@
+[package]
+name = "tavern-generate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-secrets = { path = "../tavern-secrets" }
+tavern-storage = { path = "../tavern-storage" }
+
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+tokio      = { workspace = true }
+reqwest    = { workspace = true }
+bytes      = { workspace = true }
+futures-util = { workspace = true }
+axum       = { workspace = true }
