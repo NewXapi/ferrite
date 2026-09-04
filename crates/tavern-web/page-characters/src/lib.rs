@@ -695,6 +695,8 @@ fn CharacterCardItem(
 /// =========================================================================
 #[component]
 pub fn StudioPage() -> Element {
+    let mut studio_tab = use_signal(|| "剧本创作".to_string());
+
     let mut my_works = use_signal(move || {
         seed_all_characters()
             .into_iter()
@@ -702,12 +704,11 @@ pub fn StudioPage() -> Element {
             .collect::<Vec<Character>>()
     });
 
-    // 控制当前编辑的剧本对象（Some 则弹出 Modal）
     let mut editing_target = use_signal(|| None::<Character>);
     let mut delete_id = use_signal(|| None::<usize>);
 
     rsx! {
-        div { class: "relative flex h-full w-full flex-col gap-5 overflow-hidden",
+        div { class: "relative flex h-full w-full flex-col gap-4 overflow-hidden",
             // 创作中心头部控制台看板
             div { class: "flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-2xl border border-purple-500/30 bg-gradient-to-r from-purple-950/30 via-zinc-900/60 to-zinc-950 p-5 backdrop-blur-xl shadow-lg",
                 div { class: "flex items-center gap-3",
@@ -719,97 +720,26 @@ pub fn StudioPage() -> Element {
                             h1 { class: "font-serif text-lg font-bold text-white", "我的创作中心" }
                             span { class: "rounded-full bg-purple-500/20 border border-purple-500/30 px-2 py-0.2 text-[10px] font-bold text-purple-300", "CREATOR STUDIO" }
                         }
-                        p { class: "text-xs text-zinc-400", "管理你的专属剧本、分支设定与大模型微调参数。随时一键发布或本地预览测试。" }
+                        p { class: "text-xs text-zinc-400", "管理你的专属剧本、玩家人格化身与世界书条目。全流程自定义你的互动宇宙。" }
                     }
                 }
 
-                div { class: "flex items-center gap-3",
-                    button {
-                        class: "flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-purple-600/30 hover:scale-105 transition-all",
-                        onclick: move |_| {
-                            let next_id = my_works().len() + 101;
-                            editing_target.set(Some(Character::empty(next_id)));
-                        },
-                        span { "+ 新建作品" }
-                    }
-                }
-            }
-
-            // 用户作品列表与新建入口卡片 (对齐图4要求)
-            div { class: "min-h-0 flex-1 overflow-y-auto px-1 pr-2 pb-6",
-                div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4",
-                    // 1. 醒目的“+ 新建剧本”大卡片
-                    div {
-                        class: "group flex min-h-[220px] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-zinc-800 bg-zinc-900/30 p-6 text-center transition-all hover:border-purple-500/60 hover:bg-purple-950/20",
-                        onclick: move |_| {
-                            let next_id = my_works().len() + 101;
-                            editing_target.set(Some(Character::empty(next_id)));
-                        },
-                        div { class: "flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-xl text-purple-400 group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all",
-                            "+"
-                        }
-                        span { class: "text-xs font-bold text-zinc-200 group-hover:text-purple-300 transition-colors", "创建新剧本作品" }
-                        span { class: "text-[11px] text-zinc-500", "包含角色设定、Prompt 矩阵、进场封面与行动分支" }
-                    }
-
-                    // 2. 我的个人作品卡牌
-                    for work in my_works() {
+                // 子功能 Tab 切换
+                div { class: "flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/80 p-1 text-xs select-none",
+                    for t in ["剧本创作", "我的人格", "世界书"] {
                         {
-                            let w_clone = work.clone();
-                            let w_edit = work.clone();
+                            let is_act = studio_tab() == t;
+                            let t_str = t.to_string();
                             rsx! {
-                                div {
-                                    key: "{work.id}",
-                                    class: "group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-4 transition-all hover:border-purple-500/50 hover:bg-zinc-900 hover:shadow-xl",
-                                    // 卡片头部: 状态标与快捷操作
-                                    div { class: "flex items-center justify-between",
-                                        if work.is_published {
-                                            span { class: "flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400",
-                                                span { "●" }
-                                                span { "已发布" }
-                                            }
-                                        } else {
-                                            span { class: "flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400",
-                                                span { "●" }
-                                                span { "草稿中" }
-                                            }
-                                        }
-
-                                        div { class: "flex items-center gap-1",
-                                            button {
-                                                class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-purple-300 text-xs transition-colors",
-                                                title: "编辑剧本",
-                                                onclick: move |_| editing_target.set(Some(w_edit.clone())),
-                                                "✎"
-                                            }
-                                            button {
-                                                class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-rose-400 text-xs transition-colors",
-                                                title: "删除剧本",
-                                                onclick: move |_| delete_id.set(Some(work.id)),
-                                                "✕"
-                                            }
-                                        }
-                                    }
-
-                                    // 卡片正文
-                                    div { class: "flex flex-col gap-1.5 py-3",
-                                        h3 { class: "font-serif text-sm font-bold text-zinc-100 group-hover:text-purple-300 transition-colors line-clamp-1",
-                                            "{work.name}"
-                                        }
-                                        p { class: "line-clamp-2 text-xs leading-5 text-zinc-400",
-                                            if work.description.is_empty() { "暂未填写作品描述…" } else { "{work.description}" }
-                                        }
-                                    }
-
-                                    // 卡片底栏: 模型与编辑按钮
-                                    div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3 text-[11px] text-zinc-500",
-                                        span { class: "truncate max-w-[120px]", "模型: {work.default_model}" }
-                                        button {
-                                            class: "font-semibold text-purple-400 hover:text-purple-300 transition-colors",
-                                            onclick: move |_| editing_target.set(Some(w_clone.clone())),
-                                            "继续编辑 ➜"
-                                        }
-                                    }
+                                button {
+                                    key: "{t}",
+                                    class: if is_act {
+                                        "rounded-full bg-zinc-100 px-3.5 py-1 font-bold text-zinc-900 shadow-sm transition-all"
+                                    } else {
+                                        "rounded-full px-3.5 py-1 font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+                                    },
+                                    onclick: move |_| studio_tab.set(t_str.clone()),
+                                    "{t}"
                                 }
                             }
                         }
@@ -817,9 +747,99 @@ pub fn StudioPage() -> Element {
                 }
             }
 
-            // =========================================================================
-            // 弹窗式四步创作编辑器 (Modal) (带背景景深与高斯模糊，对齐需求3与图3)
-            // =========================================================================
+            // 选项卡内容区
+            div { class: "min-h-0 flex-1 overflow-hidden",
+                match studio_tab().as_str() {
+                    "我的人格" => rsx! {
+                        tavern_page_personas::PersonasPage {}
+                    },
+                    "世界书" => rsx! {
+                        tavern_page_lorebook::LorebookPage {}
+                    },
+                    _ => rsx! {
+                        // 剧本作品网格: Web 5 栏 / 平板 3 栏 / 手机 1 栏 (对齐用户严格要求)
+                        div { class: "h-full w-full overflow-y-auto px-1 pr-2 pb-6",
+                            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5",
+                                // 1. 醒目的“+ 新建剧本”大卡片
+                                div {
+                                    class: "group flex min-h-[220px] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-zinc-800 bg-zinc-900/30 p-6 text-center transition-all hover:border-purple-500/60 hover:bg-purple-950/20 select-none",
+                                    onclick: move |_| {
+                                        let next_id = my_works().len() + 101;
+                                        editing_target.set(Some(Character::empty(next_id)));
+                                    },
+                                    div { class: "flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-xl text-purple-400 group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all",
+                                        "+"
+                                    }
+                                    span { class: "text-xs font-bold text-zinc-200 group-hover:text-purple-300 transition-colors", "创建新剧本作品" }
+                                    span { class: "text-[11px] text-zinc-500", "包含设定、Prompt 矩阵、进场展映与行动分支" }
+                                }
+
+                                // 2. 我的作品卡牌列表
+                                for work in my_works() {
+                                    {
+                                        let w_clone = work.clone();
+                                        let w_edit = work.clone();
+                                        rsx! {
+                                            div {
+                                                key: "{work.id}",
+                                                class: "group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-4 transition-all hover:border-purple-500/50 hover:bg-zinc-900 hover:shadow-xl",
+                                                div { class: "flex items-center justify-between",
+                                                    if work.is_published {
+                                                        span { class: "flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400",
+                                                            span { "●" }
+                                                            span { "已发布" }
+                                                        }
+                                                    } else {
+                                                        span { class: "flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400",
+                                                            span { "●" }
+                                                            span { "草稿中" }
+                                                        }
+                                                    }
+
+                                                    div { class: "flex items-center gap-1",
+                                                        button {
+                                                            class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-purple-300 text-xs transition-colors",
+                                                            title: "编辑剧本",
+                                                            onclick: move |_| editing_target.set(Some(w_edit.clone())),
+                                                            "✎"
+                                                        }
+                                                        button {
+                                                            class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-rose-400 text-xs transition-colors",
+                                                            title: "删除剧本",
+                                                            onclick: move |_| delete_id.set(Some(work.id)),
+                                                            "✕"
+                                                        }
+                                                    }
+                                                }
+
+                                                div { class: "flex flex-col gap-1.5 py-3",
+                                                    h3 { class: "font-serif text-sm font-bold text-zinc-100 group-hover:text-purple-300 transition-colors line-clamp-1",
+                                                        "{work.name}"
+                                                    }
+                                                    p { class: "line-clamp-2 text-xs leading-5 text-zinc-400",
+                                                        if work.description.is_empty() { "暂未填写作品描述…" } else { "{work.description}" }
+                                                    }
+                                                }
+
+                                                div { class: "flex items-center justify-between border-t border-zinc-800/80 pt-3 text-[11px] text-zinc-500",
+                                                    span { class: "truncate max-w-[120px]", "模型: {work.default_model}" }
+                                                    button {
+                                                        class: "font-semibold text-purple-400 hover:text-purple-300 transition-colors",
+                                                        onclick: move |_| editing_target.set(Some(w_clone.clone())),
+                                                        "继续编辑 ➜"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+
+            // 弹窗式四步创作编辑器 (Modal)
             if let Some(target) = editing_target() {
                 div {
                     class: "fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl p-4 sm:p-6 transition-all duration-300",
@@ -844,7 +864,6 @@ pub fn StudioPage() -> Element {
                 }
             }
 
-            // 删除确认弹窗
             Dialog {
                 title: "删除创作者作品".to_string(),
                 open: delete_id().is_some(),

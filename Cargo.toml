@@ -44,6 +44,8 @@ members = [
     "crates/tavern-web/page-chat",
     "crates/tavern-web/page-settings",
     "crates/tavern-web/page-home",
+    "crates/tavern-web/page-personas",
+    "crates/tavern-web/page-lorebook",
     "crates/harness/core",
     "crates/harness/prompt",
     "crates/harness/tools",
