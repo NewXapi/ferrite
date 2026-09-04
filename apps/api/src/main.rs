@@ -61,7 +61,7 @@ async fn main() -> ExitCode {
         }
     }
 
-    let gateway = gateway::Gateway::new(pool, route_index);
+    let gateway = gateway::Gateway::new(pool.clone(), route_index);
     let tavern = match api::tavern::router(&api::tavern::TavernConfig::default()) {
         Ok(router) => router,
         Err(e) => {
@@ -69,7 +69,17 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let app = gateway.router().merge(tavern);
+    let auth_router = match auth::router(pool.clone()) {
+        Ok(router) => {
+            tracing::info!("auth router mounted at /api/user/*");
+            router
+        }
+        Err(e) => {
+            tracing::warn!("auth router skipped (missing secret or db issue): {e}");
+            axum::Router::new()
+        }
+    };
+    let app = gateway.router().merge(tavern).merge(auth_router);
 
     let listener = match tokio::net::TcpListener::bind(&config.listen).await {
         Ok(l) => l,

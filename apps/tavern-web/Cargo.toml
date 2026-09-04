@@ -19,12 +19,12 @@ path = "src/lib.rs"
 
 [dependencies]
 dioxus                = { workspace = true }
-tavern-client         = { path = "../../crates/tavern-web/client" }
-tavern-state          = { path = "../../crates/tavern-web/state" }
-tavern-ui             = { path = "../../crates/tavern-web/ui" }
-tavern-page-characters = { path = "../../crates/tavern-web/page-characters" }
-tavern-page-chat      = { path = "../../crates/tavern-web/page-chat" }
-tavern-page-settings  = { path = "../../crates/tavern-web/page-settings" }
-tavern-page-home      = { path = "../../crates/tavern-web/page-home" }
-tavern-page-personas  = { path = "../../crates/tavern-web/page-personas" }
-tavern-page-lorebook  = { path = "../../crates/tavern-web/page-lorebook" }
+tavern-client         = { path = "../../crates/web/tavern-client" }
+tavern-state          = { path = "../../crates/web/tavern-state" }
+tavern-page-characters = { path = "../../crates/web/tavern-page-characters" }
+tavern-page-chat      = { path = "../../crates/web/tavern-page-chat" }
+tavern-page-settings  = { path = "../../crates/web/tavern-page-settings" }
+tavern-page-home      = { path = "../../crates/web/tavern-page-home" }
+tavern-page-personas  = { path = "../../crates/web/tavern-page-personas" }
+tavern-page-lorebook  = { path = "../../crates/web/tavern-page-lorebook" }
+ui-components        = { path = "../../crates/web/ui-components" }

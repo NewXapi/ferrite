@@ -1,0 +1,26 @@
+[package]
+name = "observe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 观测域 — usage 聚合/排行/性能指标/留存 (center)。
+# 参考: new-api internal/usage (store_usedata/store_usedata_rankings/
+# record_perf/store_perf_metrics), sub2api channel_monitor_daily_rollup。
+
+[dependencies]
+contract = { path = "../../contract" }
+store    = { path = "../admin-store" }
+auth     = { path = "../auth" }
+reqwest  = { workspace = true }
+axum     = { workspace = true }
+sqlx     = { workspace = true }
+serde    = { workspace = true }
+serde_json = { workspace = true }
+chrono   = { workspace = true }
+uuid     = { workspace = true }
+
+
+[dev-dependencies]
+tokio = { workspace = true }

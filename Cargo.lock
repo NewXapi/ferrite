@@ -15,17 +15,86 @@ dependencies = [
 ]
 
 [[package]]
-name = "admin-web"
+name = "admin-page-account"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "client",
+ "contract",
+ "dioxus",
+ "gloo-timers",
+ "mock",
+ "serde",
+ "serde_json",
+ "ui-components",
+]
+
+[[package]]
+name = "admin-page-admin"
 version = "0.1.0"
 dependencies = [
  "client",
+ "contract",
  "dioxus",
- "page-account",
- "page-admin",
- "page-auth",
- "page-overview",
- "page-users",
- "ui",
+ "gloo-timers",
+ "serde",
+ "serde_json",
+ "ui-components",
+ "web-sys",
+]
+
+[[package]]
+name = "admin-page-auth"
+version = "0.1.0"
+dependencies = [
+ "client",
+ "contract",
+ "dioxus",
+ "serde",
+ "tokio",
+ "ui-components",
+]
+
+[[package]]
+name = "admin-page-overview"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "client",
+ "contract",
+ "dioxus",
+ "manganis",
+ "mock",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "admin-page-users"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "client",
+ "contract",
+ "dioxus",
+ "mock",
+ "serde",
+ "serde_json",
+ "ui-components",
+]
+
+[[package]]
+name = "admin-web"
+version = "0.1.0"
+dependencies = [
+ "admin-page-account",
+ "admin-page-admin",
+ "admin-page-auth",
+ "admin-page-overview",
+ "admin-page-users",
+ "client",
+ "dioxus",
+ "ui-components",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -65,6 +134,7 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "auth",
  "axum",
  "bytes",
  "chrono",
@@ -1634,6 +1704,7 @@ dependencies = [
  "async-trait",
  "axum",
  "bytes",
+ "chrono",
  "contract",
  "gateway-pipeline",
  "http",
@@ -1641,6 +1712,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1819,11 +1891,11 @@ dependencies = [
 name = "harness-runtime"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures-util",
  "harness-core",
  "harness-prompt",
  "harness-tools",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -2757,75 +2829,6 @@ dependencies = [
  "store",
  "thiserror 2.0.20",
  "uuid",
-]
-
-[[package]]
-name = "page-account"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "client",
- "contract",
- "dioxus",
- "gloo-timers",
- "mock",
- "serde",
- "serde_json",
- "ui",
-]
-
-[[package]]
-name = "page-admin"
-version = "0.1.0"
-dependencies = [
- "client",
- "contract",
- "dioxus",
- "gloo-timers",
- "serde",
- "serde_json",
- "ui",
- "web-sys",
-]
-
-[[package]]
-name = "page-auth"
-version = "0.1.0"
-dependencies = [
- "client",
- "contract",
- "dioxus",
- "serde",
- "tokio",
- "ui",
-]
-
-[[package]]
-name = "page-overview"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "client",
- "contract",
- "dioxus",
- "manganis",
- "mock",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "page-users"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "client",
- "contract",
- "dioxus",
- "mock",
- "serde",
- "serde_json",
- "ui",
 ]
 
 [[package]]
@@ -4032,6 +4035,7 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4068,7 +4072,7 @@ dependencies = [
  "tavern-page-lorebook",
  "tavern-page-personas",
  "tavern-state",
- "tavern-ui",
+ "ui-components",
 ]
 
 [[package]]
@@ -4078,7 +4082,7 @@ dependencies = [
  "dioxus",
  "tavern-client",
  "tavern-state",
- "tavern-ui",
+ "ui-components",
 ]
 
 [[package]]
@@ -4093,7 +4097,7 @@ name = "tavern-page-lorebook"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "tavern-ui",
+ "ui-components",
 ]
 
 [[package]]
@@ -4101,7 +4105,7 @@ name = "tavern-page-personas"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "tavern-ui",
+ "ui-components",
 ]
 
 [[package]]
@@ -4111,7 +4115,18 @@ dependencies = [
  "dioxus",
  "tavern-client",
  "tavern-state",
- "tavern-ui",
+ "ui-components",
+]
+
+[[package]]
+name = "tavern-presets"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tavern-storage",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4156,13 +4171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tavern-ui"
-version = "0.1.0"
-dependencies = [
- "dioxus",
-]
-
-[[package]]
 name = "tavern-web-app"
 version = "0.1.0"
 dependencies = [
@@ -4175,7 +4183,24 @@ dependencies = [
  "tavern-page-personas",
  "tavern-page-settings",
  "tavern-state",
- "tavern-ui",
+ "ui-components",
+]
+
+[[package]]
+name = "tests-e2e"
+version = "0.1.0"
+dependencies = [
+ "api",
+ "auth",
+ "axum",
+ "contract",
+ "http",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "ui-components",
 ]
 
 [[package]]
@@ -4600,10 +4625,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
-name = "ui"
+name = "ui-components"
 version = "0.1.0"
 dependencies = [
+ "contract",
  "dioxus",
+ "gloo-net",
+ "serde",
+ "serde_json",
+ "web-sys",
 ]
 
 [[package]]

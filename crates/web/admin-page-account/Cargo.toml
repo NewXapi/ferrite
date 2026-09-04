@@ -1,0 +1,17 @@
+[package]
+name = "admin-page-account"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+dioxus = { workspace = true }
+ui = { package = "ui-components", path = "../ui-components" }
+mock = { path = "../admin-mock" }
+gloo-timers = { version = "0.3", features = ["futures"] }
+client = { path = "../admin-client" }
+contract = { path = "../../contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }

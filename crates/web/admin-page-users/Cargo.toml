@@ -1,0 +1,16 @@
+[package]
+name = "admin-page-users"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dioxus = { workspace = true }
+ui = { package = "ui-components", path = "../ui-components" }
+mock = { path = "../admin-mock" }
+chrono = { workspace = true }
+client = { path = "../admin-client" }
+contract = { path = "../../contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }

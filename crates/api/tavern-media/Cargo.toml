@@ -1,0 +1,12 @@
+[package]
+name = "tavern-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tavern-storage = { path = "../tavern-storage" }
+
+serde     = { workspace = true }
+thiserror = { workspace = true }

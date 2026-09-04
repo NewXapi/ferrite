@@ -1,0 +1,29 @@
+[package]
+name = "catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 配置权威 — center 对 channel/route-unit/group/user/token 的全部业务写操作。
+# 依赖 store (存储端口) 与 contract (记录定义)。
+
+[dependencies]
+contract = { path = "../../contract" }
+store    = { path = "../admin-store" }
+auth     = { path = "../auth" }
+observe  = { path = "../admin-observe" }
+reqwest  = { workspace = true }
+axum     = { workspace = true }
+sqlx     = { workspace = true }
+serde    = { workspace = true }
+serde_json = { workspace = true }
+chrono   = { workspace = true }
+uuid     = { workspace = true }
+rand     = { workspace = true }
+sha2     = { workspace = true }
+hex      = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
