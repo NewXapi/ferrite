@@ -61,8 +61,7 @@ struct GroupRow {
     updated_at: DateTime<Utc>,
 }
 
-const COLS: &str =
-    "key, name, ratio, model_whitelist, remark, status, created_at, updated_at";
+const COLS: &str = "key, name, ratio, model_whitelist, remark, status, created_at, updated_at";
 
 pub struct GroupService {
     pool: PgPool,
@@ -116,11 +115,12 @@ impl GroupService {
         remark: Option<&str>,
         status: Option<i16>,
     ) -> Result<GroupView, AuthError> {
-        let existing: GroupRow = sqlx::query_as(&format!("SELECT {COLS} FROM api_groups WHERE key = $1"))
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(AuthError::UserNotFound)?;
+        let existing: GroupRow =
+            sqlx::query_as(&format!("SELECT {COLS} FROM api_groups WHERE key = $1"))
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or(AuthError::UserNotFound)?;
         if let Some(r) = ratio
             && !(r > 0.0 && r.is_finite())
         {
@@ -135,7 +135,9 @@ impl GroupService {
             }
             // default 组不可停用
             if existing.name == "default" && s == 2 {
-                return Err(AuthError::BadRequest("default group cannot be disabled".into()));
+                return Err(AuthError::BadRequest(
+                    "default group cannot be disabled".into(),
+                ));
             }
         }
 
@@ -156,13 +158,16 @@ impl GroupService {
     }
 
     pub async fn delete(&self, key: Uuid) -> Result<(), AuthError> {
-        let existing: GroupRow = sqlx::query_as(&format!("SELECT {COLS} FROM api_groups WHERE key = $1"))
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(AuthError::UserNotFound)?;
+        let existing: GroupRow =
+            sqlx::query_as(&format!("SELECT {COLS} FROM api_groups WHERE key = $1"))
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or(AuthError::UserNotFound)?;
         if existing.name == "default" {
-            return Err(AuthError::BadRequest("default group cannot be deleted".into()));
+            return Err(AuthError::BadRequest(
+                "default group cannot be deleted".into(),
+            ));
         }
         // 应用层引用检查 (loose FK)
         let refs: i64 = sqlx::query_scalar(
@@ -212,12 +217,16 @@ fn validate_whitelist(v: &Value) -> Result<(), AuthError> {
     if let Some(arr) = v.as_array() {
         for m in arr {
             if m.as_str().unwrap_or("").is_empty() {
-                return Err(AuthError::BadRequest("whitelist entries must be non-empty strings".into()));
+                return Err(AuthError::BadRequest(
+                    "whitelist entries must be non-empty strings".into(),
+                ));
             }
         }
         Ok(())
     } else {
-        Err(AuthError::BadRequest("model_whitelist must be an array".into()))
+        Err(AuthError::BadRequest(
+            "model_whitelist must be an array".into(),
+        ))
     }
 }
 
@@ -248,7 +257,10 @@ pub fn router(state: GroupAppState) -> axum::Router {
     use axum::routing::get;
     axum::Router::new()
         .route("/api/group", get(list).post(create))
-        .route("/api/group/{key}", axum::routing::put(update).delete(remove))
+        .route(
+            "/api/group/{key}",
+            axum::routing::put(update).delete(remove),
+        )
         .with_state(state)
 }
 
@@ -271,8 +283,11 @@ async fn require_admin(auth: &AuthService, headers: &HeaderMap) -> Result<(), Au
 async fn list(
     axum::extract::State(state): axum::extract::State<GroupAppState>,
     headers: HeaderMap,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
     match state.svc.list().await {
         Ok(items) => Ok(axum::Json(serde_json::json!({"items": items}))),
         Err(e) => Err(err_json(e)),
@@ -299,9 +314,16 @@ async fn create(
     axum::extract::State(state): axum::extract::State<GroupAppState>,
     headers: HeaderMap,
     axum::Json(req): axum::Json<CreateGroupRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    match state.svc.create(&req.name, req.ratio, req.model_whitelist, &req.remark).await {
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    match state
+        .svc
+        .create(&req.name, req.ratio, req.model_whitelist, &req.remark)
+        .await
+    {
         Ok(g) => Ok(axum::Json(serde_json::json!(g))),
         Err(e) => Err(err_json(e)),
     }
@@ -321,12 +343,23 @@ async fn update(
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
     axum::Json(req): axum::Json<UpdateGroupRequest>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| AuthError::BadRequest("invalid key".into())).map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
     match state
         .svc
-        .update(key, req.ratio, req.model_whitelist, req.remark.as_deref(), req.status)
+        .update(
+            key,
+            req.ratio,
+            req.model_whitelist,
+            req.remark.as_deref(),
+            req.status,
+        )
         .await
     {
         Ok(g) => Ok(axum::Json(serde_json::json!(g))),
@@ -338,9 +371,14 @@ async fn remove(
     axum::extract::State(state): axum::extract::State<GroupAppState>,
     headers: HeaderMap,
     axum::extract::Path(key): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)> {
-    require_admin(&state.auth, &headers).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| AuthError::BadRequest("invalid key".into())).map_err(err_json)?;
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    require_admin(&state.auth, &headers)
+        .await
+        .map_err(err_json)?;
+    let key = Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid key".into()))
+        .map_err(err_json)?;
     match state.svc.delete(key).await {
         Ok(()) => Ok(axum::Json(serde_json::json!({"success": true}))),
         Err(e) => Err(err_json(e)),

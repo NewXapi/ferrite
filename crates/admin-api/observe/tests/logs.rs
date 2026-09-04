@@ -53,29 +53,50 @@ async fn record_and_query_flow() {
     svc.record(&topup).await.expect("record topup");
 
     // admin 全量查 (按模型过滤)
-    let (items, total) = svc.list_logs(None, None, None, Some(&marker), None, None, 1, 20).await.unwrap();
+    let (items, total) = svc
+        .list_logs(None, None, None, Some(&marker), None, None, 1, 20)
+        .await
+        .unwrap();
     assert_eq!(total, 4);
     assert_eq!(items.len(), 4);
     // id 倒序
     assert!(items[0].id > items[1].id);
 
     // 按 log_type 过滤
-    let (_, topup_total) = svc.list_logs(Some(1), None, None, Some(&marker), None, None, 1, 20).await.unwrap();
+    let (_, topup_total) = svc
+        .list_logs(Some(1), None, None, Some(&marker), None, None, 1, 20)
+        .await
+        .unwrap();
     assert_eq!(topup_total, 1);
-    let (_, consume_total) = svc.list_logs(Some(2), None, None, Some(&marker), None, None, 1, 20).await.unwrap();
+    let (_, consume_total) = svc
+        .list_logs(Some(2), None, None, Some(&marker), None, None, 1, 20)
+        .await
+        .unwrap();
     assert_eq!(consume_total, 3);
 
     // 用户自查只看到自己的
     let stranger = uuid::Uuid::new_v4();
-    let (_, stranger_total) = svc.list_self_logs(stranger, None, None, Some(&marker), None, None, 1, 20).await.unwrap();
+    let (_, stranger_total) = svc
+        .list_self_logs(stranger, None, None, Some(&marker), None, None, 1, 20)
+        .await
+        .unwrap();
     assert_eq!(stranger_total, 0);
-    let (_, self_total) = svc.list_self_logs(user, None, None, Some(&marker), None, None, 1, 20).await.unwrap();
+    let (_, self_total) = svc
+        .list_self_logs(user, None, None, Some(&marker), None, None, 1, 20)
+        .await
+        .unwrap();
     assert_eq!(self_total, 4);
 
     // 分页
-    let (page1, _) = svc.list_logs(None, None, None, Some(&marker), None, None, 1, 2).await.unwrap();
+    let (page1, _) = svc
+        .list_logs(None, None, None, Some(&marker), None, None, 1, 2)
+        .await
+        .unwrap();
     assert_eq!(page1.len(), 2);
-    let (page2, _) = svc.list_logs(None, None, None, Some(&marker), None, None, 2, 2).await.unwrap();
+    let (page2, _) = svc
+        .list_logs(None, None, None, Some(&marker), None, None, 2, 2)
+        .await
+        .unwrap();
     assert_eq!(page2.len(), 2);
     assert_ne!(page1[0].id, page2[0].id);
 

@@ -39,7 +39,14 @@ async fn token_create_list_update_delete() {
 
     // 创建 — 明文 sk- 前缀, preview 掩码
     let created = svc
-        .create(owner, "my-token", Some("default".into()), 100_000, false, None)
+        .create(
+            owner,
+            "my-token",
+            Some("default".into()),
+            100_000,
+            false,
+            None,
+        )
         .await
         .expect("create");
     assert!(created.plaintext.starts_with("sk-"));
@@ -55,7 +62,15 @@ async fn token_create_list_update_delete() {
     // 跨用户不可见
     let stranger = uid();
     assert!(svc.list(stranger, false).await.unwrap().is_empty());
-    assert!(svc.get(stranger, uuid::Uuid::parse_str(&created.token.key).unwrap(), false).await.is_err());
+    assert!(
+        svc.get(
+            stranger,
+            uuid::Uuid::parse_str(&created.token.key).unwrap(),
+            false
+        )
+        .await
+        .is_err()
+    );
 
     // admin_all 可见 (跨用户聚合; 表里可能有其他测试残留, 只断言包含自己这条)
     let all = svc.list(owner, true).await.unwrap();
@@ -64,12 +79,27 @@ async fn token_create_list_update_delete() {
     // 搜索
     let hits = svc.search(owner, false, "my-tok").await.unwrap();
     assert_eq!(hits.len(), 1);
-    assert!(svc.search(owner, false, "no-such").await.unwrap().is_empty());
+    assert!(
+        svc.search(owner, false, "no-such")
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // 更新: 改名 + 禁用 + 限额
     let key = uuid::Uuid::parse_str(&created.token.key).unwrap();
     let updated = svc
-        .update(owner, key, false, Some("renamed"), None, Some(55), Some(true), None, Some(2))
+        .update(
+            owner,
+            key,
+            false,
+            Some("renamed"),
+            None,
+            Some(55),
+            Some(true),
+            None,
+            Some(2),
+        )
         .await
         .unwrap();
     assert_eq!(updated.name, "renamed");
@@ -79,7 +109,8 @@ async fn token_create_list_update_delete() {
 
     // 空 token 名拒
     assert!(matches!(
-        svc.update(owner, key, false, Some("  "), None, None, None, None, None).await,
+        svc.update(owner, key, false, Some("  "), None, None, None, None, None)
+            .await,
         Err(auth::AuthError::BadRequest(_))
     ));
 

@@ -24,8 +24,12 @@ async fn make_svcs() -> (ChannelService, GroupService) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    catalog::channels::ensure_table(&pool).await.expect("channels ddl");
-    catalog::groups::ensure_table(&pool).await.expect("groups ddl");
+    catalog::channels::ensure_table(&pool)
+        .await
+        .expect("channels ddl");
+    catalog::groups::ensure_table(&pool)
+        .await
+        .expect("groups ddl");
     (ChannelService::new(pool.clone()), GroupService::new(pool))
 }
 
@@ -41,18 +45,53 @@ async fn channel_crud_flow() {
 
     // 校验: 空 keys 拒
     assert!(matches!(
-        svc.create(&name, "openai", "https://api.x.com", vec![], models_json(), "default", 0, 0, None, "").await,
+        svc.create(
+            &name,
+            "openai",
+            "https://api.x.com",
+            vec![],
+            models_json(),
+            "default",
+            0,
+            0,
+            None,
+            ""
+        )
+        .await,
         Err(auth::AuthError::BadRequest(_))
     ));
     // 校验: 非 http base_url 拒
     assert!(matches!(
-        svc.create(&name, "openai", "ftp://x", vec!["sk-1".into()], models_json(), "default", 0, 0, None, "").await,
+        svc.create(
+            &name,
+            "openai",
+            "ftp://x",
+            vec!["sk-1".into()],
+            models_json(),
+            "default",
+            0,
+            0,
+            None,
+            ""
+        )
+        .await,
         Err(auth::AuthError::BadRequest(_))
     ));
 
     // 创建
     let ch = svc
-        .create(&name, "openai", "https://api.x.com", vec!["sk-a".into(), "sk-b".into()], models_json(), "default", 10, 5, Some("gpt-4o".into()), "")
+        .create(
+            &name,
+            "openai",
+            "https://api.x.com",
+            vec!["sk-a".into(), "sk-b".into()],
+            models_json(),
+            "default",
+            10,
+            5,
+            Some("gpt-4o".into()),
+            "",
+        )
         .await
         .expect("create");
     assert_eq!(ch.key_count, 2);
@@ -61,7 +100,19 @@ async fn channel_crud_flow() {
 
     // 重名 → Conflict
     assert!(matches!(
-        svc.create(&name, "openai", "https://api.x.com", vec!["sk-1".into()], models_json(), "default", 0, 0, None, "").await,
+        svc.create(
+            &name,
+            "openai",
+            "https://api.x.com",
+            vec!["sk-1".into()],
+            models_json(),
+            "default",
+            0,
+            0,
+            None,
+            ""
+        )
+        .await,
         Err(auth::AuthError::Conflict(_))
     ));
 
@@ -75,7 +126,20 @@ async fn channel_crud_flow() {
     // 更新: 改 base_url + 停用
     let key = uuid::Uuid::parse_str(&ch.key).unwrap();
     let updated = svc
-        .update(key, None, None, Some("https://api.y.com"), None, None, None, Some(20), None, None, Some("r"), Some(2))
+        .update(
+            key,
+            None,
+            None,
+            Some("https://api.y.com"),
+            None,
+            None,
+            None,
+            Some(20),
+            None,
+            None,
+            Some("r"),
+            Some(2),
+        )
         .await
         .unwrap();
     assert_eq!(updated.base_url, "https://api.y.com");
@@ -85,11 +149,17 @@ async fn channel_crud_flow() {
     // set_status 启用
     let enabled = svc.set_status(key, 1).await.unwrap();
     assert_eq!(enabled.status, 1);
-    assert!(matches!(svc.set_status(key, 9).await, Err(auth::AuthError::BadRequest(_))));
+    assert!(matches!(
+        svc.set_status(key, 9).await,
+        Err(auth::AuthError::BadRequest(_))
+    ));
 
     // 删除 + 再删 NotFound
     svc.delete(key).await.unwrap();
-    assert!(matches!(svc.delete(key).await, Err(auth::AuthError::UserNotFound)));
+    assert!(matches!(
+        svc.delete(key).await,
+        Err(auth::AuthError::UserNotFound)
+    ));
 }
 
 #[tokio::test]
@@ -109,7 +179,9 @@ async fn group_crud_flow() {
     ));
     // 校验: default 保留名拒
     assert!(matches!(
-        groups.create("default", 1.0, serde_json::json!([]), "").await,
+        groups
+            .create("default", 1.0, serde_json::json!([]), "")
+            .await,
         Err(auth::AuthError::BadRequest(_))
     ));
 
@@ -128,7 +200,10 @@ async fn group_crud_flow() {
 
     // 更新
     let key = uuid::Uuid::parse_str(&g.key).unwrap();
-    let updated = groups.update(key, Some(2.0), None, Some("vip2"), None).await.unwrap();
+    let updated = groups
+        .update(key, Some(2.0), None, Some("vip2"), None)
+        .await
+        .unwrap();
     assert_eq!(updated.ratio, 2.0);
     assert_eq!(updated.remark, "vip2");
 
@@ -149,14 +224,195 @@ async fn group_crud_flow() {
     ));
 
     // 清引用后可删
-    sqlx::query("DELETE FROM auth_users WHERE username = $1").bind(&uname).execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM auth_users WHERE username = $1")
+        .bind(&uname)
+        .execute(&pool)
+        .await
+        .unwrap();
     groups.delete(key).await.unwrap();
-    assert!(matches!(groups.delete(key).await, Err(auth::AuthError::UserNotFound)));
+    assert!(matches!(
+        groups.delete(key).await,
+        Err(auth::AuthError::UserNotFound)
+    ));
 
     // default 不可删
-    let default_key = list.iter().find(|g| g.name == "default").unwrap().key.clone();
+    let default_key = list
+        .iter()
+        .find(|g| g.name == "default")
+        .unwrap()
+        .key
+        .clone();
     assert!(matches!(
-        groups.delete(uuid::Uuid::parse_str(&default_key).unwrap()).await,
+        groups
+            .delete(uuid::Uuid::parse_str(&default_key).unwrap())
+            .await,
         Err(auth::AuthError::BadRequest(_))
     ));
+}
+
+// ---------- 渠道探活（mock 上游验证 monitor 落库与可用率统计） ----------
+
+#[tokio::test]
+#[ignore]
+async fn probe_records_history_and_availability() {
+    // 直接走 observe::monitor 层验证：record → history → availability → all
+    // （HTTP 探活本身由 probe_chat_completions 对真实上游执行，单测 mock 无意义；
+    //   网络路径的格式错误分支（非法 URL）由 test_channel 对 error_kind 的归类覆盖。）
+    let (_ch, _g) = make_svcs().await;
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+    catalog::channels::ensure_table(&pool).await.unwrap();
+    observe::monitor::ensure_table(&pool).await.unwrap();
+    let monitor = observe::monitor::MonitorDeps::new(pool.clone());
+    let key = uuid::Uuid::new_v4();
+
+    // 3 成功 1 失败
+    for (ok, latency) in [(true, 100), (true, 200), (true, 300), (false, 5000)] {
+        monitor
+            .record(&observe::monitor::ProbeOutcome {
+                channel_key: key,
+                channel_name: "ch-test".into(),
+                model: "gpt-x".into(),
+                ok,
+                status_code: if ok { Some(200) } else { Some(500) },
+                latency_ms: latency,
+                error_kind: if ok { String::new() } else { "http".into() },
+                message: String::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    // 历史（新→旧）
+    let h = monitor.history(key, 10).await.unwrap();
+    assert_eq!(h.len(), 4);
+    assert!(h[0].id > h[3].id);
+
+    // 可用率 3/4 = 0.75，成功均值 200ms
+    let a = monitor.availability(key, 7).await.unwrap();
+    assert_eq!(a.total, 4);
+    assert_eq!(a.ok_count, 3);
+    let av = a.availability.unwrap();
+    assert!((av - 0.75).abs() < 1e-9);
+    let lat = a.avg_latency_ms.unwrap();
+    assert!((lat - 200.0).abs() < 1e-9);
+
+    // 全渠道一览包含该渠道
+    let all = monitor.availability_all(7).await.unwrap();
+    assert!(all.iter().any(|x| x.channel_key == key.to_string()));
+
+    // 清理
+    sqlx::query("DELETE FROM monitor_history WHERE channel_key = $1")
+        .bind(key)
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_channel_rejects_bad_config() {
+    // 无 keys / 无 model 的渠道探活 → BadRequest（不走网络）
+    let (svc, _g) = make_svcs().await;
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+    observe::monitor::ensure_table(&pool).await.unwrap();
+    let monitor = observe::monitor::MonitorDeps::new(pool.clone());
+
+    // 直接插一个无 keys 渠道（create 校验会拦，这里绕过以测 test_channel 分支）
+    let key = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name) \
+         VALUES ($1, $2, 'openai', 'https://upstream.test', '[]', '[]', 'default')",
+    )
+    .bind(key)
+    .bind(format!("ch-empty-{}", uuid::Uuid::new_v4().simple()))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let err = svc.test_channel(&monitor, key, None).await.unwrap_err();
+    assert!(matches!(err, auth::AuthError::BadRequest(_)));
+
+    sqlx::query("DELETE FROM api_channels WHERE key = $1")
+        .bind(key)
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+// ---------- token key 重取 ----------
+
+#[tokio::test]
+#[ignore]
+async fn token_regenerate_key_rotates() {
+    use catalog::tokens::TokenService;
+    let _guard = INIT.lock().await;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect(&db_url())
+        .await
+        .unwrap();
+    catalog::tokens::ensure_table(&pool).await.unwrap();
+    let svc = TokenService::new(pool);
+
+    let owner = uuid::Uuid::new_v4();
+    let created = svc
+        .create(owner, "regen-test", None, 0, true, None)
+        .await
+        .unwrap();
+    let key = uuid::Uuid::parse_str(&created.token.key).unwrap();
+
+    // 重取 → 新明文 ≠ 旧明文，且 sk- 前缀
+    let new_key = svc.regenerate_key(owner, key, false).await.unwrap();
+    assert_ne!(new_key, created.plaintext);
+    assert!(new_key.starts_with("sk-"));
+
+    // 陌生人无权重取
+    let stranger = uuid::Uuid::new_v4();
+    assert!(matches!(
+        svc.regenerate_key(stranger, key, false).await,
+        Err(auth::AuthError::UserNotFound)
+    ));
+    // admin 可以
+    assert!(svc.regenerate_key(stranger, key, true).await.is_ok());
+
+    svc.delete(owner, key, false).await.unwrap();
+}
+
+// ---------- 用户单查/搜索 ----------
+
+#[tokio::test]
+#[ignore]
+async fn user_get_and_search() {
+    use auth::service::AuthService;
+    let _guard = INIT.lock().await;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect(&db_url())
+        .await
+        .unwrap();
+    auth::ddl::run(&pool).await.unwrap();
+    let svc = AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec()).unwrap();
+
+    let username = format!("usr_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
+    let view = svc
+        .register(&username, "hunter2hunter", None)
+        .await
+        .unwrap();
+    let key = uuid::Uuid::parse_str(&view.key).unwrap();
+
+    // 单查
+    let got = svc.get_user(key).await.unwrap();
+    assert_eq!(got.username, username);
+
+    // 不存在 → UserNotFound
+    assert!(matches!(
+        svc.get_user(uuid::Uuid::new_v4()).await,
+        Err(auth::AuthError::UserNotFound)
+    ));
+
+    // 搜索命中
+    let hits = svc.search_users(&username).await.unwrap();
+    assert!(hits.iter().any(|u| u.key == view.key));
 }

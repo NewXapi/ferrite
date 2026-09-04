@@ -20,7 +20,7 @@ pub struct AppState {
 
 pub fn router(pool: PgPool) -> Result<Router, AuthError> {
     let secret = std::env::var("FERRITE_JWT_SECRET").map_err(|_| AuthError::MissingSecret)?;
-    let svc = Arc::new(AuthService::new(pool, secret.into_bytes()));
+    let svc = Arc::new(AuthService::new(pool, secret.into_bytes())?);
     router_with_svc(svc)
 }
 
@@ -31,8 +31,13 @@ pub fn router_with_svc(svc: Arc<AuthService>) -> Result<Router, AuthError> {
         .route("/api/user/register", post(register))
         .route("/api/user/refresh", post(refresh))
         .route("/api/user/logout", post(logout))
-        .route("/api/user/self", get(self_view).put(update_self).delete(delete_self))
+        .route(
+            "/api/user/self",
+            get(self_view).put(update_self).delete(delete_self),
+        )
         .route("/api/user", get(list_users))
+        .route("/api/user/search", get(search_users))
+        .route("/api/user/{key}", get(get_user))
         .route("/api/user/manage", post(manage_user))
         .with_state(AppState { svc }))
 }
@@ -110,7 +115,11 @@ async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
     let (ua, ip) = ua_ip(&headers, &ConnectInfo(addr));
-    match state.svc.login(&req.username, &req.password, &ua, &ip).await {
+    match state
+        .svc
+        .login(&req.username, &req.password, &ua, &ip)
+        .await
+    {
         Ok(r) => Ok(Json(json!(r))),
         Err(e) => Err(err_response(e)),
     }
@@ -121,7 +130,11 @@ async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
     let email = req.email.as_deref();
-    match state.svc.register(&req.username, &req.password, email).await {
+    match state
+        .svc
+        .register(&req.username, &req.password, email)
+        .await
+    {
         Ok(u) => Ok(Json(json!(u))),
         Err(e) => Err(err_response(e)),
     }
@@ -245,11 +258,15 @@ async fn update_self(
     headers: HeaderMap,
     Json(req): Json<UpdateSelfRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
     match state
         .svc
         .update_self(
-            uuid::Uuid::parse_str(&user.key).map_err(|_| AuthError::InvalidToken).map_err(err_response)?,
+            uuid::Uuid::parse_str(&user.key)
+                .map_err(|_| AuthError::InvalidToken)
+                .map_err(err_response)?,
             req.display_name.as_deref(),
             req.original_password.as_deref(),
             req.new_password.as_deref(),
@@ -265,7 +282,9 @@ async fn delete_self(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
     let key = uuid::Uuid::parse_str(&user.key)
         .map_err(|_| AuthError::InvalidToken)
         .map_err(err_response)?;
@@ -280,9 +299,19 @@ async fn list_users(
     headers: HeaderMap,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
     require_admin(&user).map_err(err_response)?;
-    match state.svc.list_users(q.search.as_deref(), q.page.unwrap_or(1), q.size.unwrap_or(20)).await {
+    match state
+        .svc
+        .list_users(
+            q.search.as_deref(),
+            q.page.unwrap_or(1),
+            q.size.unwrap_or(20),
+        )
+        .await
+    {
         Ok((users, total)) => Ok(Json(json!({"items": users, "total": total}))),
         Err(e) => Err(err_response(e)),
     }
@@ -300,12 +329,57 @@ async fn manage_user(
     headers: HeaderMap,
     Json(req): Json<ManageUserRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
-    let user = bearer_user(&state.svc, &headers).await.map_err(err_response)?;
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
     require_admin(&user).map_err(err_response)?;
     let key = uuid::Uuid::parse_str(&req.key)
         .map_err(|_| AuthError::BadRequest("invalid user key".into()))
         .map_err(err_response)?;
-    match state.svc.manage_user(key, req.action.as_str(), req.value.as_deref()).await {
+    match state
+        .svc
+        .manage_user(key, req.action.as_str(), req.value.as_deref())
+        .await
+    {
+        Ok(u) => Ok(Json(json!(u))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+/// GET /api/user/search?keyword= — admin 搜索（前 20 条）。
+async fn search_users(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+    require_admin(&user).map_err(err_response)?;
+    match state
+        .svc
+        .search_users(q.get("keyword").map(String::as_str).unwrap_or(""))
+        .await
+    {
+        Ok(items) => Ok(Json(json!({ "items": items }))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+/// GET /api/user/{key} — admin 单查。
+async fn get_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+    require_admin(&user).map_err(err_response)?;
+    let key = uuid::Uuid::parse_str(&key)
+        .map_err(|_| AuthError::BadRequest("invalid user key".into()))
+        .map_err(err_response)?;
+    match state.svc.get_user(key).await {
         Ok(u) => Ok(Json(json!(u))),
         Err(e) => Err(err_response(e)),
     }
