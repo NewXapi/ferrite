@@ -1819,11 +1819,11 @@ dependencies = [
 name = "harness-runtime"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures-util",
  "harness-core",
  "harness-prompt",
  "harness-tools",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -4069,6 +4069,17 @@ dependencies = [
  "tavern-client",
  "tavern-state",
  "tavern-ui",
+]
+
+[[package]]
+name = "tavern-presets"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tavern-storage",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

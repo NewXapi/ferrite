@@ -1,0 +1,35 @@
+    pub async fn list(
+        &self,
+        search: Option<&str>,
+        owner: Option<&str>,
+        status: Option<i16>,
+        model_type: Option<&str>,
+        page: i64,
+        size: i64,
+    ) -> Result<(Vec<ModelView>, i64), AuthError> {
+        let size = size.clamp(1, 100);
+        let offset = (page.max(1) - 1) * size;
+
+        let mut conditions: Vec<String> = vec![];
+        let mut args: Vec<String> = vec![];
+
+        if let Some(s) = search { if !s.trim().is_empty() { conditions.push("name ILIKE ?".into()); args.push(format!("%{}%", s.trim())); } }
+        if let Some(o) = owner { if !o.trim().is_empty() { conditions.push("owner = ?".into()); args.push(o.trim().into()); } }
+        if let Some(st) = status { conditions.push("status = ?".into()); args.push(st.to_string()); }
+        if let Some(mt) = model_type { if !mt.trim().is_empty() { conditions.push("model_type = ?".into()); args.push(mt.trim().into()); } }
+
+        let where_clause = if conditions.is_empty() { String::new() } else { format!(" AND {}", conditions.join(" AND ")) };
+
+        let count_sql = format!("SELECT count(*) FROM api_models WHERE 1=1{}", where_clause);
+        let list_sql = format!("SELECT {COLS} FROM api_models WHERE 1=1{} ORDER BY created_at DESC LIMIT ? OFFSET ?", where_clause);
+
+        let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
+        for a in &args { count_q = count_q.bind(a); }
+        let total: i64 = count_q.fetch_one(&self.pool).await?;
+
+        let mut list_q = sqlx::query_as::<_, ModelRow>(&list_sql);
+        for a in &args { list_q = list_q.bind(a); }
+        let rows: Vec<ModelRow> = list_q.bind(size).bind(offset).fetch_all(&self.pool).await?;
+
+        Ok((rows.into_iter().map(row_to_view).collect(), total))
+    }
