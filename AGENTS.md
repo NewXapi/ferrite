@@ -26,28 +26,28 @@
 ## 目录术语（参考）
 
 ```text
-crates/<domain>/<feature>/
+crates/api/<prefix-feature>/
+crates/web/<prefix-feature>/
 ```
 
 | 术语 | 位置 | 含义 |
-|------|------|------|
-| **域目录** | `crates/<domain>/` | 业务能力集合，只放 `README.md` 和功能 crate 目录；自身不是 crate。例：`gateway`、`admin-api`、`admin-web`、`tavern-api`、`tavern-web`、`harness`。 |
-| **功能 crate** | `crates/<domain>/<feature>/` | 有 `Cargo.toml` 和 `src/lib.rs` 的 library crate。例：`tavern-api/chats`、`gateway/dispatch`、`harness/tools`。提需求时可直接说"做 `tavern-api/chats`"。 |
-| **共享 crate** | `crates/<name>/` | 跨域共享的独立 crate。当前只有 `crates/contract`。 |
-| **应用** | `apps/<name>/` | 有 `main.rs` 的可执行程序，负责配置、状态和路由组装；应用是入口，功能开发发生在域目录的 crate 里。例：`apps/api`、`apps/admin-web`、`apps/tavern-web`。 |
-| **模块** | `src/<name>.rs` 或 `src/<name>/` | 功能 crate 内部实现文件，不单独进 workspace。 |
+|---|---|---|
+| **后端大域** | `crates/api/` | 全部后端服务平铺大容器，包含 `auth`（通用账号中心）、`admin-*`（管理服务）、`tavern-*`（酒馆服务）。 |
+| **前端大域** | `crates/web/` | 全部前端组件与界面平铺大容器，包含 `ui-components`（跨端通用组件）、`admin-page-*`、`tavern-page-*`。 |
+| **共享契约** | `crates/contract/` | 跨端共享的独立数据传输对象 (DTO) 与纯协议错误定义。 |
+| **网关与执行** | `crates/gateway/`、`crates/harness/` | 渠道调度转发引擎与 Agent 运行时。 |
+| **功能 crate** | `crates/<domain>/<name>/` | 独立 Cargo Library Crate，各自拥有独立的 `Cargo.toml`、`src/lib.rs` 与 `tests/`。 |
+| **应用** | `apps/<name>/` | 有 `main.rs` 的可执行单体程序，负责配置、状态和路由组装。例：`apps/api`、`apps/admin-web`、`apps/tavern-web`。 |
+| **集成测试** | `tests/` | 项目顶层跨 Crate 端到端集成测试套件。 |
 
 ## 依赖和组装（参考）
 
 - 功能 crate 只提供 library API；不定义进程入口。
-- 域间禁止直接依赖：跨域引用只允许依赖 `crates/contract`；域内功能 crate 之间可以依赖（如 `admin-web/page-*` → `client`）。
-- `apps/api` 组装 `gateway/*`、`admin-api/*`、`tavern-api/*` 和 `harness/runtime`。
-- `apps/admin-web` 组装 `admin-web/*`。
-- `apps/tavern-web` 组装 `tavern-web/*` 和 `harness/ui`。
-- 域目录不放 `Cargo.toml`。
-- 每个功能 crate 都要有 `README.md`：目录树、要实现的功能、参考实现。
-- 每个功能 crate 都要有 `Cargo.toml`、`src/lib.rs` 和 workspace member。
-
+- 域间禁止直接私有依赖：跨端数据交互必须基于 `crates/contract` DTO。
+- `apps/api` 统一组装 `crates/api/*`、`crates/gateway/*` 和 `crates/harness/runtime`。
+- `apps/admin-web` 组装 `crates/web/admin-page-*` 与 `ui-components`。
+- `apps/tavern-web` 组装 `crates/web/tavern-page-*` 与 `ui-components`。
+- 每个功能 crate 都有独立的 `Cargo.toml`、`src/lib.rs` 与 workspace member。
 ## 多会话文件所有权
 
 - 会话所有权以域目录为边界（见上「域目录并发与越界」）；`crates/contract/` 是唯一跨域共享点。
@@ -72,11 +72,19 @@ crates/<domain>/<feature>/
 
 - CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
-### 测试分层
+### 测试分层与 CI 驱动原则
 
-- 本地只跑针对性测试：`cargo test -p <crate>`（受影响的 crate 及其验收命令）。
-- 全量测试（`cargo test --all`、全 workspace 构建）放 PR CI，不在本地裸跑。
-
+- **严禁本地滥跑全量与重型测试**：本地开发机 CPU 与内存极其有限（常年可用内存不足 2GB），本地编译或测试多 crate 极易耗尽系统内存导致进程死锁与机器假死。
+- **尽可能不要在本地跑测试**：
+  - 本地仅允许运行快速**语法/类型检查**：`cargo check -p <crate>`（CPU-heavy 必须严格套 `cpulimit -l 70 -i --`）。
+  - 本地**坚决不跑全量测试**（严禁在本地执行 `cargo test --all`、全 workspace 构建等死重命令）。
+  - 只有当修改的核心算法有单体单测且可在 3 秒内执行完毕时，才允许本地单跑极小测试：`cargo test -p <crate> -- <test_name>`。
+- **测试全面托付 GitHub CI（动态按需执行）**：
+  - 项目部署了动态 CI 调度器（`scripts/ci-affected.py`），依据 `git diff` 自动定位改动的 crate 及路径：
+    - 改动前端 crate/app 仅针对性运行 wasm32 编译与对应测试；
+    - 改动后端 crate 仅按需运行对应模块单测；
+    - 纯文档/配置改动直接秒级放行，跳过编译与测试；
+    - 仅共享契约 `crates/contract` 或全工作区依赖发生变动时才在 GitHub CI 云端执行完整测试套件。
 ### gate（`.githooks/`）
 
 - pre-commit / pre-push / merge 的拦截信息必须逐条读完再修根因；禁止 `--no-verify`、禁止 `| head -5` 之类截断后忽略。FAIL 条目（`checklist.*` / `WS-*` 格式）必须清零，WARN 说明理由后可放行。
@@ -148,10 +156,10 @@ loop1:
 
 #### 4. test
 
-- 全部子任务通过 audit 后，本地跑针对性测试（`cargo test -p <crate>`，CPU-heavy 加 `cpulimit -l 70 -i --`）；全量测试交 PR CI。
-- **重型测试**（>2 min、需要容器 / 网络 / 大数据）放 PR CI；CI 未跑完前不得 closeout / merge。
-- test failed → 回 loop1，把这个失败当成新的子任务重新走 dev → audit。
-
+- 全部子任务通过 audit 后，本地仅运行极小范围的类型检查（`cargo check -p <crate>`，CPU-heavy 必须套 `cpulimit -l 70 -i --`）。
+- **尽可能不要在本地运行 `cargo test`**：所有集成测试、多 crate 联调与重型测试一律推送到 PR 分支，交给 GitHub CI 依据 `git diff` 动态按需执行。
+- **CI 驱动闭环**：以 GitHub CI 运行报告为准；CI 未全部跑绿前不得 closeout / merge。
+- 若 CI 报错失败 → 提取云端失败日志回 loop1，把失败当作新子任务进行精准修复。
 #### 5. tool review
 
 - 先 CRG（结构层）：`code-review-graph detect-changes --base <base_sha>`。

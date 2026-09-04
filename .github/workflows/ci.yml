@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,23 +14,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  fmt:
+    name: Code Formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-
-      - name: fmt
+          components: rustfmt
+      - name: Run rustfmt
         run: cargo fmt --all --check
 
-      - name: clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+  clippy:
+    name: Clippy Linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
 
-      - name: build
-        run: cargo build --all-targets
+  dynamic-test:
+    name: Dynamic Crate Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: test
-        run: cargo test --all
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Affected Crates Tests
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/ci-affected.py --base "origin/${{ github.base_ref }}"
+          else
+            python3 scripts/ci-affected.py --base "HEAD~1"
+          fi
