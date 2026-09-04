@@ -790,3 +790,47 @@ async fn retry_budget_is_per_run_not_per_round() {
     assert_eq!(retries, 1, "retry budget must not reset per round");
     assert_eq!(provider.calls(), 3);
 }
+
+#[tokio::test]
+async fn permanent_provider_error_is_not_retried() {
+    // 401 / 模型不存在这类失败，重放同一请求必然再失败。gate 不得重试，
+    // 也不得向 provider 发出第二次请求。
+    let root = tmp_root("permanent");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Err(
+        harness_runtime::ProviderError::Permanent("401 unauthorized".into()),
+    )]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let mut req = request("run_permanent", true);
+    req.retry = AgentModelRetryPolicy {
+        max_retries: 3,
+        interval_ms: 0,
+    };
+    let result = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await;
+    assert!(result.is_err());
+    assert_eq!(
+        persistence.load_run("run_permanent").await.unwrap().status,
+        AgentRunStatus::Failed
+    );
+    let events = persistence.load_events("run_permanent").await.unwrap();
+    assert!(
+        !events.iter().any(|event| event.event_type == "model.retry"),
+        "permanent errors must not be retried"
+    );
+    assert_eq!(
+        provider.calls(),
+        1,
+        "a rejected request must not be replayed"
+    );
+}
