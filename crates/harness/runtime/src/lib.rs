@@ -12,7 +12,7 @@ pub mod turn;
 pub use cancel::{CancelReason, CancellationToken};
 pub use delta_agg::{AggregateError, DeltaAggregator, ToolAliasResolver, TurnAggregate};
 pub use event_sink::{EventFactory, EventSink, MpscEventSink, VecEventSink};
-pub use loop_engine::{AgentRunDeps, AgentRunRequest, LoopError, run_agent_run};
+pub use loop_engine::{AgentRunDeps, AgentRunRequest, LoopError, resume_agent_run, run_agent_run};
 pub use persistence::{PersistenceError, RunPersistence};
 pub use provider::{
     ChatProvider, ProviderDelta, ProviderError, ProviderFinishReason, ProviderRequest,

@@ -5,7 +5,8 @@ use serde_json::json;
 use thiserror::Error;
 
 use harness_core::{
-    AgentChatRef, AgentRun, AgentRunEventLevel, AgentRunPresentation, AgentRunStatus,
+    AgentChatRef, AgentModelRetryPolicy, AgentRun, AgentRunEventLevel, AgentRunPresentation,
+    AgentRunStatus, DEFAULT_AGENT_MODEL_MAX_RETRIES, DEFAULT_AGENT_MODEL_RETRY_INTERVAL_MS,
 };
 use harness_prompt::{AgentModelContentPart, AgentModelMessage, AgentModelRequest, AgentModelRole};
 use harness_tools::{AgentModelTool, InvocationToolSnapshot, ToolChoice, ToolId, ToolTurnContract};
@@ -30,6 +31,19 @@ pub struct AgentRunRequest {
     pub prompt: AgentModelRequest,
     pub snapshot: InvocationToolSnapshot,
     pub max_rounds: usize,
+    pub retry: AgentModelRetryPolicy,
+}
+
+impl AgentRunRequest {
+    pub fn with_defaults(mut self) -> Self {
+        if self.retry.max_retries == 0 && self.retry.interval_ms == 0 {
+            self.retry = AgentModelRetryPolicy {
+                max_retries: DEFAULT_AGENT_MODEL_MAX_RETRIES,
+                interval_ms: DEFAULT_AGENT_MODEL_RETRY_INTERVAL_MS,
+            };
+        }
+        self
+    }
 }
 
 /// Injected loop dependencies.
@@ -200,45 +214,70 @@ pub async fn run_agent_run<P: ChatProvider>(
         provider_request.tools = tools.clone();
         provider_request.tool_choice = Some(ToolChoice::Auto);
 
-        let outcome = match driver
-            .run(
-                provider_request,
-                deps.cancel.clone(),
-                &resolver,
-                &mut events,
-                sink,
-            )
-            .await
-        {
-            Ok(outcome) => outcome,
-            Err(TurnError::Provider(ProviderError::Cancelled)) => {
-                persist_status(
-                    &mut run,
-                    AgentRunStatus::Cancelled,
-                    deps.persistence,
+        let mut attempt = 0usize;
+        let outcome = loop {
+            let outcome = match driver
+                .run(
+                    provider_request.clone(),
+                    deps.cancel.clone(),
+                    &resolver,
                     &mut events,
                     sink,
-                    "run.completed",
-                    AgentRunEventLevel::Warn,
-                    json!({ "status": "cancelled" }),
                 )
-                .await?;
-                return Ok(run);
-            }
-            Err(error) => {
-                persist_status(
-                    &mut run,
-                    AgentRunStatus::Failed,
-                    deps.persistence,
-                    &mut events,
-                    sink,
-                    "run.failed",
-                    AgentRunEventLevel::Error,
-                    json!({ "error": error.to_string() }),
-                )
-                .await?;
-                return Err(error.into());
-            }
+                .await
+            {
+                Ok(outcome) => outcome,
+                Err(TurnError::Provider(ProviderError::Cancelled)) => {
+                    persist_status(
+                        &mut run,
+                        AgentRunStatus::Cancelled,
+                        deps.persistence,
+                        &mut events,
+                        sink,
+                        "run.completed",
+                        AgentRunEventLevel::Warn,
+                        json!({ "status": "cancelled" }),
+                    )
+                    .await?;
+                    return Ok(run);
+                }
+                Err(error) => {
+                    if attempt < request.retry.max_retries && !deps.cancel.is_cancelled() {
+                        attempt += 1;
+                        let retry_event = events.next(
+                            "model.retry",
+                            AgentRunEventLevel::Warn,
+                            json!({
+                                "attempt": attempt,
+                                "maxRetries": request.retry.max_retries,
+                                "error": error.to_string(),
+                            }),
+                        );
+                        deps.persistence.append_event(&run.id, &retry_event).await?;
+                        sink.emit(retry_event);
+                        if request.retry.interval_ms > 0 {
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                request.retry.interval_ms,
+                            ))
+                            .await;
+                        }
+                        continue;
+                    }
+                    persist_status(
+                        &mut run,
+                        AgentRunStatus::Failed,
+                        deps.persistence,
+                        &mut events,
+                        sink,
+                        "run.failed",
+                        AgentRunEventLevel::Error,
+                        json!({ "error": error.to_string() }),
+                    )
+                    .await?;
+                    return Err(error.into());
+                }
+            };
+            break outcome;
         };
 
         deps.persistence
@@ -434,6 +473,21 @@ pub async fn run_agent_run<P: ChatProvider>(
     )
     .await?;
     Ok(run)
+}
+
+/// Resume a non-terminal run from disk without replaying completed tool I/O.
+pub async fn resume_agent_run(
+    persistence: &RunPersistence,
+    run_id: &str,
+) -> Result<(AgentRun, Vec<harness_core::AgentRunEvent>), LoopError> {
+    let run = persistence.load_run(run_id).await?;
+    if run.status.is_terminal() {
+        return Err(LoopError::Turn(TurnError::Provider(ProviderError::Failed(
+            format!("run `{run_id}` is already terminal: {:?}", run.status),
+        ))));
+    }
+    let events = persistence.load_events(run_id).await?;
+    Ok((run, events))
 }
 
 async fn persist_status(

@@ -7,7 +7,6 @@ use std::pin::Pin;
 
 use futures_util::Stream;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 use harness_prompt::AgentModelMessage;
@@ -105,10 +104,4 @@ pub fn empty_request(
         max_tokens: None,
         stop: Vec::new(),
     }
-}
-
-/// Unused helper keeping `Value` available for future metadata without extra imports.
-#[allow(dead_code)]
-fn unused_value() -> Value {
-    Value::Null
 }

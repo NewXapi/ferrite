@@ -7,13 +7,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures_util::stream;
 use serde_json::json;
 
-use harness_core::{AgentChatRef, AgentRunStatus};
+use harness_core::{AgentChatRef, AgentModelRetryPolicy, AgentRunStatus};
 use harness_prompt::{AgentModelMessage, AgentModelRole};
 use harness_runtime::{
     AgentRunDeps, AgentRunRequest, CancelReason, CancellationToken, ChatProvider, DeltaAggregator,
     EventFactory, EventSink, MpscEventSink, PersistenceError, ProviderDelta, ProviderFinishReason,
     ProviderRequest, ProviderStream, RunPersistence, ToolCallFragment, ToolExecutor, ToolHandler,
-    VecEventSink, run_agent_run,
+    VecEventSink, resume_agent_run, run_agent_run,
 };
 use harness_tools::{InvocationToolSnapshot, ToolBinding, ToolDescriptor, ToolId, ToolSnapshotId};
 
@@ -81,6 +81,10 @@ fn request(run_id: &str, persistence_ok: bool) -> AgentRunRequest {
         },
         snapshot: snapshot(),
         max_rounds: 4,
+        retry: AgentModelRetryPolicy {
+            max_retries: 0,
+            interval_ms: 0,
+        },
     }
 }
 
@@ -532,4 +536,68 @@ async fn replayed_tool_call_executes_handler_once() {
         .await
         .unwrap();
     assert_eq!(count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn provider_failure_retries_then_succeeds() {
+    let root = tmp_root("retry");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![
+        vec![Err(harness_runtime::ProviderError::Failed("boom".into()))],
+        vec![Ok(text_delta("hello", Some(ProviderFinishReason::Stop)))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let mut req = request("run_retry", true);
+    req.retry = AgentModelRetryPolicy {
+        max_retries: 1,
+        interval_ms: 0,
+    };
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    let events = persistence.load_events("run_retry").await.unwrap();
+    assert!(events.iter().any(|event| event.event_type == "model.retry"));
+}
+
+#[tokio::test]
+async fn resume_rejects_terminal_run_and_loads_active_run() {
+    let root = tmp_root("resume");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "hello",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+    let run = run_agent_run(
+        request("run_resume", true),
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+    assert!(resume_agent_run(&persistence, &run.id).await.is_err());
+
+    let mut active = run.clone();
+    active.status = AgentRunStatus::CallingModel;
+    persistence.write_run(&active).await.unwrap();
+    let (loaded, events) = resume_agent_run(&persistence, &active.id).await.unwrap();
+    assert_eq!(loaded.status, AgentRunStatus::CallingModel);
+    assert!(!events.is_empty());
 }
