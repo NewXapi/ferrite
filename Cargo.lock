@@ -4427,6 +4427,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tests-e2e"
+version = "0.1.0"
+dependencies = [
+ "api",
+ "auth",
+ "axum",
+ "contract",
+ "http",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "ui-components",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"

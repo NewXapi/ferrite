@@ -1,6 +1,6 @@
 //! ledger 测试 — 验证预扣/结算/释放。
 
-use metering::ledger::{BalanceLedger, Insufficient, Ledger, MemoryLedger};
+use metering::ledger::{BalanceLedger, Ledger, MemoryLedger};
 
 #[test]
 fn ledger_prehold_succeeds_when_balance_sufficient() {

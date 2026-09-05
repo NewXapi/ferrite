@@ -36,9 +36,18 @@ fn e2e_security_password_and_jwt_lifecycle() {
     // 1. 测试密码 Argon2id 散列与验证
     let raw_pass = "my_ferrite_password_2026";
     let phc = auth::password::hash(raw_pass).expect("hash password");
-    assert!(phc.starts_with("$argon2id$"), "密码散列必须符合 Argon2id PHC 格式");
-    assert!(auth::password::verify(raw_pass, &phc), "原始密码比对必须成功");
-    assert!(!auth::password::verify("wrong_password", &phc), "错误密码必须被拒绝");
+    assert!(
+        phc.starts_with("$argon2id$"),
+        "密码散列必须符合 Argon2id PHC 格式"
+    );
+    assert!(
+        auth::password::verify(raw_pass, &phc),
+        "原始密码比对必须成功"
+    );
+    assert!(
+        !auth::password::verify("wrong_password", &phc),
+        "错误密码必须被拒绝"
+    );
 
     // 2. 测试 JWT 令牌生命周期 (issue -> parse -> claim validation)
     let secret = b"ferrite_jwt_secret_must_be_32bytes_min!";
@@ -47,8 +56,8 @@ fn e2e_security_password_and_jwt_lifecycle() {
     let auth_version = 1i64;
     let sid = "sess_uuid_999";
 
-    let (token, exp) = auth::jwt::issue(secret, user_id, role, auth_version, sid)
-        .expect("issue jwt token");
+    let (token, exp) =
+        auth::jwt::issue(secret, user_id, role, auth_version, sid).expect("issue jwt token");
     assert!(!token.is_empty(), "颁发的 JWT 不能为空");
     assert!(exp > 0, "过期时间必须为未来时间戳");
 
@@ -93,7 +102,8 @@ fn e2e_web_session_storage_and_dto_interop() {
     };
 
     let resp_json = serde_json::to_string(&response).expect("serialize LoginResponse");
-    let decoded: LoginResponse = serde_json::from_str(&resp_json).expect("deserialize LoginResponse");
+    let decoded: LoginResponse =
+        serde_json::from_str(&resp_json).expect("deserialize LoginResponse");
     assert_eq!(decoded.user.username, "alice_player");
     assert_eq!(decoded.user.display_name, "爱丽丝");
     assert_eq!(decoded.access_token, token_str);

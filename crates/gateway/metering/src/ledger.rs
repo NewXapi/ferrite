@@ -47,12 +47,15 @@ pub struct Insufficient {
     pub have: i64,
 }
 
+/// 预扣记录的值形状: (user_key, token_key, amount)。
+type HoldRecord = (String, String, i64);
+
 /// 内存账本实现 — V1: 单一钱包, 内存 HashMap + per-user Mutex。
 pub struct MemoryLedger {
     /// user_key → token_key → 余额 (内部单位)。
     balances: Arc<Mutex<HashMap<String, HashMap<String, i64>>>>,
     /// 预扣记录: hold_id → (user_key, token_key, amount)。
-    holds: Arc<Mutex<HashMap<u64, (String, String, i64)>>>,
+    holds: Arc<Mutex<HashMap<u64, HoldRecord>>>,
     /// 全局 hold_id 计数器。
     next_id: AtomicU64,
 }
@@ -71,7 +74,7 @@ impl MemoryLedger {
         let mut balances = self.balances.lock().unwrap();
         balances
             .entry(user_key.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(token_key.to_string(), amount);
     }
 }
@@ -90,9 +93,7 @@ impl Ledger for MemoryLedger {
         estimated: i64,
     ) -> Result<Hold, Insufficient> {
         let mut balances = self.balances.lock().unwrap();
-        let user_balances = balances
-            .entry(user_key.to_string())
-            .or_insert_with(HashMap::new);
+        let user_balances = balances.entry(user_key.to_string()).or_default();
         let balance = user_balances.entry(token_key.to_string()).or_insert(0);
 
         if *balance < estimated {
@@ -118,9 +119,7 @@ impl Ledger for MemoryLedger {
 
     fn settle(&self, hold: &Hold, actual: i64) -> i64 {
         let mut balances = self.balances.lock().unwrap();
-        let user_balances = balances
-            .entry(hold.user_key.clone())
-            .or_insert_with(HashMap::new);
+        let user_balances = balances.entry(hold.user_key.clone()).or_default();
         let balance = user_balances.entry(hold.token_key.clone()).or_insert(0);
 
         let diff = hold.amount - actual;
@@ -134,9 +133,7 @@ impl Ledger for MemoryLedger {
 
     fn release(&self, hold: &Hold) {
         let mut balances = self.balances.lock().unwrap();
-        let user_balances = balances
-            .entry(hold.user_key.clone())
-            .or_insert_with(HashMap::new);
+        let user_balances = balances.entry(hold.user_key.clone()).or_default();
         let balance = user_balances.entry(hold.token_key.clone()).or_insert(0);
 
         *balance += hold.amount;

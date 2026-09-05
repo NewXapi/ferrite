@@ -3,7 +3,7 @@
 //! 编译期宏, 在 cargo test 下同样展开, 无需浏览器上下文。
 
 mod overview {
-    use page_overview::api::overview as api;
+    use admin_page_overview::api::overview as api;
 
     #[test]
     fn stats_pairs_complete() {
@@ -38,7 +38,7 @@ mod overview {
 }
 
 mod models {
-    use page_overview::api::models as api;
+    use admin_page_overview::api::models as api;
 
     #[test]
     fn models_have_unique_names() {
@@ -74,7 +74,9 @@ mod models {
 }
 
 mod leaderboard {
-    use page_overview::api::leaderboard::{DIMS, MODELS, avg_norms, composite, dim_rank, norms};
+    use admin_page_overview::api::leaderboard::{
+        DIMS, MODELS, avg_norms, composite, dim_rank, norms,
+    };
 
     #[test]
     fn dims_shape() {
@@ -112,17 +114,12 @@ mod leaderboard {
         // 每个维度上, 全体模型的名次应是 1..=N 的一个排列 (并列时会有重复,
         // 但最小名次必为 1, 最大不超过 N)
         let n = MODELS.len();
-        for i in 0..6 {
+        for (i, dim) in DIMS.iter().enumerate() {
             let ranks: Vec<usize> = MODELS.iter().map(|m| dim_rank(m)[i]).collect();
-            assert!(
-                ranks.iter().min() == Some(&1),
-                "维度 {} 最小名次应为 1",
-                DIMS[i]
-            );
+            assert!(ranks.iter().min() == Some(&1), "维度 {dim} 最小名次应为 1");
             assert!(
                 ranks.iter().max().unwrap() <= &n,
-                "维度 {} 最大名次不超过 {n}",
-                DIMS[i]
+                "维度 {dim} 最大名次不超过 {n}"
             );
         }
     }

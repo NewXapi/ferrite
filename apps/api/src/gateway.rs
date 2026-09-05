@@ -1,6 +1,23 @@
 //! HTTP 路由 + handler
+//!
+//! ponytail: `Err = axum::response::Response`（128 bytes）是 axum 的惯用错误载荷 —— handler 里
+//! `Err(...)` 直接就是要返回给客户端的响应。按 clippy 建议 box 掉会破坏 `IntoResponse` 契约，
+//! 且要改 14 处签名和全部 `?` 传播点，换不到任何实际收益。
+#![allow(clippy::result_large_err)] // ponytail: axum Response 就是错误载荷，box 掉会破坏 IntoResponse
 
 use std::sync::Arc;
+
+type UsageRow = (
+    String,
+    i64,
+    String,
+    i64,
+    i64,
+    String,
+    bool,
+    chrono::DateTime<chrono::Utc>,
+    bool,
+);
 
 use axum::Router;
 use axum::body::Body;
@@ -87,7 +104,11 @@ async fn health() -> impl IntoResponse {
 }
 
 /// 构造 OpenAI 标准错误响应（application/json）
-fn error_response(status: StatusCode, message: &str, error_type: &str) -> axum::response::Response {
+pub fn error_response(
+    status: StatusCode,
+    message: &str,
+    error_type: &str,
+) -> axum::response::Response {
     let body = serde_json::json!({
         "error": {
             "message": message,
@@ -106,7 +127,7 @@ fn error_response(status: StatusCode, message: &str, error_type: &str) -> axum::
 }
 
 /// 认证失败状态码 → OpenAI error type
-fn auth_error_type(status: StatusCode) -> &'static str {
+pub fn auth_error_type(status: StatusCode) -> &'static str {
     match status {
         StatusCode::UNAUTHORIZED => "invalid_api_key",
         StatusCode::FORBIDDEN => "permission_denied",
@@ -447,7 +468,7 @@ async fn list_tokens(
     let offset = q.offset.unwrap_or(0) as i64;
 
     // 用「超集 → 内存过滤 → 切页」代替动态 SQL，简化参数绑定。token 表 <1000 行，内存过滤完全够用
-    let rows: Vec<(String, i64, String, i64, i64, String, bool, chrono::DateTime<chrono::Utc>, bool)> = sqlx::query_as(
+    let rows: Vec<UsageRow> = sqlx::query_as(
         "SELECT key, user_id, username, quota, used_quota, \"group\", enabled, created_at, is_admin FROM tokens ORDER BY created_at DESC",
     )
     .fetch_all(&state.pool)
@@ -456,8 +477,8 @@ async fn list_tokens(
 
     let filtered: Vec<_> = rows
         .into_iter()
-        .filter(|r| q.user_id.map_or(true, |u| r.1 == u))
-        .filter(|r| q.enabled.map_or(true, |e| r.6 == e))
+        .filter(|r| q.user_id.is_none_or(|u| r.1 == u))
+        .filter(|r| q.enabled.is_none_or(|e| r.6 == e))
         .collect();
 
     let total = filtered.len();
@@ -631,7 +652,7 @@ async fn list_channels(
         .filter(|c| {
             q.channel_type
                 .as_deref()
-                .map_or(true, |t| c.channel_type == t)
+                .is_none_or(|t| c.channel_type == t)
         })
         .collect();
 
@@ -973,33 +994,29 @@ async fn chat_completions(
         let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::BAD_GATEWAY);
 
         // F10.3 结算：仅在上游 2xx 且预扣成功时执行；非 2xx / reserve 失败都不退款（决策 C）
-        if status.is_success() && reserved {
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
-                && let Some(u) = v.get("usage")
-            {
-                let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
-                let completion_tokens = u
-                    .get("completion_tokens")
-                    .and_then(|x| x.as_u64())
-                    .unwrap_or(0);
-                span.record("prompt_tokens", prompt_tokens as i64);
-                span.record("completion_tokens", completion_tokens as i64);
-                if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
-                    span.record("total_tokens", n);
-                }
+        if status.is_success()
+            && reserved
+            && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
+            && let Some(u) = v.get("usage")
+        {
+            let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+            let completion_tokens = u
+                .get("completion_tokens")
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0);
+            span.record("prompt_tokens", prompt_tokens as i64);
+            span.record("completion_tokens", completion_tokens as i64);
+            if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
+                span.record("total_tokens", n);
+            }
 
-                let actual = crate::billing::tokens_to_quota(
-                    prompt_tokens,
-                    completion_tokens,
-                    pricing.as_ref(),
-                );
-                span.record("actual_quota", actual);
-                if let Err(e) =
-                    crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual)
-                        .await
-                {
-                    tracing::warn!(event = "billing_settle_failed", error = %e, actual, reserve, "settle_quota failed");
-                }
+            let actual =
+                crate::billing::tokens_to_quota(prompt_tokens, completion_tokens, pricing.as_ref());
+            span.record("actual_quota", actual);
+            if let Err(e) =
+                crate::billing::settle_quota(&state.pool, &pass.token_key, reserve, actual).await
+            {
+                tracing::warn!(event = "billing_settle_failed", error = %e, actual, reserve, "settle_quota failed");
             }
         }
 
@@ -1151,10 +1168,10 @@ pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>
 
         // 字符串字段精确匹配
         let str_match = |field: &str, val: &Option<String>| -> bool {
-            val.as_ref().map_or(true, |want| {
+            val.as_ref().is_none_or(|want| {
                 flat.get(field)
                     .and_then(|f| f.as_str())
-                    .map_or(false, |s| s == want)
+                    .is_some_and(|s| s == want)
             })
         };
         if !str_match("user", &q.user)
@@ -1166,24 +1183,25 @@ pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>
         }
 
         // status 数值匹配
-        if let Some(status) = q.status {
-            if flat.get("status").and_then(|s| s.as_u64()) != Some(status as u64) {
-                continue;
-            }
+        if let Some(status) = q.status
+            && flat.get("status").and_then(|s| s.as_u64()) != Some(status as u64)
+        {
+            continue;
         }
 
         // since/until 与顶层 timestamp 比较（RFC3339 字典序 = 时间序，要求同精度格式）。
         // until 用"相等或前缀包含"语义：until="2025-01-01" 表示含当天全天。
         if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
-            if let Some(since) = &q.since {
-                if ts < since.as_str() {
-                    continue;
-                }
+            if let Some(since) = &q.since
+                && ts < since.as_str()
+            {
+                continue;
             }
-            if let Some(until) = &q.until {
-                if ts > until.as_str() && !ts.starts_with(until.as_str()) {
-                    continue;
-                }
+            if let Some(until) = &q.until
+                && ts > until.as_str()
+                && !ts.starts_with(until.as_str())
+            {
+                continue;
             }
         }
 
@@ -1260,136 +1278,4 @@ async fn list_logs(
         body.to_string(),
     )
         .into_response())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn auth_error_type_maps_openai_types() {
-        assert_eq!(auth_error_type(StatusCode::UNAUTHORIZED), "invalid_api_key");
-        assert_eq!(auth_error_type(StatusCode::FORBIDDEN), "permission_denied");
-        assert_eq!(
-            auth_error_type(StatusCode::PAYMENT_REQUIRED),
-            "insufficient_quota"
-        );
-        assert_eq!(
-            auth_error_type(StatusCode::INTERNAL_SERVER_ERROR),
-            "server_error"
-        );
-    }
-
-    #[tokio::test]
-    async fn error_response_is_json_with_openai_shape() {
-        let resp = error_response(StatusCode::BAD_REQUEST, "bad", "invalid_request_error");
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(
-            resp.headers()
-                .get(axum::http::header::CONTENT_TYPE)
-                .unwrap(),
-            "application/json"
-        );
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(v["error"]["message"], "bad");
-        assert_eq!(v["error"]["type"], "invalid_request_error");
-    }
-
-    #[test]
-    fn filter_log_lines_filters_and_paginates() {
-        // 完成事件行（有 fields.status）
-        let line1 = r#"{"timestamp":"2025-01-01T00:00:00Z","fields":{"status":200,"user":"alice","model":"gpt-4"},"span":{"channel":"ch1","path":"/v1/chat/completions"}}"#;
-        // 非完成事件行（无 fields.status）→ 跳过
-        let line2 = r#"{"timestamp":"2025-01-01T00:01:00Z","fields":{"user":"bob"}}"#;
-        // status 不匹配
-        let line3 =
-            r#"{"timestamp":"2025-01-01T00:02:00Z","fields":{"status":500,"user":"alice"}}"#;
-        // 损坏行 → 跳过
-        let line4 = "not json at all";
-
-        let lines = [line1, line2, line3, line4];
-
-        // 无过滤：1 匹配（只有 line1 有 status）
-        let q = LogQuery {
-            user: None,
-            model: None,
-            channel: None,
-            path: None,
-            status: None,
-            since: None,
-            until: None,
-            limit: None,
-            offset: None,
-        };
-        let (page, total) = filter_log_lines(&lines, &q);
-        assert_eq!(total, 2); // line1 (200) + line3 (500)
-        assert_eq!(page.len(), 2);
-
-        // 按 user 过滤
-        let q = LogQuery {
-            user: Some("alice".into()),
-            model: None,
-            channel: None,
-            path: None,
-            status: None,
-            since: None,
-            until: None,
-            limit: None,
-            offset: None,
-        };
-        let (_, total) = filter_log_lines(&lines, &q);
-        assert_eq!(total, 2); // line1 + line3 都是 alice
-
-        // 按 status 过滤
-        let q = LogQuery {
-            user: None,
-            model: None,
-            channel: None,
-            path: None,
-            status: Some(200),
-            since: None,
-            until: None,
-            limit: None,
-            offset: None,
-        };
-        let (page, total) = filter_log_lines(&lines, &q);
-        assert_eq!(total, 1);
-        assert_eq!(page[0]["status"].as_u64(), Some(200));
-        assert_eq!(page[0]["user"].as_str(), Some("alice"));
-        assert_eq!(page[0]["channel"].as_str(), Some("ch1")); // 来自 span 展平
-
-        // since 前缀比较
-        let q = LogQuery {
-            user: None,
-            model: None,
-            channel: None,
-            path: None,
-            status: None,
-            since: Some("2025-01-01T00:01:30Z".into()),
-            until: None,
-            limit: None,
-            offset: None,
-        };
-        let (_, total) = filter_log_lines(&lines, &q);
-        assert_eq!(total, 1); // 只有 line3 在 00:02:00
-
-        // 分页
-        let q = LogQuery {
-            user: None,
-            model: None,
-            channel: None,
-            path: None,
-            status: None,
-            since: None,
-            until: None,
-            limit: Some(1),
-            offset: Some(1),
-        };
-        let (page, total) = filter_log_lines(&lines, &q);
-        assert_eq!(total, 2); // 全量
-        assert_eq!(page.len(), 1); // 第二页只取 1 条
-    }
 }

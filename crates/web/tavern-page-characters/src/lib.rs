@@ -339,15 +339,19 @@ pub fn CharactersPage(
     match cur_rank.as_str() {
         "日榜" => {
             // 日榜：按日飙升热度排序（怪谈排第一，娱乐排第二等）
-            rank_filtered.sort_by(|a, b| b.id.cmp(&a.id));
+            rank_filtered.sort_by_key(|a| std::cmp::Reverse(a.id));
         }
         "飙升榜" => {
             // 飙升榜：按飙升潜力排序
-            rank_filtered.sort_by(|a, b| (b.rating as i32).cmp(&(a.rating as i32)));
+            rank_filtered.sort_by_key(|a| std::cmp::Reverse(a.rating as i32));
         }
         "新人榜" => {
             // 新人榜：新作者作品
-            rank_filtered.retain(|c| c.tags.contains(&"纯爱".into()) || c.tags.contains(&"年上御姐".into()) || c.tags.contains(&"玄幻".into()));
+            rank_filtered.retain(|c| {
+                c.tags.contains(&"纯爱".into())
+                    || c.tags.contains(&"年上御姐".into())
+                    || c.tags.contains(&"玄幻".into())
+            });
         }
         _ => {
             // 默认综合周榜
@@ -592,7 +596,11 @@ fn CharacterCardItem(
     // 核心 Bug 修复 (对齐图1与图2红框):
     // hover 时必须给宿主卡片容器自身提升 z-index 到 z-30！
     // 否则在 Grid 中后面的兄弟卡片天然层叠在前面卡片上面，导致 Tooltip 被下方的头像穿透遮挡！
-    let card_z_class = if is_hovered() { "relative z-30" } else { "relative z-0" };
+    let card_z_class = if is_hovered() {
+        "relative z-30"
+    } else {
+        "relative z-0"
+    };
 
     rsx! {
         div {
@@ -916,7 +924,7 @@ fn CreatorStudioModal(
     // 专业模型选择抽屉
     let mut model_selector_open = use_signal(|| false);
     let mut model_vendor = use_signal(|| "All".to_string());
-    let _model_search = use_signal(|| String::new());
+    let _model_search = use_signal(String::new);
 
     let can_publish = !name().trim().is_empty();
 

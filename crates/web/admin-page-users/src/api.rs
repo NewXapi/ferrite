@@ -47,10 +47,10 @@ pub async fn list_users_api(
     size: Option<i64>,
 ) -> ApiResult<AdminUserPage> {
     let mut query = Vec::new();
-    if let Some(s) = search {
-        if !s.is_empty() {
-            query.push(format!("search={s}"));
-        }
+    if let Some(s) = search
+        && !s.is_empty()
+    {
+        query.push(format!("search={s}"));
     }
     if let Some(p) = page {
         query.push(format!("page={p}"));

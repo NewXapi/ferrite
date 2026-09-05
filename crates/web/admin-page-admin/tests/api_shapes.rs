@@ -7,8 +7,8 @@
 //! runtime(thread_local 栈)。测试通过 headless VirtualDom 的根组件体内
 //! 执行断言 —— 组件执行期间 runtime 在栈上,Signal 可用。
 
+use admin_page_admin::state::{AliasRow, ChannelRow, EntityStore, GroupRow};
 use dioxus::prelude::*;
-use page_admin::state::{AliasRow, ChannelRow, EntityStore, GroupRow};
 
 /// Dioxus runtime 是 thread_local 栈;`VirtualDom::rebuild_in_place` 渲染
 /// 根组件期间 runtime 在栈上,组件体内可以创建/读写 Signal。

@@ -29,6 +29,10 @@ pub trait Notifier: Send + Sync {
 }
 
 /// 触发入口 — 由 observe/dispatch 的健康事件下游调用。
-pub async fn dispatch(_topic: Topic, _recipient: &str, _payload: &serde_json::Value) -> Result<(), StoreError> {
+pub async fn dispatch(
+    _topic: Topic,
+    _recipient: &str,
+    _payload: &serde_json::Value,
+) -> Result<(), StoreError> {
     todo!("TODO(#802): 路由到注册的 Notifier + 限流")
 }

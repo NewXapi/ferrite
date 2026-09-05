@@ -8,7 +8,9 @@
 //! 5. 平滑滚动 + 隐藏滚动条
 
 use dioxus::prelude::*;
-use tavern_ui::{ChoiceCard, ChoiceOption, Dialog, IconButton, MessageBubble, StatusCard, SwipePicker};
+use tavern_ui::{
+    ChoiceCard, ChoiceOption, Dialog, IconButton, MessageBubble, StatusCard, SwipePicker,
+};
 
 /// 会话项
 #[derive(Clone, PartialEq)]
@@ -55,7 +57,12 @@ impl StoryItem {
     pub fn nav_title(&self) -> (&'static str, String) {
         match self {
             StoryItem::SystemCard { title, .. } => ("系统", title.clone()),
-            StoryItem::Dialogue { name, mine, content, .. } => {
+            StoryItem::Dialogue {
+                name,
+                mine,
+                content,
+                ..
+            } => {
                 let prefix = if *mine { "玩家行动" } else { "NPC对话" };
                 let short: String = content.chars().take(14).collect();
                 (prefix, format!("{}: {}…", name, short))
@@ -275,7 +282,9 @@ pub fn ChatPage(
         });
         draft.set(String::new());
 
-        dioxus::document::eval("setTimeout(() => { const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, 50);");
+        dioxus::document::eval(
+            "setTimeout(() => { const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, 50);",
+        );
     };
 
     rsx! {

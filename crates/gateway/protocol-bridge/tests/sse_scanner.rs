@@ -61,6 +61,13 @@ fn sse_scanner_cross_chunk_line_reassembly() {
     assert!(e1.is_empty());
     let (p2, e2) = s.push(&Bytes::from_static(b":\"assistant\"}\n\n"));
     assert_eq!(e2, vec![SseEvent::FirstToken]);
+    // 透传必须保真：两次 chunk 拼回原始字节，不吞不改
+    let mut passthrough = p1.to_vec();
+    passthrough.extend_from_slice(&p2);
+    assert_eq!(
+        passthrough.as_slice(),
+        b"data: {\"role\":\"assistant\"}\n\n"
+    );
 }
 
 #[test]

@@ -53,7 +53,9 @@ pub fn read_chara(bytes: &[u8]) -> Result<Vec<u8>, PngError> {
         if c.kind != b"tEXt" {
             continue;
         }
-        let Some(nul) = c.data.iter().position(|b| *b == 0) else { continue };
+        let Some(nul) = c.data.iter().position(|b| *b == 0) else {
+            continue;
+        };
         if &c.data[..nul] != KEYWORD {
             continue;
         }
@@ -71,12 +73,11 @@ pub fn write_chara(base_png: &[u8], json: &[u8]) -> Result<Vec<u8>, PngError> {
         if c.kind == b"IEND" {
             iend_start = c.span.start;
         }
-        if c.kind == b"tEXt" {
-            if let Some(nul) = c.data.iter().position(|b| *b == 0) {
-                if &c.data[..nul] == KEYWORD {
-                    drop_span = Some(c.span.clone());
-                }
-            }
+        if c.kind == b"tEXt"
+            && let Some(nul) = c.data.iter().position(|b| *b == 0)
+            && &c.data[..nul] == KEYWORD
+        {
+            drop_span = Some(c.span.clone());
         }
     }
 
@@ -124,14 +125,26 @@ fn crc32(bytes: &[u8]) -> u32 {
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 fn base64_encode(input: &[u8]) -> String {
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(B64[(n >> 18 & 63) as usize] as char);
         out.push(B64[(n >> 12 & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { B64[(n >> 6 & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { B64[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            B64[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            B64[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }

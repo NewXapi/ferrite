@@ -11,16 +11,16 @@
 //! - [`moderation`] —— `Moderation` trait + 第三方实现
 //! - [`stage`] —— `StreamingInterceptStage`
 
-pub mod wordlist;
 pub mod aho_corasick;
 pub mod ctx_tail;
-pub mod sanitize;
 pub mod moderation;
+pub mod sanitize;
 pub mod stage;
+pub mod wordlist;
 
-pub use wordlist::{WordList, Category, LoadError};
 pub use aho_corasick::AhoCorasick;
 pub use ctx_tail::CtxTail;
+pub use moderation::{Disabled, Moderation, ModerationResult, OpenAiOmnimod, QwenGuard};
 pub use sanitize::sanitize;
-pub use moderation::{Moderation, ModerationResult, OpenAiOmnimod, QwenGuard, Disabled};
 pub use stage::StreamingInterceptStage;
+pub use wordlist::{Category, LoadError, WordList};

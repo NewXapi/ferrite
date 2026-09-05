@@ -17,14 +17,15 @@ pub mod overview {
         mock::overview::MODELS
     }
 
-    // ponytail: mock timeframe stats
-    pub fn fetch_timeframe_stats(
-        _timeframe: &str,
-    ) -> (
+    /// (stats, users, models) 三元组：概览页时间段统计的返回形状。
+    pub type TimeframeStats = (
         Vec<(&'static str, &'static str)>,
-        Vec<(&'static str, &'static str, f64)>, // users
-        Vec<(&'static str, &'static str, f64)>, // models
-    ) {
+        Vec<(&'static str, &'static str, f64)>,
+        Vec<(&'static str, &'static str, f64)>,
+    );
+
+    // ponytail: mock timeframe stats
+    pub fn fetch_timeframe_stats(_timeframe: &str) -> TimeframeStats {
         let stats = fetch_stats().to_vec();
         let users = fetch_users().to_vec();
         let models = fetch_models().to_vec();
@@ -80,8 +81,8 @@ pub mod overview {
                 let wsum: f64 = weights.iter().sum();
                 let per_model = weights.iter().map(|w| total * w / wsum).collect();
                 let show_label = match n {
-                    24 => b % 4 == 0,
-                    30 => b % 5 == 0,
+                    24 => b.is_multiple_of(4),
+                    30 => b.is_multiple_of(5),
                     _ => true,
                 };
                 TrendBucket {
@@ -132,10 +133,10 @@ pub async fn list_all_logs_api(
     page_size: Option<u32>,
 ) -> ApiResult<UsageLogPage> {
     let mut query = Vec::new();
-    if let Some(m) = model {
-        if !m.is_empty() {
-            query.push(format!("model_name={m}"));
-        }
+    if let Some(m) = model
+        && !m.is_empty()
+    {
+        query.push(format!("model_name={m}"));
     }
     if let Some(p) = page {
         query.push(format!("p={p}"));

@@ -1,4 +1,4 @@
-use session::{outcome_from_data, ApiError, LoginData, LoginOutcome, SessionInfo, User};
+use session::{ApiError, LoginData, LoginOutcome, SessionInfo, User, outcome_from_data};
 
 #[test]
 fn user_decodes_full_dto_ignoring_unknowns() {

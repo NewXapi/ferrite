@@ -7,7 +7,7 @@ fn estimate_tokens_cjk_text() {
     let text = "你好世界"; // 4 CJK chars
     let tokens = estimate_tokens(text);
     // CJK ≈ 0.6 tok/char → 4 * 0.6 = 2.4 → ceil = 3
-    assert!(tokens >= 2 && tokens <= 4, "got {tokens}");
+    assert!((2..=4).contains(&tokens), "got {tokens}");
 }
 
 #[test]
@@ -15,7 +15,7 @@ fn estimate_tokens_latin_text() {
     let text = "hello"; // 5 latin chars
     let tokens = estimate_tokens(text);
     // Latin ≈ 0.25 tok/char → 5 * 0.25 = 1.25 → ceil = 2
-    assert!(tokens >= 1 && tokens <= 3, "got {tokens}");
+    assert!((1..=3).contains(&tokens), "got {tokens}");
 }
 
 #[test]

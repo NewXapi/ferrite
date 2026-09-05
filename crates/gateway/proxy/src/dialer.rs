@@ -3,10 +3,10 @@
 //! 每种代理方案对应一个 dialer 实现。`forward` 通过 `ProxyPool::pick` 选出
 //! 代理节点，再用对应 dialer 拨号。
 
+use super::node::ProxyNode;
+use async_trait::async_trait;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
-use async_trait::async_trait;
-use super::node::ProxyNode;
 
 #[async_trait]
 pub trait Dialer: Send + Sync {
@@ -31,7 +31,7 @@ pub struct Socks5Dialer {
 
 #[async_trait]
 impl Dialer for Socks5Dialer {
-    async fn dial(&self, target: SocketAddr) -> Result<TcpStream, std::io::Error> {
+    async fn dial(&self, _target: SocketAddr) -> Result<TcpStream, std::io::Error> {
         // TODO: SOCKS5 握手 + CONNECT
         unimplemented!("Socks5Dialer::dial")
     }
@@ -44,7 +44,7 @@ pub struct HttpConnectDialer {
 
 #[async_trait]
 impl Dialer for HttpConnectDialer {
-    async fn dial(&self, target: SocketAddr) -> Result<TcpStream, std::io::Error> {
+    async fn dial(&self, _target: SocketAddr) -> Result<TcpStream, std::io::Error> {
         // TODO: HTTP CONNECT 隧道
         unimplemented!("HttpConnectDialer::dial")
     }

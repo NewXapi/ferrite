@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
+    "tests",
+    "apps/api",
     "apps/admin-web",
     "apps/api",
     "apps/gateway",
@@ -13,40 +15,40 @@ members = [
     "crates/gateway/protocol-bridge",
     "crates/gateway/proxy",
     "crates/gateway/security",
-    "crates/api/admin-billing",
+    "crates/api/auth",
+    "crates/api/admin-store",
     "crates/api/admin-catalog",
+    "crates/api/admin-sync",
+    "crates/api/admin-billing",
     "crates/api/admin-observe",
     "crates/api/admin-ops",
     "crates/api/admin-router",
-    "crates/api/admin-store",
-    "crates/api/admin-sync",
-    "crates/api/auth",
-    "crates/web/admin-client",
-    "crates/web/admin-mock",
-    "crates/web/admin-page-account",
-    "crates/web/admin-page-admin",
-    "crates/web/admin-page-auth",
-    "crates/web/admin-page-overview",
-    "crates/web/admin-page-users",
-    "crates/web/admin-session",
+    "crates/api/tavern-storage",
     "crates/api/tavern-auth",
     "crates/api/tavern-characters",
     "crates/api/tavern-chats",
-    "crates/api/tavern-generate",
-    "crates/api/tavern-media",
+    "crates/api/tavern-settings",
     "crates/api/tavern-presets",
     "crates/api/tavern-secrets",
-    "crates/api/tavern-settings",
-    "crates/api/tavern-storage",
+    "crates/api/tavern-generate",
+    "crates/api/tavern-media",
+    "crates/web/ui-components",
+    "crates/web/admin-client",
+    "crates/web/admin-session",
+    "crates/web/admin-mock",
+    "crates/web/admin-page-auth",
+    "crates/web/admin-page-overview",
+    "crates/web/admin-page-account",
+    "crates/web/admin-page-admin",
+    "crates/web/admin-page-users",
     "crates/web/tavern-client",
+    "crates/web/tavern-state",
     "crates/web/tavern-page-characters",
     "crates/web/tavern-page-chat",
-    "crates/web/tavern-page-home",
-    "crates/web/tavern-page-lorebook",
-    "crates/web/tavern-page-personas",
     "crates/web/tavern-page-settings",
-    "crates/web/tavern-state",
-    "crates/web/ui-components",
+    "crates/web/tavern-page-home",
+    "crates/web/tavern-page-personas",
+    "crates/web/tavern-page-lorebook",
     "crates/harness/core",
     "crates/harness/prompt",
     "crates/harness/runtime",
@@ -88,3 +90,11 @@ chrono      = { version = "0.4", features = ["serde"] }
 rand        = "0.8"
 futures-util = "0.3"
 uuid        = { version = "1", features = ["serde", "v4", "v7"] }
+
+[profile.release]
+lto           = "fat"
+codegen-units = 1
+strip         = true
+
+[profile.dev.package."*"]
+opt-level = 1

@@ -28,7 +28,7 @@ pub enum Begin {
 }
 
 pub async fn begin(
-    _store: &(impl store::UsageStore + Sync),
+    _store: &impl store::UsageStore,
     _scope: &str,
     _key: &str,
     _fingerprint: &str,
@@ -37,7 +37,7 @@ pub async fn begin(
 }
 
 pub async fn complete(
-    _store: &(impl store::UsageStore + Sync),
+    _store: &impl store::UsageStore,
     _scope: &str,
     _key: &str,
     _response: serde_json::Value,

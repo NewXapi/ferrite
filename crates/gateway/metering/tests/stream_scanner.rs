@@ -4,7 +4,7 @@ use metering::scanner::StreamScanner;
 #[test]
 fn stream_scanner_extracts_openai_usage() {
     let mut s = StreamScanner::new();
-    let _ = s.push(&Bytes::from_static(
+    s.push(&Bytes::from_static(
         b"data: {\"content\":\"hello\",\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\n",
     ));
     let counts = s.finish(10);
@@ -15,7 +15,7 @@ fn stream_scanner_extracts_openai_usage() {
 #[test]
 fn stream_scanner_fallback_estimation() {
     let mut s = StreamScanner::new();
-    let _ = s.push(&Bytes::from_static(
+    s.push(&Bytes::from_static(
         b"data: {\"content\":\"hello world\"}\n\n",
     ));
     let counts = s.finish(5);
@@ -26,7 +26,7 @@ fn stream_scanner_fallback_estimation() {
 #[test]
 fn stream_scanner_done_line_ignored() {
     let mut s = StreamScanner::new();
-    let _ = s.push(&Bytes::from_static(b"data: [DONE]\n\n"));
+    s.push(&Bytes::from_static(b"data: [DONE]\n\n"));
     let counts = s.finish(0);
     assert_eq!(counts.completion, 0);
 }

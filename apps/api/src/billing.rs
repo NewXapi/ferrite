@@ -56,7 +56,7 @@ pub async fn write_pricing(
     model: &str,
     pricing: &ModelPricing,
 ) -> Result<(), sqlx::Error> {
-    validate_pricing(pricing).map_err(|m| sqlx::Error::Protocol(m))?;
+    validate_pricing(pricing).map_err(sqlx::Error::Protocol)?;
     let value = serde_json::to_value(pricing).expect("ModelPricing is always serializable");
     sqlx::query("INSERT INTO kv_store (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2")
         .bind(format!("pricing:{model}"))
@@ -145,102 +145,4 @@ pub async fn settle_quota(
         tracing::info!(token = %token_key, "settle_quota: token row missing, skip");
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unconfigured_is_one_to_one() {
-        let quota = tokens_to_quota(100, 50, None);
-        assert_eq!(quota, 150);
-    }
-
-    #[test]
-    fn configured_half_multiplier() {
-        let p = ModelPricing {
-            input_per_1k: 1.0,
-            output_per_1k: 1.0,
-            multiplier: 0.5,
-        };
-        assert_eq!(tokens_to_quota(1000, 1000, Some(&p)), 1);
-        assert_eq!(tokens_to_quota(500, 500, Some(&p)), 1);
-    }
-
-    #[test]
-    fn tokens_to_quota_overflow_saturates() {
-        let p = ModelPricing {
-            input_per_1k: 1e12,
-            output_per_1k: 0.0,
-            multiplier: 1.0,
-        };
-        assert_eq!(tokens_to_quota(u64::MAX, 0, Some(&p)), u64::MAX);
-    }
-
-    #[test]
-    fn zero_tokens_is_zero() {
-        let p = ModelPricing {
-            input_per_1k: 2.0,
-            output_per_1k: 3.0,
-            multiplier: 1.0,
-        };
-        assert_eq!(tokens_to_quota(0, 0, Some(&p)), 0);
-    }
-
-    #[test]
-    fn validate_pricing_rejects_bad() {
-        let mut p = ModelPricing {
-            input_per_1k: -1.0,
-            output_per_1k: 1.0,
-            multiplier: 1.0,
-        };
-        assert!(validate_pricing(&p).is_err());
-        p.input_per_1k = 1.0;
-        p.multiplier = 0.0;
-        assert!(validate_pricing(&p).is_ok()); // 0 = free model, valid
-        p.multiplier = -0.5;
-        assert!(validate_pricing(&p).is_err()); // negative = invalid
-        p.multiplier = 1.0;
-        assert!(validate_pricing(&p).is_ok());
-    }
-
-    #[test]
-    fn deny_unknown_fields() {
-        let json = r#"{"input_per_1k":1.0,"output_per_1k":1.0,"multiplier":1.0,"extra":1}"#;
-        assert!(serde_json::from_str::<ModelPricing>(json).is_err());
-    }
-
-    #[test]
-    fn default_multiplier_is_one() {
-        let p = ModelPricing::default();
-        assert_eq!(p.multiplier, 1.0);
-    }
-
-    // ─── F10.2 + F10.3 reserve/settle 纯函数测试 ──────────────────────────
-
-    #[test]
-    fn estimate_reserve_is_fixed_1000() {
-        assert_eq!(estimate_reserve(), 1000);
-    }
-
-    #[test]
-    fn settle_delta_positive_when_actual_exceeds_reserve() {
-        assert_eq!(settle_delta(1500, 1000), 500);
-    }
-
-    #[test]
-    fn settle_delta_negative_when_actual_below_reserve() {
-        assert_eq!(settle_delta(300, 1000), -700);
-    }
-
-    #[test]
-    fn settle_delta_zero_when_equal() {
-        assert_eq!(settle_delta(1000, 1000), 0);
-    }
-
-    #[test]
-    fn settle_delta_zero_actual() {
-        assert_eq!(settle_delta(0, 1000), -1000);
-    }
 }

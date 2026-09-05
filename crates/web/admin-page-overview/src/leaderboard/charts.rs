@@ -6,8 +6,8 @@ use dioxus::prelude::*;
 use crate::api::leaderboard::MODELS;
 
 const MODEL_COLORS: [&str; 10] = [
-    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500",
-    "#34d399", "#22d3ee", "#f472b6", "#a3e635", "#a1a1aa",
+    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500", "#34d399", "#22d3ee", "#f472b6",
+    "#a3e635", "#a1a1aa",
 ];
 
 /// 模型用量与成本占比分布 (参考 new-api consumption-distribution & sub2api ModelDistribution)

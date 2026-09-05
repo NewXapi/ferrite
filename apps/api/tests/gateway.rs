@@ -1,5 +1,9 @@
 use api::dispatch::ModelRoute;
-use api::gateway::{CreateChannelReq, gen_token_key, validate_channel};
+use api::gateway::{
+    CreateChannelReq, LogQuery, auth_error_type, error_response, filter_log_lines, gen_token_key,
+    validate_channel,
+};
+use axum::http::StatusCode;
 
 /// key 格式：sk- + 32 hex
 #[test]
@@ -197,4 +201,131 @@ fn recharge_req_deny_typo() {
         serde_json::from_str::<api::gateway::RechargeReq>(r#"{"token_key":"sk-abc","amount":100}"#)
             .is_ok()
     );
+}
+
+// ─── 从 src/gateway.rs 迁出：错误响应形状 + 日志过滤 ───────────────────
+#[test]
+fn auth_error_type_maps_openai_types() {
+    assert_eq!(auth_error_type(StatusCode::UNAUTHORIZED), "invalid_api_key");
+    assert_eq!(auth_error_type(StatusCode::FORBIDDEN), "permission_denied");
+    assert_eq!(
+        auth_error_type(StatusCode::PAYMENT_REQUIRED),
+        "insufficient_quota"
+    );
+    assert_eq!(
+        auth_error_type(StatusCode::INTERNAL_SERVER_ERROR),
+        "server_error"
+    );
+}
+
+#[tokio::test]
+async fn error_response_is_json_with_openai_shape() {
+    let resp = error_response(StatusCode::BAD_REQUEST, "bad", "invalid_request_error");
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        resp.headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap(),
+        "application/json"
+    );
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["error"]["message"], "bad");
+    assert_eq!(v["error"]["type"], "invalid_request_error");
+}
+
+#[test]
+fn filter_log_lines_filters_and_paginates() {
+    // 完成事件行（有 fields.status）
+    let line1 = r#"{"timestamp":"2025-01-01T00:00:00Z","fields":{"status":200,"user":"alice","model":"gpt-4"},"span":{"channel":"ch1","path":"/v1/chat/completions"}}"#;
+    // 非完成事件行（无 fields.status）→ 跳过
+    let line2 = r#"{"timestamp":"2025-01-01T00:01:00Z","fields":{"user":"bob"}}"#;
+    // status 不匹配
+    let line3 = r#"{"timestamp":"2025-01-01T00:02:00Z","fields":{"status":500,"user":"alice"}}"#;
+    // 损坏行 → 跳过
+    let line4 = "not json at all";
+
+    let lines = [line1, line2, line3, line4];
+
+    // 无过滤：1 匹配（只有 line1 有 status）
+    let q = LogQuery {
+        user: None,
+        model: None,
+        channel: None,
+        path: None,
+        status: None,
+        since: None,
+        until: None,
+        limit: None,
+        offset: None,
+    };
+    let (page, total) = filter_log_lines(&lines, &q);
+    assert_eq!(total, 2); // line1 (200) + line3 (500)
+    assert_eq!(page.len(), 2);
+
+    // 按 user 过滤
+    let q = LogQuery {
+        user: Some("alice".into()),
+        model: None,
+        channel: None,
+        path: None,
+        status: None,
+        since: None,
+        until: None,
+        limit: None,
+        offset: None,
+    };
+    let (_, total) = filter_log_lines(&lines, &q);
+    assert_eq!(total, 2); // line1 + line3 都是 alice
+
+    // 按 status 过滤
+    let q = LogQuery {
+        user: None,
+        model: None,
+        channel: None,
+        path: None,
+        status: Some(200),
+        since: None,
+        until: None,
+        limit: None,
+        offset: None,
+    };
+    let (page, total) = filter_log_lines(&lines, &q);
+    assert_eq!(total, 1);
+    assert_eq!(page[0]["status"].as_u64(), Some(200));
+    assert_eq!(page[0]["user"].as_str(), Some("alice"));
+    assert_eq!(page[0]["channel"].as_str(), Some("ch1")); // 来自 span 展平
+
+    // since 前缀比较
+    let q = LogQuery {
+        user: None,
+        model: None,
+        channel: None,
+        path: None,
+        status: None,
+        since: Some("2025-01-01T00:01:30Z".into()),
+        until: None,
+        limit: None,
+        offset: None,
+    };
+    let (_, total) = filter_log_lines(&lines, &q);
+    assert_eq!(total, 1); // 只有 line3 在 00:02:00
+
+    // 分页
+    let q = LogQuery {
+        user: None,
+        model: None,
+        channel: None,
+        path: None,
+        status: None,
+        since: None,
+        until: None,
+        limit: Some(1),
+        offset: Some(1),
+    };
+    let (page, total) = filter_log_lines(&lines, &q);
+    assert_eq!(total, 2); // 全量
+    assert_eq!(page.len(), 1); // 第二页只取 1 条
 }

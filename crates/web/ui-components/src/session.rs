@@ -91,13 +91,21 @@ pub async fn api_login(req: LoginRequest) -> Result<LoginResponse, String> {
             let mock_user = UserDto {
                 key: "u_demo_01".into(),
                 username: req.username.clone(),
-                display_name: if req.username.is_empty() { "游客玩家".into() } else { req.username.clone() },
+                display_name: if req.username.is_empty() {
+                    "游客玩家".into()
+                } else {
+                    req.username.clone()
+                },
                 email: format!("{}@ferrite.dev", req.username),
                 quota: 500000,
                 used_quota: 12000,
                 request_count: 42,
                 group: "default".into(),
-                role: if req.username == "root" || req.username == "admin" { "admin".into() } else { "user".into() },
+                role: if req.username == "root" || req.username == "admin" {
+                    "admin".into()
+                } else {
+                    "user".into()
+                },
                 status: 1,
                 created_at: "2026-09-05".into(),
             };
@@ -129,7 +137,8 @@ pub async fn api_register(req: RegisterRequest) -> Result<LoginResponse, String>
             api_login(LoginRequest {
                 username: req.username,
                 password: req.password,
-            }).await
+            })
+            .await
         }
         Ok(r) => {
             let text = r.text().await.unwrap_or_else(|_| "注册失败".into());
@@ -140,7 +149,8 @@ pub async fn api_register(req: RegisterRequest) -> Result<LoginResponse, String>
             api_login(LoginRequest {
                 username: req.username,
                 password: req.password,
-            }).await
+            })
+            .await
         }
     }
 }

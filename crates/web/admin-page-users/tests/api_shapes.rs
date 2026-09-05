@@ -1,7 +1,7 @@
 //! users page 集成测试:api.rs 薄壳的数据形状不变量。
 //! mock 换成真后端时,本测试保证薄壳签名与数据自洽性不变。
 
-use page_users::api;
+use admin_page_users::api;
 
 #[test]
 fn users_have_unique_ids() {

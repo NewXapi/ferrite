@@ -26,10 +26,16 @@ use crate::traits::*;
 pub struct EmbeddedStore;
 
 impl UsageStore for EmbeddedStore {
-    async fn append_usage(&self, _event: &contract::records::UsageEventRecord) -> Result<contract::mutations::MutationId, StoreError> {
+    async fn append_usage(
+        &self,
+        _event: &contract::records::UsageEventRecord,
+    ) -> Result<contract::mutations::MutationId, StoreError> {
         todo!("TODO(#413): wal/usage/{{uuid}} append (单 key 写, 崩溃安全)")
     }
-    async fn pending_usage(&self, _limit: usize) -> Result<Vec<contract::mutations::Mutation>, StoreError> {
+    async fn pending_usage(
+        &self,
+        _limit: usize,
+    ) -> Result<Vec<contract::mutations::Mutation>, StoreError> {
         todo!("TODO(#413): wal 区 range scan (cursor 之后, 上限条数)")
     }
 }

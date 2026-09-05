@@ -19,6 +19,4 @@ pub mod pg;
 pub mod traits;
 
 pub use error::StoreError;
-pub use traits::{
-    ChannelStore, GroupStore, RouteUnitStore, TokenStore, UsageStore, UserStore,
-};
+pub use traits::{ChannelStore, GroupStore, RouteUnitStore, TokenStore, UsageStore, UserStore};

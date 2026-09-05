@@ -55,7 +55,7 @@ pub fn estimate_prompt_tokens(adapted_body: &bytes::Bytes) -> u64 {
         if ch == '"' {
             // 读取字段名
             let mut field = String::new();
-            while let Some(c) = chars.next() {
+            for c in chars.by_ref() {
                 if c == '"' {
                     break;
                 }

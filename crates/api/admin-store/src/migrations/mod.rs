@@ -6,9 +6,7 @@
 //! - 破坏性变更 (删列/改类型) 必须写迁移注释 + 停写窗口说明。
 
 /// 已登记的迁移清单 (顺序执行)。
-pub const MIGRATIONS: &[(&str, &str)] = &[
-    ("V1__core.sql", include_str!("V1__core.sql")),
-];
+pub const MIGRATIONS: &[(&str, &str)] = &[("V1__core.sql", include_str!("V1__core.sql"))];
 
 /// 迁移执行器 — pg/embedded 各自实现 (SQLx migrate / Fjall 元数据表)。
 pub trait MigrationRunner: Send + Sync {

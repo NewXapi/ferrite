@@ -14,7 +14,7 @@ use crate::api;
 pub fn OverviewPanel() -> Element {
     // ponytail: full UI overhaul to add breakdown cards for all timeframes in one go.
     let timeframe = use_signal(|| "今天"); // "今天", "本周", "本月", "今年"
-    
+
     // Get the stats for the currently selected timeframe
     let (stats, user_stats, model_stats) = api::overview::fetch_timeframe_stats(timeframe());
 
@@ -25,7 +25,7 @@ pub fn OverviewPanel() -> Element {
 
             // 模型调用健康度统计卡片
             crate::health::HealthStats {}
-            
+
             // Top-level stats
             section { class: "grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5",
                 for &(value, label) in stats.iter() {
@@ -35,7 +35,7 @@ pub fn OverviewPanel() -> Element {
 
             // 模型健康度月份分布横线
             crate::health::HealthMixer {}
-            
+
             // Top 10 breakdowns
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
                 // Top 10 Models
@@ -58,7 +58,7 @@ pub fn OverviewPanel() -> Element {
                         }
                     }
                 }
-                
+
                 // Top 10 Users
                 div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 group",
                     div { class: "border-b border-zinc-800/50 bg-zinc-900/50 px-4 py-3 transition-colors group-hover:bg-zinc-800/20",
@@ -98,8 +98,8 @@ fn StatCard(value: &'static str, label: &'static str) -> Element {
 
 /// 模型配色(内联 hex, 不走 Tailwind 扫描, 避免 @source 漏扫隐形)
 const MODEL_COLORS: [&str; 10] = [
-    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500",
-    "#34d399", "#22d3ee", "#f472b6", "#a3e635", "#a1a1aa",
+    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500", "#34d399", "#22d3ee", "#f472b6",
+    "#a3e635", "#a1a1aa",
 ];
 
 /// 百万 tokens → 显示串
@@ -130,9 +130,16 @@ fn TrendPanel(timeframe: Signal<&'static str>) -> Element {
     let names: Vec<&str> = models.iter().map(|m| m.0).collect();
 
     let total_all: f64 = buckets.iter().map(|b| b.total).sum();
-    let max_total = buckets.iter().map(|b| b.total).fold(0.0f64, f64::max).max(1.0);
+    let max_total = buckets
+        .iter()
+        .map(|b| b.total)
+        .fold(0.0f64, f64::max)
+        .max(1.0);
     let avg = total_all / buckets.len().max(1) as f64;
-    let peak = buckets.iter().max_by(|a, b| a.total.partial_cmp(&b.total).unwrap()).unwrap();
+    let peak = buckets
+        .iter()
+        .max_by(|a, b| a.total.partial_cmp(&b.total).unwrap())
+        .unwrap();
 
     let mut per_model_tot = vec![0.0f64; names.len()];
     for b in &buckets {
@@ -361,7 +368,11 @@ fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> El
         "translate(12px, -50%)"
     };
     let clamped_y = y.max(80.0);
-    let opacity_class = if x == 0.0 && y == 0.0 { "opacity-0 scale-95" } else { "opacity-100 scale-100" };
+    let opacity_class = if x == 0.0 && y == 0.0 {
+        "opacity-0 scale-95"
+    } else {
+        "opacity-100 scale-100"
+    };
     rsx! {
         div {
             class: "pointer-events-none fixed z-50 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",
@@ -371,4 +382,3 @@ fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> El
         }
     }
 }
-

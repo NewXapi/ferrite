@@ -1,7 +1,7 @@
 //! Web entry. Mounts the original console shell.
 
-use dioxus::prelude::*;
 use admin_web::RootApp;
+use dioxus::prelude::*;
 
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.out.css");
 

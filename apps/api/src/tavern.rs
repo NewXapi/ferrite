@@ -42,7 +42,9 @@ pub fn router(cfg: &TavernConfig) -> Result<Router, StorageError> {
         Router::new()
             .nest(
                 "/characters",
-                tavern_characters::router(tavern_characters::CharactersState { dirs: dirs.clone() }),
+                tavern_characters::router(tavern_characters::CharactersState {
+                    dirs: dirs.clone(),
+                }),
             )
             .nest(
                 "/chats",

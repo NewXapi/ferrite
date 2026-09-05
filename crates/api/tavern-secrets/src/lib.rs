@@ -5,7 +5,7 @@
 //! 明文只在进程内流动：对外 API 只回「是否已配置」。
 
 pub mod http;
-pub use http::{router, SecretsState};
+pub use http::{SecretsState, router};
 
 use std::collections::BTreeMap;
 use std::path::Path;

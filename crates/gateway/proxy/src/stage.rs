@@ -3,12 +3,10 @@
 //! 在 `dispatch` 之后、`forward` 之前执行。负责按 channel 选代理节点，
 //! 把拨号结果（`PreparedConn`）写入 `ctx`，供 `forward` 复用。
 
-use std::sync::Arc;
-use async_trait::async_trait;
-use gateway_pipeline::{
-    Stage, RequestCtx, StageOutcome, StageError,
-};
 use super::pool::ProxyPool;
+use async_trait::async_trait;
+use gateway_pipeline::{RequestCtx, Stage, StageError, StageOutcome};
+use std::sync::Arc;
 
 /// 已拨号的 TCP 连接 + 远端目标地址
 pub struct PreparedConn {
@@ -17,6 +15,7 @@ pub struct PreparedConn {
 }
 
 pub struct ProxyStage {
+    #[allow(dead_code)] // ponytail: 桩 — handle 实现后读取
     pool: Arc<ProxyPool>,
 }
 
@@ -28,10 +27,14 @@ impl ProxyStage {
 
 #[async_trait]
 impl Stage for ProxyStage {
-    fn name(&self) -> &'static str { "proxy" }
+    fn name(&self) -> &'static str {
+        "proxy"
+    }
 
     async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, StageError> {
-        let route = ctx.route.as_ref()
+        let _route = ctx
+            .route
+            .as_ref()
             .ok_or_else(|| StageError::Internal(anyhow::anyhow!("dispatch not run")))?;
 
         // TODO: 按 channel_id 选代理 → dial → 写入 ctx

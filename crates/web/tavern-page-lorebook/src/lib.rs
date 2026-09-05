@@ -226,7 +226,11 @@ fn LorebookEditor(
     let mut token_budget = use_signal(|| initial.token_budget);
     let mut new_key = use_signal(String::new);
     let mut sample_entry = use_signal(|| {
-        initial.entries.first().map(|e| e.content.clone()).unwrap_or_default()
+        initial
+            .entries
+            .first()
+            .map(|e| e.content.clone())
+            .unwrap_or_default()
     });
 
     let can_save = !name().trim().is_empty();

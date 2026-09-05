@@ -114,7 +114,7 @@ where
                 kept_indices.insert(candidates[idx].0);
             }
             remaining = remaining.saturating_sub(group_cost);
-        } else if group.iter().all(|&idx| is_tool_payload(&candidates[idx].1)) {
+        } else if group.iter().all(|&idx| is_tool_payload(candidates[idx].1)) {
             // ponytail: tool group 装不下，整组跳过；继续看更早的普通消息组。
         } else {
             // ponytail: 非工具单条装不下 → 停止（再前面只会更旧更糟）。

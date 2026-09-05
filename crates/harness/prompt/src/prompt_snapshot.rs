@@ -162,12 +162,12 @@ fn check_message_no_marker(msg: &Value, msg_index: usize) -> Result<(), PromptSn
     }
 
     // content 是字符串 → 检查是否含 `{{`
-    if let Some(Value::String(s)) = msg.get("content") {
-        if s.contains("{{") {
-            return Err(PromptSnapshotError::UnfinalizedMarker(
-                AGENT_PROMPT_MARKER_FIELD,
-            ));
-        }
+    if let Some(Value::String(s)) = msg.get("content")
+        && s.contains("{{")
+    {
+        return Err(PromptSnapshotError::UnfinalizedMarker(
+            AGENT_PROMPT_MARKER_FIELD,
+        ));
     }
 
     // content 是数组 → 每个 part 检查
@@ -195,12 +195,12 @@ fn check_part_no_marker(
             return Err(PromptSnapshotError::UnfinalizedMarker(key));
         }
     }
-    if let Some(Value::String(s)) = obj.get("text") {
-        if s.contains("{{") {
-            return Err(PromptSnapshotError::UnfinalizedMarker(
-                AGENT_PROMPT_MARKER_FIELD,
-            ));
-        }
+    if let Some(Value::String(s)) = obj.get("text")
+        && s.contains("{{")
+    {
+        return Err(PromptSnapshotError::UnfinalizedMarker(
+            AGENT_PROMPT_MARKER_FIELD,
+        ));
     }
     Ok(())
 }
@@ -259,7 +259,7 @@ pub fn messages_from_payload(
     }
     Ok(out)
 }
-fn locate_messages<'a>(value: &'a Value) -> Option<&'a Value> {
+fn locate_messages(value: &Value) -> Option<&Value> {
     if let Some(messages) = value.get("messages") {
         return Some(messages);
     }
@@ -270,10 +270,8 @@ fn locate_messages<'a>(value: &'a Value) -> Option<&'a Value> {
         "generate_data",
         "frozenRunInputSnapshot",
     ] {
-        if let Some(nested) = value.get(key) {
-            if let Some(messages) = nested.get("messages") {
-                return Some(messages);
-            }
+        if let Some(messages) = value.get(key).and_then(|nested| nested.get("messages")) {
+            return Some(messages);
         }
     }
     None

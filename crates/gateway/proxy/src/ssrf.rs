@@ -4,8 +4,8 @@
 //! 防止 DNS rebinding 攻击：攻击者控制 DNS 第一次返回公网 IP、第二次返回内网 IP。
 
 use std::net::IpAddr;
-use url::Url;
 use thiserror::Error;
+use url::Url;
 
 #[derive(Debug, Error)]
 pub enum SsrfError {
@@ -39,11 +39,21 @@ pub fn validate_url(url: &Url) -> Result<(), SsrfError> {
 
 /// 单个 IP 校验
 pub fn check_ip(ip: IpAddr) -> Result<(), SsrfError> {
-    if ip.is_loopback() { return Err(SsrfError::Loopback); }
-    if ip.is_unspecified() { return Err(SsrfError::Unspecified); }
-    if ip.is_multicast() { return Err(SsrfError::Multicast); }
-    if is_private(&ip) { return Err(SsrfError::PrivateIp); }
-    if is_link_local(&ip) { return Err(SsrfError::LinkLocal); }
+    if ip.is_loopback() {
+        return Err(SsrfError::Loopback);
+    }
+    if ip.is_unspecified() {
+        return Err(SsrfError::Unspecified);
+    }
+    if ip.is_multicast() {
+        return Err(SsrfError::Multicast);
+    }
+    if is_private(&ip) {
+        return Err(SsrfError::PrivateIp);
+    }
+    if is_link_local(&ip) {
+        return Err(SsrfError::LinkLocal);
+    }
     Ok(())
 }
 
@@ -52,7 +62,10 @@ pub async fn validate_resolved(addrs: &[IpAddr]) -> Result<IpAddr, SsrfError> {
     for ip in addrs {
         check_ip(*ip)?;
     }
-    addrs.first().copied().ok_or(SsrfError::Dns("no addresses".into()))
+    addrs
+        .first()
+        .copied()
+        .ok_or(SsrfError::Dns("no addresses".into()))
 }
 
 fn is_private(ip: &IpAddr) -> bool {

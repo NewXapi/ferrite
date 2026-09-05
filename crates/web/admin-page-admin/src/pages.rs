@@ -116,7 +116,6 @@ fn redemption_status_label(status: u8) -> &'static str {
     }
 }
 
-
 // ============ 渠道页 ============
 
 /// 渠道管理:5 块 = 顶部导入条 + 4 面板(状态速览、编辑渠道、模型调度、批量绑定)。
@@ -629,11 +628,21 @@ pub fn SubscriptionsPage() -> Element {
             subtitle: f_subtitle.peek().trim().to_string(),
             price: f_price.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
             quota: f_quota.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
-            currency_price: f_currency_price.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
+            currency_price: f_currency_price
+                .peek()
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                .max(0.0),
             payment_method: f_payment_method(),
             group: f_group(),
             downgrade_group: f_downgrade_group(),
-            period_val: f_period_val.peek().trim().parse::<u32>().unwrap_or(1).max(1),
+            period_val: f_period_val
+                .peek()
+                .trim()
+                .parse::<u32>()
+                .unwrap_or(1)
+                .max(1),
             period_unit: f_period_unit(),
             reset_cycle: f_reset_cycle(),
             priority: 0,
@@ -1425,7 +1434,7 @@ fn ChannelImportBar() -> Element {
 /// - 每行一对:`https://api.openai.com/v1\nsk-xxx`
 /// - `|` / 空白 分隔:`https://x | sk-xxx`
 /// - `url=https://x\nkey=sk-xxx`(或 base_url / api_key)
-/// 仅在能同时拿到 URL 和 Key 时返回 Some,否则 None(让用户继续手动填)。
+///   仅在能同时拿到 URL 和 Key 时返回 Some,否则 None(让用户继续手动填)。
 pub fn parse_url_key(text: &str) -> Option<(String, String)> {
     let mut url = None::<String>;
     let mut key = None::<String>;
@@ -1448,7 +1457,8 @@ pub fn parse_url_key(text: &str) -> Option<(String, String)> {
             }
             continue;
         }
-        let parts: Vec<&str> = line.split(|c: char| c.is_whitespace() || c == '|' || c == ',' || c == ';')
+        let parts: Vec<&str> = line
+            .split(|c: char| c.is_whitespace() || c == '|' || c == ',' || c == ';')
             .filter(|s| !s.is_empty())
             .collect();
         if parts.len() >= 2 {

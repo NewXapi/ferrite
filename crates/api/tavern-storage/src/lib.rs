@@ -152,6 +152,6 @@ pub fn list_by_mtime_desc(dir: &Path) -> Result<Vec<PathBuf>, StorageError> {
             out.push((meta.modified()?, entry.path()));
         }
     }
-    out.sort_by(|a, b| b.0.cmp(&a.0));
+    out.sort_by_key(|a| std::cmp::Reverse(a.0));
     Ok(out.into_iter().map(|(_, p)| p).collect())
 }

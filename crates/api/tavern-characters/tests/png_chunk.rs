@@ -30,5 +30,8 @@ fn rewrite_replaces_not_duplicates() {
 #[test]
 fn rejects_non_png_and_missing_chunk() {
     assert!(matches!(read_chara(b"nope"), Err(PngError::NotPng)));
-    assert!(matches!(read_chara(&minimal_png()), Err(PngError::NoCharaChunk)));
+    assert!(matches!(
+        read_chara(&minimal_png()),
+        Err(PngError::NoCharaChunk)
+    ));
 }

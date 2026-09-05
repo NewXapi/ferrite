@@ -11,7 +11,11 @@ fn tmp(tag: &str) -> PathBuf {
 }
 
 fn card(name: &str) -> Character {
-    Character { name: name.into(), description: "desc".into(), ..Default::default() }
+    Character {
+        name: name.into(),
+        description: "desc".into(),
+        ..Default::default()
+    }
 }
 
 #[test]

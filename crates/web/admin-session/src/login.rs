@@ -106,4 +106,3 @@ pub async fn verify_2fa(client: &ApiClient, flow_token: &str, code: &str) -> Api
     apply_bundle(bundle.clone());
     Ok(bundle)
 }
-

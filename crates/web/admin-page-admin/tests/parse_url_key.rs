@@ -1,7 +1,7 @@
 //! `parse_url_key` 的形态测试:URL+Key 从粘贴文本中提取(4 种格式 + 阈值边界)。
 //! 纯函数,单测放这里(不依赖 Dioxus runtime)。
 
-use page_admin::parse_url_key;
+use admin_page_admin::parse_url_key;
 
 fn ok(url: &str, key: &str) -> Option<(String, String)> {
     Some((url.to_string(), key.to_string()))
@@ -12,10 +12,7 @@ fn two_lines_bare_url_then_bare_key() {
     let text = "https://api.openai.com/v1\nsk-test1234567890abcdefghij\n";
     assert_eq!(
         parse_url_key(text),
-        ok(
-            "https://api.openai.com/v1",
-            "sk-test1234567890abcdefghij"
-        )
+        ok("https://api.openai.com/v1", "sk-test1234567890abcdefghij")
     );
 }
 
@@ -24,10 +21,7 @@ fn key_equals_value_form() {
     let text = "url = https://api.openai.com/v1\napi_key = sk-test1234567890abcdefghij\n";
     assert_eq!(
         parse_url_key(text),
-        ok(
-            "https://api.openai.com/v1",
-            "sk-test1234567890abcdefghij"
-        )
+        ok("https://api.openai.com/v1", "sk-test1234567890abcdefghij")
     );
 }
 
@@ -36,10 +30,7 @@ fn pipe_separated_single_line() {
     let text = "https://api.openai.com/v1 | sk-test1234567890abcdefghij";
     assert_eq!(
         parse_url_key(text),
-        ok(
-            "https://api.openai.com/v1",
-            "sk-test1234567890abcdefghij"
-        )
+        ok("https://api.openai.com/v1", "sk-test1234567890abcdefghij")
     );
 }
 

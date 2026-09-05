@@ -3,7 +3,7 @@
 //! 对标 SillyTavern `/api/settings/get|save`，落 `<user>/settings.json`。
 
 pub mod http;
-pub use http::{router, SettingsState};
+pub use http::{SettingsState, router};
 
 use std::path::Path;
 

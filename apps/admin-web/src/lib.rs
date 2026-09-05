@@ -11,8 +11,8 @@ use page_admin::{
     AliasesPage, ChannelsPage, GroupsPage, NetworkPanel, RedemptionsPage, SubscriptionsPage,
     SystemPage, state::EntityStore,
 };
-use page_users::UsersPanel;
 use page_overview::{LeaderboardPanel, ModelsPanel, OverviewPanel};
+use page_users::UsersPanel;
 
 /// Top-level console sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
