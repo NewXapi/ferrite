@@ -11,8 +11,9 @@
 | `prompt_snapshot` | Rust 端边界；校验 `_ferrite_agent_prompt_marker`（兼容 `_tauritavern_agent_prompt_marker`），把 OpenAI JSON 反序列化成内部消息类型，校验 `AgentContextPolicy` |
 | `variables` | `expand_variables`：兜底展开 `{{char}}` / `{{user}}`；未识别宏原样保留（前端 macro engine 主责） |
 | `render` | `PromptInput → AgentModelRequest`，按 system → messages → tools 顺序拼装 |
-| `truncate` | `truncate_history`：从最新到最旧按 token budget 裁剪，system 永保留，tool-call/result 组原子保留 / 丢弃 |
+| `truncate` | `truncate_history`：从最新到最旧按 token budget 裁剪，system 永保留，tool-call/result 组原子保留 / 丢弃；`truncate_history_with_dropped` 返回被丢消息；`summarize_history`（摘要记忆 H3）：把丢弃段交给调用方 LLM 闭包压缩后作为 system 注入 System 段之后 |
 | `reasoning` | `ReasoningTemplate`（默认 Think XML）+ `wrap_reasoning` + `inject_reasoning`：把模型推理回填为额外 system 消息（无 UI） |
+| `world_info` | `WorldInfoEntry` / `WorldInfoPosition` / `compute_world_info_budget` / `inject_world_info`，World Info 激活与三路注入纯函数库 |
 
 ## 关键常量
 

@@ -266,7 +266,7 @@ fn dispatcher_rate_limited_when_all_candidates_throttled() {
     let dispatcher = dispatch::Dispatcher::with_limits(
         Some(snap),
         Arc::new(MemoryHealthTable::new()),
-        limits,
+        Arc::new(limits),
         rl,
     );
 
@@ -313,7 +313,7 @@ fn dispatcher_only_consumes_picked_unit_quota() {
     let dispatcher = dispatch::Dispatcher::with_limits(
         Some(snap),
         Arc::new(MemoryHealthTable::new()),
-        limits,
+        Arc::new(limits),
         rl,
     );
 
@@ -342,7 +342,7 @@ fn dispatcher_rate_limited_with_per_unit_limits() {
     let dispatcher = dispatch::Dispatcher::with_limits(
         Some(snap),
         Arc::new(MemoryHealthTable::new()),
-        limits,
+        Arc::new(limits),
         rl,
     );
 
@@ -367,7 +367,7 @@ fn dispatcher_no_candidate_when_snapshot_empty_unchanged() {
     let dispatcher = dispatch::Dispatcher::with_limits(
         Some(snap),
         Arc::new(MemoryHealthTable::new()),
-        limits,
+        Arc::new(limits),
         Arc::new(SlidingWindow::new()),
     );
     assert!(matches!(

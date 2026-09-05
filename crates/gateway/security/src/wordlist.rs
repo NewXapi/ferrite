@@ -3,10 +3,10 @@
 //! 词库二进制用 `include_bytes!` 嵌入到 crate，启动时通过 argon2id 派生 key 解密。
 //! 替换走 `ArcSwap<WordList>`，由 `service::sync` 推送。
 
-use std::sync::Arc;
 use arc_swap::ArcSwap;
-use thiserror::Error;
 use std::collections::HashMap;
+use std::sync::Arc;
+use thiserror::Error;
 
 /// 词条分类
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

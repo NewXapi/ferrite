@@ -37,8 +37,10 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
+  # PR：按 git diff 的 path scope 只跑受影响的包，快速反馈。
   dynamic-test:
     name: Dynamic Crate Check & Test
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -55,9 +57,26 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run Affected Crates Tests
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            bash scripts/ci-affected.sh --base "origin/${{ github.base_ref }}"
-          else
-            bash scripts/ci-affected.sh --base "HEAD~1"
-          fi
+        run: bash scripts/ci-affected.sh --base "origin/${{ github.base_ref }}"
+
+  # 合并到 main：跑全量，作为动态选包的兜底。
+  full-test:
+    name: Full Workspace Test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build all targets
+        run: cargo build --all-targets
+
+      - name: Test all
+        run: cargo test --all

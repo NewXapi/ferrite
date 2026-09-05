@@ -179,7 +179,16 @@ pub struct ToolDescriptor {
     pub input_schema: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<Value>,
+    /// 注解；开放 JSON 对象。约定键 `stealth: true` 表示该工具结果不回灌聊天流
+    /// （对齐 SillyTavern ToolDefinition.stealth，严格布尔 true 才生效）。
     pub annotations: Value,
+}
+
+impl ToolDescriptor {
+    /// 该工具是否为 stealth（`annotations.stealth` 严格等于布尔 `true`）。
+    pub fn is_stealth(&self) -> bool {
+        self.annotations.get("stealth") == Some(&Value::Bool(true))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]

@@ -3,15 +3,15 @@
 //! 在 `forward` 与 `protocol-bridge` 之间执行。接管 `ctx.upstream`（流式），
 //! 逐 chunk 过 AC + CtxTail，命中时 sanitize 替换 + 累计 ctx.streamed。
 
-use std::sync::Arc;
-use async_trait::async_trait;
-use arc_swap::ArcSwap;
-use gateway_pipeline::{Stage, RequestCtx, StageOutcome, StageError};
-use super::aho_corasick::AhoCorasick;
-use super::ctx_tail::CtxTail;
 use super::moderation::Moderation;
 use super::wordlist::WordList;
+use arc_swap::ArcSwap;
+use async_trait::async_trait;
+use gateway_pipeline::{RequestCtx, Stage, StageError, StageOutcome};
+use std::sync::Arc;
 
+// ponytail: 桩 — handle 实现后读取 words/moderation。
+#[allow(dead_code)]
 pub struct StreamingInterceptStage {
     words: Arc<ArcSwap<WordList>>,
     moderation: Arc<dyn Moderation>,
@@ -25,7 +25,9 @@ impl StreamingInterceptStage {
 
 #[async_trait]
 impl Stage for StreamingInterceptStage {
-    fn name(&self) -> &'static str { "security" }
+    fn name(&self) -> &'static str {
+        "security"
+    }
 
     async fn handle(&self, _ctx: &mut RequestCtx) -> Result<StageOutcome, StageError> {
         // TODO: 接管 ctx.upstream 流 → AC + CtxTail → sanitize → 必要 moderation::check

@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures_util::stream;
 use serde_json::json;
 
+use harness_core::GenerationType;
 use harness_core::{AgentChatRef, AgentModelRetryPolicy, AgentRunStatus};
 use harness_prompt::{AgentModelMessage, AgentModelRole};
 use harness_runtime::{
@@ -15,10 +16,12 @@ use harness_runtime::{
     ProviderRequest, ProviderStream, RunPersistence, ToolCallFragment, ToolExecutor, ToolHandler,
     VecEventSink, load_resumable_run, run_agent_run,
 };
-use harness_tools::{InvocationToolSnapshot, ToolBinding, ToolDescriptor, ToolId, ToolSnapshotId};
-
+use harness_tools::{
+    InvocationToolSnapshot, ToolBinding, ToolChoice, ToolDescriptor, ToolId, ToolSnapshotId,
+};
 struct ScriptedProvider {
     rounds: Mutex<Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>>,
+    seen: Mutex<Vec<ProviderRequest>>,
     calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 
@@ -26,6 +29,7 @@ impl ScriptedProvider {
     fn new(rounds: Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>) -> Self {
         Self {
             rounds: Mutex::new(rounds),
+            seen: Mutex::new(Vec::new()),
             calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
@@ -35,11 +39,17 @@ impl ScriptedProvider {
     fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
+
+    /// 收到的 provider 请求副本，供生成类型 gating 断言使用。
+    fn seen(&self) -> Vec<ProviderRequest> {
+        self.seen.lock().expect("seen mutex").clone()
+    }
 }
 
 impl ChatProvider for ScriptedProvider {
-    fn stream(&self, _request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
+    fn stream(&self, request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        self.seen.lock().expect("seen mutex").push(request);
         let mut rounds = self.rounds.lock().expect("mock provider mutex");
         // Exhausted script yields an empty stream instead of panicking, so tests
         // that abort mid-retry do not depend on an exact round count.
@@ -89,6 +99,7 @@ fn request(run_id: &str, persistence_ok: bool) -> AgentRunRequest {
             file_name: "alice".into(),
         },
         profile_id: None,
+        generation_type: GenerationType::Chat,
         model: "test-model".into(),
         prompt: harness_prompt::AgentModelRequest {
             system: Some("sys".into()),
@@ -383,7 +394,7 @@ async fn persistence_rejects_unsafe_ids_and_keeps_event_order() {
             chat_ref: AgentChatRef::Group {
                 chat_id: "g".into(),
             },
-            generation_type: "chat".into(),
+            generation_type: GenerationType::Chat,
             profile_id: None,
             skill_scope_refs: Default::default(),
             persist_base_state_id: None,
@@ -833,4 +844,345 @@ async fn permanent_provider_error_is_not_retried() {
         1,
         "a rejected request must not be replayed"
     );
+}
+
+// ---------------------------------------------------------------------------
+// GenerationType：工具 gate + continue 前缀
+// ---------------------------------------------------------------------------
+
+/// 非 chat 类型（quiet 为例）不得把 tools / tool_choice 发给 provider：
+/// 对齐 ST `tool-calling.js canPerformToolCalls` 的 noToolCallTypes 语义。
+#[tokio::test]
+async fn quiet_generation_sends_no_tools() {
+    let root = tmp_root("quiet");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "background reply",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_quiet", true);
+    req.generation_type = GenerationType::Quiet;
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    assert_eq!(run.generation_type, GenerationType::Quiet);
+    // run.json 持久化请求值
+    let loaded = persistence.load_run("run_quiet").await.expect("load run");
+    assert_eq!(loaded.generation_type, GenerationType::Quiet);
+
+    let seen = provider.seen();
+    assert_eq!(seen.len(), 1);
+    assert!(
+        seen[0].tools.is_empty(),
+        "quiet 生成不得携带工具: {:?}",
+        seen[0].tools
+    );
+    assert!(
+        seen[0].tool_choice.is_none(),
+        "quiet 生成不得下发 tool_choice: {:?}",
+        seen[0].tool_choice
+    );
+}
+
+/// chat 类型维持工具注册 + Auto 选择（回归保护）。
+#[tokio::test]
+async fn chat_generation_keeps_tools_auto() {
+    let root = tmp_root("chat_tools");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "ok",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let req = request("run_chat", true);
+    run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    let seen = provider.seen();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].tools.len(), 1, "chat 保留 snapshot 绑定的工具");
+    assert_eq!(seen[0].tool_choice, Some(ToolChoice::Auto));
+}
+
+/// continue 类型：末条 assistant 消息文本作为前缀与续写输出拼接，
+/// 对齐 ST StreamingProcessor.continueMessage（最终消息 = 前缀 + 续写）。
+#[tokio::test]
+async fn continue_generation_prepends_assistant_prefix() {
+    let root = tmp_root("continue");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        " continued tail",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_continue", true);
+    req.generation_type = GenerationType::Continue;
+    req.prompt.messages.push(AgentModelMessage::text(
+        AgentModelRole::Assistant,
+        "the prefix text",
+    ));
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    // 持久化的 model response text == 前缀 + 续写
+    let events = persistence
+        .load_events("run_continue")
+        .await
+        .expect("events");
+    let delta = events
+        .iter()
+        .find(|event| event.event_type == "model.delta")
+        .expect("model.delta event");
+    let text = delta.payload["text"].as_str().expect("text payload");
+    assert_eq!(text, "the prefix text continued tail");
+
+    // continue 不带工具
+    let seen = provider.seen();
+    assert!(seen[0].tools.is_empty());
+    assert!(seen[0].tool_choice.is_none());
+}
+
+/// impersonate 同样走无工具 gate（结果写用户消息位由调用方路由，harness 只透传类型）。
+#[tokio::test]
+async fn impersonate_generation_sends_no_tools() {
+    let root = tmp_root("impersonate");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "*waves*",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_imp", true);
+    req.generation_type = GenerationType::Impersonate;
+    run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    let seen = provider.seen();
+    assert!(seen[0].tools.is_empty());
+    assert!(seen[0].tool_choice.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Stealth 注解 + response_format 透传
+// ---------------------------------------------------------------------------
+
+fn stealth_descriptor(id: ToolId) -> ToolDescriptor {
+    // annotations.stealth 严格布尔 true 才生效（对齐 ST ToolDefinition.stealth）
+    let mut descriptor = descriptor(id);
+    descriptor.annotations = serde_json::json!({ "stealth": true });
+    descriptor
+}
+
+fn stealth_snapshot() -> InvocationToolSnapshot {
+    let id = ToolId::builtin("read_file").expect("tool id");
+    InvocationToolSnapshot::try_new(
+        ToolSnapshotId::parse("inv_root").expect("snapshot"),
+        vec![ToolBinding::new(stealth_descriptor(id), "read_file", Some(4)).unwrap()],
+        8,
+    )
+    .expect("snapshot")
+}
+
+fn mixed_snapshot() -> InvocationToolSnapshot {
+    let read = ToolId::builtin("read_file").expect("tool id");
+    let tell = ToolId::builtin("tell_secret").expect("tool id");
+    InvocationToolSnapshot::try_new(
+        ToolSnapshotId::parse("inv_root").expect("snapshot"),
+        vec![
+            ToolBinding::new(descriptor(read), "read_file", Some(4)).unwrap(),
+            ToolBinding::new(stealth_descriptor(tell), "tell_secret", Some(4)).unwrap(),
+        ],
+        8,
+    )
+    .expect("snapshot")
+}
+
+fn tool_result_delta(call_id: &str) -> Vec<ProviderDelta> {
+    tool_delta(call_id, "read_file", "{\"path\":\"/tmp/x\"}")
+}
+
+/// 纯 stealth 轮：执行 + 落盘 + 事件后直接终结 run，不触发下一轮模型调用
+/// （对齐 ST「stealth 不触发后续生成」；provider.calls 断言防孤儿转写反复调用）。
+#[tokio::test]
+async fn all_stealth_round_ends_run_without_followup() {
+    let root = tmp_root("stealth_all");
+    let persistence = RunPersistence::new(&root);
+    let provider =
+        ScriptedProvider::new(vec![tool_result_delta("c1").into_iter().map(Ok).collect()]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").expect("id"), ok_handler());
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_stealth", true);
+    req.snapshot = stealth_snapshot();
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    // 只调用一次模型：结果不触发后续生成
+    assert_eq!(provider.calls(), 1);
+    // tool.completed 事件带 stealth 标记（事件走 sink，不落 events.jsonl）
+    let completed = sink
+        .events
+        .iter()
+        .find(|event| event.event_type == "tool.completed")
+        .expect("tool.completed");
+    assert_eq!(completed.payload["stealth"], serde_json::json!(true));
+    // tool-results/ 照常落盘
+    let dir = root.join("run_stealth");
+    assert!(
+        std::fs::read_dir(dir.join("tool-results"))
+            .expect("tool-results dir")
+            .count()
+            > 0
+    );
+}
+
+/// 混合轮：stealth 结果仍回灌（OpenAI 转写要求 tool_call 与 result 一一配对），
+/// 事件带 stealth 标记，run 正常走到下一轮模型调用。
+#[tokio::test]
+async fn mixed_stealth_round_still_feeds_back() {
+    let root = tmp_root("stealth_mixed");
+    let persistence = RunPersistence::new(&root);
+    // 第一轮：两个 tool call（一个普通 read_file，一个 stealth tell_secret）
+    // 第二轮：纯文本收尾
+    // 两个 call 需要不同 fragment index（聚合器按 index 区分 call），
+    // finish_reason 只在最后一个 delta 上发一次
+    let round1 = vec![
+        ProviderDelta {
+            tool_call: Some(ToolCallFragment {
+                index: 0,
+                call_id: Some("c1".into()),
+                name: Some("read_file".into()),
+                arguments: Some("{\"path\":\"/tmp/x\"}".into()),
+            }),
+            ..ProviderDelta::default()
+        },
+        ProviderDelta {
+            tool_call: Some(ToolCallFragment {
+                index: 1,
+                call_id: Some("c2".into()),
+                name: Some("tell_secret".into()),
+                arguments: Some("{\"path\":\"/tmp/y\"}".into()),
+            }),
+            finish_reason: Some(ProviderFinishReason::ToolCalls),
+            ..ProviderDelta::default()
+        },
+    ];
+    let provider = ScriptedProvider::new(vec![
+        round1.into_iter().map(Ok).collect(),
+        vec![Ok(text_delta("done", Some(ProviderFinishReason::Stop)))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").expect("id"), ok_handler());
+    executor.register(ToolId::builtin("tell_secret").expect("id"), ok_handler());
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_mixed", true);
+    req.snapshot = mixed_snapshot();
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    // 第二轮模型调用发生：混合轮结果照常回灌（转写配对合法）
+    assert_eq!(provider.calls(), 2);
+    let stealth_flags: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|event| event.event_type == "tool.completed")
+        .map(|event| event.payload["stealth"] == serde_json::json!(true))
+        .collect();
+    assert_eq!(stealth_flags, vec![false, true]);
+}
+
+/// response_format 字段：Some 时序列化出现（camelCase responseFormat），None 时跳过。
+#[test]
+fn response_format_passthrough_serde() {
+    use harness_runtime::ProviderRequest;
+    let mut req: ProviderRequest = serde_json::from_str(
+        r#"{"model":"m","messages":[],"responseFormat":{"type":"json_schema"}}"#,
+    )
+    .expect("deserialize with responseFormat");
+    assert_eq!(
+        req.response_format,
+        Some(serde_json::json!({ "type": "json_schema" }))
+    );
+    // 序列化回带该字段
+    let back = serde_json::to_value(&req).expect("serialize");
+    assert_eq!(back["responseFormat"]["type"], "json_schema");
+    // None 时不出现（skip_serializing_if）
+    req.response_format = None;
+    let back = serde_json::to_value(&req).expect("serialize none");
+    assert!(back.get("responseFormat").is_none());
 }

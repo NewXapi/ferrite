@@ -35,6 +35,7 @@ pub mod render;
 pub mod truncate;
 pub mod types;
 pub mod variables;
+pub mod world_info;
 
 pub use prompt_snapshot::{
     AGENT_PROMPT_MARKER_FIELD, AgentModelSnapshotKind, LEGACY_TAURITAVERN_PROMPT_MARKER_FIELD,
@@ -43,8 +44,14 @@ pub use prompt_snapshot::{
 };
 pub use reasoning::{ReasoningTemplate, inject_reasoning, wrap_reasoning};
 pub use render::{RenderError, render};
-pub use truncate::{TruncationDropReason, truncate_history};
+pub use truncate::{
+    DEFAULT_SUMMARY_PREFIX, TruncationDropReason, summarize_history, truncate_history,
+    truncate_history_with_dropped,
+};
 pub use types::{
     AgentModelContentPart, AgentModelMessage, AgentModelRequest, AgentModelRole, PromptInput,
 };
 pub use variables::{VariableContext, expand_variables};
+pub use world_info::{
+    WorldInfoEntry, WorldInfoPosition, compute_world_info_budget, inject_world_info,
+};

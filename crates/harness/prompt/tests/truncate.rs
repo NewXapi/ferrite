@@ -3,7 +3,10 @@
 //! ponytail: 单元测试全部下沉到 tests/ —— Cargo 对 tests/ 目录默认只在
 //! `cargo test` 编译，写 `#[cfg(test)]` 在这里反而是 boilerplate 错误。
 
-use harness_prompt::{AgentModelContentPart, AgentModelMessage, AgentModelRole, truncate_history};
+use harness_prompt::{
+    AgentModelContentPart, AgentModelMessage, AgentModelRole, DEFAULT_SUMMARY_PREFIX,
+    summarize_history, truncate_history, truncate_history_with_dropped,
+};
 use serde_json::json;
 
 fn user_msg(text: &str) -> AgentModelMessage {
@@ -375,4 +378,122 @@ fn two_tool_groups_drop_only_older_when_budget_only_fits_newer() {
         .collect();
     assert_eq!(kept_ids, vec!["b".to_string(), "b".to_string()]);
     assert!(out[0].role.is_system());
+}
+
+// ---------------------------------------------------------------------------
+// truncate_history_with_dropped / summarize_history（摘要记忆 H3）
+// ---------------------------------------------------------------------------
+
+/// dropped 应包含所有被预算丢弃的消息、按原始顺序、且永不含首条 system。
+#[test]
+fn with_dropped_reports_dropped_in_original_order() {
+    let msgs = vec![
+        AgentModelMessage::text(AgentModelRole::System, "sys"),
+        AgentModelMessage::text(AgentModelRole::User, "old1"), // 4
+        AgentModelMessage::text(AgentModelRole::Assistant, "old2"), // 4
+        AgentModelMessage::text(AgentModelRole::User, "new"),  // 3
+    ];
+    // 预算 3：只装得下 "new"；old1/old2 被 drop
+    let (kept, dropped) = truncate_history_with_dropped(&msgs, 3, char_count);
+    assert_eq!(kept.len(), 2); // sys + new
+    let dropped_text: Vec<_> = dropped.iter().map(|m| m.text_payload()).collect();
+    assert_eq!(dropped_text, vec!["old1", "old2"]);
+}
+
+/// 预算充足 → dropped 为空，kept 与输入等价。
+#[test]
+fn with_dropped_empty_when_everything_fits() {
+    let msgs = vec![
+        AgentModelMessage::text(AgentModelRole::User, "a"),
+        AgentModelMessage::text(AgentModelRole::Assistant, "b"),
+    ];
+    let (kept, dropped) = truncate_history_with_dropped(&msgs, 100, char_count);
+    assert!(dropped.is_empty());
+    assert_eq!(kept.len(), 2);
+}
+
+/// 摘要：有丢弃 → summarize 被调用（入参=dropped），摘要 system 注入开头
+/// System 段之后；无丢弃 → summarize 不被调用。
+#[test]
+fn summarize_history_injects_after_system_block() {
+    let msgs = vec![
+        AgentModelMessage::text(AgentModelRole::System, "sys"),
+        AgentModelMessage::text(AgentModelRole::User, "old1"),
+        AgentModelMessage::text(AgentModelRole::Assistant, "old2"),
+        AgentModelMessage::text(AgentModelRole::User, "new"),
+    ];
+    let calls = std::cell::RefCell::new(0u32);
+    let result = summarize_history(&msgs, 3, char_count, |dropped| {
+        *calls.borrow_mut() += 1;
+        format!("compressed {} messages", dropped.len())
+    });
+    assert_eq!(*calls.borrow(), 1);
+    // 布局：[sys, summary(sys), new]
+    assert_eq!(result.len(), 3);
+    assert!(result[1].role.is_system());
+    let summary_text = result[1].text_payload();
+    assert!(summary_text.contains(DEFAULT_SUMMARY_PREFIX));
+    assert!(summary_text.contains("compressed 2 messages"));
+    assert_eq!(result[2].text_payload(), "new");
+}
+
+/// 无 system 头时摘要置于最前。
+#[test]
+fn summarize_history_without_system_head_goes_first() {
+    let msgs = vec![
+        AgentModelMessage::text(AgentModelRole::User, "old"),
+        AgentModelMessage::text(AgentModelRole::User, "new"),
+    ];
+    let result = summarize_history(&msgs, 3, char_count, |d| format!("s{}", d.len()));
+    // dropped=[old]（3 字节超剩余 0），布局：[summary(sys), new]
+    assert_eq!(result.len(), 2);
+    assert!(result[0].role.is_system());
+    assert!(result[0].text_payload().contains("s1"));
+    assert_eq!(result[1].text_payload(), "new");
+}
+
+/// summarize 返回空串 → 不注入（退化为普通截断）。
+#[test]
+fn summarize_history_empty_summary_skips_injection() {
+    let msgs = vec![
+        AgentModelMessage::text(AgentModelRole::User, "old"),
+        AgentModelMessage::text(AgentModelRole::User, "new"),
+    ];
+    let result = summarize_history(&msgs, 3, char_count, |_| String::new());
+    assert_eq!(result.len(), 1); // kept only（new 装入，old 被丢）
+}
+
+/// 无丢弃 → summarize 不被调用、结果等价截断。
+#[test]
+fn summarize_history_no_drop_never_calls_summarizer() {
+    let msgs = vec![AgentModelMessage::text(AgentModelRole::User, "a")];
+    let calls = std::cell::RefCell::new(0u32);
+    let result = summarize_history(&msgs, 100, char_count, |_| {
+        *calls.borrow_mut() += 1;
+        "should not happen".to_string()
+    });
+    assert_eq!(*calls.borrow(), 0);
+    assert_eq!(result.len(), 1);
+}
+
+/// 零预算：首条 system 仍免费保留（不进 dropped），其余全部计入 dropped。
+/// 「system 永不被丢」不变量对零预算同样成立（ocr bug·high 修复的回归测试）。
+#[test]
+fn zero_budget_keeps_first_system_out_of_dropped() {
+    let msgs = vec![
+        AgentModelMessage::text(AgentModelRole::System, "sys"),
+        AgentModelMessage::text(AgentModelRole::User, "u1"),
+        AgentModelMessage::text(AgentModelRole::Assistant, "a1"),
+    ];
+    let (kept, dropped) = truncate_history_with_dropped(&msgs, 0, char_count);
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].role.is_system());
+    let dropped_text: Vec<_> = dropped.iter().map(|m| m.text_payload()).collect();
+    assert_eq!(dropped_text, vec!["u1", "a1"]);
+
+    // 无 system 头时零预算 = 全部 dropped
+    let msgs = vec![AgentModelMessage::text(AgentModelRole::User, "u1")];
+    let (kept, dropped) = truncate_history_with_dropped(&msgs, 0, char_count);
+    assert!(kept.is_empty());
+    assert_eq!(dropped.len(), 1);
 }

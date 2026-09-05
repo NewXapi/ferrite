@@ -28,8 +28,10 @@ pub trait PriceTable: Send + Sync {
 ///
 /// 内部单位换算: 500_000 单位 = $1 (new-api 语义), 即
 /// cost = tokens × price_per_million / 1e6 × 500_000 × group_multiplier。
-/// TODO(#335): 定价表定型 — PriceRecord 进 contract records 还是 GroupRecord 内嵌?
 pub fn price_of(counts: crate::scanner::TokenCounts, price: &ModelPrice) -> i64 {
-    let _ = (counts, price);
-    0
+    let input_cost = counts.prompt as f64 * price.input / 1e6;
+    let output_cost = counts.completion as f64 * price.output / 1e6;
+    let cache_cost = counts.cached as f64 * price.cache / 1e6;
+    let total_dollars = (input_cost + output_cost + cache_cost) * price.group_multiplier;
+    (total_dollars * 500_000.0).ceil() as i64
 }

@@ -4,16 +4,17 @@ members = [
     "tests",
     "apps/api",
     "apps/admin-web",
+    "apps/api",
     "apps/gateway",
     "apps/tavern-web",
-    "crates/contract",
     "crates/gateway/dispatch",
     "crates/gateway/forward",
+    "crates/gateway/gate",
     "crates/gateway/metering",
     "crates/gateway/pipeline",
-    "crates/gateway/gate",
     "crates/gateway/protocol-bridge",
     "crates/gateway/proxy",
+    "crates/gateway/security",
     "crates/api/auth",
     "crates/api/admin-store",
     "crates/api/admin-catalog",
@@ -50,8 +51,8 @@ members = [
     "crates/web/tavern-page-lorebook",
     "crates/harness/core",
     "crates/harness/prompt",
-    "crates/harness/tools",
     "crates/harness/runtime",
+    "crates/harness/tools",
     "crates/harness/ui",
 ]
 
@@ -62,11 +63,11 @@ license = "MIT"
 rust-version = "1.85"
 publish = false
 
-
 [workspace.dependencies]
 tokio       = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync", "time", "io-util"] }
 axum        = "0.8"
 hyper       = { version = "1", features = ["client", "http2"] }
+http        = "1"
 tower       = "0.5"
 tower-http  = { version = "0.6", features = ["cors", "trace", "limit"] }
 reqwest     = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "socks"] }
@@ -76,20 +77,19 @@ toml        = "0.9"
 sqlx        = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "uuid", "macros", "json"] }
 tracing     = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry"] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
 thiserror   = "2"
+dioxus      = { version = "=0.7.9", features = ["router"] }
+gloo-net   = { version = "0.6", features = ["json"] }
+sha2        = "0.10"
+hex         = "0.4"
 bytes       = "1"
 arc-swap    = "1"
 chrono      = { version = "0.4", features = ["serde"] }
 rand        = "0.8"
 futures-util = "0.3"
-tracing-appender = "0.2"
-tracing-log = "0.2"
-dioxus      = { version = "=0.7.9", features = ["router"] }
-gloo-net   = { version = "0.6", features = ["json"] }
-http        = "1"
-uuid        = { version = "1", features = ["serde", "v7", "v4"] }
-hex         = "0.4"
-sha2        = "0.10"
+uuid        = { version = "1", features = ["serde", "v4", "v7"] }
 
 [profile.release]
 lto           = "fat"

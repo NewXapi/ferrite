@@ -11,10 +11,21 @@
 ## 开发方式
 
 - `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支，worktree 目录名与分支名尾段一致（`.wt/admin-api` ↔ `feat/admin-api`）；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
-- 默认 **PR-only**：不开 issue，worktree 起手就开 draft PR，任务清单与验收登记在 PR body；用户 prompt 明确要求时才建 issue。
-- 合并一律 **squash merge**（`gh pr merge --squash`），不用 merge commit / rebase merge；PR 标题就是 squash 后的 conventional commit message，必须规范。
-- 首次 clone 后 `cp config/config.toml.example config/config.toml`（本地配置不入库）。
 - 提交前用 `cargo check` 验证编译（本地环境没有 LSP，check 就是类型错误的兜底）；CPU-heavy 套 cpulimit（见下）。
+
+## `.wt/` 工作目录保护（硬约束）
+
+`.wt/<name>/` 是开发工作目录，也是其他会话的代码容器。**任何会话严禁在未经确认的情况下删除整个 `.wt/` 目录或他人 worktree 分支目录。** 违规删除 = 丢失他人整个开发会话，等同于删库。
+
+- 只能删除**自己负责的 PR 对应的 worktree 目录**，且必须满足全部条件：
+  1. PR 已 squash merge 到 upstream main；
+  2. 用户明确确认可以清理；
+  3. 删除前 `git worktree list` 确认目标目录对应当前会话分支，不影响其他 worktree。
+- 合并流程结束时：`git worktree remove <自己目录>` + `gh pr merge --delete-branch`，禁止 `rm -rf .wt/` 或 `rm -rf .wt/*` 批量删除。
+- 发现 `.wt/` 目录意外丢失时，立即告知用户并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
+
+
+
 
 ## 域目录并发与越界
 
@@ -73,6 +84,13 @@ crates/web/<prefix-feature>/
 - CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
 ### 测试分层与 CI 驱动原则
+
+- **所有测试放 CI**：`cargo test` 一律在 CI 上跑，本地只跑 `cargo check -p <crate>` 验证编译通过。
+- **PR 跑动态范围**：PR 上按 `git diff` 的 path scope 只跑受影响的包（`scripts/ci-affected.sh`），快速反馈。
+- **合并到 main 跑全量**：push 到 main 时跑全量 `cargo test --all`，作为兜底。
+- 全量测试（`cargo test --all`、全 workspace 构建）不在本地裸跑。
+- 本地跑测试仅用于调试单个失败用例（`cargo test -p <crate> -- <test_name>`），不作为验收通过手段。
+- CI 测试全部 green 才算通过，CI 未跑完前不得 closeout / merge。
 
 - **严禁本地滥跑全量与重型测试**：本地开发机 CPU 与内存极其有限（常年可用内存不足 2GB），本地编译或测试多 crate 极易耗尽系统内存导致进程死锁与机器假死。
 - **尽可能不要在本地跑测试**：
@@ -158,8 +176,11 @@ loop1:
 
 - 全部子任务通过 audit 后，本地仅运行极小范围的类型检查（`cargo check -p <crate>`，CPU-heavy 必须套 `cpulimit -l 70 -i --`）。
 - **尽可能不要在本地运行 `cargo test`**：所有集成测试、多 crate 联调与重型测试一律推送到 PR 分支，交给 GitHub CI 依据 `git diff` 动态按需执行。
+- **重型测试**（>2 min、需要容器 / 网络 / 大数据）放 CI；CI 未跑完前不得 closeout / merge。
 - **CI 驱动闭环**：以 GitHub CI 运行报告为准；CI 未全部跑绿前不得 closeout / merge。
 - 若 CI 报错失败 → 提取云端失败日志回 loop1，把失败当作新子任务进行精准修复。
+- 本地调试单个失败用例：`cargo test -p <crate> -- <test_name>`（仅调试，不替代 CI 验收）。
+
 #### 5. tool review
 
 - 先 CRG（结构层）：`code-review-graph detect-changes --base <base_sha>`。

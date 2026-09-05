@@ -1,111 +1,70 @@
-//! Ferrite 网关数据面 — 进程入口，只做组装和启动。
-//!
-//! 协议转换在 protocol-bridge；调度在 dispatch；准入在 gate；转发在 forward。
-//! 本文件把四段链串成真实 axum 服务，注入真实依赖（非 mock）。
-
 mod config;
 mod observability;
 
-use std::process::ExitCode;
-use std::sync::Arc;
-
-use dispatch::{Dispatcher, MemoryHealthTable, Snapshot};
-use forward::egress::ReqwestEgress;
-use gateway_gate::chain::GateChain;
-use gateway_gate::graylist::GrayListGate;
-use gateway_gate::model::ModelGate;
-use gateway_gate::quota::QuotaGate;
-use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
-use gateway_gate::state::StateGate;
-use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::AdaptorRegistry;
-
 use crate::config::GatewayConfig;
 use crate::observability::init_tracing;
-
-use dispatch::stage::DispatchStage;
-use forward::stage::ForwardStage;
-use gateway_gate::auth::AuthGate;
-use gateway_protocol_bridge::stage::ProtocolBridgeStage;
+use gateway::build_app;
+use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let config = match GatewayConfig::load(std::path::Path::new("config/config.toml")) {
-        Ok(c) => c,
-        Err(e) => {
+    let mut config = GatewayConfig::load(std::path::Path::new("config/config.toml"))
+        .unwrap_or_else(|e| {
             eprintln!("failed to load config: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
+            std::process::exit(1);
+        });
     init_tracing(&config.log_level);
 
-    let health = Arc::new(MemoryHealthTable::new());
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
-    let egress = Arc::new(ReqwestEgress::new());
+    let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+    let mut _server: Option<tokio::task::JoinHandle<()>> = None;
+    let addr = config.listen.clone();
 
-    let snapshot: Arc<Snapshot> = Arc::new(Snapshot {
-        units: vec![],
-        channels: std::collections::HashMap::new(),
-    });
-    let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health.clone()));
+    let tx = shutdown_tx.clone();
+    _server = Some(tokio::spawn(async move { serve(&addr, tx).await }));
 
-    let gates = GateChain::new()
-        .push(AuthGate::new(Arc::new(arc_swap::ArcSwap::from_pointee(
-            gateway_gate::snapshot::TokenSnapshot::default(),
-        ))))
-        .push(StateGate::new(
-            Arc::new(arc_swap::ArcSwap::from_pointee(
-                gateway_gate::snapshot::UserSnapshot::default(),
-            )),
-            Arc::new(arc_swap::ArcSwap::from_pointee(
-                gateway_gate::snapshot::IpPolicy::default(),
-            )),
-        ))
-        .push(ModelGate)
-        .push(QuotaGate::new(
-            Arc::new(arc_swap::ArcSwap::from_pointee(
-                gateway_gate::snapshot::QuotaSnapshot::default(),
-            )),
-            Arc::new(arc_swap::ArcSwap::from_pointee(
-                gateway_gate::snapshot::PricingSnapshot::default(),
-            )),
-        ))
-        .push(RateLimitGate::new(Arc::new(RateLimiter::new(100, 60))))
-        .push(GrayListGate::new(Arc::new(
-            arc_swap::ArcSwap::from_pointee(gateway_gate::graylist::GrayListState::default()),
-        )));
+    let mut hup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+        .expect("install sighup handler");
+    loop {
+        tokio::select! {
+            _ = hup.recv() => {
+                tracing::info!("SIGHUP received, reloading config");
+                match GatewayConfig::load(std::path::Path::new("config/config.toml")) {
+                    Ok(c) => {
+                        config = c;
+                        init_tracing(&config.log_level);
+                        if let Some(h) = _server.take() {
+                            let _ = shutdown_tx.send(true);
+                            let _ = h.await;
+                        }
+                        let tx = shutdown_tx.clone();
+                        let addr = config.listen.clone();
+                        _server = Some(tokio::spawn(async move { serve(&addr, tx).await }));
+                        tracing::info!("reload complete, listen={}", config.listen);
+                    }
+                    Err(e) => tracing::error!(error = %e, "reload config failed"),
+                }
+            }
+        }
+    }
+}
 
-    let pipeline = Arc::new(
-        Pipeline::new()
-            .push(gates)
-            .push(DispatchStage::new(dispatcher))
-            .push(ForwardStage::new(egress, adaptors.clone()))
-            .push(ProtocolBridgeStage::new(adaptors)),
-    );
-
-    let app = gateway_pipeline::router::build_router(pipeline)
-        .layer(tower_http::cors::CorsLayer::permissive());
-
-    let listener = match tokio::net::TcpListener::bind(&config.listen).await {
+async fn serve(addr: &str, shutdown: tokio::sync::watch::Sender<bool>) {
+    let app = build_app();
+    let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) => {
-            tracing::error!(error = %e, "failed to bind {}", config.listen);
-            return ExitCode::FAILURE;
+            tracing::error!(error = %e, "failed to bind {addr}");
+            return;
         }
     };
-
-    tracing::info!(listen = %config.listen, "gateway starting");
-
-    if let Err(e) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-    {
-        tracing::error!(error = %e, "server error");
-        return ExitCode::FAILURE;
+    tracing::info!(listen = %addr, "gateway serving");
+    tokio::select! {
+        res = axum::serve(listener, app) => {
+            if let Err(e) = res { tracing::error!(error = %e, "serve error"); }
+            let _ = shutdown.send(true);
+        }
+        _ = shutdown_signal() => { let _ = shutdown.send(true); }
     }
-
-    ExitCode::SUCCESS
 }
 
 async fn shutdown_signal() {
@@ -120,9 +79,6 @@ async fn shutdown_signal() {
             .recv()
             .await;
     };
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
+    tokio::select! { _ = ctrl_c => {}, _ = terminate => {} }
     tracing::info!("shutdown signal received");
 }

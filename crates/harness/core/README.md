@@ -11,3 +11,7 @@
 
 - `/home/hathaway/projects/harness/jcode/crates/jcode-message-types/src/lib.rs` — StreamEvent。
 - `/home/hathaway/projects/harness/jcode/crates/jcode-agent-runtime/src/lib.rs` — InterruptSignal。
+
+## GenerationType
+
+`AgentRun.generation_type` 使用 `GenerationType` 枚举（`chat` / `quiet` / `impersonate` / `continue`，serde snake_case）。非 `chat` 类型在 runtime 侧不注册工具；`continue` 输出拼接末条 assistant 文本（详见 `run.rs` 与 harness-runtime）。
