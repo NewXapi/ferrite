@@ -135,7 +135,7 @@ async fn full_chain_runs_to_protocol_bridge() {
         Arc::new(dispatch::health::MemoryHealthTable::new()),
     ));
     let dispatch_stage = DispatchStage::new(dispatcher);
-    let forward_stage = ForwardStage::new(Arc::new(MockEgress));
+    let forward_stage = ForwardStage::new(Arc::new(MockEgress), Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::with_defaults()));
     let bridge = ProtocolBridgeStage::new(Arc::new(
         gateway_protocol_bridge::adaptor::AdaptorRegistry::with_defaults(),
     ));

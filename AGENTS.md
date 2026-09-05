@@ -24,14 +24,6 @@
 - 合并流程结束时：`git worktree remove <自己目录>` + `gh pr merge --delete-branch`，禁止 `rm -rf .wt/` 或 `rm -rf .wt/*` 批量删除。
 - 发现 `.wt/` 目录意外丢失时，立即告知用户并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
 
-`.wt/<name>/` 是开发工作目录，也是其他会话的代码容器。**任何会话严禁在未经确认的情况下删除整个 `.wt/` 目录或他人 worktree 分支目录。** 违规删除 = 丢失他人整个开发会话，等同于删库。
-
-- 只能删除**自己负责的 PR 对应的 worktree 目录**，且必须满足全部条件：
-  1. PR 已 squash merge 到 upstream main；
-  2. 用户明确确认可以清理；
-  3. 删除前 `git worktree list` 确认目标目录对应当前会话分支，不影响其他 worktree。
-- 合并流程结束时：`git worktree remove <自己目录>` + `gh pr merge --delete-branch`，禁止 `rm -rf .wt/` 或 `rm -rf .wt/*` 批量删除。
-- 发现 `.wt/` 目录意外丢失时，立即告知用户并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
 
 
 
@@ -93,8 +85,10 @@ crates/<domain>/<feature>/
 
 ### 测试分层
 
-- 本地只跑针对性测试：`cargo test -p <crate>`（受影响的 crate 及其验收命令）。
+- **所有测试放 PR CI**：`cargo test -p <crate>` 必须在 CI 上跑，本地只跑 `cargo check` 验证编译通过。
 - 全量测试（`cargo test --all`、全 workspace 构建）放 PR CI，不在本地裸跑。
+- 本地跑测试仅用于调试单个失败用例（`cargo test -p <crate> -- <test_name>`），不作为验收通过手段。
+- PR CI 测试全部 green 才算通过，CI 未跑完前不得 closeout / merge。
 
 ### gate（`.githooks/`）
 
@@ -167,9 +161,10 @@ loop1:
 
 #### 4. test
 
-- 全部子任务通过 audit 后，本地跑针对性测试（`cargo test -p <crate>`，CPU-heavy 加 `cpulimit -l 70 -i --`）；全量测试交 PR CI。
+- 全部子任务通过 audit 后，**所有测试在 PR CI 上跑**（`cargo test -p <crate>`）；本地只跑 `cargo check` 验证编译。
 - **重型测试**（>2 min、需要容器 / 网络 / 大数据）放 PR CI；CI 未跑完前不得 closeout / merge。
-- test failed → 回 loop1，把这个失败当成新的子任务重新走 dev → audit。
+- CI test failed → 回 loop1，把这个失败当成新的子任务重新走 dev → audit。
+- 本地调试单个失败用例：`cargo test -p <crate> -- <test_name>`（仅调试，不替代 CI 验收）。
 
 #### 5. tool review
 
