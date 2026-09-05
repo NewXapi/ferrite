@@ -18,3 +18,4 @@ serde_json = { workspace = true }
 uuid     = { workspace = true }
 thiserror = { workspace = true }
 auth     = { path = "../auth" }
+chrono   = { workspace = true }
