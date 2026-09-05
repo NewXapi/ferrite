@@ -152,11 +152,16 @@ impl RedeemService {
         .fetch_optional(&mut *tx)
         .await?;
         let quota = row.ok_or(AuthError::NotFound("redemption code invalid or used".into()))?.0;
-        sqlx::query("UPDATE auth_users SET quota = quota + $2, updated_at = now() WHERE key = $1")
+        let applied = sqlx::query("UPDATE auth_users SET quota = quota + $2, updated_at = now() WHERE key = $1")
             .bind(user_key)
             .bind(quota)
             .execute(&mut *tx)
-            .await?;
+            .await?
+            .rows_affected();
+        // 入账目标不存在 → 回滚（码保持未核销，资金不丢）
+        if applied == 0 {
+            return Err(AuthError::NotFound("user not found".into()));
+        }
         tx.commit().await?;
         Ok(quota)
     }

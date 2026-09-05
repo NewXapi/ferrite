@@ -11,9 +11,10 @@ publish.workspace = true
 # advisory lock 选主 — 正是我们无 Redis 方案的替代)。
 
 [dependencies]
-contract = { path = "../../contract" }
-store    = { path = "../admin-store" }
+axum     = { workspace = true }
+sqlx     = { workspace = true }
 serde    = { workspace = true }
 serde_json = { workspace = true }
 uuid     = { workspace = true }
 thiserror = { workspace = true }
+auth     = { path = "../auth" }

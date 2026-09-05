@@ -43,27 +43,23 @@ async fn make_user(pool: &sqlx::PgPool) -> Uuid {
     key
 }
 
-/// 生成 → 兑换 → 余额增加；并发核销同一码只有一个成功。
+/// 生成 → 兑换 → 余额增加；重复核销同一码 → NotFound。
 #[tokio::test]
 #[ignore]
 async fn redeem_generate_and_redeem_flow() {
     let (svc, pool) = make_svc().await;
     let user_key = make_user(&pool).await;
 
-    // 生成 3 张 500 额度的码
     let codes = svc.generate(500, 3).await.expect("generate");
     assert_eq!(codes.len(), 3);
     assert!(codes.iter().all(|c| c.starts_with("fx-")));
 
-    // 核销第一张 → 返回 500
     let got = svc.redeem(&codes[0], user_key).await.expect("redeem");
     assert_eq!(got, 500);
 
-    // 重复核销同一张 → NotFound（已用）
     let again = svc.redeem(&codes[0], user_key).await;
-    assert!(matches!(again, Err(auth::error::AuthError::NotFound(_))));
+    assert!(matches!(again, Err(auth::AuthError::NotFound(_))));
 
-    // 用户 quota = 500
     let (balance,): (i64,) =
         sqlx::query_as("SELECT quota FROM auth_users WHERE key = $1")
             .bind(user_key)
@@ -88,7 +84,6 @@ async fn redeem_concurrent_single_winner() {
         svc1.redeem(&code, user_key),
         svc2.redeem(&code, user_key),
     );
-    // 恰好一个成功
     assert!(r1.is_ok() != r2.is_ok(), "exactly one redeem must win");
 }
 
@@ -102,27 +97,45 @@ async fn redeem_validation_rejected() {
     assert!(svc.redeem("", Uuid::new_v4()).await.is_err());
 }
 
-/// admin 列表分页 + 禁用。
+/// admin 列表分页 + 禁用后兑换失败；未禁用码兑换成功。
 #[tokio::test]
 #[ignore]
 async fn redeem_list_and_disable() {
     let (svc, pool) = make_svc().await;
-    let _ = make_user(&pool).await;
+    let user_key = make_user(&pool).await;
     let codes = svc.generate(50, 2).await.expect("generate");
+    let (a, b) = (&codes[0], &codes[1]);
 
     let (items, _total) = svc.list(Some(1), 1, 50).await.expect("list");
-    assert!(items.len() >= 2);
+    assert!(items.iter().any(|i| codes.iter().any(|c| i.code_preview == format!("fx-{}****{}", &c[3..7], &c[c.len()-4..]))));
 
-    // 禁用一张（按 preview 找 key）
-    let key = items
-        .iter()
-        .find(|i| codes.iter().any(|c| i.code_preview == format!("fx-{}****{}", &c[3..7], &c[c.len()-4..])))
-        .map(|i| i.key.clone())
-        .expect("find generated key");
-    svc.disable(uuid::Uuid::parse_str(&key).unwrap()).await.expect("disable");
+    // 禁用 B（按 preview 找 key）
+    let b_preview = format!("fx-{}****{}", &b[3..7], &b[b.len()-4..]);
+    let b_key = items.iter().find(|i| i.code_preview == b_preview).map(|i| i.key.clone()).expect("find b key");
+    svc.disable(uuid::Uuid::parse_str(&b_key).unwrap()).await.expect("disable");
 
-    // 禁用后兑换 → NotFound
-    let plain = codes.iter().find(|c| items.iter().any(|i| i.code_preview == format!("fx-{}****{}", &c[3..7], &c[c.len()-4..]))).unwrap();
-    let r = svc.redeem(plain, Uuid::new_v4()).await;
-    assert!(matches!(r, Err(auth::error::AuthError::NotFound(_))));
+    // 兑换被禁用的 B → NotFound
+    let r = svc.redeem(b, user_key).await;
+    assert!(matches!(r, Err(auth::AuthError::NotFound(_))));
+
+    // 兑换未禁用的 A → 成功
+    let got = svc.redeem(a, user_key).await.expect("redeem a");
+    assert_eq!(got, 50);
+}
+
+/// 兑换目标用户不存在 → NotFound 且码保持未核销（资金不丢）。
+#[tokio::test]
+#[ignore]
+async fn redeem_missing_user_keeps_code_alive() {
+    let (svc, pool) = make_svc().await;
+    let codes = svc.generate(200, 1).await.expect("generate");
+
+    // 随机 user（不存在）→ NotFound
+    let r = svc.redeem(&codes[0], Uuid::new_v4()).await;
+    assert!(matches!(r, Err(auth::AuthError::NotFound(_))));
+
+    // 码仍然有效：真实用户后续可兑换
+    let user_key = make_user(&pool).await;
+    let got = svc.redeem(&codes[0], user_key).await.expect("redeem after failed attempt");
+    assert_eq!(got, 200);
 }
