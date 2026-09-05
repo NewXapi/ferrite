@@ -174,6 +174,16 @@ cargo test -p observe -p ops
 表 `api_channels` 字段覆盖 gateway `dispatch::ChannelConfig` 所需，
 apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
 
+### 已完成 — `billing/` redeem (兑换码，4 端点)
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/redemption` | admin 批量生成（quota>0，count 1..100，明文 `fx-` 只返一次） |
+| GET | `/api/redemption` | admin 列表（status 过滤 + 分页） |
+| DELETE | `/api/redemption/{key}` | admin 禁用未核销码 |
+| POST | `/api/user/topup` | 用户兑换：CAS 核销 + `auth_users.quota` 事务入账 |
+
+表 `billing_redemptions`（code_hash 唯一）；并发核销同一码只有一个成功。
+
 ### 已完成 — `catalog/` groups (4 端点)
 
 | 方法 | 路径 | 说明 |
