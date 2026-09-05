@@ -6,5 +6,6 @@
 - `ToolCall` — 模型请求的工具调用。
 - `ToolResult` — 执行后回灌模型的结果。
 - `ToolRegistry` — 按名字查询 ToolSpec。
+- `ToolDescriptor::is_stealth` — `annotations.stealth` 严格布尔 true 判定（结果不回灌聊天流约定）。
 - `validate_arguments` — 执行前检查参数形状。
 

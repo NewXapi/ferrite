@@ -7,6 +7,7 @@ use std::pin::Pin;
 
 use futures_util::Stream;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
 
 use harness_prompt::AgentModelMessage;
@@ -32,6 +33,10 @@ pub struct ProviderRequest {
     pub max_tokens: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
+    /// OpenAI `response_format`（jsonSchema 等）原样透传；`None` 不下发。
+    /// 对齐 ST `generateQuietPrompt` 的 jsonSchema 透传（script.js:3019-3043）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<Value>,
 }
 
 /// Streamed increment from a provider.
@@ -108,5 +113,6 @@ pub fn empty_request(
         top_p: None,
         max_tokens: None,
         stop: Vec::new(),
+        response_format: None,
     }
 }
