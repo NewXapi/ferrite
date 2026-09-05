@@ -1,5 +1,6 @@
 //! harness-runtime — Agent loop driver and tool execution. Backend only.
 
+pub mod bias;
 pub mod cancel;
 pub mod delegation;
 pub mod delta_agg;
@@ -10,6 +11,7 @@ pub mod provider;
 pub mod tool_exec;
 pub mod turn;
 
+pub use bias::apply_logit_bias;
 pub use cancel::{CancelReason, CancellationToken};
 pub use delegation::{
     DelegationError, DelegationRequest, build_child_request, check_delegation, register_delegation,
@@ -22,8 +24,8 @@ pub use loop_engine::{
 };
 pub use persistence::{PersistenceError, RunPersistence};
 pub use provider::{
-    ChatProvider, ProviderDelta, ProviderError, ProviderFinishReason, ProviderRequest,
-    ProviderStream, ProviderUsage, ToolCallFragment, empty_request,
+    ChatProvider, LogprobItem, LogprobsConfig, ProviderDelta, ProviderError, ProviderFinishReason,
+    ProviderRequest, ProviderStream, ProviderUsage, ToolCallFragment, empty_request,
 };
 pub use tool_exec::{ToolExecError, ToolExecutor, ToolHandler};
 pub use turn::{TurnDriver, TurnError, TurnOutcome};

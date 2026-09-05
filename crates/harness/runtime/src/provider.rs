@@ -37,9 +37,20 @@ pub struct ProviderRequest {
     /// 对齐 ST `generateQuietPrompt` 的 jsonSchema 透传（script.js:3019-3043）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_format: Option<Value>,
+    /// CFG scale（classifier-free guidance）；text-completion 系 provider 支持。
+    /// 对齐 ST `cfg-scale.js`。`None` 不下发。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cfg_scale: Option<f32>,
+    /// OpenAI `logit_bias`：token_id 字符串 → 偏置值（-100..100）。
+    /// 对齐 ST `logit-bias.js getLogitBiasListResult`。`None` 不下发。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logit_bias: Option<std::collections::BTreeMap<String, i32>>,
+    /// OpenAI `logprobs`：启用概率日志并指定 top-K；\`None\` 不下发。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<LogprobsConfig>,
 }
 
-/// Streamed increment from a provider.
+/// Streamed increment from an injected [`ChatProvider`].
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProviderDelta {
     pub text: Option<String>,
@@ -47,6 +58,25 @@ pub struct ProviderDelta {
     pub tool_call: Option<ToolCallFragment>,
     pub usage: Option<ProviderUsage>,
     pub finish_reason: Option<ProviderFinishReason>,
+    /// 流式 logprobs 记录（仅在启用 logprobs 时填充）。
+    /// 对齐 ST `logprobs.js`。
+    pub logprobs: Option<Vec<LogprobItem>>,
+}
+
+/// 单条 logprob 记录。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogprobItem {
+    pub token: String,
+    pub logprob: f32,
+    pub bytes: Option<Vec<u8>>,
+}
+/// \`logprobs\` 子配置。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LogprobsConfig {
+    /// 0-20；启用 logprobs 时必填 top_logprobs 数量。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_logprobs: Option<u32>,
 }
 
 /// Incremental OpenAI-style tool-call fragment.
@@ -114,5 +144,8 @@ pub fn empty_request(
         max_tokens: None,
         stop: Vec::new(),
         response_format: None,
+        cfg_scale: None,
+        logit_bias: None,
+        logprobs: None,
     }
 }

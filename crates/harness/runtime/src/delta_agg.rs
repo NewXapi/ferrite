@@ -7,16 +7,21 @@ use thiserror::Error;
 
 use harness_tools::{ToolId, ToolInvocation};
 
-use crate::provider::{ProviderDelta, ToolCallFragment};
+use crate::provider::{LogprobItem, ProviderDelta, ToolCallFragment};
 
-/// Accumulates streamed model output until a turn finishes.
-#[derive(Debug, Default)]
-pub struct DeltaAggregator {
-    text: String,
-    reasoning: String,
-    calls: BTreeMap<usize, PartialToolCall>,
+/// Maps a streamed function name to a Ferrite [`ToolId`].
+pub trait ToolAliasResolver {
+    fn resolve(&self, alias: &str) -> Option<ToolId>;
 }
 
+impl<F> ToolAliasResolver for F
+where
+    F: Fn(&str) -> Option<ToolId>,
+{
+    fn resolve(&self, alias: &str) -> Option<ToolId> {
+        self(alias)
+    }
+}
 #[derive(Debug, Default)]
 struct PartialToolCall {
     call_id: Option<String>,
@@ -37,18 +42,13 @@ pub enum AggregateError {
     MalformedArguments { call_id: String, message: String },
 }
 
-/// Maps a streamed function name to a Ferrite [`ToolId`].
-pub trait ToolAliasResolver {
-    fn resolve(&self, alias: &str) -> Option<ToolId>;
-}
-
-impl<F> ToolAliasResolver for F
-where
-    F: Fn(&str) -> Option<ToolId>,
-{
-    fn resolve(&self, alias: &str) -> Option<ToolId> {
-        self(alias)
-    }
+/// Accumulates streamed model output until a turn finishes.
+#[derive(Debug, Default)]
+pub struct DeltaAggregator {
+    text: String,
+    reasoning: String,
+    calls: BTreeMap<usize, PartialToolCall>,
+    logprobs: Vec<LogprobItem>,
 }
 
 impl DeltaAggregator {
@@ -62,8 +62,16 @@ impl DeltaAggregator {
         if let Some(fragment) = &delta.tool_call {
             self.apply_fragment(fragment);
         }
+        if let Some(logprobs) = &delta.logprobs {
+            for lp in logprobs {
+                self.logprobs.push(LogprobItem {
+                    token: lp.token.clone(),
+                    logprob: lp.logprob,
+                    bytes: lp.bytes.clone(),
+                });
+            }
+        }
     }
-
     fn apply_fragment(&mut self, fragment: &ToolCallFragment) {
         let slot = self.calls.entry(fragment.index).or_default();
         if let Some(call_id) = &fragment.call_id
@@ -92,7 +100,9 @@ impl DeltaAggregator {
             Some(self.reasoning.as_str())
         }
     }
+}
 
+impl DeltaAggregator {
     pub fn finish(
         self,
         resolver: &impl ToolAliasResolver,
@@ -116,7 +126,6 @@ impl DeltaAggregator {
                 provider_metadata: Value::Null,
             });
         }
-
         Ok(TurnAggregate {
             text: self.text,
             reasoning: if self.reasoning.is_empty() {
@@ -125,6 +134,7 @@ impl DeltaAggregator {
                 Some(self.reasoning)
             },
             tool_calls,
+            logprobs: self.logprobs,
         })
     }
 }
@@ -146,4 +156,6 @@ pub struct TurnAggregate {
     pub text: String,
     pub reasoning: Option<String>,
     pub tool_calls: Vec<ToolInvocation>,
+    /// 按流式出现顺序的 logprobs 记录（仅在启用 logprobs 时填充）。
+    pub logprobs: Vec<LogprobItem>,
 }
