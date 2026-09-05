@@ -60,12 +60,11 @@ async fn redeem_generate_and_redeem_flow() {
     let again = svc.redeem(&codes[0], user_key).await;
     assert!(matches!(again, Err(auth::AuthError::NotFound(_))));
 
-    let (balance,): (i64,) =
-        sqlx::query_as("SELECT quota FROM auth_users WHERE key = $1")
-            .bind(user_key)
-            .fetch_one(&pool)
-            .await
-            .expect("fetch user");
+    let (balance,): (i64,) = sqlx::query_as("SELECT quota FROM auth_users WHERE key = $1")
+        .bind(user_key)
+        .fetch_one(&pool)
+        .await
+        .expect("fetch user");
     assert_eq!(balance, 500);
 }
 
@@ -80,10 +79,7 @@ async fn redeem_concurrent_single_winner() {
 
     let svc1 = std::sync::Arc::new(billing::RedeemService::new(pool.clone()));
     let svc2 = std::sync::Arc::clone(&svc1);
-    let (r1, r2) = tokio::join!(
-        svc1.redeem(&code, user_key),
-        svc2.redeem(&code, user_key),
-    );
+    let (r1, r2) = tokio::join!(svc1.redeem(&code, user_key), svc2.redeem(&code, user_key),);
     assert!(r1.is_ok() != r2.is_ok(), "exactly one redeem must win");
 }
 
@@ -107,12 +103,22 @@ async fn redeem_list_and_disable() {
     let (a, b) = (&codes[0], &codes[1]);
 
     let (items, _total) = svc.list(Some(1), 1, 50).await.expect("list");
-    assert!(items.iter().any(|i| codes.iter().any(|c| i.code_preview == format!("fx-{}****{}", &c[3..7], &c[c.len()-4..]))));
+    assert!(items.iter().any(|i| {
+        codes
+            .iter()
+            .any(|c| i.code_preview == format!("fx-{}****{}", &c[3..7], &c[c.len() - 4..]))
+    }));
 
     // 禁用 B（按 preview 找 key）
-    let b_preview = format!("fx-{}****{}", &b[3..7], &b[b.len()-4..]);
-    let b_key = items.iter().find(|i| i.code_preview == b_preview).map(|i| i.key.clone()).expect("find b key");
-    svc.disable(uuid::Uuid::parse_str(&b_key).unwrap()).await.expect("disable");
+    let b_preview = format!("fx-{}****{}", &b[3..7], &b[b.len() - 4..]);
+    let b_key = items
+        .iter()
+        .find(|i| i.code_preview == b_preview)
+        .map(|i| i.key.clone())
+        .expect("find b key");
+    svc.disable(uuid::Uuid::parse_str(&b_key).unwrap())
+        .await
+        .expect("disable");
 
     // 兑换被禁用的 B → NotFound
     let r = svc.redeem(b, user_key).await;
@@ -136,6 +142,9 @@ async fn redeem_missing_user_keeps_code_alive() {
 
     // 码仍然有效：真实用户后续可兑换
     let user_key = make_user(&pool).await;
-    let got = svc.redeem(&codes[0], user_key).await.expect("redeem after failed attempt");
+    let got = svc
+        .redeem(&codes[0], user_key)
+        .await
+        .expect("redeem after failed attempt");
     assert_eq!(got, 200);
 }

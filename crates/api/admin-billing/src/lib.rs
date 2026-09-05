@@ -31,4 +31,4 @@
 
 pub mod redeem;
 
-pub use redeem::{ensure_table, router, RedeemAppState, RedeemService};
+pub use redeem::{RedeemAppState, RedeemService, ensure_table, router};

@@ -64,8 +64,7 @@ struct RedemptionRow {
     created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
 }
 
-const COLS: &str =
-    "key, code_preview, quota, status, redeemed_by, redeemed_at, created_at";
+const COLS: &str = "key, code_preview, quota, status, redeemed_by, redeemed_at, created_at";
 
 fn row_to_view(r: RedemptionRow) -> RedemptionView {
     RedemptionView {
@@ -87,7 +86,11 @@ fn sha256_hex(s: &str) -> String {
 
 fn preview(plaintext: &str) -> String {
     let body = plaintext.strip_prefix("fx-").unwrap_or(plaintext);
-    format!("fx-{}****{}", &body[..4.min(body.len())], &body[body.len().saturating_sub(4)..])
+    format!(
+        "fx-{}****{}",
+        &body[..4.min(body.len())],
+        &body[body.len().saturating_sub(4)..]
+    )
 }
 
 pub struct RedeemService {
@@ -100,11 +103,7 @@ impl RedeemService {
     }
 
     /// 批量生成: count 条唯一码，同 quota；明文仅返回一次，库内 sha256。
-    pub async fn generate(
-        &self,
-        quota: i64,
-        count: u32,
-    ) -> Result<Vec<String>, AuthError> {
+    pub async fn generate(&self, quota: i64, count: u32) -> Result<Vec<String>, AuthError> {
         if quota <= 0 {
             return Err(AuthError::BadRequest("quota must be > 0".into()));
         }
@@ -151,13 +150,19 @@ impl RedeemService {
         .bind(user_key)
         .fetch_optional(&mut *tx)
         .await?;
-        let quota = row.ok_or(AuthError::NotFound("redemption code invalid or used".into()))?.0;
-        let applied = sqlx::query("UPDATE auth_users SET quota = quota + $2, updated_at = now() WHERE key = $1")
-            .bind(user_key)
-            .bind(quota)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
+        let quota = row
+            .ok_or(AuthError::NotFound(
+                "redemption code invalid or used".into(),
+            ))?
+            .0;
+        let applied = sqlx::query(
+            "UPDATE auth_users SET quota = quota + $2, updated_at = now() WHERE key = $1",
+        )
+        .bind(user_key)
+        .bind(quota)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
         // 入账目标不存在 → 回滚（码保持未核销，资金不丢）
         if applied == 0 {
             return Err(AuthError::NotFound("user not found".into()));
@@ -167,38 +172,66 @@ impl RedeemService {
     }
 
     /// admin 列表（分页）。
-    pub async fn list(&self, status: Option<i16>, page: i64, size: i64) -> Result<(Vec<RedemptionView>, i64), AuthError> {
+    pub async fn list(
+        &self,
+        status: Option<i16>,
+        page: i64,
+        size: i64,
+    ) -> Result<(Vec<RedemptionView>, i64), AuthError> {
         let size = size.clamp(1, 100);
         let offset = (page.max(1) - 1) * size;
         let (count_sql, list_sql) = if status.is_some() {
-            ("SELECT count(*) FROM billing_redemptions WHERE status = $1".to_string(),
-             format!("SELECT {COLS} FROM billing_redemptions WHERE status = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"))
+            (
+                "SELECT count(*) FROM billing_redemptions WHERE status = $1".to_string(),
+                format!(
+                    "SELECT {COLS} FROM billing_redemptions WHERE status = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+                ),
+            )
         } else {
-            ("SELECT count(*) FROM billing_redemptions".to_string(),
-             format!("SELECT {COLS} FROM billing_redemptions ORDER BY created_at DESC LIMIT $1 OFFSET $2"))
+            (
+                "SELECT count(*) FROM billing_redemptions".to_string(),
+                format!(
+                    "SELECT {COLS} FROM billing_redemptions ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+                ),
+            )
         };
         let total: i64 = if let Some(s) = status {
-            sqlx::query_scalar(&count_sql).bind(s).fetch_one(&self.pool).await?
+            sqlx::query_scalar(&count_sql)
+                .bind(s)
+                .fetch_one(&self.pool)
+                .await?
         } else {
             sqlx::query_scalar(&count_sql).fetch_one(&self.pool).await?
         };
         let rows: Vec<RedemptionRow> = if let Some(s) = status {
-            sqlx::query_as(&list_sql).bind(s).bind(size).bind(offset).fetch_all(&self.pool).await?
+            sqlx::query_as(&list_sql)
+                .bind(s)
+                .bind(size)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await?
         } else {
-            sqlx::query_as(&list_sql).bind(size).bind(offset).fetch_all(&self.pool).await?
+            sqlx::query_as(&list_sql)
+                .bind(size)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await?
         };
         Ok((rows.into_iter().map(row_to_view).collect(), total))
     }
 
     /// admin 禁用未核销的码。
     pub async fn disable(&self, key: Uuid) -> Result<(), AuthError> {
-        let n = sqlx::query("UPDATE billing_redemptions SET status = 3 WHERE key = $1 AND status = 1")
-            .bind(key)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
+        let n =
+            sqlx::query("UPDATE billing_redemptions SET status = 3 WHERE key = $1 AND status = 1")
+                .bind(key)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
         if n == 0 {
-            return Err(AuthError::NotFound("redemption not found or already used".into()));
+            return Err(AuthError::NotFound(
+                "redemption not found or already used".into(),
+            ));
         }
         Ok(())
     }
@@ -232,7 +265,10 @@ async fn require_admin(auth: &AuthService, h: &HeaderMap) -> Result<(), AuthErro
 
 type ErrResp = (StatusCode, Json<serde_json::Value>);
 fn err_json(e: AuthError) -> ErrResp {
-    (e.status(), Json(json!({ "code": e.code(), "message": e.to_string() })))
+    (
+        e.status(),
+        Json(json!({ "code": e.code(), "message": e.to_string() })),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,7 +289,11 @@ async fn generate(
     Json(req): Json<GenerateRequest>,
 ) -> Result<Json<serde_json::Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
-    let plaintexts = s.svc.generate(req.quota, req.count).await.map_err(err_json)?;
+    let plaintexts = s
+        .svc
+        .generate(req.quota, req.count)
+        .await
+        .map_err(err_json)?;
     Ok(Json(json!({ "codes": plaintexts })))
 }
 
@@ -276,7 +316,11 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<serde_json::Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
-    let (items, total) = s.svc.list(q.status, q.page, q.size).await.map_err(err_json)?;
+    let (items, total) = s
+        .svc
+        .list(q.status, q.page, q.size)
+        .await
+        .map_err(err_json)?;
     Ok(Json(json!({ "items": items, "total": total })))
 }
 
@@ -286,7 +330,8 @@ async fn remove(
     Path(key): Path<String>,
 ) -> Result<Json<serde_json::Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
-    let key = Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid key".into())))?;
+    let key =
+        Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid key".into())))?;
     s.svc.disable(key).await.map_err(err_json)?;
     Ok(Json(json!({ "success": true })))
 }

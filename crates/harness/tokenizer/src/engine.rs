@@ -24,7 +24,9 @@ impl TokenizerEngine {
             Err(_) => {
                 // Determine error kind: unsupported path extension? tokenizers crate returns Error::InvalidFile
                 // For simplicity, treat any non-JSON error as UnsupportedFormat.
-                Err(TokenModelError::UnsupportedFormat { path: path.to_path_buf() })
+                Err(TokenModelError::UnsupportedFormat {
+                    path: path.to_path_buf(),
+                })
             }
         }
     }

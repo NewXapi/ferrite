@@ -345,8 +345,11 @@ impl ChannelService {
 
     /// 全部启用渠道的 key 列表（批量扫描用）。
     pub async fn enabled_channel_keys(&self) -> Result<Vec<Uuid>, AuthError> {
-        Ok(sqlx::query_scalar("SELECT key FROM api_channels WHERE status = 1")
-            .fetch_all(&self.pool).await?)
+        Ok(
+            sqlx::query_scalar("SELECT key FROM api_channels WHERE status = 1")
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     pub async fn batch_delete(&self, keys: &[Uuid]) -> Result<usize, AuthError> {
@@ -386,9 +389,15 @@ impl ChannelService {
             .await
             .map_err(|e| AuthError::Crypto(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(AuthError::Crypto(format!("upstream returned {}", resp.status())));
+            return Err(AuthError::Crypto(format!(
+                "upstream returned {}",
+                resp.status()
+            )));
         }
-        let v: Value = resp.json().await.map_err(|e| AuthError::Crypto(e.to_string()))?;
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| AuthError::Crypto(e.to_string()))?;
         let models = v
             .get("data")
             .and_then(|d| d.as_array())
@@ -607,7 +616,10 @@ pub fn router(state: ChannelAppState) -> axum::Router {
         .route("/api/channel/tag", put(update_tag))
         .route("/api/channel/batch", post(batch_delete))
         .route("/api/channel/fetch_models", post(fetch_models))
-        .route("/api/channel/fetch_models/{key}", get(fetch_upstream_models))
+        .route(
+            "/api/channel/fetch_models/{key}",
+            get(fetch_upstream_models),
+        )
         .with_state(state)
 }
 
@@ -950,16 +962,27 @@ async fn fetch_models(
 ) -> Result<Json<Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
     // 批量扫描：payload 指定 keys 缺省时扫全部启用渠道
-    let keys: Vec<Uuid> = if let Some(arr) = req.payload.as_ref().and_then(|v| v.get("keys")).and_then(|v| v.as_array()) {
-        arr.iter().filter_map(|v| v.as_str().and_then(|s| Uuid::parse_str(s).ok())).collect()
+    let keys: Vec<Uuid> = if let Some(arr) = req
+        .payload
+        .as_ref()
+        .and_then(|v| v.get("keys"))
+        .and_then(|v| v.as_array())
+    {
+        arr.iter()
+            .filter_map(|v| v.as_str().and_then(|s| Uuid::parse_str(s).ok()))
+            .collect()
     } else {
         s.svc.enabled_channel_keys().await.map_err(err_json)?
     };
     let mut out = serde_json::Map::new();
     for k in keys {
         match s.svc.fetch_upstream_models(k).await {
-            Ok(models) => { out.insert(k.to_string(), json!(models)); }
-            Err(e) => { out.insert(k.to_string(), json!({"error": e.to_string()})); }
+            Ok(models) => {
+                out.insert(k.to_string(), json!(models));
+            }
+            Err(e) => {
+                out.insert(k.to_string(), json!({"error": e.to_string()}));
+            }
         }
     }
     Ok(Json(json!({ "results": out })))
