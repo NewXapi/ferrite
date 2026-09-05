@@ -35,3 +35,21 @@ pub fn price_of(counts: crate::scanner::TokenCounts, price: &ModelPrice) -> i64 
     let total_dollars = (input_cost + output_cost + cache_cost) * price.group_multiplier;
     (total_dollars * 500_000.0).ceil() as i64
 }
+
+use std::collections::HashMap;
+
+/// 来自配置的定价表实现。
+#[derive(Debug, Clone)]
+pub struct ConfigPriceTable {
+    prices: HashMap<String, ModelPrice>,
+}
+
+impl ConfigPriceTable {
+    pub fn new(prices: HashMap<String, ModelPrice>) -> Self { Self { prices } }
+}
+
+impl PriceTable for ConfigPriceTable {
+    fn lookup(&self, model: &str) -> Option<ModelPrice> {
+        self.prices.get(model).copied()
+    }
+}

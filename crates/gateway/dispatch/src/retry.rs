@@ -182,3 +182,24 @@ where
         model: model.to_string(),
     })
 }
+
+/// 来自配置的重试策略实现。
+#[derive(Debug, Clone)]
+pub struct ConfigRetryLoop {
+    max_attempts: u32,
+    retryable_status_codes: Vec<u16>,
+}
+
+impl ConfigRetryLoop {
+    pub fn new(max_attempts: u32, retryable_status_codes: Vec<u16>) -> Self {
+        Self { max_attempts, retryable_status_codes }
+    }
+    pub fn max_attempts(&self) -> u32 { self.max_attempts }
+    pub fn is_retryable(&self, status: u16) -> bool {
+        if self.retryable_status_codes.is_empty() {
+            matches!(status, 429 | 500..=599)
+        } else {
+            self.retryable_status_codes.contains(&status)
+        }
+    }
+}
