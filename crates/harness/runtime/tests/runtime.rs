@@ -1012,3 +1012,177 @@ async fn impersonate_generation_sends_no_tools() {
     assert!(seen[0].tools.is_empty());
     assert!(seen[0].tool_choice.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Stealth 注解 + response_format 透传
+// ---------------------------------------------------------------------------
+
+fn stealth_descriptor(id: ToolId) -> ToolDescriptor {
+    // annotations.stealth 严格布尔 true 才生效（对齐 ST ToolDefinition.stealth）
+    let mut descriptor = descriptor(id);
+    descriptor.annotations = serde_json::json!({ "stealth": true });
+    descriptor
+}
+
+fn stealth_snapshot() -> InvocationToolSnapshot {
+    let id = ToolId::builtin("read_file").expect("tool id");
+    InvocationToolSnapshot::try_new(
+        ToolSnapshotId::parse("inv_root").expect("snapshot"),
+        vec![ToolBinding::new(stealth_descriptor(id), "read_file", Some(4)).unwrap()],
+        8,
+    )
+    .expect("snapshot")
+}
+
+fn mixed_snapshot() -> InvocationToolSnapshot {
+    let read = ToolId::builtin("read_file").expect("tool id");
+    let tell = ToolId::builtin("tell_secret").expect("tool id");
+    InvocationToolSnapshot::try_new(
+        ToolSnapshotId::parse("inv_root").expect("snapshot"),
+        vec![
+            ToolBinding::new(descriptor(read), "read_file", Some(4)).unwrap(),
+            ToolBinding::new(stealth_descriptor(tell), "tell_secret", Some(4)).unwrap(),
+        ],
+        8,
+    )
+    .expect("snapshot")
+}
+
+fn tool_result_delta(call_id: &str) -> Vec<ProviderDelta> {
+    tool_delta(call_id, "read_file", "{\"path\":\"/tmp/x\"}")
+}
+
+/// 纯 stealth 轮：执行 + 落盘 + 事件后直接终结 run，不触发下一轮模型调用
+/// （对齐 ST「stealth 不触发后续生成」；provider.calls 断言防孤儿转写反复调用）。
+#[tokio::test]
+async fn all_stealth_round_ends_run_without_followup() {
+    let root = tmp_root("stealth_all");
+    let persistence = RunPersistence::new(&root);
+    let provider =
+        ScriptedProvider::new(vec![tool_result_delta("c1").into_iter().map(Ok).collect()]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").expect("id"), ok_handler());
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_stealth", true);
+    req.snapshot = stealth_snapshot();
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    // 只调用一次模型：结果不触发后续生成
+    assert_eq!(provider.calls(), 1);
+    // tool.completed 事件带 stealth 标记（事件走 sink，不落 events.jsonl）
+    let completed = sink
+        .events
+        .iter()
+        .find(|event| event.event_type == "tool.completed")
+        .expect("tool.completed");
+    assert_eq!(completed.payload["stealth"], serde_json::json!(true));
+    // tool-results/ 照常落盘
+    let dir = root.join("run_stealth");
+    assert!(
+        std::fs::read_dir(dir.join("tool-results"))
+            .expect("tool-results dir")
+            .count()
+            > 0
+    );
+}
+
+/// 混合轮：stealth 结果仍回灌（OpenAI 转写要求 tool_call 与 result 一一配对），
+/// 事件带 stealth 标记，run 正常走到下一轮模型调用。
+#[tokio::test]
+async fn mixed_stealth_round_still_feeds_back() {
+    let root = tmp_root("stealth_mixed");
+    let persistence = RunPersistence::new(&root);
+    // 第一轮：两个 tool call（一个普通 read_file，一个 stealth tell_secret）
+    // 第二轮：纯文本收尾
+    // 两个 call 需要不同 fragment index（聚合器按 index 区分 call），
+    // finish_reason 只在最后一个 delta 上发一次
+    let round1 = vec![
+        ProviderDelta {
+            tool_call: Some(ToolCallFragment {
+                index: 0,
+                call_id: Some("c1".into()),
+                name: Some("read_file".into()),
+                arguments: Some("{\"path\":\"/tmp/x\"}".into()),
+            }),
+            ..ProviderDelta::default()
+        },
+        ProviderDelta {
+            tool_call: Some(ToolCallFragment {
+                index: 1,
+                call_id: Some("c2".into()),
+                name: Some("tell_secret".into()),
+                arguments: Some("{\"path\":\"/tmp/y\"}".into()),
+            }),
+            finish_reason: Some(ProviderFinishReason::ToolCalls),
+            ..ProviderDelta::default()
+        },
+    ];
+    let provider = ScriptedProvider::new(vec![
+        round1.into_iter().map(Ok).collect(),
+        vec![Ok(text_delta("done", Some(ProviderFinishReason::Stop)))],
+    ]);
+    let mut executor = ToolExecutor::new();
+    executor.register(ToolId::builtin("read_file").expect("id"), ok_handler());
+    executor.register(ToolId::builtin("tell_secret").expect("id"), ok_handler());
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_mixed", true);
+    req.snapshot = mixed_snapshot();
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    // 第二轮模型调用发生：混合轮结果照常回灌（转写配对合法）
+    assert_eq!(provider.calls(), 2);
+    let stealth_flags: Vec<_> = sink
+        .events
+        .iter()
+        .filter(|event| event.event_type == "tool.completed")
+        .map(|event| event.payload["stealth"] == serde_json::json!(true))
+        .collect();
+    assert_eq!(stealth_flags, vec![false, true]);
+}
+
+/// response_format 字段：Some 时序列化出现（camelCase responseFormat），None 时跳过。
+#[test]
+fn response_format_passthrough_serde() {
+    use harness_runtime::ProviderRequest;
+    let mut req: ProviderRequest = serde_json::from_str(
+        r#"{"model":"m","messages":[],"responseFormat":{"type":"json_schema"}}"#,
+    )
+    .expect("deserialize with responseFormat");
+    assert_eq!(
+        req.response_format,
+        Some(serde_json::json!({ "type": "json_schema" }))
+    );
+    // 序列化回带该字段
+    let back = serde_json::to_value(&req).expect("serialize");
+    assert_eq!(back["responseFormat"]["type"], "json_schema");
+    // None 时不出现（skip_serializing_if）
+    req.response_format = None;
+    let back = serde_json::to_value(&req).expect("serialize none");
+    assert!(back.get("responseFormat").is_none());
+}

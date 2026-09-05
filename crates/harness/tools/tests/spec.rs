@@ -101,3 +101,28 @@ fn tool_binding_alias_accepts_valid_openai_function_names() {
         assert_eq!(binding.model_alias(), alias);
     }
 }
+
+// ---------------------------------------------------------------------------
+// ToolDescriptor::is_stealth — annotations["stealth"] 严格布尔 true 语义
+// ---------------------------------------------------------------------------
+
+#[test]
+fn is_stealth_requires_boolean_true() {
+    let base = ToolId::builtin("t").expect("id");
+    let make = |annotations: serde_json::Value| ToolDescriptor {
+        id: base.clone(),
+        title: None,
+        description: None,
+        input_schema: serde_json::json!({"type": "object"}),
+        output_schema: None,
+        annotations,
+    };
+    // 严格 true：布尔 true 生效
+    assert!(make(serde_json::json!({"stealth": true})).is_stealth());
+    // 字符串 "true" / 数字 1 / 缺失 / 空注解 / false 都不生效
+    assert!(!make(serde_json::json!({"stealth": "true"})).is_stealth());
+    assert!(!make(serde_json::json!({"stealth": 1})).is_stealth());
+    assert!(!make(serde_json::json!({})).is_stealth());
+    assert!(!make(serde_json::json!(null)).is_stealth());
+    assert!(!make(serde_json::json!({"stealth": false})).is_stealth());
+}

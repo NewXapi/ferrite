@@ -470,11 +470,31 @@ pub async fn run_agent_run<P: ChatProvider>(
             name: None,
         });
 
+        // ST tool-calling.js invokeFunctionTools（:820-868）：stealth 工具的结果
+        // 不进聊天记录、不触发后续生成。Ferrite 语义：
+        // - 本轮全部调用均为 stealth → 执行 + 落 tool-results/ + 事件后直接终结
+        //   run（不把 tool result 放进后续对话转写，避免无意义的下一轮模型调用）；
+        // - 混合轮 → stealth 结果仍需回灌（OpenAI 转写要求 assistant(tool_calls)
+        //   与 tool 结果一一配对，孤儿 tool_call 会被 provider 拒绝），由事件里的
+        //   stealth 标记供调用方/UI 过滤展示。
+        let all_stealth = outcome.tool_calls.iter().all(|call| {
+            request
+                .snapshot
+                .binding(&call.tool_id)
+                .map(|binding| binding.descriptor().is_stealth())
+                .unwrap_or(false)
+        });
+
         for call in outcome.tool_calls {
+            let stealth = request
+                .snapshot
+                .binding(&call.tool_id)
+                .map(|binding| binding.descriptor().is_stealth())
+                .unwrap_or(false);
             sink.emit(events.next(
                 "tool.started",
                 AgentRunEventLevel::Info,
-                json!({ "callId": call.call_id, "toolId": call.tool_id.to_string() }),
+                json!({ "callId": call.call_id, "toolId": call.tool_id.to_string(), "stealth": stealth }),
             ));
             deps.persistence
                 .write_tool_args(&run.id, &call.call_id, &call.arguments)
@@ -513,19 +533,46 @@ pub async fn run_agent_run<P: ChatProvider>(
                 json!({
                     "callId": result.call_id,
                     "isError": result.is_error,
+                    "stealth": stealth,
                 }),
             ));
             deps.persistence.write_tool_result(&run.id, &result).await?;
-            messages.push(AgentModelMessage {
-                role: AgentModelRole::Tool,
-                parts: vec![AgentModelContentPart::ToolResult {
-                    call_id: result.call_id,
-                    tool_id: result.tool_id.to_string(),
-                    content: result.content,
-                    is_error: result.is_error,
-                }],
-                name: None,
-            });
+            if !all_stealth {
+                messages.push(AgentModelMessage {
+                    role: AgentModelRole::Tool,
+                    parts: vec![AgentModelContentPart::ToolResult {
+                        call_id: result.call_id,
+                        tool_id: result.tool_id.to_string(),
+                        content: result.content,
+                        is_error: result.is_error,
+                    }],
+                    name: None,
+                });
+            }
+        }
+
+        if all_stealth {
+            // 纯 stealth 轮：结果不触发后续生成，直接落终态。
+            let status = if saw_tool_error {
+                AgentRunStatus::PartialSuccess
+            } else {
+                AgentRunStatus::Completed
+            };
+            persist_status(
+                &mut run,
+                status,
+                deps.persistence,
+                &mut events,
+                sink,
+                "run.completed",
+                AgentRunEventLevel::Info,
+                json!({ "status": format!("{status:?}").to_ascii_lowercase(), "reason": "all tool calls stealth" }),
+            )
+            .await?;
+            deps.persistence
+                .write_checkpoint(&run.id, round as u64, &run)
+                .await?;
+            return Ok(run);
         }
     }
 
