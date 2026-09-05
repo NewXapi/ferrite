@@ -158,7 +158,7 @@ async fn channel_crud_flow() {
     svc.delete(key).await.unwrap();
     assert!(matches!(
         svc.delete(key).await,
-        Err(auth::AuthError::UserNotFound)
+        Err(auth::AuthError::NotFound(_))
     ));
 }
 
@@ -371,7 +371,7 @@ async fn token_regenerate_key_rotates() {
     let stranger = uuid::Uuid::new_v4();
     assert!(matches!(
         svc.regenerate_key(stranger, key, false).await,
-        Err(auth::AuthError::UserNotFound)
+        Err(auth::AuthError::NotFound(_))
     ));
     // admin 可以
     assert!(svc.regenerate_key(stranger, key, true).await.is_ok());

@@ -29,28 +29,6 @@
 //! | [`redeem`]       | 兑换码生成/核销 |
 //! | [`idempotency`]  | 幂等护栏 (通用) |
 
-pub mod idempotency;
-pub mod orders;
-pub mod providers;
 pub mod redeem;
-pub mod subscriptions;
 
-use store::StoreError;
-
-/// 充值/订阅入口 — console 支付页的直接依赖。
-pub trait Billing: Send + Sync {
-    /// 创建订单 (pending) 并取得支付 URL。
-    fn create_order(
-        &self,
-        user_key: &str,
-        plan_key: Option<&str>,
-        amount: &str,
-    ) -> impl Future<Output = Result<contract::records::PaymentOrderRecord, StoreError>> + Send;
-
-    /// 处理支付回调 (幂等): 验签 → 订单终态 → 入账 → 订阅生效。
-    fn handle_webhook(
-        &self,
-        provider: &str,
-        payload: &serde_json::Value,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send;
-}
+pub use redeem::{ensure_table, router, RedeemAppState, RedeemService};

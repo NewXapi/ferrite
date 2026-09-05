@@ -11,8 +11,17 @@ publish.workspace = true
 # sub2api ent/schema/{subscription_plan,payment_order,redeem_code,user_subscription}。
 
 [dependencies]
-contract = { path = "../../contract" }
-store    = { path = "../admin-store" }
+axum     = { workspace = true }
+sqlx     = { workspace = true }
 serde    = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
+uuid     = { workspace = true }
+rand     = { workspace = true }
+sha2     = { workspace = true }
+hex      = { workspace = true }
+chrono   = { workspace = true }
+tracing  = { workspace = true }
+auth     = { path = "../auth" }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -290,13 +290,13 @@ async fn channel_update_balance_stub() {
 
 #[tokio::test]
 #[ignore]
-async fn channel_fetch_models_stub() {
+async fn channel_fetch_models_nonexistent_rejected() {
+    // fetch_upstream_models 需要真实上游网络；此处只验证不存在渠道的错误路径
     let (_, channel_svc) = make_svcs().await;
-    let models = channel_svc
-        .fetch_models(serde_json::json!({}))
-        .await
-        .expect("fetch_models stub");
-    assert!(models.is_array());
+    let r = channel_svc
+        .fetch_upstream_models(uuid::Uuid::new_v4())
+        .await;
+    assert!(matches!(r, Err(auth::error::AuthError::NotFound(_))));
 }
 
 #[tokio::test]
