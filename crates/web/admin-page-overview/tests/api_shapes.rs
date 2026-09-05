@@ -74,7 +74,9 @@ mod models {
 }
 
 mod leaderboard {
-    use admin_page_overview::api::leaderboard::{DIMS, MODELS, avg_norms, composite, dim_rank, norms};
+    use admin_page_overview::api::leaderboard::{
+        DIMS, MODELS, avg_norms, composite, dim_rank, norms,
+    };
 
     #[test]
     fn dims_shape() {
