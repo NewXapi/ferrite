@@ -59,28 +59,40 @@ pub fn registry() -> Vec<OptionSpec> {
             key: "site.quota_new_user",
             default: serde_json::json!(0),
             validate: |v| {
-                v.as_i64().filter(|q| *q >= 0).map(|_| ()).ok_or("must be non-negative integer".into())
+                v.as_i64()
+                    .filter(|q| *q >= 0)
+                    .map(|_| ())
+                    .ok_or("must be non-negative integer".into())
             },
         },
         OptionSpec {
             key: "gateway.retry.max_attempts",
             default: serde_json::json!(3),
             validate: |v| {
-                v.as_i64().filter(|n| (1..=10).contains(n)).map(|_| ()).ok_or("must be 1..=10".into())
+                v.as_i64()
+                    .filter(|n| (1..=10).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=10".into())
             },
         },
         OptionSpec {
             key: "gateway.timeout.first_byte_ms",
             default: serde_json::json!(30000),
             validate: |v| {
-                v.as_i64().filter(|n| *n >= 1000).map(|_| ()).ok_or("must be >= 1000 ms".into())
+                v.as_i64()
+                    .filter(|n| *n >= 1000)
+                    .map(|_| ())
+                    .ok_or("must be >= 1000 ms".into())
             },
         },
         OptionSpec {
             key: "observe.retention.usage_days",
             default: serde_json::json!(90),
             validate: |v| {
-                v.as_i64().filter(|n| (7..=365).contains(n)).map(|_| ()).ok_or("must be 7..=365".into())
+                v.as_i64()
+                    .filter(|n| (7..=365).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 7..=365".into())
             },
         },
     ]
@@ -109,13 +121,20 @@ impl OptionsService {
 
     /// 全部选项（库值回退注册表默认值）。
     pub async fn list(&self) -> Result<Vec<OptionView>, AuthError> {
-        let stored: Vec<(String, serde_json::Value, sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>)> =
-            sqlx::query_as("SELECT key, value, updated_at FROM options ORDER BY key")
-                .fetch_all(&self.pool)
-                .await?;
+        let stored: Vec<(
+            String,
+            serde_json::Value,
+            sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+        )> = sqlx::query_as("SELECT key, value, updated_at FROM options ORDER BY key")
+            .fetch_all(&self.pool)
+            .await?;
         let mut out: Vec<OptionView> = stored
             .into_iter()
-            .map(|(key, value, updated_at)| OptionView { key, value, updated_at })
+            .map(|(key, value, updated_at)| OptionView {
+                key,
+                value,
+                updated_at,
+            })
             .collect();
         // 注册表里有但库中没有的，补默认值视图
         for spec in registry() {
@@ -123,7 +142,8 @@ impl OptionsService {
                 out.push(OptionView {
                     key: spec.key.to_string(),
                     value: spec.default.clone(),
-                    updated_at: sqlx::types::chrono::DateTime::<sqlx::types::chrono::Utc>::UNIX_EPOCH,
+                    updated_at:
+                        sqlx::types::chrono::DateTime::<sqlx::types::chrono::Utc>::UNIX_EPOCH,
                 });
             }
         }
@@ -196,7 +216,10 @@ async fn require_admin(auth: &AuthService, h: &HeaderMap) -> Result<Uuid, AuthEr
 
 type ErrResp = (StatusCode, Json<serde_json::Value>);
 fn err_json(e: AuthError) -> ErrResp {
-    (e.status(), Json(json!({ "code": e.code(), "message": e.to_string() })))
+    (
+        e.status(),
+        Json(json!({ "code": e.code(), "message": e.to_string() })),
+    )
 }
 
 async fn list(
@@ -221,7 +244,11 @@ async fn update(
     Json(req): Json<UpdateRequest>,
 ) -> Result<Json<serde_json::Value>, ErrResp> {
     let actor = require_admin(&s.auth, &h).await.map_err(err_json)?;
-    let value = s.svc.set(actor, &req.key, req.value).await.map_err(err_json)?;
+    let value = s
+        .svc
+        .set(actor, &req.key, req.value)
+        .await
+        .map_err(err_json)?;
     Ok(Json(json!({ "key": req.key, "value": value })))
 }
 
