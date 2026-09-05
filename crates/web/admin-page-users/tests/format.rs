@@ -1,7 +1,7 @@
 //! 展示格式化助手(从 src/data.rs 内联测试迁出)。
 
-use page_users::api;
-use page_users::data::{cny_to_quota, fmt_cny, fmt_num, used_pct};
+use admin_page_users::api;
+use admin_page_users::data::{cny_to_quota, fmt_cny, fmt_num, used_pct};
 
 #[test]
 fn quota_and_pct_math() {

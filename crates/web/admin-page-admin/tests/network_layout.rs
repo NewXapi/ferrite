@@ -2,7 +2,7 @@
 //! 这些项以 `#[doc(hidden)] pub` 暴露,仅为满足"测试统一放 tests/"的项目
 //! 约定;非公共 API,勿在 crate 之外使用。
 
-use page_admin::network::{
+use admin_page_admin::network::{
     GraphView, MARGIN, NODE_H, NODE_W, NodeKey, VIEW_H, VIEW_W, bezier, cubic_at, dodge_frac,
     ease_out_quint, fit_view, initial_positions, visible_layers_of,
 };

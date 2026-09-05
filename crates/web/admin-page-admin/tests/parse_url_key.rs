@@ -1,7 +1,7 @@
 //! `parse_url_key` 的形态测试:URL+Key 从粘贴文本中提取(4 种格式 + 阈值边界)。
 //! 纯函数,单测放这里(不依赖 Dioxus runtime)。
 
-use page_admin::parse_url_key;
+use admin_page_admin::parse_url_key;
 
 fn ok(url: &str, key: &str) -> Option<(String, String)> {
     Some((url.to_string(), key.to_string()))

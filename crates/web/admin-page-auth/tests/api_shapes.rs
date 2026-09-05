@@ -5,7 +5,7 @@
 //! isn't unit-tested (it requires a runtime), so layout regressions are caught
 //! by the gate screenshot pass instead.
 
-use page_auth::api::{LoginRequest, login, register};
+use admin_page_auth::api::{LoginRequest, login, register};
 
 #[tokio::test]
 async fn login_returns_nonempty_token() {
@@ -31,7 +31,7 @@ fn auth_tab_serde_roundtrip_uses_default() {
     // The enum isn't serialized today; this guards against future renames by
     // asserting `Copy + Eq` semantics that `set_auth_tab` and `auth_tab`
     // depend on. If this fails, the state module lost its derive set.
-    use page_auth::state::AuthTab;
+    use admin_page_auth::state::AuthTab;
     let sign_in = AuthTab::SignIn;
     let copy_via_assign = sign_in;
     assert_eq!(sign_in, copy_via_assign);

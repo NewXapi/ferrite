@@ -3,7 +3,7 @@
 //! 编译期宏, 在 cargo test 下同样展开, 无需浏览器上下文。
 
 mod overview {
-    use page_overview::api::overview as api;
+    use admin_page_overview::api::overview as api;
 
     #[test]
     fn stats_pairs_complete() {
@@ -38,7 +38,7 @@ mod overview {
 }
 
 mod models {
-    use page_overview::api::models as api;
+    use admin_page_overview::api::models as api;
 
     #[test]
     fn models_have_unique_names() {
@@ -74,7 +74,7 @@ mod models {
 }
 
 mod leaderboard {
-    use page_overview::api::leaderboard::{DIMS, MODELS, avg_norms, composite, dim_rank, norms};
+    use admin_page_overview::api::leaderboard::{DIMS, MODELS, avg_norms, composite, dim_rank, norms};
 
     #[test]
     fn dims_shape() {
