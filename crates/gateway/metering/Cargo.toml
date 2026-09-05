@@ -15,3 +15,5 @@ thiserror = { workspace = true }
 chrono   = { workspace = true }
 bytes    = { workspace = true }
 futures-util = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
