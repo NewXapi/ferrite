@@ -101,7 +101,7 @@ GLOBAL_TRIGGER=""
 
 for f in $ALL_CHANGED; do
   case "$f" in
-    Cargo.lock|Cargo.toml|rust-toolchain.toml|.github/*|scripts/*)
+    Cargo.lock|Cargo.toml|rust-toolchain.toml|.github/*)
       IS_GLOBAL=true
       GLOBAL_TRIGGER="$f"
       break
