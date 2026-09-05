@@ -196,3 +196,90 @@ fn e2e_dispatcher_selects_correct_route() {
     assert_eq!(candidate.secret, "sk-test");
     assert_eq!(candidate.upstream_model, "gpt-4o");
 }
+
+#[test]
+fn e2e_streaming_settles_with_usage() {
+    let chunks = make_sse_chunks();
+    let mut ctx = forward::stream::SseContext::new();
+    let mut all_events = Vec::new();
+    for chunk in &chunks {
+        let out = forward::stream::pipe_chunk(&mut ctx, chunk);
+        all_events.extend_from_slice(&out.events);
+    }
+    let (end, counts) = forward::stream::finish(ctx);
+    assert_eq!(all_events.len(), 2);
+    assert_eq!(
+        all_events[0],
+        gateway_protocol_bridge::sse::SseEvent::FirstToken
+    );
+    assert_eq!(all_events[1], gateway_protocol_bridge::sse::SseEvent::Usage);
+    assert_eq!(counts.prompt, 10);
+    assert_eq!(counts.completion, 5);
+    assert_eq!(end, gateway_protocol_bridge::sse::SseEnd::Clean);
+}
+
+#[test]
+fn e2e_settle_generates_usage_event_with_cost() {
+    use metering::pricing::{ModelPrice, PriceTable};
+    use metering::scanner::TokenCounts;
+
+    struct FixedPriceTable;
+    impl PriceTable for FixedPriceTable {
+        fn lookup(&self, _model: &str) -> Option<ModelPrice> {
+            Some(ModelPrice {
+                input: 15.0,
+                output: 60.0,
+                cache: 0.0,
+                group_multiplier: 1.0,
+            })
+        }
+    }
+
+    let counts = TokenCounts {
+        prompt: 100,
+        completion: 50,
+        cached: 0,
+    };
+    let hold = metering::ledger::Hold {
+        id: 1,
+        amount: 100,
+        user_key: "user1".into(),
+        token_key: "tok1".into(),
+    };
+    let pt = FixedPriceTable;
+    let event = metering::settle_event(
+        counts, &hold, &pt, "ch1", "u1", "gpt-4o", "gpt-4o", 100, 500, 200, None,
+    );
+    assert_eq!(event.prompt_tokens, 100);
+    assert_eq!(event.completion_tokens, 50);
+    assert!(event.cost > 0);
+    assert_eq!(event.status_code, 200);
+}
+
+#[test]
+fn e2e_passthrough_bytes_preserved() {
+    let chunks = make_sse_chunks();
+    let mut ctx = forward::stream::SseContext::new();
+    let mut all_passthrough = Vec::new();
+    for chunk in &chunks {
+        let out = forward::stream::pipe_chunk(&mut ctx, chunk);
+        all_passthrough.push(out.passthrough);
+    }
+    for (i, chunk) in chunks.iter().enumerate() {
+        assert_eq!(&all_passthrough[i], chunk, "透传必须逐字保真");
+    }
+}
+
+#[test]
+fn e2e_truncated_stream_returns_truncated_end() {
+    let chunks = vec![
+        Bytes::from_static(b"data: {\"role\":\"assistant\"}\n\n"),
+        Bytes::from_static(b"data: {\"content\":\"hello\"}\n\n"),
+    ];
+    let mut ctx = forward::stream::SseContext::new();
+    for chunk in &chunks {
+        forward::stream::pipe_chunk(&mut ctx, chunk);
+    }
+    let (end, _counts) = forward::stream::finish(ctx);
+    assert_eq!(end, gateway_protocol_bridge::sse::SseEnd::Truncated);
+}
