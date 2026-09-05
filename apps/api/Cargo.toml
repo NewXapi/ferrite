@@ -27,7 +27,6 @@ bytes     = { workspace = true }
 tracing-log = { workspace = true }
 tracing-appender = { workspace = true }
 tower-http = { workspace = true }
-arc-swap  = { workspace = true }
 rand      = { workspace = true }
 chrono    = { workspace = true }
 futures-util = { workspace = true }
@@ -40,12 +39,13 @@ tavern-chats      = { path = "../../crates/api/tavern-chats" }
 tavern-settings   = { path = "../../crates/api/tavern-settings" }
 tavern-secrets    = { path = "../../crates/api/tavern-secrets" }
 tavern-generate   = { path = "../../crates/api/tavern-generate" }
-auth              = { path = "../../crates/api/auth" }
-
-# New dependencies for snapshot loading
-contract          = { path = "../../crates/contract" }
-gateway-gate      = { path = "../../crates/gateway/gate" }
-dispatch          = { path = "../../crates/gateway/dispatch" }
-anyhow          = "1"
-uuid            = { workspace = true }
-hex             = { workspace = true }
+admin-router = { path = "../../crates/api/admin-router" }
+observe = { path = "../../crates/api/admin-observe" }
+metering = { path = "../../crates/gateway/metering" }
+gateway-pipeline = { path = "../../crates/gateway/pipeline" }
+gateway-protocol-bridge = { path = "../../crates/gateway/protocol-bridge" }
+forward = { path = "../../crates/gateway/forward" }
+gateway-gate = { path = "../../crates/gateway/gate" }
+dispatch = { path = "../../crates/gateway/dispatch" }
+contract = { path = "../../crates/contract" }
+anyhow = "1"

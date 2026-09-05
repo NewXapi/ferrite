@@ -2,7 +2,7 @@
 //! (手机 1 栏 / 平板 3 栏 / 桌面 5 栏)。交互对齐 new-api 对应功能区:
 //! 渠道的状态速览/编辑/调度/批量,别名的计费,订阅与兑换码的生成与审计。
 //!
-//! 数据全走 `state::EntityStore`(mock);接 API 时把初始值换成请求结果即可。
+//! 数据全走 `state::EntityStore` 的初始 mock 值在 api.rs 中获取；接 API 时把初始值换成请求结果即可。
 //!
 //! 布局约定(与项目 gate-checklist 一致):
 //! - 桌面端面板间用「分隔线 + 独占行」表达从属关系,不占标签页;
@@ -10,10 +10,9 @@
 //! - 反馈一致:确认用「已保存/已生成/已测速」文字,危险操作用红色。
 
 use dioxus::prelude::*;
-
+use crate::api::{list_channels_api, list_aliases_api, list_subscriptions_api, list_redemptions_api, list_groups_api};
+use crate::state::{CHANNEL_TYPES, EntityStore, PlanRow, RedemptionRow};
 use crate::entities::{EntityChip, InputCell, SelectCell, TextCell};
-use crate::state::{CHANNEL_TYPES, EntityStore, PlanRow, RedRow};
-
 // ============ 文案常量 (>=2 次复用) ============
 const BTN_SAVE: &str = "保存";
 const BTN_CANCEL: &str = "取消";
@@ -178,10 +177,9 @@ pub fn ChannelsPage() -> Element {
                                                         testing.set(Some(i));
                                                         let n = test_counter.peek().wrapping_add(1);
                                                         test_counter.set(n);
-                                                        let ms = 120 + (n.wrapping_mul(97) % 380);
                                                         spawn(async move {
                                                             gloo_timers::future::TimeoutFuture::new(500).await;
-                                                            channels.write()[i].latency_ms = Some(ms);
+                                                            channels.write()[i].latency_ms = Some(500); // ponytail: 模拟测速固定值
                                                             testing.set(None);
                                                         });
                                                     },
@@ -538,7 +536,7 @@ pub fn SubscriptionsPage() -> Element {
     let mut editing_idx = use_signal(|| None::<usize>);
 
     // 基本信息表单字段
-    let mut f_id = use_signal(|| 0u32);
+    let mut f_id = use_signal(|| 0i32);
     let mut f_title = use_signal(String::new);
     let mut f_subtitle = use_signal(String::new);
     let mut f_price = use_signal(|| "0".to_string());
@@ -637,19 +635,19 @@ pub fn SubscriptionsPage() -> Element {
             payment_method: f_payment_method(),
             group: f_group(),
             downgrade_group: f_downgrade_group(),
-            period_val: f_period_val
-                .peek()
-                .trim()
-                .parse::<u32>()
-                .unwrap_or(1)
-                .max(1),
+              period_val: f_period_val
+                  .peek()
+                  .trim()
+                  .parse::<i32>()
+                  .unwrap_or(1)
+                  .max(1),
             period_unit: f_period_unit(),
             reset_cycle: f_reset_cycle(),
             priority: 0,
             enabled: f_enabled(),
             allow_redeem: f_allow_redeem(),
             allow_wallet: f_allow_wallet(),
-            max_per_user: f_limit.peek().trim().parse::<u32>().unwrap_or(0),
+            max_per_user: f_limit.peek().trim().parse::<i32>().unwrap_or(0),
             sort_order: f_sort.peek().trim().parse::<i32>().unwrap_or(0),
             stripe_price_id: f_stripe_id.peek().trim().to_string(),
             creem_product_id: f_creem_id.peek().trim().to_string(),
@@ -1104,13 +1102,13 @@ pub fn RedemptionsPage() -> Element {
         let upper = n.to_uppercase().replace(' ', "-");
         for k in 0..cnt {
             let code = (base.wrapping_add(k).wrapping_mul(2654435761) >> 4) % 65536;
-            reds.write().push(RedRow {
+            reds.write().push(RedemptionRow {
                 name: n.clone(),
                 key: format!("{upper}-{code:04X}"),
                 quota: q,
                 status: 1,
-                created: "2026-09-01".into(),
-                expired: if days > 0 {
+                created_at: "2026-09-01".into(),
+                expires_at: if days > 0 {
                     format!("{days} 天后")
                 } else {
                     "永不过期".into()
@@ -1129,7 +1127,7 @@ pub fn RedemptionsPage() -> Element {
     let total = all.len();
     let used = all.iter().filter(|r| r.status == 3).count();
     let unused = all.iter().filter(|r| r.status == 1).count();
-    let visible: Vec<(usize, RedRow)> = all
+    let visible: Vec<(usize, RedemptionRow)> = all
         .iter()
         .enumerate()
         .filter(|(_, r)| {
@@ -1174,7 +1172,7 @@ pub fn RedemptionsPage() -> Element {
                                         }
                                         div { class: "mt-1 flex items-center justify-between gap-2",
                                             span { class: "text-[11px] text-zinc-500",
-                                                "{redemption_status_label(r.status)} · {r.expired}"
+                                                "{redemption_status_label(r.status as u8)} · {r.expires_at}"
                                             }
                                             div { class: "flex items-center gap-2",
                                                 if r.status != 3 {
