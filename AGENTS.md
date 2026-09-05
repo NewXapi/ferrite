@@ -19,14 +19,10 @@
 
 - 只能删除**自己负责的 PR 对应的 worktree 目录**，且必须满足全部条件：
   1. PR 已 squash merge 到 upstream main；
-  2. 用户明确确认可以清理；
+  2. 维护者明确确认可以清理；
   3. 删除前 `git worktree list` 确认目标目录对应当前会话分支，不影响其他 worktree。
-- 合并流程结束时：`git worktree remove <自己目录>` + `gh pr merge --delete-branch`，禁止 `rm -rf .wt/` 或 `rm -rf .wt/*` 批量删除。
-- 发现 `.wt/` 目录意外丢失时，立即告知用户并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
-
-
-
-
+- 合并流程结束时：通过 `git worktree remove <自己目录>` + `gh pr merge --delete-branch` 正常释放，严禁使用 `rm -rf .wt/`、`rm -rf .wt/*` 或 `git clean` 进行任何批量/暴力删除。
+- 发现 `.wt/` 目录意外丢失时，立即告知维护者并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
 ## 域目录并发与越界
 
 - `crates/<domain>/` 是高内聚的开发单元：一个会话接手某域目录即**独占**它——其他会话不会来干扰，它也**不准越界**改动其他域目录下的任何 crate。
@@ -70,9 +66,22 @@ crates/web/<prefix-feature>/
 
 ## 安全与环境约定
 
-### 文件删除
+### 文件删除与清理保护（硬约束）
 
-- 删除用 `gio trash <path>`（进回收站，可恢复）；`gio remove` / `gio rm` / `rm` 是**永久删除**，禁止直接用。git 跟踪文件的删除可以用 `git rm`。
+**核心原则：代码与工作区任何非版本控制的清理，都必须保留后悔药（可恢复），绝对禁止不可逆抹除。**
+
+1. **严禁使用 `git clean`**：
+   - **禁止擅自运行 `git clean`**：任何开发会话严禁在未经维护者明确同意的情况下运行任何形式的 `git clean`（包括 `git clean -f`、`git clean -fd`、`git clean -fx`、`git clean -fX` 等）。
+   - **危害**：`git clean` 会直接物理擦除未跟踪的改动、临时脚本、本地环境配置文件（如 `.env*`、`config/config.toml`）、跨会话挂载点与实验分支，完全绕过回收站且不可撤销。
+2. **严禁使用 Shell 原生永久删除命令（全平台跨 Shell 禁令）**：
+   - **Bash / Linux / Unix**：严禁执行 `rm`、`rm -rf`、`rmdir`、`unlink`。
+   - **PowerShell (pwsh / Windows)**：严禁执行 `Remove-Item` 以及其所有内置别名 `rm`、`rmdir`、`del`、`erase`、`ri`。
+   - **严禁直接永久删除工具**：严禁调用 `gio remove` 或 `gio rm`（它们同样是物理直接抹除，不进回收站）。
+3. **唯一合规的文件删除与清理方式**：
+   - **本地非 Git 跟踪文件/目录**：一律使用 `gio trash <path>`，将目标安全移入 FreeDesktop 规范的用户标准回收站（`~/.local/share/Trash/`）。
+     - **找回与恢复**：若误删或需找回，读取 `~/.local/share/Trash/info/<filename>.trashinfo` 获取原路径，再从 `~/.local/share/Trash/files/<filename>` 移回。
+     - **清空回收站**：`gio trash --empty`（属于危险破坏性操作，必须获得维护者明确指令后方可执行）。
+   - **Git 跟踪文件的版本控制移除**：允许且必须使用常规版本控制命令 `git rm <path>`。
 
 ### 密钥与敏感信息
 
@@ -209,7 +218,7 @@ loop1:
 #### 7. tidy
 
 - **gate 复检**：跑 `gate pre-commit` / `gate pre-push` 全量规范检查，作为 tidy 的第一道清单；FAIL 清零再进下面各项。
-- **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么 `gio trash`、要么加 `.gitignore`。
+- **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么加 `.gitignore`、要么用 `gio trash` 移入回收站（严禁 `rm` 或 `git clean` 永久删除）。
 - **code**：测试代码没放 `tests/` 的挪过去；`cargo fmt` / `prettier` / 项目对应 formatter 跑一遍；无调试 log、commented-out code、调试 surrogate；rust doc 与实现不一致的更新掉；formatter 如修改文件，必须重跑最小验收命令、tool review、smoke，并更新 PR comment。
 - **docs**：同步改动的代码注释、`AGENTS.md` / `README.md` / `docs/` 里过期的段落，引用跟新增要一致。
 
