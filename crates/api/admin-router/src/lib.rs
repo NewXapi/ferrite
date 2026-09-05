@@ -11,6 +11,7 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
     catalog::tokens::ensure_table(&pool).await?;
     catalog::channels::ensure_table(&pool).await?;
     catalog::groups::ensure_table(&pool).await?;
+    catalog::models::ensure_table(&pool).await?;
     observe::logs::ensure_table(&pool).await?;
     observe::monitor::ensure_table(&pool).await?;
     tracing::info!("admin-api tables ensured");
@@ -34,6 +35,10 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         svc: std::sync::Arc::new(catalog::groups::GroupService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
+    let model_router = catalog::models::router(catalog::models::ModelAppState {
+        svc: std::sync::Arc::new(catalog::models::ModelService::new(pool.clone())),
+        auth: auth_svc.clone(),
+    });
     let log_router = observe::logs::router(observe::logs::LogAppState {
         svc: std::sync::Arc::new(observe::logs::LogService::new(pool.clone())),
         auth: auth_svc.clone(),
@@ -47,6 +52,7 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         .merge(token_router)
         .merge(channel_router)
         .merge(group_router)
+        .merge(model_router)
         .merge(log_router)
         .merge(monitor_router))
 }
