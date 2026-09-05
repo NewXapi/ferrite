@@ -6,14 +6,41 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Original e2e deps
 contract      = { path = "../crates/contract" }
 auth          = { path = "../crates/api/auth" }
 api           = { path = "../apps/api" }
 ui-components = { path = "../crates/web/ui-components" }
-tokio         = { workspace = true, features = ["macros", "rt-multi-thread"] }
-axum          = { workspace = true }
-tower         = { workspace = true }
-serde         = { workspace = true }
-serde_json    = { workspace = true }
-http          = { workspace = true }
+
+# Gateway crates
+dispatch = { path = "../crates/gateway/dispatch" }
+forward = { path = "../crates/gateway/forward" }
+gateway-pipeline = { path = "../crates/gateway/pipeline" }
+gateway-gate = { path = "../crates/gateway/gate" }
+gateway-protocol-bridge = { path = "../crates/gateway/protocol-bridge" }
+metering = { path = "../crates/gateway/metering" }
+
+# Core
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+axum = { workspace = true }
+tower = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+http = { workspace = true }
 http-body-util = "0.1"
+futures-util = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+arc-swap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+uuid = { workspace = true }
+
+[[test]]
+name = "gateway_e2e"
+path = "gateway_e2e.rs"
+
+[[test]]
+name = "auth_flow"
+path = "auth_flow.rs"

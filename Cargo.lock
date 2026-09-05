@@ -2781,6 +2781,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -4422,6 +4424,37 @@ dependencies = [
  "tavern-page-settings",
  "tavern-state",
  "ui-components",
+]
+
+[[package]]
+name = "tests-e2e"
+version = "0.1.0"
+dependencies = [
+ "api",
+ "arc-swap",
+ "auth",
+ "axum",
+ "bytes",
+ "chrono",
+ "contract",
+ "dispatch",
+ "forward",
+ "futures-util",
+ "gateway-gate",
+ "gateway-pipeline",
+ "gateway-protocol-bridge",
+ "http",
+ "http-body-util",
+ "metering",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "ui-components",
+ "uuid",
 ]
 
 [[package]]
