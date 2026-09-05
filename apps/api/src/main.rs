@@ -96,9 +96,12 @@ async fn main() -> ExitCode {
         tracing::info!("shutdown signal received");
     };
 
-    if let Err(e) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
+    if let Err(e) = axum::serve(
+        listener,
+        app.layer(tower_http::decompression::RequestDecompressionLayer::new()),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
     {
         tracing::error!("server error: {e}");
         return ExitCode::FAILURE;
