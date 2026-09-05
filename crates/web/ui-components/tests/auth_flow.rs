@@ -1,7 +1,7 @@
-//! shared-web 认证 DTO 与会话不变量测试
+//! ui-components 认证 DTO 与会话不变量测试
 use contract::api::auth::{LoginRequest, RegisterRequest};
 use contract::api::user::UserDto;
-use shared_web::{clear_cached_session, get_cached_token, get_cached_user, set_cached_session};
+use ui_components::{clear_cached_session, get_cached_token, get_cached_user, set_cached_session};
 
 #[test]
 fn test_auth_requests_construction() {
