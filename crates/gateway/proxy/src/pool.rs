@@ -17,7 +17,7 @@ pub struct ProxySnapshot {
 /// 代理节点池
 pub struct ProxyPool {
     by_channel: DashMap<i64, Arc<Vec<Arc<ProxyNode>>>>,
-    #[allow(dead_code)] // 桩：install 实现后读取
+    #[allow(dead_code)] // ponytail: 桩 — install 实现后读取
     snapshot: Arc<ArcSwap<ProxySnapshot>>,
 }
 

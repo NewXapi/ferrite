@@ -10,8 +10,7 @@ use async_trait::async_trait;
 use gateway_pipeline::{RequestCtx, Stage, StageError, StageOutcome};
 use std::sync::Arc;
 
-// ponytail: 桩 — handle 实现后读取 words/moderation。
-#[allow(dead_code)]
+#[allow(dead_code)] // ponytail: 桩 — handle 实现后读取 words/moderation
 pub struct StreamingInterceptStage {
     words: Arc<ArcSwap<WordList>>,
     moderation: Arc<dyn Moderation>,

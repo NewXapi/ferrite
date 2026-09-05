@@ -15,7 +15,7 @@ pub struct PreparedConn {
 }
 
 pub struct ProxyStage {
-    #[allow(dead_code)] // 桩：handle 实现后读取
+    #[allow(dead_code)] // ponytail: 桩 — handle 实现后读取
     pool: Arc<ProxyPool>,
 }
 

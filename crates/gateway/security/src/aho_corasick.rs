@@ -12,8 +12,7 @@ pub struct MatchHit {
     pub word_index: usize,
 }
 
-// ponytail: 桩 — build/scan 实现后读取这些表。
-#[allow(dead_code)]
+#[allow(dead_code)] // ponytail: 桩 — build/scan 实现后读取这些表
 pub struct AhoCorasick {
     goto: Vec<[i32; 256]>,
     fail: Vec<i32>,
