@@ -51,7 +51,7 @@ pub use run::{
     AgentInvocationExitPolicy, AgentInvocationKind, AgentInvocationStatus, AgentRun,
     AgentRunCommittedMessageProjection, AgentRunPresentation, AgentRunSkillScopeRefs,
     AgentRunSummaryProjection, AgentTaskRecord, AgentTaskStatus, ArtifactSpec, ArtifactTarget,
-    CommitPolicy, WorkspaceFileWriteMode,
+    CommitPolicy, GenerationType, WorkspaceFileWriteMode,
 };
 pub use status::{
     AGENT_RUN_SUMMARY_PROJECTION_SCHEMA_VERSION, AgentRunStatus, ROOT_AGENT_INVOCATION_ID,
