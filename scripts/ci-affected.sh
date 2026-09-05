@@ -146,6 +146,10 @@ has_test_suite() {
   if [[ -d "$dir/tests" ]] && compgen -G "$dir/tests/*.rs" >/dev/null; then
     return 0
   fi
+  # 顶层集成测试包 tests/（tests-e2e）：平铺在 tests/*.rs
+  if [[ "$dir" == "tests" ]] && compgen -G "$dir/*.rs" >/dev/null; then
+    return 0
+  fi
   return 1
 }
 
