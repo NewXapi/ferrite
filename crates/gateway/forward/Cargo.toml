@@ -18,6 +18,7 @@ thiserror = { workspace = true }
 async-trait = "0.1"
 anyhow = "1"
 reqwest  = { workspace = true }
+metering = { path = "../metering" }
 tokio    = { workspace = true }
 tokio-util = { version = "0.7", features = ["io"] }
 futures-util = { workspace = true }

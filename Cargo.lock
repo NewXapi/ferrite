@@ -502,6 +502,7 @@ dependencies = [
  "futures-util",
  "gateway-pipeline",
  "gateway-protocol-bridge",
+ "metering",
  "parking_lot",
  "reqwest",
  "serde",

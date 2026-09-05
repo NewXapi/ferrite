@@ -184,11 +184,12 @@ fn pipe_chunk_passthrough_and_scanner_contract() {
     let frame = Bytes::from_static(b"data: {\"role\":\"assistant\"}\n\n");
     let out = pipe_chunk(&mut ctx, &frame);
     assert_eq!(out.passthrough, frame, "透传必须逐字保真");
-    assert!(
-        out.events.is_empty(),
-        "桩扫描器当前无事件 (protocol TODO#502)"
+    assert_eq!(out.events.len(), 1, "首个 data 行应触发 FirstToken");
+    assert_eq!(
+        out.events[0],
+        gateway_protocol_bridge::sse::SseEvent::FirstToken
     );
-    let _end = finish(ctx); // 扫描器完成信号必须被消费
+    let (_end, _counts) = finish(ctx); // 扫描器完成信号必须被消费
 }
 
 #[test]
