@@ -42,6 +42,23 @@ pub enum WorkspaceFileWriteMode {
     Append,
 }
 
+/// 生成类型；对齐 SillyTavern `GENERATION_TYPE_TRIGGERS` 语义。
+///
+/// 仅 [`GenerationType::Chat`] 允许工具调用（ST `tool-calling.js`
+/// `noToolCallTypes = ['impersonate','quiet','continue']`）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationType {
+    /// 普通对话生成；工具可用。
+    Chat,
+    /// 静默生成（后台提示）；无工具，结果不触发后续生成。
+    Quiet,
+    /// 代入角色生成；无工具，结果由调用方写入用户消息位。
+    Impersonate,
+    /// 续写生成；无工具，输出拼接在末条 assistant 消息文本之后。
+    Continue,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentRun {
@@ -49,7 +66,7 @@ pub struct AgentRun {
     pub workspace_id: String,
     pub stable_chat_id: String,
     pub chat_ref: AgentChatRef,
-    pub generation_type: String,
+    pub generation_type: GenerationType,
     pub profile_id: Option<String>,
     #[serde(default, skip_serializing_if = "AgentRunSkillScopeRefs::is_empty")]
     pub skill_scope_refs: AgentRunSkillScopeRefs,

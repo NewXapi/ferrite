@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures_util::stream;
 use serde_json::json;
 
+use harness_core::GenerationType;
 use harness_core::{AgentChatRef, AgentModelRetryPolicy, AgentRunStatus};
 use harness_prompt::{AgentModelMessage, AgentModelRole};
 use harness_runtime::{
@@ -15,10 +16,12 @@ use harness_runtime::{
     ProviderRequest, ProviderStream, RunPersistence, ToolCallFragment, ToolExecutor, ToolHandler,
     VecEventSink, load_resumable_run, run_agent_run,
 };
-use harness_tools::{InvocationToolSnapshot, ToolBinding, ToolDescriptor, ToolId, ToolSnapshotId};
-
+use harness_tools::{
+    InvocationToolSnapshot, ToolBinding, ToolChoice, ToolDescriptor, ToolId, ToolSnapshotId,
+};
 struct ScriptedProvider {
     rounds: Mutex<Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>>,
+    seen: Mutex<Vec<ProviderRequest>>,
     calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 
@@ -26,6 +29,7 @@ impl ScriptedProvider {
     fn new(rounds: Vec<Vec<Result<ProviderDelta, harness_runtime::ProviderError>>>) -> Self {
         Self {
             rounds: Mutex::new(rounds),
+            seen: Mutex::new(Vec::new()),
             calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
@@ -35,11 +39,17 @@ impl ScriptedProvider {
     fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
+
+    /// 收到的 provider 请求副本，供生成类型 gating 断言使用。
+    fn seen(&self) -> Vec<ProviderRequest> {
+        self.seen.lock().expect("seen mutex").clone()
+    }
 }
 
 impl ChatProvider for ScriptedProvider {
-    fn stream(&self, _request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
+    fn stream(&self, request: ProviderRequest, _cancel: CancellationToken) -> ProviderStream {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        self.seen.lock().expect("seen mutex").push(request);
         let mut rounds = self.rounds.lock().expect("mock provider mutex");
         // Exhausted script yields an empty stream instead of panicking, so tests
         // that abort mid-retry do not depend on an exact round count.
@@ -89,6 +99,7 @@ fn request(run_id: &str, persistence_ok: bool) -> AgentRunRequest {
             file_name: "alice".into(),
         },
         profile_id: None,
+        generation_type: GenerationType::Chat,
         model: "test-model".into(),
         prompt: harness_prompt::AgentModelRequest {
             system: Some("sys".into()),
@@ -383,7 +394,7 @@ async fn persistence_rejects_unsafe_ids_and_keeps_event_order() {
             chat_ref: AgentChatRef::Group {
                 chat_id: "g".into(),
             },
-            generation_type: "chat".into(),
+            generation_type: GenerationType::Chat,
             profile_id: None,
             skill_scope_refs: Default::default(),
             persist_base_state_id: None,
@@ -833,4 +844,171 @@ async fn permanent_provider_error_is_not_retried() {
         1,
         "a rejected request must not be replayed"
     );
+}
+
+// ---------------------------------------------------------------------------
+// GenerationType：工具 gate + continue 前缀
+// ---------------------------------------------------------------------------
+
+/// 非 chat 类型（quiet 为例）不得把 tools / tool_choice 发给 provider：
+/// 对齐 ST `tool-calling.js canPerformToolCalls` 的 noToolCallTypes 语义。
+#[tokio::test]
+async fn quiet_generation_sends_no_tools() {
+    let root = tmp_root("quiet");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "background reply",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_quiet", true);
+    req.generation_type = GenerationType::Quiet;
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    assert_eq!(run.generation_type, GenerationType::Quiet);
+    // run.json 持久化请求值
+    let loaded = persistence.load_run("run_quiet").await.expect("load run");
+    assert_eq!(loaded.generation_type, GenerationType::Quiet);
+
+    let seen = provider.seen();
+    assert_eq!(seen.len(), 1);
+    assert!(
+        seen[0].tools.is_empty(),
+        "quiet 生成不得携带工具: {:?}",
+        seen[0].tools
+    );
+    assert!(
+        seen[0].tool_choice.is_none(),
+        "quiet 生成不得下发 tool_choice: {:?}",
+        seen[0].tool_choice
+    );
+}
+
+/// chat 类型维持工具注册 + Auto 选择（回归保护）。
+#[tokio::test]
+async fn chat_generation_keeps_tools_auto() {
+    let root = tmp_root("chat_tools");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "ok",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let req = request("run_chat", true);
+    run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    let seen = provider.seen();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].tools.len(), 1, "chat 保留 snapshot 绑定的工具");
+    assert_eq!(seen[0].tool_choice, Some(ToolChoice::Auto));
+}
+
+/// continue 类型：末条 assistant 消息文本作为前缀与续写输出拼接，
+/// 对齐 ST StreamingProcessor.continueMessage（最终消息 = 前缀 + 续写）。
+#[tokio::test]
+async fn continue_generation_prepends_assistant_prefix() {
+    let root = tmp_root("continue");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        " continued tail",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_continue", true);
+    req.generation_type = GenerationType::Continue;
+    req.prompt.messages.push(AgentModelMessage::text(
+        AgentModelRole::Assistant,
+        "the prefix text",
+    ));
+    let run = run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    assert_eq!(run.status, AgentRunStatus::Completed);
+    // 持久化的 model response text == 前缀 + 续写
+    let events = persistence
+        .load_events("run_continue")
+        .await
+        .expect("events");
+    let delta = events
+        .iter()
+        .find(|event| event.event_type == "model.delta")
+        .expect("model.delta event");
+    let text = delta.payload["text"].as_str().expect("text payload");
+    assert_eq!(text, "the prefix text continued tail");
+
+    // continue 不带工具
+    let seen = provider.seen();
+    assert!(seen[0].tools.is_empty());
+    assert!(seen[0].tool_choice.is_none());
+}
+
+/// impersonate 同样走无工具 gate（结果写用户消息位由调用方路由，harness 只透传类型）。
+#[tokio::test]
+async fn impersonate_generation_sends_no_tools() {
+    let root = tmp_root("impersonate");
+    let persistence = RunPersistence::new(&root);
+    let provider = ScriptedProvider::new(vec![vec![Ok(text_delta(
+        "*waves*",
+        Some(ProviderFinishReason::Stop),
+    ))]]);
+    let mut executor = ToolExecutor::new();
+    let mut sink = VecEventSink::default();
+
+    let mut req = request("run_imp", true);
+    req.generation_type = GenerationType::Impersonate;
+    run_agent_run(
+        req,
+        AgentRunDeps {
+            provider: &provider,
+            executor: &mut executor,
+            persistence: &persistence,
+            cancel: CancellationToken::new(),
+        },
+        &mut sink,
+    )
+    .await
+    .expect("run");
+
+    let seen = provider.seen();
+    assert!(seen[0].tools.is_empty());
+    assert!(seen[0].tool_choice.is_none());
 }

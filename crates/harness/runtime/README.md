@@ -12,6 +12,9 @@ Backend-only Agent loop. UI belongs to `tavern-web`. HTTP APIs, login, group cha
 - `tool_exec.rs` — `ToolRequestGate`, object-schema subset, handler dispatch.
 - `persistence.rs` — `run.json`, `events.jsonl`, tool I/O, checkpoints.
 - `loop_engine.rs` — bounded model → tool → model loop, model retry, run-state loading.
+  `AgentRunRequest.generation_type`（`GenerationType`）：非 `chat` 类型不注册工具
+  （对齐 ST `canPerformToolCalls` 的 `noToolCallTypes`）；`continue` 类型把末条
+  assistant 文本作为前缀拼进输出。
 
 ## Verify
 

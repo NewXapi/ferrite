@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use harness_core::{
     AgentChatRef, AgentModelRetryPolicy, AgentRun, AgentRunEvent, AgentRunEventLevel,
-    AgentRunPresentation, AgentRunStatus,
+    AgentRunPresentation, AgentRunStatus, GenerationType,
 };
 use harness_prompt::{AgentModelContentPart, AgentModelMessage, AgentModelRequest, AgentModelRole};
 use harness_tools::{AgentModelTool, InvocationToolSnapshot, ToolChoice, ToolId, ToolTurnContract};
@@ -27,6 +27,9 @@ pub struct AgentRunRequest {
     pub stable_chat_id: String,
     pub chat_ref: AgentChatRef,
     pub profile_id: Option<String>,
+    /// 生成类型；非 [`GenerationType::Chat`] 时不注册工具（对齐 ST
+    /// `tool-calling.js canPerformToolCalls` 的 `noToolCallTypes`）。
+    pub generation_type: GenerationType,
     pub model: String,
     pub prompt: AgentModelRequest,
     pub snapshot: InvocationToolSnapshot,
@@ -86,7 +89,7 @@ pub async fn run_agent_run<P: ChatProvider>(
         workspace_id: request.workspace_id,
         stable_chat_id: request.stable_chat_id,
         chat_ref: request.chat_ref,
-        generation_type: "chat".to_string(),
+        generation_type: request.generation_type,
         profile_id: request.profile_id,
         skill_scope_refs: Default::default(),
         persist_base_state_id: None,
@@ -140,23 +143,37 @@ pub async fn run_agent_run<P: ChatProvider>(
             AgentModelMessage::text(AgentModelRole::System, system.clone()),
         );
     }
-    let tools: Vec<AgentModelTool> = request
-        .snapshot
-        .bindings()
-        .iter()
-        .map(|binding| AgentModelTool {
-            tool_id: binding.tool_id().clone(),
-            model_alias: binding.model_alias().to_string(),
-            description: binding.descriptor().description.clone(),
-            input_schema: binding.descriptor().input_schema.clone(),
-        })
-        .collect();
-    let turn_contract =
-        ToolTurnContract::all(&request.snapshot, ToolChoice::Auto).map_err(|error| {
-            LoopError::Turn(TurnError::Provider(ProviderError::Failed(
-                error.to_string(),
-            )))
-        })?;
+    // ST `tool-calling.js canPerformToolCalls`：quiet / impersonate / continue
+    // 不允许工具调用 —— 非 chat 类型不注册 tools，也不下发 tool_choice。
+    let tools_enabled = request.generation_type == GenerationType::Chat;
+    let tools: Vec<AgentModelTool> = if tools_enabled {
+        request
+            .snapshot
+            .bindings()
+            .iter()
+            .map(|binding| AgentModelTool {
+                tool_id: binding.tool_id().clone(),
+                model_alias: binding.model_alias().to_string(),
+                description: binding.descriptor().description.clone(),
+                input_schema: binding.descriptor().input_schema.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let turn_contract = ToolTurnContract::all(
+        &request.snapshot,
+        if tools_enabled {
+            ToolChoice::Auto
+        } else {
+            ToolChoice::None
+        },
+    )
+    .map_err(|error| {
+        LoopError::Turn(TurnError::Provider(ProviderError::Failed(
+            error.to_string(),
+        )))
+    })?;
 
     deps.executor.begin_run();
     let resolver = BindingResolver {
@@ -210,7 +227,7 @@ pub async fn run_agent_run<P: ChatProvider>(
 
         let mut provider_request = empty_request(&request.model, messages.clone());
         provider_request.tools = tools.clone();
-        provider_request.tool_choice = Some(ToolChoice::Auto);
+        provider_request.tool_choice = tools_enabled.then_some(ToolChoice::Auto);
 
         let outcome = loop {
             // `ChatProvider::stream` 按值收请求，而重试要重发同一份输入。只有在
@@ -315,6 +332,21 @@ pub async fn run_agent_run<P: ChatProvider>(
             };
             break outcome;
         };
+
+        // ST `StreamingProcessor.continueMessage`（script.js:3514,3837）：continue
+        // 类型把末条 assistant 消息文本作为前缀，与续写输出直接拼接成完整消息。
+        let mut outcome = outcome;
+        if request.generation_type == GenerationType::Continue {
+            let prefix = request
+                .prompt
+                .messages
+                .iter()
+                .rev()
+                .find(|message| message.role == AgentModelRole::Assistant)
+                .map(|message| message.text_payload())
+                .unwrap_or_default();
+            outcome.text = format!("{prefix}{}", outcome.text);
+        }
 
         deps.persistence
             .write_model_response(
