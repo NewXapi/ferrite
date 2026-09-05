@@ -93,14 +93,12 @@ pub type SelfView = UserView;
 #[derive(Debug, Clone, FromRow)]
 struct SessionRow {
     sid: Uuid,
-    user_key: Uuid,
     user_agent: String,
     ip: String,
     login_method: String,
     created_at: DateTime<Utc>,
     last_active: DateTime<Utc>,
     expires_at: DateTime<Utc>,
-    revoked_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -392,11 +390,11 @@ impl AuthService {
     }
 
     /// 解析 access token 并返回 claims（供 handler 取 sid 等）。
-pub fn parse_access_claims(&self, token: &str) -> Result<jwt::Claims, AuthError> {
-    jwt::parse(&self.jwt_secret, token)
-}
+    pub fn parse_access_claims(&self, token: &str) -> Result<jwt::Claims, AuthError> {
+        jwt::parse(&self.jwt_secret, token)
+    }
 
-pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthError> {
+    pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthError> {
         let claims = jwt::parse(&self.jwt_secret, access_token)?;
         let key = Uuid::parse_str(&claims.sub).map_err(|_| AuthError::InvalidToken)?;
         let user = self.fetch_user_by_key(key).await?;
@@ -666,7 +664,7 @@ pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthE
         current_sid: Uuid,
     ) -> Result<Vec<SessionView>, AuthError> {
         let rows: Vec<SessionRow> = sqlx::query_as::<_, SessionRow>(
-            r#"SELECT sid, user_key, user_agent, ip, login_method, created_at, last_active, expires_at, revoked_at
+            r#"SELECT sid, user_agent, ip, login_method, created_at, last_active, expires_at
                FROM auth_user_sessions
                WHERE user_key = $1 AND revoked_at IS NULL
                ORDER BY created_at DESC"#,

@@ -8,6 +8,7 @@
 //! - models: JSONB 数组 [{alias, upstream}]
 //! - tags: JSONB 字符串数组 (渠道分组/标签)
 
+#![allow(clippy::too_many_arguments)] // ponytail: CRUD 参数逐一对应表列，包 struct 只是搬参数位置
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};

@@ -557,9 +557,7 @@ async fn batch_keys(
     let token_keys: Vec<Uuid> = req
         .keys
         .iter()
-        .map(|k| {
-            Uuid::parse_str(k).map_err(|_| AuthError::BadRequest("invalid token key".into()))
-        })
+        .map(|k| Uuid::parse_str(k).map_err(|_| AuthError::BadRequest("invalid token key".into())))
         .collect::<Result<_, _>>()
         .map_err(err_json)?;
     match state.svc.batch_keys(user_key, &token_keys, is_admin).await {
