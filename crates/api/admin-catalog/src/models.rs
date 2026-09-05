@@ -1,5 +1,6 @@
 //! 模型管理 — 单机版平表实现 (api_models)。
 
+#![allow(clippy::too_many_arguments)] // ponytail: CRUD 参数逐一对应表列，包 struct 只是搬参数位置
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -185,27 +186,27 @@ impl ModelService {
         let mut conds: Vec<String> = vec![];
         let mut binds: Vec<String> = vec![];
 
-        if let Some(s) = search {
-            if !s.trim().is_empty() {
-                conds.push(format!("name ILIKE ${}", binds.len() + 1));
-                binds.push(format!("%{}%", s.trim()));
-            }
+        if let Some(s) = search
+            && !s.trim().is_empty()
+        {
+            conds.push(format!("name ILIKE ${}", binds.len() + 1));
+            binds.push(format!("%{}%", s.trim()));
         }
-        if let Some(o) = owner {
-            if !o.trim().is_empty() {
-                conds.push(format!("owner = ${}", binds.len() + 1));
-                binds.push(o.trim().into());
-            }
+        if let Some(o) = owner
+            && !o.trim().is_empty()
+        {
+            conds.push(format!("owner = ${}", binds.len() + 1));
+            binds.push(o.trim().into());
         }
         if let Some(st) = status {
             conds.push(format!("status = ${}", binds.len() + 1));
             binds.push(st.to_string());
         }
-        if let Some(mt) = model_type {
-            if !mt.trim().is_empty() {
-                conds.push(format!("model_type = ${}", binds.len() + 1));
-                binds.push(mt.trim().into());
-            }
+        if let Some(mt) = model_type
+            && !mt.trim().is_empty()
+        {
+            conds.push(format!("model_type = ${}", binds.len() + 1));
+            binds.push(mt.trim().into());
         }
 
         let where_clause = if conds.is_empty() {

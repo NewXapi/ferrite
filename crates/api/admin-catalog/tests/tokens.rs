@@ -150,11 +150,17 @@ async fn token_supplement_get_auto_groups_batch() {
     let svc = make_svc().await;
     let owner = uid();
 
-    let created = svc.create(owner, "get_test", None, 0, true, None).await.unwrap();
+    let created = svc
+        .create(owner, "get_test", None, 0, true, None)
+        .await
+        .unwrap();
     let got = svc
         .get(owner, Uuid::parse_str(&created.token.key).unwrap(), false)
         .await
         .unwrap();
+    // 单查应取回刚创建的那条
+    assert_eq!(got.key, created.token.key);
+    assert_eq!(got.name, "get_test");
 
     // 单查不存在 → NotFound
     let missing = svc.get(owner, uid(), false).await.unwrap_err();
