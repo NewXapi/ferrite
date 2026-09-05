@@ -57,7 +57,7 @@ jobs:
       - name: Run Affected Crates Tests
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            python3 scripts/ci-affected.py --base "origin/${{ github.base_ref }}"
+            bash scripts/ci-affected.sh --base "origin/${{ github.base_ref }}"
           else
-            python3 scripts/ci-affected.py --base "HEAD~1"
+            bash scripts/ci-affected.sh --base "HEAD~1"
           fi

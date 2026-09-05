@@ -80,7 +80,7 @@ crates/web/<prefix-feature>/
   - 本地**坚决不跑全量测试**（严禁在本地执行 `cargo test --all`、全 workspace 构建等死重命令）。
   - 只有当修改的核心算法有单体单测且可在 3 秒内执行完毕时，才允许本地单跑极小测试：`cargo test -p <crate> -- <test_name>`。
 - **测试全面托付 GitHub CI（动态按需执行）**：
-  - 项目部署了动态 CI 调度器（`scripts/ci-affected.py`），依据 `git diff` 自动定位改动的 crate 及路径：
+  - 项目部署了动态 CI 调度器（`scripts/ci-affected.sh`），依据 `git diff` 自动定位改动的 crate 及路径：
     - 改动前端 crate/app 仅针对性运行 wasm32 编译与对应测试；
     - 改动后端 crate 仅按需运行对应模块单测；
     - 纯文档/配置改动直接秒级放行，跳过编译与测试；
