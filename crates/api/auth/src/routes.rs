@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -27,20 +27,29 @@ pub fn router(pool: PgPool) -> Result<Router, AuthError> {
 
 /// 共享 AuthService 的组装入口 — admin-api-router 聚合多个子域时用。
 pub fn router_with_svc(svc: Arc<AuthService>) -> Result<Router, AuthError> {
+    let state = AppState { svc };
+
     Ok(Router::new()
-        .route("/api/user/login", post(login))
-        .route("/api/user/register", post(register))
-        .route("/api/user/refresh", post(refresh))
-        .route("/api/user/logout", post(logout))
-        .route(
-            "/api/user/self",
-            get(self_view).put(update_self).delete(delete_self),
-        )
-        .route("/api/user", get(list_users))
-        .route("/api/user/search", get(search_users))
-        .route("/api/user/{key}", get(get_user))
-        .route("/api/user/manage", post(manage_user))
-        .with_state(AppState { svc }))
+        // Existing auth endpoints
+        .route("/login", post(login))
+        .route("/register", post(register))
+        .route("/refresh", post(refresh))
+        .route("/logout", post(logout))
+        .route("/self", get(self_view))
+        .route("/self", put(update_self))
+        .route("/self", delete(delete_self))
+        .route("/users", get(list_users))
+        .route("/users/search", get(search_users))
+        .route("/users/{key}", get(get_user))
+        .route("/users/manage", post(manage_user))
+        // NEW: Session management endpoints
+        .route("/self/sessions", get(list_sessions))
+        .route("/self/sessions/{sid}", delete(revoke_session))
+        .route("/self/sessions/revoke-others", post(revoke_others_sessions))
+        // NEW: User settings endpoints
+        .route("/self/setting", get(get_settings))
+        .route("/self/setting", put(update_settings))
+        .with_state(state))
 }
 
 #[derive(Debug, Deserialize)]
@@ -382,6 +391,133 @@ async fn get_user(
         .map_err(err_response)?;
     match state.svc.get_user(key).await {
         Ok(u) => Ok(Json(json!(u))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+// ---------- NEW: Session and Settings Handlers ----------
+
+// Session management handler for GET /api/user/self/sessions
+async fn list_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+
+    let user_key = uuid::Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    // Get the current session SID from the access token
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or(err_response(AuthError::InvalidToken))?;
+
+    let claims = state.svc.parse_access_claims(token).map_err(err_response)?;
+    let current_sid = uuid::Uuid::parse_str(&claims.sid)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    match state.svc.list_sessions(user_key, current_sid).await {
+        Ok(sessions) => Ok(Json(json!(sessions))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+// Session revocation handler for DELETE /api/user/self/sessions/{sid}
+async fn revoke_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(sid): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+
+    let user_key = uuid::Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    let sid_uuid = uuid::Uuid::parse_str(&sid)
+        .map_err(|_| AuthError::BadRequest("invalid session ID".into()))
+        .map_err(err_response)?;
+
+    match state.svc.revoke_session(user_key, sid_uuid).await {
+        Ok(()) => Ok(Json(json!({"success": true}))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+// Revoke others sessions handler for POST /api/user/self/sessions/revoke-others
+async fn revoke_others_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+
+    let user_key = uuid::Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    // Get the current session SID from the access token
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or(err_response(AuthError::InvalidToken))?;
+
+    let claims = state.svc.parse_access_claims(token).map_err(err_response)?;
+    let current_sid = uuid::Uuid::parse_str(&claims.sid)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    match state.svc.revoke_other_sessions(user_key, current_sid).await {
+        Ok(()) => Ok(Json(json!({"success": true}))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+// Get settings handler for GET /api/user/self/setting
+async fn get_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+
+    let user_key = uuid::Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    match state.svc.get_settings(user_key).await {
+        Ok(settings) => Ok(Json(json!(settings))),
+        Err(e) => Err(err_response(e)),
+    }
+}
+
+// Update settings handler for PUT /api/user/self/setting
+async fn update_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+
+    let user_key = uuid::Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_response)?;
+
+    match state.svc.update_settings(user_key, req).await {
+        Ok(settings) => Ok(Json(json!(settings))),
         Err(e) => Err(err_response(e)),
     }
 }

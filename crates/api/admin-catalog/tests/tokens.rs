@@ -2,11 +2,12 @@
 //!
 //! 跑：`DATABASE_URL=postgres://ferrite:ferrite@127.0.0.1:5433/ferrite \
 //!      cargo test -p catalog --test tokens -- --ignored --nocapture`
-
 use std::time::Duration;
 
+use auth::error::AuthError;
 use catalog::tokens::TokenService;
 use sqlx::postgres::PgPoolOptions;
+use uuid::Uuid;
 
 static INIT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -120,7 +121,7 @@ async fn token_create_list_update_delete() {
     // 再删 → NotFound
     assert!(matches!(
         svc.delete(owner, key, false).await,
-        Err(auth::AuthError::UserNotFound)
+        Err(AuthError::NotFound(_))
     ));
 }
 
@@ -141,6 +142,62 @@ async fn duplicate_plaintext_hash_rejected() {
     .execute(&svc_pool().await)
     .await;
     assert!(res.is_err(), "duplicate key_hash must violate unique");
+}
+
+#[tokio::test]
+#[ignore]
+async fn token_supplement_get_auto_groups_batch() {
+    let svc = make_svc().await;
+    let owner = uid();
+
+    let created = svc.create(owner, "get_test", None, 0, true, None).await.unwrap();
+    let got = svc
+        .get(owner, Uuid::parse_str(&created.token.key).unwrap(), false)
+        .await
+        .unwrap();
+
+    // 单查不存在 → NotFound
+    let missing = svc.get(owner, uid(), false).await.unwrap_err();
+    assert!(matches!(missing, AuthError::NotFound(_)));
+
+    // auto_groups
+    let groups = svc.auto_groups().await.unwrap();
+    assert!(groups.iter().any(|g| g == "default"));
+
+    // batch_create
+    let batch = svc
+        .batch_create(
+            owner,
+            vec![
+                catalog::tokens::NewToken {
+                    name: "b1".into(),
+                    group: Some("default".into()),
+                    quota: 500,
+                    unlimited_quota: false,
+                    expires_at: None,
+                },
+                catalog::tokens::NewToken {
+                    name: "b2".into(),
+                    group: None,
+                    quota: 0,
+                    unlimited_quota: true,
+                    expires_at: None,
+                },
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(batch.len(), 2);
+    assert!(batch.iter().all(|r| r.plaintext.starts_with("sk-")));
+
+    // batch_keys
+    let uuids: Vec<Uuid> = batch
+        .iter()
+        .map(|r| Uuid::parse_str(&r.token.key).unwrap())
+        .collect();
+    let keys = svc.batch_keys(owner, &uuids, false).await.unwrap();
+    assert_eq!(keys.len(), 2);
+    assert!(keys.iter().all(|(_, p)| p.starts_with("sk-")));
 }
 
 fn sha(s: &str) -> String {

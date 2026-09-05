@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use sha2::Sha256;
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
@@ -86,6 +87,63 @@ pub struct RefreshResult {
 }
 
 pub type SelfView = UserView;
+
+// ---------- Session management types ----------
+
+#[derive(Debug, Clone, FromRow)]
+struct SessionRow {
+    sid: Uuid,
+    user_key: Uuid,
+    user_agent: String,
+    ip: String,
+    login_method: String,
+    created_at: DateTime<Utc>,
+    last_active: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionView {
+    pub sid: String,
+    pub user_agent: String,
+    pub ip: String,
+    pub login_method: String,
+    pub created_at: DateTime<Utc>,
+    pub last_active: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub current: bool,
+}
+
+impl SessionRow {
+    fn into_view(self, current_sid: Uuid) -> SessionView {
+        SessionView {
+            sid: self.sid.to_string(),
+            user_agent: self.user_agent,
+            ip: self.ip,
+            login_method: self.login_method,
+            created_at: self.created_at,
+            last_active: self.last_active,
+            expires_at: self.expires_at,
+            current: self.sid == current_sid,
+        }
+    }
+}
+
+// ---------- User settings types ----------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsView {
+    pub settings: JsonValue,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsUpdateRequest {
+    pub settings: JsonValue,
+}
 
 pub struct AuthService {
     pool: PgPool,
@@ -333,7 +391,12 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthError> {
+    /// 解析 access token 并返回 claims（供 handler 取 sid 等）。
+pub fn parse_access_claims(&self, token: &str) -> Result<jwt::Claims, AuthError> {
+    jwt::parse(&self.jwt_secret, token)
+}
+
+pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthError> {
         let claims = jwt::parse(&self.jwt_secret, access_token)?;
         let key = Uuid::parse_str(&claims.sub).map_err(|_| AuthError::InvalidToken)?;
         let user = self.fetch_user_by_key(key).await?;
@@ -594,6 +657,142 @@ impl AuthService {
         self.fetch_user_by_key(target_key).await
     }
 
+    // ---------- Session management ----------
+
+    /// 获取当前用户的会话列表（按创建时间倒序）
+    pub async fn list_sessions(
+        &self,
+        user_key: Uuid,
+        current_sid: Uuid,
+    ) -> Result<Vec<SessionView>, AuthError> {
+        let rows: Vec<SessionRow> = sqlx::query_as::<_, SessionRow>(
+            r#"SELECT sid, user_key, user_agent, ip, login_method, created_at, last_active, expires_at, revoked_at
+               FROM auth_user_sessions
+               WHERE user_key = $1 AND revoked_at IS NULL
+               ORDER BY created_at DESC"#,
+        )
+        .bind(user_key)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|r| r.into_view(current_sid)).collect())
+    }
+
+    /// 吊销指定会话
+    pub async fn revoke_session(&self, user_key: Uuid, sid: Uuid) -> Result<(), AuthError> {
+        // Verify ownership
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT sid FROM auth_user_sessions WHERE sid = $1 AND user_key = $2 AND revoked_at IS NULL",
+        )
+        .bind(sid)
+        .bind(user_key)
+        .fetch_optional(&self.pool)
+        .await?;
+        if row.is_none() {
+            return Err(AuthError::NotFound("session not found".into()));
+        }
+
+        // Revoke session
+        sqlx::query("UPDATE auth_user_sessions SET revoked_at = now() WHERE sid = $1")
+            .bind(sid)
+            .execute(&self.pool)
+            .await?;
+
+        // Also revoke corresponding refresh token
+        sqlx::query(
+            "UPDATE auth_refresh_tokens SET revoked_at = now() WHERE sid = $1 AND revoked_at IS NULL",
+        )
+        .bind(sid)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// 吊销当前用户除当前会话外的所有会话
+    pub async fn revoke_other_sessions(
+        &self,
+        user_key: Uuid,
+        current_sid: Uuid,
+    ) -> Result<(), AuthError> {
+        // Revoke other sessions
+        sqlx::query(
+            "UPDATE auth_user_sessions SET revoked_at = now() WHERE user_key = $1 AND sid != $2 AND revoked_at IS NULL",
+        )
+        .bind(user_key)
+        .bind(current_sid)
+        .execute(&self.pool)
+        .await?;
+
+        // Revoke corresponding refresh tokens
+        sqlx::query(
+            "UPDATE auth_refresh_tokens SET revoked_at = now() WHERE user_key = $1 AND sid != $2 AND revoked_at IS NULL",
+        )
+        .bind(user_key)
+        .bind(current_sid)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// 获取用户设置
+    pub async fn get_settings(&self, user_key: Uuid) -> Result<JsonValue, AuthError> {
+        let row: Option<JsonValue> =
+            sqlx::query_scalar("SELECT settings FROM auth_user_settings WHERE user_key = $1")
+                .bind(user_key)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.unwrap_or_else(|| JsonValue::Object(serde_json::Map::new())))
+    }
+
+    /// 更新用户设置（合并 JSONB）
+    pub async fn update_settings(
+        &self,
+        user_key: Uuid,
+        patch: JsonValue,
+    ) -> Result<JsonValue, AuthError> {
+        let current = self.get_settings(user_key).await?;
+        let merged = merge_jsonb(current, patch);
+
+        sqlx::query(
+            r#"INSERT INTO auth_user_settings (user_key, settings, updated_at)
+               VALUES ($1, $2, now())
+               ON CONFLICT (user_key) DO UPDATE SET settings = $2, updated_at = now()"#,
+        )
+        .bind(user_key)
+        .bind(merged.clone())
+        .execute(&self.pool)
+        .await?;
+        Ok(merged)
+    }
+
+    /// 更新会话最后活跃时间
+    pub async fn touch_session(&self, sid: Uuid) -> Result<(), AuthError> {
+        sqlx::query(
+            "UPDATE auth_user_sessions SET last_active = now() WHERE sid = $1 AND revoked_at IS NULL",
+        )
+        .bind(sid)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 2FA: 生成 TOTP 密钥 (stub - returns 501)
+    pub async fn setup_2fa(&self, _user_key: Uuid) -> Result<(), AuthError> {
+        Err(AuthError::Internal("2FA not implemented".into()))
+    }
+
+    /// 2FA: 验证 TOTP 码 (stub - returns 501)
+    pub async fn verify_2fa(&self, _user_key: Uuid, _code: &str) -> Result<(), AuthError> {
+        Err(AuthError::Internal("2FA not implemented".into()))
+    }
+
+    /// 2FA: 禁用 2FA (stub - returns 501)
+    pub async fn disable_2fa(&self, _user_key: Uuid) -> Result<(), AuthError> {
+        Err(AuthError::Internal("2FA not implemented".into()))
+    }
+
     async fn issue_session(
         &self,
         user: UserRow,
@@ -616,6 +815,20 @@ impl AuthService {
         .bind(user.key)
         .bind(&token_hash)
         .bind(user.auth_version)
+        .bind(user_agent)
+        .bind(ip)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+
+        // Also insert into auth_user_sessions
+        sqlx::query(
+            r#"INSERT INTO auth_user_sessions
+               (sid, user_key, user_agent, ip, login_method, expires_at)
+               VALUES ($1, $2, $3, $4, 'password', $5)"#,
+        )
+        .bind(sid)
+        .bind(user.key)
         .bind(user_agent)
         .bind(ip)
         .bind(expires_at)
@@ -658,4 +871,19 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+/// 合并两个 JSONB 值 (deep merge for objects, replace for others)
+fn merge_jsonb(base: JsonValue, patch: JsonValue) -> JsonValue {
+    match (base, patch) {
+        (JsonValue::Object(mut base_map), JsonValue::Object(patch_map)) => {
+            for (k, v) in patch_map.iter() {
+                let removed = base_map.remove(k).unwrap_or(JsonValue::Null);
+                let merged = merge_jsonb(removed, v.clone());
+                base_map.insert(k.clone(), merged);
+            }
+            JsonValue::Object(base_map)
+        }
+        (_, patch) => patch,
+    }
 }
