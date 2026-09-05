@@ -6,3 +6,13 @@
 //! 见 [`TokenModelError::UnsupportedFormat`]，接入时再补 `sentencepiece` 依赖）。
 //!
 //! 零 IO 默认：模型文件路径由调用方传入（归档分发与许可核对归仓库层）。
+
+pub mod error;
+pub mod engine;
+pub mod registry;
+
+// Re-export public items for use in tests and outside the crate
+pub use error::TokenModelError;
+pub use error::TokenizerError;
+pub use engine::TokenizerEngine;
+pub use registry::TokenizerRegistry;
