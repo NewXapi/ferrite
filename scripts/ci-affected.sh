@@ -127,7 +127,7 @@ get_workspace_meta() {
 # workspace 内部依赖边，每行 "依赖者 被依赖者"。
 # 只取带 path 的依赖（本地路径依赖 = workspace 成员），忽略 crates.io 依赖。
 get_dep_edges() {
-  cargo metadata --format-version 1 | jq -r '
+  cargo metadata --format-version 1 --no-deps | jq -r '
     [.workspace_members[]] as $ws |
     .packages[] | select(.id as $id | $ws | index($id)) |
     .name as $me |
