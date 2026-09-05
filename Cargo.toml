@@ -54,6 +54,7 @@ members = [
     "crates/harness/runtime",
     "crates/harness/tools",
     "crates/harness/ui",
+    "crates/harness/tokenizer",
 ]
 
 [workspace.package]
@@ -80,6 +81,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "regis
 tracing-appender = "0.2"
 tracing-log = "0.2"
 thiserror   = "2"
+tokenizers  = { version = "0.20", default-features = false, features = ["onig"] }
 dioxus      = { version = "=0.7.9", features = ["router"] }
 gloo-net   = { version = "0.6", features = ["json"] }
 sha2        = "0.10"
