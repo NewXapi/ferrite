@@ -1,10 +1,5 @@
-//! 管理面板的共享实体 store：分组 / 模型别名 / 渠道 / 订阅套餐 / 兑换码。
-//! 拓扑图、抽屉与「设置」tab 读写同一份数据，任一侧修改立即同步。
-//! 目前全是 mock；将来 API crate 加载后替换初始值即可替换来源。
-//!
-//! 索引必须与图的 SEED_EDGES 对齐（见 network/mod.rs）：
-//! 分组顺序 default/claude/gpt-5/vip，别名 gpt-4o/gpt-5/claude-sonnet-4/gemini-2.5-pro。
-
+use crate::api::{list_channels_api, list_groups_api, list_tokens_api, list_aliases_api, list_subscriptions_api, list_redemptions_api};
+use client::{ApiClient, ApiResult};
 use dioxus::prelude::*;
 
 #[derive(Clone, PartialEq)]
@@ -30,29 +25,21 @@ pub struct AliasRow {
 #[derive(Clone, PartialEq)]
 pub struct ChannelRow {
     pub name: String,
-    /// 渠道类型,取值见 CHANNEL_TYPES(镜像 api 的 CHANNEL_TYPES)
     pub ctype: String,
     pub url: String,
     pub keys: String,
-    /// 状态:1 启用 / 0 手动停用 / 2 自动停用(测速失败)
     pub status: u8,
-    /// 所属分组(默认 default)
     pub group: String,
-    /// 最近一次测速毫秒数;None = 未测
-    pub latency_ms: Option<u32>,
-    /// 拉取回来、尚未进入拓扑的候补：(模型名, 是否勾选)
+    pub latency_ms: Option<i32>,
     pub candidates: Vec<(String, bool)>,
-    /// 已加入拓扑的调度模型；名字来自上游，不可改
     pub dispatch: Vec<String>,
 }
 
-/// 渠道类型选项,镜像 `apps/api/src/gateway.rs` 的 CHANNEL_TYPES。
 pub const CHANNEL_TYPES: &[&str] = &["openai", "openai-compat", "claude", "gemini"];
 
-/// 订阅套餐(对齐 new-api subscriptions 字段)
 #[derive(Clone, PartialEq)]
 pub struct PlanRow {
-    pub id: u32,
+    pub id: i32,
     pub title: String,
     pub subtitle: String,
     pub price: f64,
@@ -61,32 +48,40 @@ pub struct PlanRow {
     pub payment_method: String,
     pub group: String,
     pub downgrade_group: String,
-    pub period_val: u32,
+    pub period_val: i32,
     pub period_unit: String,
     pub reset_cycle: String,
     pub priority: i32,
     pub enabled: bool,
     pub allow_redeem: bool,
     pub allow_wallet: bool,
-    pub max_per_user: u32,
+    pub max_per_user: i32,
     pub sort_order: i32,
     pub stripe_price_id: String,
     pub creem_product_id: String,
     pub waffo_product_id: String,
 }
+
 pub const PLAN_PERIODS: &[&str] = &["month", "quarter", "year"];
 
-/// 兑换码(对齐 new-api redemption 的字段子集)
-/// 状态:1 未用 / 2 停用 / 3 已用
 #[derive(Clone, PartialEq)]
-pub struct RedRow {
+pub struct TokenRow {
+    pub key: String,
+    pub name: String,
+    pub display: String,
+    pub quota: i64,
+    pub used_quota: i64,
+    pub multiplier: f64,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct RedemptionRow {
     pub name: String,
     pub key: String,
-    /// 额度(¥ 等值)
     pub quota: f64,
-    pub status: u8,
-    pub created: String,
-    pub expired: String,
+    pub status: i16,
+    pub created_at: String,
+    pub expires_at: String,
 }
 
 #[derive(Clone, Copy)]
@@ -95,7 +90,8 @@ pub struct EntityStore {
     pub aliases: Signal<Vec<AliasRow>>,
     pub channels: Signal<Vec<ChannelRow>>,
     pub plans: Signal<Vec<PlanRow>>,
-    pub redemptions: Signal<Vec<RedRow>>,
+    pub tokens: Signal<Vec<TokenRow>>,
+    pub redemptions: Signal<Vec<RedemptionRow>>,
 }
 
 impl EntityStore {
@@ -269,8 +265,8 @@ impl EntityStore {
                     waffo_product_id: "".into(),
                 },
                 PlanRow {
-                    id: 3,
-                    title: "“杰瑞”的牛奶".into(),
+                    id: 5,
+                    title: "杰瑞的牛奶".into(),
                     subtitle: "我的牛奶！不会有下次了！！！".into(),
                     price: 1.0,
                     quota: 10.0,
@@ -338,38 +334,64 @@ impl EntityStore {
                     waffo_product_id: "".into(),
                 },
             ]),
+            tokens: Signal::new(vec![
+                TokenRow {
+                    key: "sk-**************************".into(),
+                    name: "OpenAI GPT-4o".into(),
+                    display: "GPT-4o".into(),
+                    quota: 1000000,
+                    used_quota: 0,
+                    multiplier: 1.0,
+                },
+                TokenRow {
+                    key: "ak-****".into(),
+                    name: "Claude Sonnet 4".into(),
+                    display: "Claude Sonnet 4".into(),
+                    quota: 500000,
+                    used_quota: 0,
+                    multiplier: 1.2,
+                },
+                TokenRow {
+                    key: "gm-****".into(),
+                    name: "Gemini 2.5 Pro".into(),
+                    display: "Gemini 2.5 Pro".into(),
+                    quota: 2000000,
+                    used_quota: 0,
+                    multiplier: 1.0,
+                },
+            ]),
             redemptions: Signal::new(vec![
-                RedRow {
+                RedemptionRow {
                     name: "内测福利".into(),
                     key: "BETA-3F2A".into(),
                     quota: 50.0,
                     status: 1,
-                    created: "2026-08-30".into(),
-                    expired: "永不过期".into(),
+                    created_at: "2026-08-30".into(),
+                    expires_at: "永不过期".into(),
                 },
-                RedRow {
+                RedemptionRow {
                     name: "内测福利".into(),
                     key: "BETA-9C14".into(),
                     quota: 50.0,
                     status: 3,
-                    created: "2026-08-30".into(),
-                    expired: "永不过期".into(),
+                    created_at: "2026-08-30".into(),
+                    expires_at: "永不过期".into(),
                 },
-                RedRow {
+                RedemptionRow {
                     name: "活动码".into(),
                     key: "ACTV-77D1".into(),
                     quota: 10.0,
                     status: 2,
-                    created: "2026-08-25".into(),
-                    expired: "2026-09-15".into(),
+                    created_at: "2026-08-25".into(),
+                    expires_at: "2026-09-15".into(),
                 },
-                RedRow {
+                RedemptionRow {
                     name: "活动码".into(),
                     key: "ACTV-08E2".into(),
                     quota: 10.0,
                     status: 1,
-                    created: "2026-08-25".into(),
-                    expired: "2026-09-15".into(),
+                    created_at: "2026-08-25".into(),
+                    expires_at: "2026-09-15".into(),
                 },
             ]),
         }

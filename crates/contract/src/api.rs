@@ -14,6 +14,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod billing;
 pub mod token;
 pub mod usage;
 pub mod user;
