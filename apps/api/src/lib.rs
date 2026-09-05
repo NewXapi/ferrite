@@ -6,6 +6,7 @@ pub mod billing;
 pub mod config;
 pub mod dispatch;
 pub mod gateway;
+pub mod snapshot;
 pub mod identity;
 pub mod ratelimit;
 pub mod tavern;

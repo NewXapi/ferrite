@@ -41,3 +41,11 @@ tavern-settings   = { path = "../../crates/api/tavern-settings" }
 tavern-secrets    = { path = "../../crates/api/tavern-secrets" }
 tavern-generate   = { path = "../../crates/api/tavern-generate" }
 auth              = { path = "../../crates/api/auth" }
+
+# New dependencies for snapshot loading
+contract          = { path = "../../crates/contract" }
+gateway-gate      = { path = "../../crates/gateway/gate" }
+dispatch          = { path = "../../crates/gateway/dispatch" }
+anyhow          = "1"
+uuid            = { workspace = true }
+hex             = { workspace = true }
