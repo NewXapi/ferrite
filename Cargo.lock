@@ -2781,8 +2781,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
- "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -4423,23 +4421,6 @@ dependencies = [
  "tavern-page-personas",
  "tavern-page-settings",
  "tavern-state",
- "ui-components",
-]
-
-[[package]]
-name = "tests-e2e"
-version = "0.1.0"
-dependencies = [
- "api",
- "auth",
- "axum",
- "contract",
- "http",
- "http-body-util",
- "serde",
- "serde_json",
- "tokio",
- "tower",
  "ui-components",
 ]
 

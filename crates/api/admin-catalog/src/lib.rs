@@ -20,6 +20,7 @@
 
 pub mod channels;
 pub mod groups;
+pub mod models;
 pub mod routes;
 pub mod tokens;
 pub mod users;
