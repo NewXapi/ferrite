@@ -716,8 +716,11 @@ async fn cancellation_interrupts_retry_backoff() {
     let mut sink = VecEventSink::default();
     let cancel = CancellationToken::new();
     let waker = cancel.clone();
+    let calls = provider.calls.clone();
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        while calls.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
         waker.cancel(CancelReason::UserRequested);
     });
     let mut req = request("run_retry_cancel", true);
