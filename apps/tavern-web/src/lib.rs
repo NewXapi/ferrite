@@ -6,11 +6,11 @@
 //! 3. 移动端/平板响应式升级 (对齐 refer 移动端参考图):
 //!    - 手机端底部常驻原生导航栏 (首页/剧本库/剧情/创作/设置)
 use dioxus::prelude::*;
-use ui_components::{AuthModal, UserBadge};
 use tavern_page_characters::{CharactersPage, StudioPage};
 use tavern_page_chat::ChatPage;
 use tavern_page_home::HomePage;
 use tavern_page_settings::SettingsPage;
+use ui_components::{AuthModal, UserBadge};
 /// Top-level tavern sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {

@@ -1,8 +1,8 @@
 //! 共享登录/注册弹窗组件 (AuthModal) 与用户态徽标 (UserBadge)。
 
-use dioxus::prelude::*;
 use contract::api::auth::{LoginRequest, RegisterRequest};
 use contract::api::user::UserDto;
+use dioxus::prelude::*;
 
 use crate::session::{api_login, api_register, clear_cached_session, get_cached_user};
 
@@ -45,12 +45,14 @@ pub fn AuthModal(
                     username: u,
                     password: p,
                     email: if em.is_empty() { None } else { Some(em) },
-                }).await
+                })
+                .await
             } else {
                 api_login(LoginRequest {
                     username: u,
                     password: p,
-                }).await
+                })
+                .await
             };
 
             loading.set(false);

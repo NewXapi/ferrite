@@ -36,7 +36,9 @@ async fn read_one(
     State(st): State<Arc<CharactersState>>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    get_card(&st.dirs.characters(), &name).map(Json).map_err(err)
+    get_card(&st.dirs.characters(), &name)
+        .map(Json)
+        .map_err(err)
 }
 
 #[derive(Deserialize)]

@@ -37,8 +37,10 @@ pub trait EdgeSync: Send + Sync {
     /// 一次 pull: 报本地摘要 → 应用增量/snapshot → 返回是否发生了快照替换。
     /// 应用顺序: 先落 store (幂等) → 原子替换内存快照 (ArcSwap) → 推进 cursor。
     /// 任何一步失败都不推进 cursor (下轮重放, 依赖幂等)。
-    fn pull(&self, summary: &VersionSummary)
-    -> impl Future<Output = Result<PullOutcome, SyncError>> + Send;
+    fn pull(
+        &self,
+        summary: &VersionSummary,
+    ) -> impl Future<Output = Result<PullOutcome, SyncError>> + Send;
 
     /// 一次 push: 取 store 的 pending 批 → POST → 按 Ack 推进 cursor。
     fn push(&self) -> impl Future<Output = Result<AckResponse, SyncError>> + Send;
@@ -56,8 +58,12 @@ pub enum PullOutcome {
 
 /// center 侧引擎 — apps/console 持有。
 pub trait CenterSync: Send + Sync {
-    fn serve_delta(&self, summary: &VersionSummary)
-    -> impl Future<Output = Result<DeltaResponse, SyncError>> + Send;
-    fn serve_push(&self, batch: &[Mutation])
-    -> impl Future<Output = Result<AckResponse, SyncError>> + Send;
+    fn serve_delta(
+        &self,
+        summary: &VersionSummary,
+    ) -> impl Future<Output = Result<DeltaResponse, SyncError>> + Send;
+    fn serve_push(
+        &self,
+        batch: &[Mutation],
+    ) -> impl Future<Output = Result<AckResponse, SyncError>> + Send;
 }

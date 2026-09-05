@@ -13,12 +13,36 @@ pub struct HealthStat {
 #[component]
 pub fn HealthStats() -> Element {
     let stats = [
-        HealthStat { label: "总调用数", value: "3.2M", sub: "近 24 小时" },
-        HealthStat { label: "Token 总量", value: "4.6B", sub: "近 24 小时" },
-        HealthStat { label: "平均 RPM", value: "1,204", sub: "当前服务" },
-        HealthStat { label: "平均 TPM", value: "190.2M", sub: "当前服务" },
-        HealthStat { label: "全局限流次数", value: "1,042", sub: "近 24 小时" },
-        HealthStat { label: "服务成功率", value: "99.8%", sub: "近 24 小时" },
+        HealthStat {
+            label: "总调用数",
+            value: "3.2M",
+            sub: "近 24 小时",
+        },
+        HealthStat {
+            label: "Token 总量",
+            value: "4.6B",
+            sub: "近 24 小时",
+        },
+        HealthStat {
+            label: "平均 RPM",
+            value: "1,204",
+            sub: "当前服务",
+        },
+        HealthStat {
+            label: "平均 TPM",
+            value: "190.2M",
+            sub: "当前服务",
+        },
+        HealthStat {
+            label: "全局限流次数",
+            value: "1,042",
+            sub: "近 24 小时",
+        },
+        HealthStat {
+            label: "服务成功率",
+            value: "99.8%",
+            sub: "近 24 小时",
+        },
     ];
 
     rsx! {
@@ -63,9 +87,15 @@ pub fn HealthMixer() -> Element {
 fn HealthRow(name: &'static str, good: u32, warn: u32, bad: u32) -> Element {
     let total = good + warn + bad;
     let mut cells = Vec::with_capacity(total as usize);
-    for _ in 0..good { cells.push("bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.3)]"); }
-    for _ in 0..warn { cells.push("bg-amber-400/90 shadow-[0_0_8px_rgba(251,191,36,0.3)]"); }
-    for _ in 0..bad { cells.push("bg-red-500 ring-1 ring-red-400/50 shadow-[0_0_8px_rgba(239,68,68,0.4)]"); }
+    for _ in 0..good {
+        cells.push("bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.3)]");
+    }
+    for _ in 0..warn {
+        cells.push("bg-amber-400/90 shadow-[0_0_8px_rgba(251,191,36,0.3)]");
+    }
+    for _ in 0..bad {
+        cells.push("bg-red-500 ring-1 ring-red-400/50 shadow-[0_0_8px_rgba(239,68,68,0.4)]");
+    }
 
     rsx! {
         div { class: "flex items-center gap-3",

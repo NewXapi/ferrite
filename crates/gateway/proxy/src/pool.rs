@@ -3,10 +3,10 @@
 //! 数据源：`service::sync` 推送的 `ProxySnapshot`，全量替换（ArcSwap）。
 //! 进程内：`DashMap<i64 channel_id, Vec<Arc<ProxyNode>>>` 索引。
 
-use std::sync::Arc;
-use dashmap::DashMap;
-use arc_swap::ArcSwap;
 use super::node::ProxyNode;
+use arc_swap::ArcSwap;
+use dashmap::DashMap;
+use std::sync::Arc;
 
 /// 全量代理节点快照（来自 service::sync）
 #[derive(Default)]
@@ -43,5 +43,7 @@ impl ProxyPool {
 }
 
 impl Default for ProxyPool {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

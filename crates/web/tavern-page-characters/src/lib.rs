@@ -347,7 +347,11 @@ pub fn CharactersPage(
         }
         "新人榜" => {
             // 新人榜：新作者作品
-            rank_filtered.retain(|c| c.tags.contains(&"纯爱".into()) || c.tags.contains(&"年上御姐".into()) || c.tags.contains(&"玄幻".into()));
+            rank_filtered.retain(|c| {
+                c.tags.contains(&"纯爱".into())
+                    || c.tags.contains(&"年上御姐".into())
+                    || c.tags.contains(&"玄幻".into())
+            });
         }
         _ => {
             // 默认综合周榜
@@ -592,7 +596,11 @@ fn CharacterCardItem(
     // 核心 Bug 修复 (对齐图1与图2红框):
     // hover 时必须给宿主卡片容器自身提升 z-index 到 z-30！
     // 否则在 Grid 中后面的兄弟卡片天然层叠在前面卡片上面，导致 Tooltip 被下方的头像穿透遮挡！
-    let card_z_class = if is_hovered() { "relative z-30" } else { "relative z-0" };
+    let card_z_class = if is_hovered() {
+        "relative z-30"
+    } else {
+        "relative z-0"
+    };
 
     rsx! {
         div {

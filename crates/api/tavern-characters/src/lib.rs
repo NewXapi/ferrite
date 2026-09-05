@@ -12,7 +12,7 @@ use tavern_storage::{self as storage, StorageError};
 pub mod http;
 pub mod png;
 
-pub use http::{router, CharactersState};
+pub use http::{CharactersState, router};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CharacterError {
@@ -113,9 +113,15 @@ pub fn list(dir: &Path) -> Result<Vec<CharacterSummary>, CharacterError> {
             .and_then(|s| s.to_str())
             .unwrap_or_default()
             .to_string();
-        let Ok(bytes) = std::fs::read(&path) else { continue };
-        let Ok(json) = png::read_chara(&bytes) else { continue };
-        let Ok(c) = serde_json::from_slice::<Character>(&json) else { continue };
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let Ok(json) = png::read_chara(&bytes) else {
+            continue;
+        };
+        let Ok(c) = serde_json::from_slice::<Character>(&json) else {
+            continue;
+        };
         out.push(CharacterSummary {
             file_name,
             name: c.name,

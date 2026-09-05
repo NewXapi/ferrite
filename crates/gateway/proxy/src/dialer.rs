@@ -3,10 +3,10 @@
 //! 每种代理方案对应一个 dialer 实现。`forward` 通过 `ProxyPool::pick` 选出
 //! 代理节点，再用对应 dialer 拨号。
 
+use super::node::ProxyNode;
+use async_trait::async_trait;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
-use async_trait::async_trait;
-use super::node::ProxyNode;
 
 #[async_trait]
 pub trait Dialer: Send + Sync {

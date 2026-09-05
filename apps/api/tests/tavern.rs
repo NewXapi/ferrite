@@ -28,7 +28,9 @@ async fn call(
     .unwrap();
     let resp = router.clone().oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
     (status, String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -112,7 +114,10 @@ async fn settings_roundtrip_keeps_unknown_fields() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 
     let (_, body) = call(&app, "GET", "/tavern/settings", None).await;
-    assert!(body.contains("future_field"), "dropped unknown field: {body}");
+    assert!(
+        body.contains("future_field"),
+        "dropped unknown field: {body}"
+    );
 
     std::fs::remove_dir_all(&root).ok();
 }

@@ -16,7 +16,9 @@ pub struct Identity {
 
 impl Identity {
     pub fn default_user() -> Self {
-        Self { handle: DEFAULT_USER.to_string() }
+        Self {
+            handle: DEFAULT_USER.to_string(),
+        }
     }
 
     /// 该身份的用户目录。

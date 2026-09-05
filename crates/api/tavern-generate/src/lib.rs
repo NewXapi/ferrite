@@ -5,13 +5,13 @@
 
 use std::sync::Arc;
 
+use axum::Json;
+use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Json;
-use axum::Router;
 use futures_util::StreamExt;
 use serde_json::json;
 use tavern_secrets::SecretError;
@@ -26,7 +26,9 @@ pub struct GenerateConfig {
 
 impl Default for GenerateConfig {
     fn default() -> Self {
-        Self { upstream: "http://127.0.0.1:3000".into() }
+        Self {
+            upstream: "http://127.0.0.1:3000".into(),
+        }
     }
 }
 
@@ -39,7 +41,11 @@ pub struct GenerateState {
 
 impl GenerateState {
     pub fn new(dirs: UserDirs, config: GenerateConfig) -> Self {
-        Self { dirs, config, http: reqwest::Client::new() }
+        Self {
+            dirs,
+            config,
+            http: reqwest::Client::new(),
+        }
     }
 }
 
@@ -65,8 +71,15 @@ async fn generate(
             return (StatusCode::INTERNAL_SERVER_ERROR, "secrets").into_response();
         }
     };
-    let url = format!("{}/v1/chat/completions", st.config.upstream.trim_end_matches('/'));
-    let mut req = st.http.post(url).body(body.0).header("content-type", "application/json");
+    let url = format!(
+        "{}/v1/chat/completions",
+        st.config.upstream.trim_end_matches('/')
+    );
+    let mut req = st
+        .http
+        .post(url)
+        .body(body.0)
+        .header("content-type", "application/json");
     if let Some(k) = key {
         req = req.bearer_auth(k);
     }
@@ -90,7 +103,9 @@ async fn generate(
             out = out.header("content-type", v);
         }
     }
-    let stream = resp.bytes_stream().map(|r| r.map_err(|e| std::io::Error::other(e)));
+    let stream = resp
+        .bytes_stream()
+        .map(|r| r.map_err(|e| std::io::Error::other(e)));
     out.body(Body::from_stream(stream))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }

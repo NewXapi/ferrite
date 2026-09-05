@@ -22,10 +22,7 @@ pub struct Job {
 /// 任务处理器 — 各域注册自己的实现 (observe/billing/probe)。
 pub trait JobHandler: Send + Sync {
     fn job_type(&self) -> &'static str;
-    fn run(
-        &self,
-        job: &Job,
-    ) -> impl Future<Output = Result<serde_json::Value, StoreError>> + Send;
+    fn run(&self, job: &Job) -> impl Future<Output = Result<serde_json::Value, StoreError>> + Send;
 }
 
 /// runner 主循环 — apps/console 启动时拉起。

@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use crate::feedback::Avatar;
+use dioxus::prelude::*;
 
 /// 消息气泡组件 (点击气泡弹出快捷操作栏，支持左右身份对齐)
 #[component]
