@@ -998,7 +998,6 @@ async fn chat_completions(
             && reserved
             && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&resp.body)
             && let Some(u) = v.get("usage")
-<<<<<<< Updated upstream
         {
             let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
             let completion_tokens = u
@@ -1010,19 +1009,6 @@ async fn chat_completions(
             if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
                 span.record("total_tokens", n);
             }
-=======
-            {
-                let prompt_tokens = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
-                let completion_tokens = u
-                    .get("completion_tokens")
-                    .and_then(|x| x.as_u64())
-                    .unwrap_or(0);
-                span.record("prompt_tokens", prompt_tokens as i64);
-                span.record("completion_tokens", completion_tokens as i64);
-                if let Some(n) = u.get("total_tokens").and_then(|x| x.as_i64()) {
-                    span.record("total_tokens", n);
-                }
->>>>>>> Stashed changes
 
             let actual =
                 crate::billing::tokens_to_quota(prompt_tokens, completion_tokens, pricing.as_ref());
@@ -1212,12 +1198,8 @@ pub fn filter_log_lines(lines: &[&str], q: &LogQuery) -> (Vec<serde_json::Value>
                 continue;
             }
             if let Some(until) = &q.until
-<<<<<<< Updated upstream
                 && ts > until.as_str()
                 && !ts.starts_with(until.as_str())
-=======
-                && ts > until.as_str() && !ts.starts_with(until.as_str())
->>>>>>> Stashed changes
             {
                 continue;
             }

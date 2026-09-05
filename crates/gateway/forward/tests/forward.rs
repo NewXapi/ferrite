@@ -176,22 +176,20 @@ fn pipe_chunk_passthrough_preserves_bytes() {
 
 #[test]
 fn pipe_chunk_passthrough_and_scanner_contract() {
-    // SseScanner 现已实现行状态机: data 行触发 FirstToken, [DONE] 触发 Clean 终止。
+    // protocol::SseScanner 当前是桩 (TODO#502 行状态机未实现): push 恒返回
+    // 空事件、finish 恒 Truncated。这里验证 forward 的调用契约正确:
+    // 1) 透传逐字保真 (forward 的硬保证); 2) events 是 Vec 且可消费;
+    // 3) finish 返回 SseEnd (扫描器完成后由调用方消费, 不可丢弃)。
     let mut ctx = SseContext::new();
     let frame = Bytes::from_static(b"data: {\"role\":\"assistant\"}\n\n");
     let out = pipe_chunk(&mut ctx, &frame);
     assert_eq!(out.passthrough, frame, "透传必须逐字保真");
     assert_eq!(out.events.len(), 1, "首个 data 行应触发 FirstToken");
-<<<<<<< Updated upstream
     assert_eq!(
         out.events[0],
         gateway_protocol_bridge::sse::SseEvent::FirstToken
     );
     let (_end, _counts) = finish(ctx); // 扫描器完成信号必须被消费
-=======
-    assert_eq!(out.events[0], gateway_protocol_bridge::sse::SseEvent::FirstToken);
-    let (_end, _counts) = finish(ctx);
->>>>>>> Stashed changes
 }
 
 #[test]
