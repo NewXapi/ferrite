@@ -48,6 +48,29 @@ impl RunPersistence {
         Ok(path)
     }
 
+    /// 追加一行任意 JSON 到 run 目录下指定 jsonl 文件（invocations/tasks 等）。
+    pub async fn append_jsonl<T: serde::Serialize>(
+        &self,
+        run_id: &str,
+        file_name: &str,
+        value: &T,
+    ) -> Result<(), PersistenceError> {
+        let dir = self.ensure_run_dir(run_id).await?;
+        // 信任边界：file_name 拼进路径前必须过组件校验（与 run_id 同规则），
+        // 拒绝 `..` / 绝对路径 / 非法字符等路径穿越（ocr security·high）。
+        validate_component(file_name)?;
+        let path = dir.join(file_name);
+        let line = serde_json::to_string(value)?;
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .await?;
+        file.write_all(line.as_bytes()).await?;
+        file.write_all(b"\n").await?;
+        Ok(())
+    }
+
     pub async fn append_event(
         &self,
         run_id: &str,
