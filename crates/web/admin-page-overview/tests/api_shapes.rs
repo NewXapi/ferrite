@@ -114,17 +114,12 @@ mod leaderboard {
         // 每个维度上, 全体模型的名次应是 1..=N 的一个排列 (并列时会有重复,
         // 但最小名次必为 1, 最大不超过 N)
         let n = MODELS.len();
-        for i in 0..6 {
+        for (i, dim) in DIMS.iter().enumerate() {
             let ranks: Vec<usize> = MODELS.iter().map(|m| dim_rank(m)[i]).collect();
-            assert!(
-                ranks.iter().min() == Some(&1),
-                "维度 {} 最小名次应为 1",
-                DIMS[i]
-            );
+            assert!(ranks.iter().min() == Some(&1), "维度 {dim} 最小名次应为 1");
             assert!(
                 ranks.iter().max().unwrap() <= &n,
-                "维度 {} 最大名次不超过 {n}",
-                DIMS[i]
+                "维度 {dim} 最大名次不超过 {n}"
             );
         }
     }

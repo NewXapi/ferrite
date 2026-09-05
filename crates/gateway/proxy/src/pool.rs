@@ -17,6 +17,7 @@ pub struct ProxySnapshot {
 /// 代理节点池
 pub struct ProxyPool {
     by_channel: DashMap<i64, Arc<Vec<Arc<ProxyNode>>>>,
+    #[allow(dead_code)] // 桩：install 实现后读取
     snapshot: Arc<ArcSwap<ProxySnapshot>>,
 }
 
@@ -30,13 +31,13 @@ impl ProxyPool {
 
     /// 按 channel_id 选代理节点（priority + 随机）
     pub fn pick(&self, channel_id: i64) -> Option<Arc<ProxyNode>> {
-        let list = self.by_channel.get(&channel_id)?;
+        let _list = self.by_channel.get(&channel_id)?;
         // TODO: 按 priority 分层 + 加权随机
         unimplemented!("ProxyPool::pick")
     }
 
     /// 全量替换快照
-    pub fn install(&self, snap: ProxySnapshot) {
+    pub fn install(&self, _snap: ProxySnapshot) {
         // TODO: 重建 by_channel 索引
         unimplemented!("ProxyPool::install")
     }

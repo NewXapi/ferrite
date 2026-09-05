@@ -24,7 +24,7 @@ pub async fn refresh(client: &ApiClient) -> ApiResult<AuthBundle> {
     let headers: Option<Vec<(&str, &str)>> = sid_owned
         .as_ref()
         .map(|sid| vec![("X-Auth-Session", sid.as_str())]);
-    let headers_ref = headers.as_ref().map(|h| h.as_slice());
+    let headers_ref = headers.as_deref();
 
     let bundle: AuthBundle = client
         .post_once("/api/user/auth/refresh", &(), headers_ref)

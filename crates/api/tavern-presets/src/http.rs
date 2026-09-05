@@ -82,7 +82,7 @@ async fn list_handler(
 ) -> impl IntoResponse {
     list(st.dirs.root(), &q.api_id)
         .map(Json)
-        .map_err(|e| to_response(e))
+        .map_err(to_response)
 }
 
 async fn save_handler(

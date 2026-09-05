@@ -31,7 +31,7 @@ pub struct Socks5Dialer {
 
 #[async_trait]
 impl Dialer for Socks5Dialer {
-    async fn dial(&self, target: SocketAddr) -> Result<TcpStream, std::io::Error> {
+    async fn dial(&self, _target: SocketAddr) -> Result<TcpStream, std::io::Error> {
         // TODO: SOCKS5 握手 + CONNECT
         unimplemented!("Socks5Dialer::dial")
     }
@@ -44,7 +44,7 @@ pub struct HttpConnectDialer {
 
 #[async_trait]
 impl Dialer for HttpConnectDialer {
-    async fn dial(&self, target: SocketAddr) -> Result<TcpStream, std::io::Error> {
+    async fn dial(&self, _target: SocketAddr) -> Result<TcpStream, std::io::Error> {
         // TODO: HTTP CONNECT 隧道
         unimplemented!("HttpConnectDialer::dial")
     }

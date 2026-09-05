@@ -531,6 +531,9 @@ pub async fn load_resumable_run(
     Ok((run, events))
 }
 
+// ponytail: 私有 helper，8 个参数各自独立（run/status/persistence/events/sink/event_type/level/payload），
+// 17 处调用点。包成 struct 只是把参数搬个地方，换 16 个调用点的改动，不值。
+#[allow(clippy::too_many_arguments)]
 async fn persist_status(
     run: &mut AgentRun,
     status: AgentRunStatus,

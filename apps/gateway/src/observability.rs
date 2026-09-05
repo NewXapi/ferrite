@@ -7,7 +7,7 @@ pub fn init_tracing(log_level: &str) {
         .with_target(true)
         .with_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level.to_string())),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level)),
         );
 
     let (non_blocking, _guard) =
@@ -17,7 +17,7 @@ pub fn init_tracing(log_level: &str) {
         .with_writer(non_blocking)
         .with_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level.to_string())),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level)),
         );
     let _ = tracing_subscriber::registry()
         .with(stdout)

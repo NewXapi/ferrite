@@ -13,6 +13,7 @@ pub struct TokenCounts {
     pub cached: u64,
 }
 
+#[derive(Default)]
 pub struct StreamScanner {
     /// 上游直接给的 usage (once, 保真)。
     _upstream_usage: Option<TokenCounts>,

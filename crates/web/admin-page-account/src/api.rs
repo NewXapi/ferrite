@@ -95,10 +95,10 @@ pub async fn list_self_logs_api(
     page_size: Option<u32>,
 ) -> ApiResult<UsageLogPage> {
     let mut query = Vec::new();
-    if let Some(m) = model {
-        if !m.is_empty() {
-            query.push(format!("model={m}"));
-        }
+    if let Some(m) = model
+        && !m.is_empty()
+    {
+        query.push(format!("model={m}"));
     }
     if let Some(p) = page {
         query.push(format!("p={p}"));

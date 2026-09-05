@@ -1434,7 +1434,7 @@ fn ChannelImportBar() -> Element {
 /// - 每行一对:`https://api.openai.com/v1\nsk-xxx`
 /// - `|` / 空白 分隔:`https://x | sk-xxx`
 /// - `url=https://x\nkey=sk-xxx`(或 base_url / api_key)
-/// 仅在能同时拿到 URL 和 Key 时返回 Some,否则 None(让用户继续手动填)。
+///   仅在能同时拿到 URL 和 Key 时返回 Some,否则 None(让用户继续手动填)。
 pub fn parse_url_key(text: &str) -> Option<(String, String)> {
     let mut url = None::<String>;
     let mut key = None::<String>;

@@ -87,15 +87,18 @@ pub fn HealthMixer() -> Element {
 fn HealthRow(name: &'static str, good: u32, warn: u32, bad: u32) -> Element {
     let total = good + warn + bad;
     let mut cells = Vec::with_capacity(total as usize);
-    for _ in 0..good {
-        cells.push("bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.3)]");
-    }
-    for _ in 0..warn {
-        cells.push("bg-amber-400/90 shadow-[0_0_8px_rgba(251,191,36,0.3)]");
-    }
-    for _ in 0..bad {
-        cells.push("bg-red-500 ring-1 ring-red-400/50 shadow-[0_0_8px_rgba(239,68,68,0.4)]");
-    }
+    cells.extend(std::iter::repeat_n(
+        "bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.3)]",
+        good as usize,
+    ));
+    cells.extend(std::iter::repeat_n(
+        "bg-amber-400/90 shadow-[0_0_8px_rgba(251,191,36,0.3)]",
+        warn as usize,
+    ));
+    cells.extend(std::iter::repeat_n(
+        "bg-red-500 ring-1 ring-red-400/50 shadow-[0_0_8px_rgba(239,68,68,0.4)]",
+        bad as usize,
+    ));
 
     rsx! {
         div { class: "flex items-center gap-3",

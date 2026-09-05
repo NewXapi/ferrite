@@ -924,7 +924,7 @@ fn CreatorStudioModal(
     // 专业模型选择抽屉
     let mut model_selector_open = use_signal(|| false);
     let mut model_vendor = use_signal(|| "All".to_string());
-    let _model_search = use_signal(|| String::new());
+    let _model_search = use_signal(String::new);
 
     let can_publish = !name().trim().is_empty();
 

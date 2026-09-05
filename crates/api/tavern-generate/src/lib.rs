@@ -12,7 +12,6 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use futures_util::StreamExt;
 use serde_json::json;
 use tavern_secrets::SecretError;
 use tavern_storage::UserDirs;
@@ -98,14 +97,17 @@ async fn generate(
     };
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     let mut out = Response::builder().status(status);
-    if let Some(ct) = resp.headers().get(reqwest::header::CONTENT_TYPE) {
-        if let Ok(v) = ct.to_str() {
-            out = out.header("content-type", v);
-        }
+    if let Some(ct) = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        out = out.header("content-type", ct);
     }
+    use futures_util::StreamExt;
     let stream = resp
         .bytes_stream()
-        .map(|r| r.map_err(|e| std::io::Error::other(e)));
+        .map(|r| r.map_err(std::io::Error::other));
     out.body(Body::from_stream(stream))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }

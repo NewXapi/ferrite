@@ -15,6 +15,7 @@ pub struct PreparedConn {
 }
 
 pub struct ProxyStage {
+    #[allow(dead_code)] // 桩：handle 实现后读取
     pool: Arc<ProxyPool>,
 }
 
@@ -31,7 +32,7 @@ impl Stage for ProxyStage {
     }
 
     async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, StageError> {
-        let route = ctx
+        let _route = ctx
             .route
             .as_ref()
             .ok_or_else(|| StageError::Internal(anyhow::anyhow!("dispatch not run")))?;

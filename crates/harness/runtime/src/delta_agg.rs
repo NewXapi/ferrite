@@ -107,7 +107,7 @@ impl DeltaAggregator {
             })?;
             let tool_id = resolver
                 .resolve(&alias)
-                .ok_or_else(|| AggregateError::UnknownAlias { alias })?;
+                .ok_or(AggregateError::UnknownAlias { alias })?;
             let arguments = parse_arguments(&call_id, &partial.arguments)?;
             tool_calls.push(ToolInvocation {
                 call_id,

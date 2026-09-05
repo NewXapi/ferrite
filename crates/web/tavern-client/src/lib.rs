@@ -104,16 +104,14 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
 
         // 尝试提取 choices[0].delta.content
         if let Ok(json) = serde_json::from_str::<Value>(&data) {
-            if let Some(choices) = json.get("choices") {
-                if let Some(first_choice) = choices.get(0) {
-                    if let Some(delta) = first_choice.get("delta") {
-                        if let Some(content) = delta.get("content") {
-                            if let Some(c) = content.as_str() {
-                                return Some(SseEvent::Message(c.to_string()));
-                            }
-                        }
-                    }
-                }
+            let content = json
+                .get("choices")
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.get("delta"))
+                .and_then(|d| d.get("content"))
+                .and_then(|v| v.as_str());
+            if let Some(c) = content {
+                return Some(SseEvent::Message(c.to_string()));
             }
         }
 
@@ -124,7 +122,6 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
 }
 
 /// 角色 CRUD 接口
-
 /// 获取角色列表
 pub async fn list_characters() -> Result<Vec<CharacterSummary>, ApiError> {
     let request = Request::get("/tavern/characters")
@@ -179,7 +176,6 @@ pub async fn delete_character(name: String) -> Result<(), ApiError> {
 }
 
 /// 聊天操作接口
-
 /// 获取最近的聊天列表
 pub async fn recent_chats(character: String) -> Result<Vec<CharacterSummary>, ApiError> {
     let url = format!("/tavern/chats/{character}");
@@ -231,7 +227,6 @@ pub async fn rename_chat(character: String, from: String, to: String) -> Result<
 }
 
 /// 设置接口
-
 /// 加载设置
 pub async fn load_settings() -> Result<Value, ApiError> {
     let request = Request::get("/tavern/settings")
@@ -254,7 +249,6 @@ pub async fn save_settings(settings: Value) -> Result<(), ApiError> {
 }
 
 /// 密钥接口
-
 /// 获取密钥状态
 pub async fn secrets_state() -> Result<Value, ApiError> {
     let request = Request::get("/tavern/secrets")
@@ -286,7 +280,6 @@ pub async fn delete_secret(key: String) -> Result<(), ApiError> {
 }
 
 /// 生成接口，支持 SSE 逐帧消费
-
 /// 生成内容，支持 SSE 流式处理
 ///
 /// # 参数

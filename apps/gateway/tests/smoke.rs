@@ -4,7 +4,6 @@
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
 use std::time::Duration;
 
 fn http_post(port: u16, path: &str, body: &str) -> Result<(u16, String), String> {
@@ -51,7 +50,6 @@ fn gateway_e2e_smoke() {
     loop {
         let candidate = root.join("config/config.toml.example");
         if candidate.exists() {
-            root = root;
             break;
         }
         match root.parent() {
