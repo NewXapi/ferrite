@@ -339,11 +339,11 @@ pub fn CharactersPage(
     match cur_rank.as_str() {
         "日榜" => {
             // 日榜：按日飙升热度排序（怪谈排第一，娱乐排第二等）
-            rank_filtered.sort_by(|a, b| b.id.cmp(&a.id));
+            rank_filtered.sort_by_key(|a| std::cmp::Reverse(a.id));
         }
         "飙升榜" => {
             // 飙升榜：按飙升潜力排序
-            rank_filtered.sort_by(|a, b| (b.rating as i32).cmp(&(a.rating as i32)));
+            rank_filtered.sort_by_key(|a| std::cmp::Reverse(a.rating as i32));
         }
         "新人榜" => {
             // 新人榜：新作者作品
