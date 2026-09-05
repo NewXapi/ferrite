@@ -8,6 +8,7 @@ pub mod stage;
 pub use candidate::{Candidate, STATUS_ENABLED, resolve_candidate};
 pub use health::{FailureClass, HealthState, HealthTable, MemoryHealthTable};
 pub use ratelimit::{RateLimitSpec, SlidingWindow};
+pub use retry::ConfigRetryLoop;
 pub use retry::{Attempt, AttemptOutcome, Failover, RetryLoop, RetryPolicy, run_retry_loop};
 pub use selector::{Selector, WeightedSelector};
 pub use stage::DispatchStage;
