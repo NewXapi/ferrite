@@ -14,34 +14,97 @@ use bytes::Bytes;
 #[derive(Debug, Default)]
 pub struct SseScanner {
     /// 行缓冲残余 (跨 chunk 的不完整行)。
-    _line_buf: Vec<u8>,
+    line_buf: Vec<u8>,
     /// 是否已报 FirstToken (幂等, 只报一次)。
-    _saw_first_token: bool,
+    saw_first_token: bool,
+    /// 是否收到过 [DONE]。
+    saw_done: bool,
+    /// 行数计数。
+    line_count: u64,
 }
 
 impl SseScanner {
     /// 喂入一块上游字节。
-    ///
-    /// 返回 (透传字节, 检测到的事件列表)。透传字节 = 输入原样 (零拷贝语义,
-    /// 实现期保证), 事件是对同一段字节的并行观察。
     pub fn push(&mut self, chunk: &Bytes) -> (Bytes, Vec<SseEvent>) {
-        let _ = (&mut self._line_buf, &mut self._saw_first_token);
-        (chunk.clone(), Vec::new()) // TODO(#502): 行状态机实现
+        let mut events = Vec::new();
+        self.line_count += 1;
+
+        let mut full = self.line_buf.clone();
+        full.extend_from_slice(chunk);
+
+        let mut lines: Vec<&[u8]> = Vec::new();
+        let mut start = 0;
+        for (i, &b) in full.iter().enumerate() {
+            if b == b'\n' {
+                lines.push(&full[start..i]);
+                start = i + 1;
+            }
+        }
+        if start < full.len() {
+            self.line_buf = full[start..].to_vec();
+        } else {
+            self.line_buf.clear();
+        }
+
+        for line in lines {
+            let line = if line.ends_with(b"\r") {
+                &line[..line.len() - 1]
+            } else {
+                line
+            };
+
+            if line.is_empty() {
+                continue;
+            }
+
+            if line.starts_with(b":") {
+                events.push(SseEvent::Ping);
+                continue;
+            }
+
+            if let Some(rest) = line.strip_prefix(b"data") {
+                let rest = if let Some(r) = rest.strip_prefix(b": ") {
+                    r
+                } else if let Some(r) = rest.strip_prefix(b":") {
+                    r
+                } else {
+                    continue;
+                };
+                let rest = rest.trim_ascii_start();
+
+                if rest.starts_with(b"[DONE]") {
+                    self.saw_done = true;
+                    continue;
+                }
+
+                if !self.saw_first_token {
+                    self.saw_first_token = true;
+                    events.push(SseEvent::FirstToken);
+                }
+
+                if rest.windows(7).any(|w| w == b"\"usage\"") {
+                    events.push(SseEvent::Usage);
+                }
+            }
+        }
+
+        (chunk.clone(), events)
     }
 
     /// 上游断开: 报告终止原因。
     pub fn finish(self) -> SseEnd {
-        SseEnd::Truncated // TODO(#502): 依据缓冲是否完整判定 Clean/Truncated
+        if self.saw_done {
+            SseEnd::Clean
+        } else {
+            SseEnd::Truncated
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SseEvent {
-    /// 检测到首个可见 token (含 tool-call delta) — TTFT 计量点。
     FirstToken,
-    /// usage 字段出现 (OpenAI stream_options / Claude message_delta)。
     Usage,
-    /// 纯 keepalive 帧。
     Ping,
 }
 
