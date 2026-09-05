@@ -121,9 +121,7 @@ impl Ledger for MemoryLedger {
         let user_balances = balances
             .entry(hold.user_key.clone())
             .or_insert_with(HashMap::new);
-        let balance = user_balances
-            .entry(hold.token_key.clone())
-            .or_insert(0);
+        let balance = user_balances.entry(hold.token_key.clone()).or_insert(0);
 
         let diff = hold.amount - actual;
         *balance += diff; // 退回差额 (或补扣)
@@ -139,9 +137,7 @@ impl Ledger for MemoryLedger {
         let user_balances = balances
             .entry(hold.user_key.clone())
             .or_insert_with(HashMap::new);
-        let balance = user_balances
-            .entry(hold.token_key.clone())
-            .or_insert(0);
+        let balance = user_balances.entry(hold.token_key.clone()).or_insert(0);
 
         *balance += hold.amount;
 

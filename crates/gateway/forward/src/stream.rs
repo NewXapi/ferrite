@@ -15,6 +15,14 @@ pub struct PipedChunk {
 pub struct SseContext {
     pub scanner: gateway_protocol_bridge::sse::SseScanner,
     pub token_scanner: metering::scanner::StreamScanner,
+    /// 流式元数据（结算用）。
+    pub user_key: String,
+    pub token_key: String,
+    pub channel_key: String,
+    pub public_model: String,
+    pub upstream_model: String,
+    /// 定价表引用（可选，None = 不计费）。
+    pub price_table: Option<std::sync::Arc<dyn metering::pricing::PriceTable>>,
 }
 
 impl SseContext {
@@ -22,6 +30,12 @@ impl SseContext {
         Self {
             scanner: gateway_protocol_bridge::sse::SseScanner::default(),
             token_scanner: metering::scanner::StreamScanner::new(),
+            user_key: String::new(),
+            token_key: String::new(),
+            channel_key: String::new(),
+            public_model: String::new(),
+            upstream_model: String::new(),
+            price_table: None,
         }
     }
 }
@@ -41,6 +55,7 @@ pub fn pipe_chunk(ctx: &mut SseContext, chunk: &Bytes) -> PipedChunk {
     }
 }
 
+/// 终止扫描器，返回 SseEnd + TokenCounts，并在有 price_table 时自动结算。
 pub fn finish(
     ctx: SseContext,
 ) -> (
@@ -49,6 +64,29 @@ pub fn finish(
 ) {
     let end = ctx.scanner.finish();
     let counts = ctx.token_scanner.finish(0);
+
+    if let Some(pt) = ctx.price_table.as_ref() {
+        let hold = metering::ledger::Hold {
+            id: 0,
+            amount: 0,
+            user_key: ctx.user_key.clone(),
+            token_key: ctx.token_key.clone(),
+        };
+        let _event = metering::settle_event(
+            counts,
+            &hold,
+            pt.as_ref(),
+            &ctx.channel_key,
+            "",
+            &ctx.public_model,
+            &ctx.upstream_model,
+            0,
+            0,
+            200,
+            None,
+        );
+    }
+
     (end, counts)
 }
 
