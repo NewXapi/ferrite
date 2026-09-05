@@ -7,6 +7,7 @@
 //! 单次转发 + 结果落 ctx。重试编排在 retry 循环 (dispatch::retry), 不在此处。
 
 use crate::ForwardTask;
+use crate::stream::{self, pipe_chunk};
 use async_trait::async_trait;
 use bytes::Bytes;
 use contract::error::NormalizedError;
@@ -116,13 +117,47 @@ impl Stage for ForwardStage {
 
         // 非流式 → 收 body 写入 ctx.upstream; 流式 → 交回客户端。
         if task.stream {
-            // 直通: 流式响应直接回客户端, 保留上游字节流。
-            // Forwarded.body 已是 'static (Box::pin), 直接 map_err 换错误类型。
-            let stream = futures_util::stream::TryStreamExt::map_err(forwarded.body, |e| {
-                std::io::Error::other(e.to_string())
-            });
+            // 流式路径经 SseScanner + StreamScanner 扫描链，流结束时自动结算
+            let user_key = ctx
+                .token
+                .as_ref()
+                .map(|t| t.id.to_string())
+                .unwrap_or_default();
+            let token_key = ctx
+                .token
+                .as_ref()
+                .map(|t| t.id.to_string())
+                .unwrap_or_default();
+            let channel_key = task.candidate.unit.channel_key.clone();
+            let public_model = task.candidate.unit.public_model.clone();
+            let upstream_model = task.candidate.upstream_model.clone();
+
+            let mut sse_ctx = stream::SseContext::new();
+            sse_ctx.user_key = user_key;
+            sse_ctx.token_key = token_key;
+            sse_ctx.channel_key = channel_key;
+            sse_ctx.public_model = public_model;
+            sse_ctx.upstream_model = upstream_model;
+
+            let mapped = futures_util::stream::unfold(
+                (forwarded.body, sse_ctx),
+                move |(mut s, mut ctx)| async move {
+                    use futures_util::StreamExt;
+                    match s.next().await {
+                        Some(Ok(chunk)) => {
+                            let out = pipe_chunk(&mut ctx, &chunk);
+                            Some((Ok::<Bytes, std::io::Error>(out.passthrough), (s, ctx)))
+                        }
+                        Some(Err(e)) => Some((Err(e), (s, ctx))),
+                        None => {
+                            let _ = stream::finish(ctx);
+                            None
+                        }
+                    }
+                },
+            );
             let stream: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
-                Box::pin(stream);
+                Box::pin(mapped);
             Ok(StageOutcome::Stream(PipeStream::new(
                 axum::body::Body::from_stream(stream),
             )))

@@ -28,7 +28,8 @@ pub fn estimate_tokens(text: &str) -> u64 {
     }
 
     // CJK ≈ 0.6 tok/char, Latin ≈ 0.25 tok/char, digit ≈ 0.3 tok/char, other ≈ 1.0
-    let tokens = (cjk as f64 * 0.6) + (latin as f64 * 0.25) + (digit as f64 * 0.3) + (other as f64 * 1.0);
+    let tokens =
+        (cjk as f64 * 0.6) + (latin as f64 * 0.25) + (digit as f64 * 0.3) + (other as f64 * 1.0);
     tokens.ceil() as u64
 }
 
