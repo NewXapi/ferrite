@@ -343,6 +343,12 @@ impl ChannelService {
         Ok(new_tags)
     }
 
+    /// 全部启用渠道的 key 列表（批量扫描用）。
+    pub async fn enabled_channel_keys(&self) -> Result<Vec<Uuid>, AuthError> {
+        Ok(sqlx::query_scalar("SELECT key FROM api_channels WHERE status = 1")
+            .fetch_all(&self.pool).await?)
+    }
+
     pub async fn batch_delete(&self, keys: &[Uuid]) -> Result<usize, AuthError> {
         if keys.is_empty() {
             return Ok(0);
@@ -361,8 +367,38 @@ impl ChannelService {
         Ok(q.execute(&self.pool).await?.rows_affected() as usize)
     }
 
-    pub async fn fetch_models(&self, _payload: Value) -> Result<Value, AuthError> {
-        Ok(json!([]))
+    /// 拉取指定渠道上游 /v1/models 的模型 id 列表（GET /fetch_models/{key}）。
+    pub async fn fetch_upstream_models(&self, key: Uuid) -> Result<Vec<String>, AuthError> {
+        let ch = self.fetch(key).await?;
+        let keys: Vec<String> = serde_json::from_value(ch.keys.clone()).unwrap_or_default();
+        let api_key = keys
+            .first()
+            .ok_or_else(|| AuthError::BadRequest("channel has no keys".into()))?;
+        let url = format!("{}/v1/models", ch.base_url.trim_end_matches('/'));
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| AuthError::Crypto(e.to_string()))?;
+        let resp = client
+            .get(&url)
+            .bearer_auth(api_key)
+            .send()
+            .await
+            .map_err(|e| AuthError::Crypto(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(AuthError::Crypto(format!("upstream returned {}", resp.status())));
+        }
+        let v: Value = resp.json().await.map_err(|e| AuthError::Crypto(e.to_string()))?;
+        let models = v
+            .get("data")
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(models)
     }
 
     async fn fetch(&self, key: Uuid) -> Result<ChannelRow, AuthError> {
@@ -571,6 +607,7 @@ pub fn router(state: ChannelAppState) -> axum::Router {
         .route("/api/channel/tag", put(update_tag))
         .route("/api/channel/batch", post(batch_delete))
         .route("/api/channel/fetch_models", post(fetch_models))
+        .route("/api/channel/fetch_models/{key}", get(fetch_upstream_models))
         .with_state(state)
 }
 
@@ -895,17 +932,37 @@ async fn batch_delete(
         .map_err(err_json)
 }
 
+async fn fetch_upstream_models(
+    State(s): State<ChannelAppState>,
+    h: HeaderMap,
+    Path(key): Path<String>,
+) -> Result<Json<Value>, ErrResp> {
+    require_admin(&s.auth, &h).await.map_err(err_json)?;
+    let key = parse_key(&key).await?;
+    let models = s.svc.fetch_upstream_models(key).await.map_err(err_json)?;
+    Ok(Json(json!({ "data": models })))
+}
+
 async fn fetch_models(
     State(s): State<ChannelAppState>,
     h: HeaderMap,
     Json(req): Json<FetchModelsRequest>,
 ) -> Result<Json<Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
-    s.svc
-        .fetch_models(req.payload.unwrap_or(json!({})))
-        .await
-        .map(Json)
-        .map_err(err_json)
+    // 批量扫描：payload 指定 keys 缺省时扫全部启用渠道
+    let keys: Vec<Uuid> = if let Some(arr) = req.payload.as_ref().and_then(|v| v.get("keys")).and_then(|v| v.as_array()) {
+        arr.iter().filter_map(|v| v.as_str().and_then(|s| Uuid::parse_str(s).ok())).collect()
+    } else {
+        s.svc.enabled_channel_keys().await.map_err(err_json)?
+    };
+    let mut out = serde_json::Map::new();
+    for k in keys {
+        match s.svc.fetch_upstream_models(k).await {
+            Ok(models) => { out.insert(k.to_string(), json!(models)); }
+            Err(e) => { out.insert(k.to_string(), json!({"error": e.to_string()})); }
+        }
+    }
+    Ok(Json(json!({ "results": out })))
 }
 
 fn validate(

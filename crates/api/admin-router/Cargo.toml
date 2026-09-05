@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 catalog = { path = "../admin-catalog" }
 observe = { path = "../admin-observe" }
+billing = { path = "../admin-billing" }
 auth    = { path = "../auth" }
 sqlx    = { workspace = true }
 axum    = { workspace = true }
