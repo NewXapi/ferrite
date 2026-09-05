@@ -464,6 +464,116 @@ fn delta_aggregator_joins_fragments_and_rejects_bad_json() {
             .is_err()
     );
 }
+#[test]
+fn provider_request_new_fields_serde_roundtrip() {
+    use harness_runtime::{LogprobsConfig, ProviderRequest};
+    // 三字段全发
+    let json = r#"{
+        "model":"m","messages":[],
+        "cfgScale":0.7,
+        "logitBias":{"12345":-100},
+        "logprobs":{"topLogprobs":5}
+    }"#;
+    let req: ProviderRequest = serde_json::from_str(json).expect("deserialize");
+    assert!((req.cfg_scale.unwrap() - 0.7).abs() < 1e-6);
+    assert_eq!(req.logit_bias.as_ref().unwrap()["12345"], -100);
+    assert_eq!(
+        req.logprobs,
+        Some(LogprobsConfig {
+            top_logprobs: Some(5)
+        })
+    );
+    // 序列化回带三字段
+    let back = serde_json::to_value(&req).expect("serialize");
+    assert!((back["cfgScale"].as_f64().unwrap() - 0.7).abs() < 1e-5);
+    assert_eq!(back["logitBias"]["12345"], serde_json::json!(-100));
+    assert_eq!(back["logprobs"]["topLogprobs"], serde_json::json!(5));
+}
+
+#[test]
+fn provider_request_new_fields_absent_skipped() {
+    use harness_runtime::ProviderRequest;
+    let req: ProviderRequest = serde_json::from_str(r#"{"model":"m","messages":[]}"#).expect("ok");
+    assert!(req.cfg_scale.is_none());
+    assert!(req.logit_bias.is_none());
+    assert!(req.logprobs.is_none());
+    let back = serde_json::to_value(&req).expect("serialize");
+    assert!(back.get("cfgScale").is_none());
+    assert!(back.get("logitBias").is_none());
+    assert!(back.get("logprobs").is_none());
+}
+
+#[test]
+fn delta_aggregator_collects_logprobs() {
+    use harness_runtime::{DeltaAggregator, LogprobItem, ProviderDelta};
+    let mut agg = DeltaAggregator::default();
+    agg.apply(&ProviderDelta {
+        logprobs: Some(vec![
+            LogprobItem {
+                token: "a".into(),
+                logprob: -0.1,
+                bytes: None,
+            },
+            LogprobItem {
+                token: "b".into(),
+                logprob: -0.2,
+                bytes: None,
+            },
+        ]),
+        ..ProviderDelta::default()
+    });
+    let finished = agg
+        .finish(&|alias: &str| harness_tools::ToolId::builtin(alias).ok())
+        .expect("finish");
+    assert_eq!(finished.logprobs.len(), 2);
+    assert_eq!(finished.logprobs[0].token, "a");
+    assert_eq!(finished.logprobs[0].logprob, -0.1);
+}
+
+#[test]
+fn apply_logit_bias_clamps_and_spans_tokens() {
+    use harness_runtime::apply_logit_bias;
+    // bias clamp 到 ±100
+    let map = apply_logit_bias(&["x"], 200, |t| Some(t.bytes().map(|b| b as u32).collect()));
+    assert_eq!(map["120"], 100); // 'x' = 120
+    // 一词多 token 全部写入
+    let map = apply_logit_bias(&["ab"], 50, |t| Some(t.bytes().map(|b| b as u32).collect()));
+    assert_eq!(map.len(), 2);
+    assert_eq!(map["97"], 50);
+    assert_eq!(map["98"], 50);
+    // encode 失败则跳过
+    let map = apply_logit_bias(&["y"], 50, |_t| None);
+    assert!(map.is_empty());
+}
+#[test]
+fn apply_logit_bias_spans_all_tokens() {
+    use harness_runtime::apply_logit_bias;
+    fn fake_encode(text: &str) -> Option<Vec<u32>> {
+        Some(text.bytes().map(|b| b as u32).collect())
+    }
+    let map = apply_logit_bias(&["ab"], 50, fake_encode);
+    assert_eq!(map.len(), 2);
+    assert_eq!(map["97"], 50);
+    assert_eq!(map["98"], 50);
+}
+
+#[test]
+fn apply_logit_bias_clamps() {
+    use harness_runtime::apply_logit_bias;
+    fn fake_encode(text: &str) -> Option<Vec<u32>> {
+        Some(text.bytes().map(|b| b as u32).collect())
+    }
+    let map = apply_logit_bias(&["x"], 200, fake_encode);
+    assert_eq!(map["120"], 100);
+}
+
+#[test]
+fn apply_logit_bias_empty() {
+    use harness_runtime::apply_logit_bias;
+    let map: std::collections::BTreeMap<String, i32> =
+        apply_logit_bias(&[] as &[&str], 10, |_| Some(vec![]));
+    assert!(map.is_empty());
+}
 
 #[tokio::test]
 async fn event_sinks_preserve_seq() {
