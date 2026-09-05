@@ -178,7 +178,7 @@ pub struct OptionsAppState {
 }
 
 pub fn router(state: OptionsAppState) -> axum::Router {
-    use axum::routing::{get, put};
+    use axum::routing::get;
     axum::Router::new()
         .route("/api/option", get(list).put(update))
         .route("/api/option/{key}", get(get_one))

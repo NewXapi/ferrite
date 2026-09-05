@@ -10,9 +10,14 @@
 //! ## 模块地图
 //!
 //! | 模块 | 职责 |
-//! |------|------|
-//! | [`options`] | 运行时选项 (key/value + 类型化校验，平表直连) |
+//! | [`options`]     | 运行时选项 (key/value + 类型化校验，平表直连) |
+//! | [`system_info`] | 系统诊断与指标采集 (运行时环境/Uptime/内存/CPU/DB) |
 
 pub mod options;
+pub mod system_info;
 
 pub use options::{ensure_table, router, OptionsAppState, OptionsService};
+pub use system_info::{
+    CpuInfo, DatabaseInfo, EntityCounts, MemoryInfo, ProcessTimeTracker, SystemInfoAppState,
+    SystemInfoService, SystemInfoView,
+};
