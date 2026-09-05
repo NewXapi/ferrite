@@ -4,18 +4,18 @@
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
 use std::time::Duration;
 
 fn http_post(port: u16, path: &str, body: &str) -> Result<(u16, String), String> {
-    let mut sock = TcpStream::connect(format!("127.0.0.1:{port}"))
-        .map_err(|e| format!("connect: {e}"))?;
+    let mut sock =
+        TcpStream::connect(format!("127.0.0.1:{port}")).map_err(|e| format!("connect: {e}"))?;
     sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
     let req = format!(
         "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
-    sock.write_all(req.as_bytes()).map_err(|e| format!("write: {e}"))?;
+    sock.write_all(req.as_bytes())
+        .map_err(|e| format!("write: {e}"))?;
     let mut buf = Vec::new();
     let _ = sock.read_to_end(&mut buf);
     let resp = String::from_utf8_lossy(&buf);
@@ -50,7 +50,6 @@ fn gateway_e2e_smoke() {
     loop {
         let candidate = root.join("config/config.toml.example");
         if candidate.exists() {
-            root = root;
             break;
         }
         match root.parent() {
