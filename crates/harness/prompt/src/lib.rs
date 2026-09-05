@@ -35,6 +35,7 @@ pub mod render;
 pub mod truncate;
 pub mod types;
 pub mod variables;
+pub mod world_info;
 
 pub use prompt_snapshot::{
     AGENT_PROMPT_MARKER_FIELD, AgentModelSnapshotKind, LEGACY_TAURITAVERN_PROMPT_MARKER_FIELD,
@@ -48,3 +49,6 @@ pub use types::{
     AgentModelContentPart, AgentModelMessage, AgentModelRequest, AgentModelRole, PromptInput,
 };
 pub use variables::{VariableContext, expand_variables};
+pub use world_info::{
+    WorldInfoEntry, WorldInfoPosition, compute_world_info_budget, inject_world_info,
+};
