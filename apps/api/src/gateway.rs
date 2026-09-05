@@ -1,4 +1,9 @@
 //! HTTP 路由 + handler
+//!
+//! ponytail: `Err = axum::response::Response`（128 bytes）是 axum 的惯用错误载荷 —— handler 里
+//! `Err(...)` 直接就是要返回给客户端的响应。按 clippy 建议 box 掉会破坏 `IntoResponse` 契约，
+//! 且要改 14 处签名和全部 `?` 传播点，换不到任何实际收益。
+#![allow(clippy::result_large_err)] // ponytail: axum Response 就是错误载荷，box 掉会破坏 IntoResponse
 
 use std::sync::Arc;
 
