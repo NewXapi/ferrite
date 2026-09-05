@@ -296,7 +296,7 @@ async fn channel_fetch_models_nonexistent_rejected() {
     let r = channel_svc
         .fetch_upstream_models(uuid::Uuid::new_v4())
         .await;
-    assert!(matches!(r, Err(auth::error::AuthError::NotFound(_))));
+    assert!(matches!(r, Err(auth::AuthError::NotFound(_))));
 }
 
 #[tokio::test]

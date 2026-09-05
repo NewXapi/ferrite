@@ -15,6 +15,8 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
     observe::logs::ensure_table(&pool).await?;
     observe::monitor::ensure_table(&pool).await?;
     billing::ensure_table(&pool).await?;
+    ops::ensure_table(&pool).await?;
+    catalog::routes::ensure_table(&pool).await?;
     tracing::info!("admin-api tables ensured");
 
     let secret =
@@ -48,6 +50,14 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         svc: std::sync::Arc::new(billing::RedeemService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
+    let route_unit_router = catalog::routes::router(catalog::routes::RouteUnitAppState {
+        svc: std::sync::Arc::new(catalog::routes::RouteUnitService::new(pool.clone())),
+        auth: auth_svc.clone(),
+    });
+    let options_router = ops::router(ops::OptionsAppState {
+        svc: std::sync::Arc::new(ops::OptionsService::new(pool.clone())),
+        auth: auth_svc.clone(),
+    });
     let monitor_router = observe::monitor::router(observe::monitor::MonitorAppState {
         deps: observe::monitor::MonitorDeps::new(pool.clone()),
         auth: auth_svc.clone(),
@@ -59,6 +69,8 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         .merge(group_router)
         .merge(model_router)
         .merge(redeem_router)
+        .merge(options_router)
+        .merge(route_unit_router)
         .merge(log_router)
         .merge(monitor_router))
 }

@@ -12,6 +12,7 @@ publish.workspace = true
 catalog = { path = "../admin-catalog" }
 observe = { path = "../admin-observe" }
 billing = { path = "../admin-billing" }
+ops     = { path = "../admin-ops" }
 auth    = { path = "../auth" }
 sqlx    = { workspace = true }
 axum    = { workspace = true }
