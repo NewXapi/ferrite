@@ -174,6 +174,24 @@ cargo test -p observe -p ops
 表 `api_channels` 字段覆盖 gateway `dispatch::ChannelConfig` 所需，
 apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
 
+### 已完成 — `ops/` options (系统选项，3 端点)
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/option` | admin 全部选项（库值回退默认） |
+| GET | `/api/option/{key}` | admin 单查 |
+| PUT | `/api/option` | admin 写入（注册表校验，未知 key 拒绝） |
+
+表 `options`（key TEXT PK + JSONB value）；首批 5 项：site.registration_enabled / site.quota_new_user / gateway.retry.max_attempts / gateway.timeout.first_byte_ms / observe.retention.usage_days。
+
+### 已完成 — `catalog/` route_unit (路由单元，5 端点)
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/api/route_unit` | 列表（group/model 过滤 + 分页）/ 创建（写前校验渠道启用 + key_index 越界） |
+| GET/PUT/DELETE | `/api/route_unit/{key}` | 单查 / 编辑 / 删除 |
+
+表 `route_units`（(group, public_model) → channel/key_index/upstream_model）；
+gateway dispatch 按此建候选集；渠道删除 → `invalidate_by_channel` 级联失效。
+
 ### 已完成 — `billing/` redeem (兑换码，4 端点)
 | 方法 | 路径 | 说明 |
 |------|------|------|

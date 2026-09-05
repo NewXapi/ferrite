@@ -27,11 +27,11 @@
 | catalog 模型（models CRUD / missing） | ✅ 完整 | — |
 | catalog 分组（groups） | ✅ 完整 | — |
 | catalog token 生命周期（含补全） | ✅ 完整 | — |
-| catalog 路由单元（route_units / routing） | 部分 | 只提供 validate_route_unit，未存库 |
+| catalog 路由单元（route_units / routing） | ✅ 完成（PR #63） | 写侧 CRUD + 引用完整性 + 级联失效 |
 | observe 日志（logs） + dashboard | ✅ 基本完整 | 缺 log-cleanup / audit / tokenlog 视图 |
 | observe 监控（monitor 渠道可用率） | ✅ 完整 | — |
 | billing 兑换码 / 订单 / 支付 | ✅ 兑换码完成 | orders/providers/subscriptions stub 已移除（git 历史保留设计），P2 按需恢复 |
-| ops 调度 | 不做（按用户要求） | — |
+| ops 调度 | 明确不做（单机版） | stub 已移除，options 平表实现替代 |
 | 2FA / Org OAuth / Passkey | 明确不做 | — |
 | Video / MJ / Relay+ 转发 | 明确不做（gateway 或 as-needed） | — |
 
@@ -69,10 +69,10 @@
 
 ### P2 — 控制台的可用性
 
-- 站点选项管理（公告/积分初始 quota/允许注册的开关）/api/option + admin 界面
-- 系统信息展示（内部性能、任务详情）/api/system-info
-- 删除账户（解除骑墙重复）
-- 模型分组：分组多策略选择（例如按 priority）— 已有 route_units 需要的项
+- ✅ 系统选项（PR #63）：options 平表 + 类型化注册表（5 个首批选项）+ /api/option GET/PUT
+- ✅ RouteUnit 写侧（PR #63）：route_units 平表 + CRUD + 引用完整性 + invalidate_by_channel 级联
+- 删除账户：/api/user/self DELETE 已有
+- 系统信息展示 /api/system-info：低优先，未做
 
 ### P3 — 快速收窄（暂不整合）
 
