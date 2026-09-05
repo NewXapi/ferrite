@@ -86,23 +86,35 @@ crates/web/<prefix-feature>/
 ### 测试分层与 CI 驱动原则
 
 - **所有测试放 CI**：`cargo test` 一律在 CI 上跑，本地只跑 `cargo check -p <crate>` 验证编译通过。
-- **PR 跑动态范围**：PR 上按 `git diff` 的 path scope 只跑受影响的包（`scripts/ci-affected.sh`），快速反馈。
-- **合并到 main 跑全量**：push 到 main 时跑全量 `cargo test --all`，作为兜底。
-- 全量测试（`cargo test --all`、全 workspace 构建）不在本地裸跑。
-- 本地跑测试仅用于调试单个失败用例（`cargo test -p <crate> -- <test_name>`），不作为验收通过手段。
-- CI 测试全部 green 才算通过，CI 未跑完前不得 closeout / merge。
+- **严禁本地滥跑全量与重型测试**：本地开发机常年可用内存不足 2GB，本地编译或测试多 crate 极易耗尽内存导致机器假死。禁止本地执行 `cargo test --all` 或全 workspace 构建。
+- 只有当改动的核心逻辑有单体单测且能在 3 秒内跑完时，才允许本地单跑：`cargo test -p <crate> -- <test_name>`。仅用于调试，不作为验收手段。
+- **CI 测试全部 green 才算通过**，CI 未跑完前不得 closeout / merge。
+- **本地 clippy 必须与 CI 同版本**：CI 用 `dtolnay/rust-toolchain@stable`。版本落后时本地跑绿仍会被 CI 的新 lint 拦下（实测 1.94 vs 1.98 差 `unnecessary_sort_by`、`result_large_err`）。改动前先 `rustup update stable`，否则只能靠 CI 往返试错。
 
-- **严禁本地滥跑全量与重型测试**：本地开发机 CPU 与内存极其有限（常年可用内存不足 2GB），本地编译或测试多 crate 极易耗尽系统内存导致进程死锁与机器假死。
-- **尽可能不要在本地跑测试**：
-  - 本地仅允许运行快速**语法/类型检查**：`cargo check -p <crate>`（CPU-heavy 必须严格套 `cpulimit -l 70 -i --`）。
-  - 本地**坚决不跑全量测试**（严禁在本地执行 `cargo test --all`、全 workspace 构建等死重命令）。
-  - 只有当修改的核心算法有单体单测且可在 3 秒内执行完毕时，才允许本地单跑极小测试：`cargo test -p <crate> -- <test_name>`。
-- **测试全面托付 GitHub CI（动态按需执行）**：
-  - 项目部署了动态 CI 调度器（`scripts/ci-affected.sh`），依据 `git diff` 自动定位改动的 crate 及路径：
-    - 改动前端 crate/app 仅针对性运行 wasm32 编译与对应测试；
-    - 改动后端 crate 仅按需运行对应模块单测；
-    - 纯文档/配置改动直接秒级放行，跳过编译与测试；
-    - 仅共享契约 `crates/contract` 或全工作区依赖发生变动时才在 GitHub CI 云端执行完整测试套件。
+#### CI 调度规则（`scripts/ci-affected.sh`）
+
+PR 跑动态范围，合并到 main 跑全量兜底：
+
+| 触发 | 行为 |
+|---|---|
+| PR | 按 `git diff` 的 path scope 选包 + 反向依赖闭包 |
+| push main | `cargo build --all-targets` + `cargo test --all` |
+| 两者恒定 | `cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings` |
+
+动态选包分两步：先用路径前缀匹配得到直接改动的包（seed），再沿 workspace 内部依赖图（`cargo metadata` 里带 `path` 的依赖）反向 BFS，补齐所有依赖它的下游包。
+
+反向闭包是必需的，不是优化：改 `crates/api/tavern-storage` 若只跑该包，会漏掉 `api` 与 `tests-e2e`——它们依赖它，编译能过但测试断言可能已破。实测该改动的真实影响面是 11 个包。
+
+前端 crate（`crates/web/*`、`apps/{admin-web,tavern-web}`）走 wasm32 check，其余走 native check；有 `tests/*.rs` 的包额外跑 `cargo test -p`；纯文档改动秒级跳过。
+
+只有影响面无法从依赖图推导的改动才升级为全量：`Cargo.toml`、`Cargo.lock`、`rust-toolchain.toml`、`.github/*`、`scripts/*`。`crates/contract` **不在此列**——它是普通 workspace 成员，闭包能精确算出受影响的 33 个包，比全量 53 个更准。
+
+提 PR 前可本地预览选包结果：
+
+```sh
+bash scripts/ci-affected.sh --base newxapi/main --dry-run
+```
+
 ### gate（`.githooks/`）
 
 - pre-commit / pre-push / merge 的拦截信息必须逐条读完再修根因；禁止 `--no-verify`、禁止 `| head -5` 之类截断后忽略。FAIL 条目（`checklist.*` / `WS-*` 格式）必须清零，WARN 说明理由后可放行。

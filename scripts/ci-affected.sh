@@ -37,33 +37,47 @@ done
 # ------------------------------------------------------------------------------
 # 1. 确定变更文件列表
 # ------------------------------------------------------------------------------
+# 显式 --base 时只认 merge-base..HEAD，不做任何 fallback：
+# 静默退化成 `git diff <base>`（工作树 vs base 全量对比）会把 worktree 里的
+# untracked 产物全部算成改动，直接把 scope 顶成 FULL WORKSPACE。
 DIFF_TARGET=""
 CHANGED_FILES=""
+BASE_RESOLVED=""
+
+resolve_diff() {
+  local base="$1"
+  local mb
+  mb=$(git merge-base "$base" HEAD 2>/dev/null) || return 1
+  DIFF_TARGET="${base}...HEAD"
+  BASE_RESOLVED="$mb"
+  CHANGED_FILES=$(git diff --name-only "$mb" HEAD 2>/dev/null) || return 1
+  return 0
+}
 
 if [[ -n "$BASE_REF" ]]; then
-  if git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
-    DIFF_TARGET="$BASE_REF...HEAD"
-    CHANGED_FILES=$(git diff --name-only "$BASE_REF...HEAD" 2>/dev/null || git diff --name-only "$BASE_REF" 2>/dev/null || true)
+  if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+    echo "ERROR: base ref '$BASE_REF' 不存在" >&2
+    exit 1
   fi
-fi
-
-if [[ -z "$CHANGED_FILES" ]]; then
-  for candidate in "origin/main" "remotes/newxapi/main" "newxapi/main" "main" "HEAD~1"; do
-    if git rev-parse --verify "$candidate" >/dev/null 2>&1; then
-      DIFF_TARGET="$candidate...HEAD"
-      CHANGED_FILES=$(git diff --name-only "$candidate...HEAD" 2>/dev/null || true)
-      if [[ -n "$CHANGED_FILES" ]]; then
-        break
-      fi
+  if ! resolve_diff "$BASE_REF"; then
+    echo "ERROR: 无法计算 '$BASE_REF' 与 HEAD 的 merge-base diff" >&2
+    exit 1
+  fi
+else
+  for candidate in "newxapi/main" "origin/main" "remotes/newxapi/main" "main" "HEAD~1"; do
+    if git rev-parse --verify "$candidate" >/dev/null 2>&1 && resolve_diff "$candidate"; then
+      break
     fi
   done
 fi
 
-# 补充工作区未提交与未跟踪的文件
+# 补充工作区改动：CI 上工作树本就干净，这里只为本地 dry-run 方便。
+# 只取已跟踪文件的改动，不含 untracked —— untracked 多是构建产物（dx.log、
+# tailwind.out.css、target/），算进来会误把 scope 顶成全量。
 UNCOMMITTED=$(git diff --name-only HEAD 2>/dev/null || true)
-UNTRACKED=$(git status --porcelain 2>/dev/null | awk '/^\?\?/ {print $2}' || true)
+STAGED=$(git diff --name-only --cached HEAD 2>/dev/null || true)
 
-ALL_CHANGED=$(printf "%s\n%s\n%s\n" "$CHANGED_FILES" "$UNCOMMITTED" "$UNTRACKED" | sed '/^$/d' | sort -u || true)
+ALL_CHANGED=$(printf "%s\n%s\n%s\n" "$CHANGED_FILES" "$UNCOMMITTED" "$STAGED" | sed '/^$/d' | sort -u || true)
 CHANGED_COUNT=$(echo "$ALL_CHANGED" | grep -c . || true)
 
 echo "================================================================="
@@ -79,12 +93,15 @@ fi
 # ------------------------------------------------------------------------------
 # 2. 全量触发规则检查
 # ------------------------------------------------------------------------------
+# 只有"影响面无法从依赖图推导"的改动才升级为全量：依赖版本、toolchain、CI 自身。
+# crates/contract 不在此列 —— 它是普通 workspace 成员，反向依赖闭包能精确算出
+# 受影响的下游包（实测 33 个，比全量 53 个更准）。
 IS_GLOBAL=false
 GLOBAL_TRIGGER=""
 
 for f in $ALL_CHANGED; do
   case "$f" in
-    Cargo.lock|Cargo.toml|rust-toolchain.toml|.github/*|scripts/*|crates/contract/*)
+    Cargo.lock|Cargo.toml|rust-toolchain.toml|.github/*|scripts/*)
       IS_GLOBAL=true
       GLOBAL_TRIGGER="$f"
       break
@@ -107,6 +124,17 @@ get_workspace_meta() {
   '
 }
 
+# workspace 内部依赖边，每行 "依赖者 被依赖者"。
+# 只取带 path 的依赖（本地路径依赖 = workspace 成员），忽略 crates.io 依赖。
+get_dep_edges() {
+  cargo metadata --format-version 1 | jq -r '
+    [.workspace_members[]] as $ws |
+    .packages[] | select(.id as $id | $ws | index($id)) |
+    .name as $me |
+    .dependencies[]? | select(.path != null) | "\($me) \(.name)"
+  '
+}
+
 META_LIST=$(get_workspace_meta)
 
 NATIVE_CHECK_PKGS=()
@@ -119,6 +147,33 @@ has_test_suite() {
     return 0
   fi
   return 1
+}
+
+# 反向依赖闭包：给定直接命中的包（seed），沿"谁依赖我"方向 BFS，
+# 补齐所有间接受影响的下游包。
+#
+# 为什么必须做：改 tavern-storage 只跑 tavern-storage 会漏掉 api 与 tests-e2e
+# —— 它们依赖它，编译能过但测试断言可能已经破了。
+expand_rdeps() {
+  local seeds="$1"
+  [[ -z "${seeds// /}" ]] && return 0
+  printf '%s\n' "$DEP_EDGES" | awk -v seeds="$seeds" '
+    NF == 2 { rev[$2] = rev[$2] " " $1 }
+    END {
+      n = split(seeds, s, " ")
+      for (i = 1; i <= n; i++) if (s[i] != "") { seen[s[i]] = 1; q[++tail] = s[i] }
+      head = 1
+      while (head <= tail) {
+        cur = q[head++]
+        m = split(rev[cur], parents, " ")
+        for (j = 1; j <= m; j++) {
+          p = parents[j]
+          if (p != "" && !(p in seen)) { seen[p] = 1; q[++tail] = p }
+        }
+      }
+      for (k in seen) print k
+    }
+  ' | sort -u
 }
 
 if [[ "$IS_GLOBAL" = true ]]; then
@@ -134,11 +189,36 @@ if [[ "$IS_GLOBAL" = true ]]; then
     fi
   done <<< "$META_LIST"
 else
-  echo "Scope       : DYNAMIC SELECTIVE"
+  # 第一步：路径命中，得到直接改动的包（seed）
+  SEED_PKGS=()
   while IFS='|' read -r dir name is_web; do
-    # 检查是否有变更命中该目录
     for f in $ALL_CHANGED; do
       if [[ "$f" == "$dir" ]] || [[ "$f" == "$dir"/* ]]; then
+        SEED_PKGS+=("$name")
+        break
+      fi
+    done
+  done <<< "$META_LIST"
+
+  SEED_LIST=$(printf '%s\n' "${SEED_PKGS[@]:-}" | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/ $//')
+  SEED_COUNT=$(wc -w <<< "$SEED_LIST")
+
+  # 第二步：沿反向依赖图展开，补齐下游受影响的包
+  DEP_EDGES=$(get_dep_edges)
+  AFFECTED_LIST=$(expand_rdeps "$SEED_LIST" | tr '\n' ' ' | sed 's/ $//')
+  AFFECTED_COUNT=$(wc -w <<< "$AFFECTED_LIST")
+
+  echo "Scope       : DYNAMIC SELECTIVE (+rdeps)"
+  echo "Seed        : ${SEED_COUNT} package(s) 直接命中"
+  [[ -n "$SEED_LIST" ]] && echo "              ${SEED_LIST}"
+  if [[ "$AFFECTED_COUNT" -gt "$SEED_COUNT" ]]; then
+    echo "Closure     : ${AFFECTED_COUNT} package(s) (+$((AFFECTED_COUNT - SEED_COUNT)) 经反向依赖补齐)"
+  fi
+
+  # 第三步：按闭包结果分类到 native / wasm / test
+  while IFS='|' read -r dir name is_web; do
+    for pkg in $AFFECTED_LIST; do
+      if [[ "$pkg" == "$name" ]]; then
         if [[ "$is_web" = "true" ]]; then
           WASM_CHECK_PKGS+=("$name")
         else
