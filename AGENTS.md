@@ -11,10 +11,29 @@
 ## 开发方式
 
 - `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支，worktree 目录名与分支名尾段一致（`.wt/admin-api` ↔ `feat/admin-api`）；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
-- 默认 **PR-only**：不开 issue，worktree 起手就开 draft PR，任务清单与验收登记在 PR body；用户 prompt 明确要求时才建 issue。
-- 合并一律 **squash merge**（`gh pr merge --squash`），不用 merge commit / rebase merge；PR 标题就是 squash 后的 conventional commit message，必须规范。
-- 首次 clone 后 `cp config/config.toml.example config/config.toml`（本地配置不入库）。
 - 提交前用 `cargo check` 验证编译（本地环境没有 LSP，check 就是类型错误的兜底）；CPU-heavy 套 cpulimit（见下）。
+
+## `.wt/` 工作目录保护（硬约束）
+
+`.wt/<name>/` 是开发工作目录，也是其他会话的代码容器。**任何会话严禁在未经确认的情况下删除整个 `.wt/` 目录或他人 worktree 分支目录。** 违规删除 = 丢失他人整个开发会话，等同于删库。
+
+- 只能删除**自己负责的 PR 对应的 worktree 目录**，且必须满足全部条件：
+  1. PR 已 squash merge 到 upstream main；
+  2. 用户明确确认可以清理；
+  3. 删除前 `git worktree list` 确认目标目录对应当前会话分支，不影响其他 worktree。
+- 合并流程结束时：`git worktree remove <自己目录>` + `gh pr merge --delete-branch`，禁止 `rm -rf .wt/` 或 `rm -rf .wt/*` 批量删除。
+- 发现 `.wt/` 目录意外丢失时，立即告知用户并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
+
+`.wt/<name>/` 是开发工作目录，也是其他会话的代码容器。**任何会话严禁在未经确认的情况下删除整个 `.wt/` 目录或他人 worktree 分支目录。** 违规删除 = 丢失他人整个开发会话，等同于删库。
+
+- 只能删除**自己负责的 PR 对应的 worktree 目录**，且必须满足全部条件：
+  1. PR 已 squash merge 到 upstream main；
+  2. 用户明确确认可以清理；
+  3. 删除前 `git worktree list` 确认目标目录对应当前会话分支，不影响其他 worktree。
+- 合并流程结束时：`git worktree remove <自己目录>` + `gh pr merge --delete-branch`，禁止 `rm -rf .wt/` 或 `rm -rf .wt/*` 批量删除。
+- 发现 `.wt/` 目录意外丢失时，立即告知用户并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
+
+
 
 ## 域目录并发与越界
 
