@@ -82,3 +82,32 @@ fn agent_run_generation_type_roundtrip_all_variants() {
         assert_eq!(parsed.generation_type, expected);
     }
 }
+
+// ---------------------------------------------------------------------------
+// AgentContextPolicy 摘要字段：旧 profile JSON（无新字段）反序列化兼容
+// ---------------------------------------------------------------------------
+
+#[test]
+fn context_policy_without_summary_fields_deserializes() {
+    // 旧 profile：只有 initial_chat_history_messages / include_activated_world_info
+    let legacy = serde_json::json!({
+        "initialChatHistoryMessages": -1,
+        "includeActivatedWorldInfo": true
+    });
+    let policy: harness_core::AgentContextPolicy =
+        serde_json::from_value(legacy).expect("legacy policy must load");
+    assert!(!policy.summary_enabled, "缺省关闭摘要");
+    assert_eq!(policy.summary_trigger_messages, 12);
+
+    // 新字段全量 round-trip
+    let full = serde_json::json!({
+        "initialChatHistoryMessages": -1,
+        "includeActivatedWorldInfo": true,
+        "summaryEnabled": true,
+        "summaryTriggerMessages": 20
+    });
+    let policy: harness_core::AgentContextPolicy =
+        serde_json::from_value(full).expect("full policy");
+    assert!(policy.summary_enabled);
+    assert_eq!(policy.summary_trigger_messages, 20);
+}
