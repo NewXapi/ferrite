@@ -18,6 +18,7 @@ pub const DEFAULT_AGENT_SKILL_MAX_READ_CHARS_PER_RUN: usize = 80_000;
 pub const DEFAULT_AGENT_MODEL_MAX_RETRIES: usize = 3;
 pub const DEFAULT_AGENT_MODEL_RETRY_INTERVAL_MS: u64 = 3_000;
 pub const DEFAULT_AGENT_INITIAL_CHAT_HISTORY_MESSAGES: i64 = -1;
+pub const DEFAULT_AGENT_SUMMARY_TRIGGER_MESSAGES: usize = 12;
 pub const DEFAULT_AGENT_DELEGATION_MAX_CONCURRENT_INVOCATIONS: usize = 3;
 pub const DEFAULT_AGENT_DELEGATION_MAX_INVOCATIONS_PER_RUN: usize = 8;
 pub const DEFAULT_AGENT_DELEGATION_RESULT_BUDGET_TOKENS: usize = 8_000;
@@ -202,6 +203,17 @@ pub struct AgentContextPolicy {
     pub initial_chat_history_messages: i64,
     #[serde(default = "default_agent_include_activated_world_info")]
     pub include_activated_world_info: bool,
+    /// 摘要记忆开关（handover §二 H3）：true 时调用方可用 `summarize_history`
+    /// 把截断丢弃的历史压缩注入；false 时直接丢（纯 truncate 语义）。
+    #[serde(default)]
+    pub summary_enabled: bool,
+    /// 触发摘要的最小历史消息数；历史少于此值时即使超预算也直接丢（省一次 LLM 调用）。
+    #[serde(default = "default_agent_summary_trigger_messages")]
+    pub summary_trigger_messages: usize,
+}
+
+fn default_agent_summary_trigger_messages() -> usize {
+    DEFAULT_AGENT_SUMMARY_TRIGGER_MESSAGES
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -398,6 +410,8 @@ impl Default for AgentContextPolicy {
         Self {
             initial_chat_history_messages: DEFAULT_AGENT_INITIAL_CHAT_HISTORY_MESSAGES,
             include_activated_world_info: true,
+            summary_enabled: false,
+            summary_trigger_messages: DEFAULT_AGENT_SUMMARY_TRIGGER_MESSAGES,
         }
     }
 }

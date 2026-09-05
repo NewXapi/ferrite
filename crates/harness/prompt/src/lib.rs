@@ -44,7 +44,10 @@ pub use prompt_snapshot::{
 };
 pub use reasoning::{ReasoningTemplate, inject_reasoning, wrap_reasoning};
 pub use render::{RenderError, render};
-pub use truncate::{TruncationDropReason, truncate_history};
+pub use truncate::{
+    DEFAULT_SUMMARY_PREFIX, TruncationDropReason, summarize_history, truncate_history,
+    truncate_history_with_dropped,
+};
 pub use types::{
     AgentModelContentPart, AgentModelMessage, AgentModelRequest, AgentModelRole, PromptInput,
 };

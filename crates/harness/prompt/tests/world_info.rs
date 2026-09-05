@@ -11,8 +11,8 @@
 //! - 扫描文本为空（无消息）时任何条目都不会激活。
 
 use harness_prompt::{
-    AgentModelMessage, AgentModelRole, WorldInfoEntry, WorldInfoPosition, compute_world_info_budget,
-    inject_world_info,
+    AgentModelMessage, AgentModelRole, WorldInfoEntry, WorldInfoPosition,
+    compute_world_info_budget, inject_world_info,
 };
 
 /// 辅助：token 计数器（每个字符算 1 token）
@@ -78,7 +78,10 @@ fn test_activation_case_insensitive() {
         0,
         100,
     )];
-    let messages = vec![AgentModelMessage::text(AgentModelRole::User, "Hello foo bar")];
+    let messages = vec![AgentModelMessage::text(
+        AgentModelRole::User,
+        "Hello foo bar",
+    )];
     let budget = compute_world_info_budget(50.0, 1000, None);
     let result = inject_world_info(&messages, &entries, budget, simple_token_count, always_true);
     // 消息内含 "foo"（大小写不敏感），激活并插入 Before 位置
@@ -90,8 +93,22 @@ fn test_activation_case_insensitive() {
 #[test]
 fn test_multiple_keys_any_match() {
     let entries = vec![
-        entry(&["foo", "bar"], "match", WorldInfoPosition::Before, None, 0, 100),
-        entry(&["baz"], "no match", WorldInfoPosition::Before, None, 1, 100),
+        entry(
+            &["foo", "bar"],
+            "match",
+            WorldInfoPosition::Before,
+            None,
+            0,
+            100,
+        ),
+        entry(
+            &["baz"],
+            "no match",
+            WorldInfoPosition::Before,
+            None,
+            1,
+            100,
+        ),
     ];
     let messages = vec![
         AgentModelMessage::text(AgentModelRole::User, "foo"),
@@ -104,7 +121,10 @@ fn test_multiple_keys_any_match() {
     assert!(result[0].role == AgentModelRole::System);
     let head = result[0].text_payload();
     assert!(head.contains("match"), "order 0 条目应在合并消息内: {head}");
-    assert!(head.contains("no match"), "order 1 条目应在合并消息内: {head}");
+    assert!(
+        head.contains("no match"),
+        "order 1 条目应在合并消息内: {head}"
+    );
 }
 
 #[test]
@@ -119,7 +139,13 @@ fn test_probability_roll_skips() {
     )];
     let messages = vec![AgentModelMessage::text(AgentModelRole::User, "test")];
     let budget = compute_world_info_budget(50.0, 1000, None);
-    let result = inject_world_info(&messages, &entries, budget, simple_token_count, always_false);
+    let result = inject_world_info(
+        &messages,
+        &entries,
+        budget,
+        simple_token_count,
+        always_false,
+    );
     // roll 返回 false 应跳过，不产生注入
     assert_eq!(result.len(), 1);
     assert!(result[0].role == AgentModelRole::User);
@@ -129,7 +155,14 @@ fn test_probability_roll_skips() {
 fn test_budget_truncation() {
     let entries = vec![
         entry(&["a"], "short", WorldInfoPosition::Before, None, 0, 100),
-        entry(&["b"], "this is a long content that exceeds budget", WorldInfoPosition::Before, None, 1, 100),
+        entry(
+            &["b"],
+            "this is a long content that exceeds budget",
+            WorldInfoPosition::Before,
+            None,
+            1,
+            100,
+        ),
         entry(&["c"], "third", WorldInfoPosition::Before, None, 2, 100),
     ];
     let messages = vec![AgentModelMessage::text(AgentModelRole::User, "a b c")];
@@ -197,9 +230,30 @@ fn test_after_injection() {
 #[test]
 fn test_depth_injection() {
     let entries = vec![
-        entry(&["trigger"], "depth 0", WorldInfoPosition::Depth, Some(0), 0, 100),
-        entry(&["trigger"], "depth 1", WorldInfoPosition::Depth, Some(1), 1, 100),
-        entry(&["trigger"], "depth 2", WorldInfoPosition::Depth, Some(2), 2, 100),
+        entry(
+            &["trigger"],
+            "depth 0",
+            WorldInfoPosition::Depth,
+            Some(0),
+            0,
+            100,
+        ),
+        entry(
+            &["trigger"],
+            "depth 1",
+            WorldInfoPosition::Depth,
+            Some(1),
+            1,
+            100,
+        ),
+        entry(
+            &["trigger"],
+            "depth 2",
+            WorldInfoPosition::Depth,
+            Some(2),
+            2,
+            100,
+        ),
     ];
     let messages = vec![
         AgentModelMessage::text(AgentModelRole::User, "trigger"),
@@ -269,7 +323,13 @@ fn test_input_unchanged() {
         100,
     )];
     let budget = compute_world_info_budget(50.0, 1000, None);
-    let result = inject_world_info(&original_messages, &entries, budget, simple_token_count, always_true);
+    let result = inject_world_info(
+        &original_messages,
+        &entries,
+        budget,
+        simple_token_count,
+        always_true,
+    );
     // 验证入参未被修改（切片不持有所有权）
     assert_eq!(original_messages.len(), 1);
     assert_eq!(original_messages[0].text_payload(), "test");
