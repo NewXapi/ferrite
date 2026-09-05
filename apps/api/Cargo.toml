@@ -32,6 +32,7 @@ rand      = { workspace = true }
 chrono    = { workspace = true }
 futures-util = { workspace = true }
 tower     = { workspace = true }
+hex = "0.4"
 
 tavern-storage    = { path = "../../crates/api/tavern-storage" }
 tavern-auth       = { path = "../../crates/api/tavern-auth" }
@@ -40,4 +41,14 @@ tavern-chats      = { path = "../../crates/api/tavern-chats" }
 tavern-settings   = { path = "../../crates/api/tavern-settings" }
 tavern-secrets    = { path = "../../crates/api/tavern-secrets" }
 tavern-generate   = { path = "../../crates/api/tavern-generate" }
-auth              = { path = "../../crates/api/auth" }
+admin-router = { path = "../../crates/api/admin-router" }
+observe = { path = "../../crates/api/admin-observe" }
+metering = { path = "../../crates/gateway/metering" }
+gateway-pipeline = { path = "../../crates/gateway/pipeline" }
+gateway-protocol-bridge = { path = "../../crates/gateway/protocol-bridge" }
+forward = { path = "../../crates/gateway/forward" }
+gateway-gate = { path = "../../crates/gateway/gate" }
+dispatch = { path = "../../crates/gateway/dispatch" }
+contract = { path = "../../crates/contract" }
+anyhow = "1"
+uuid = { workspace = true }
