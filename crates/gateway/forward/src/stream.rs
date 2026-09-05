@@ -12,6 +12,7 @@ pub struct PipedChunk {
     pub events: Vec<gateway_protocol_bridge::sse::SseEvent>,
 }
 
+<<<<<<< Updated upstream
 pub struct SseContext {
     pub scanner: gateway_protocol_bridge::sse::SseScanner,
     pub token_scanner: metering::scanner::StreamScanner,
@@ -23,6 +24,14 @@ pub struct SseContext {
     pub upstream_model: String,
     /// 定价表引用（可选，None = 不计费）。
     pub price_table: Option<std::sync::Arc<dyn metering::pricing::PriceTable>>,
+=======
+/// SSE 扫描上下文 — 单次流式转发的扫描链状态。
+///
+/// 链路: upstream chunk → SseScanner (帧边界) → StreamScanner (usage/token) → client.
+pub struct SseContext {
+    pub scanner: gateway_protocol_bridge::sse::SseScanner,
+    pub token_scanner: metering::scanner::StreamScanner,
+>>>>>>> Stashed changes
 }
 
 impl SseContext {
@@ -30,12 +39,15 @@ impl SseContext {
         Self {
             scanner: gateway_protocol_bridge::sse::SseScanner::default(),
             token_scanner: metering::scanner::StreamScanner::new(),
+<<<<<<< Updated upstream
             user_key: String::new(),
             token_key: String::new(),
             channel_key: String::new(),
             public_model: String::new(),
             upstream_model: String::new(),
             price_table: None,
+=======
+>>>>>>> Stashed changes
         }
     }
 }
@@ -46,6 +58,10 @@ impl Default for SseContext {
     }
 }
 
+<<<<<<< Updated upstream
+=======
+/// 把一块上游字节推过扫描链 — 透传 + 检测事件。
+>>>>>>> Stashed changes
 pub fn pipe_chunk(ctx: &mut SseContext, chunk: &Bytes) -> PipedChunk {
     let (passthrough, events) = ctx.scanner.push(chunk);
     ctx.token_scanner.push(chunk);
@@ -55,6 +71,7 @@ pub fn pipe_chunk(ctx: &mut SseContext, chunk: &Bytes) -> PipedChunk {
     }
 }
 
+<<<<<<< Updated upstream
 /// 终止扫描器，返回 SseEnd + TokenCounts，并在有 price_table 时自动结算。
 pub fn finish(
     ctx: SseContext,
@@ -87,6 +104,13 @@ pub fn finish(
         );
     }
 
+=======
+/// 终止扫描器并报终止原因 + token 计数。
+pub fn finish(ctx: SseContext) -> (gateway_protocol_bridge::sse::SseEnd, metering::scanner::TokenCounts) {
+    let end = ctx.scanner.finish();
+    // prompt 由请求体预扫得出, 这里传 0 作为占位
+    let counts = ctx.token_scanner.finish(0);
+>>>>>>> Stashed changes
     (end, counts)
 }
 
