@@ -147,7 +147,7 @@ pub struct SettingsUpdateRequest {
 
 pub struct AuthService {
     pool: PgPool,
-    pub jwt_secret: Vec<u8>,
+    jwt_secret: Vec<u8>,
     refresh_secret: Vec<u8>,
     access_ttl: Duration,
     refresh_ttl: Duration,
@@ -391,7 +391,12 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthError> {
+    /// 解析 access token 并返回 claims（供 handler 取 sid 等）。
+pub fn parse_access_claims(&self, token: &str) -> Result<jwt::Claims, AuthError> {
+    jwt::parse(&self.jwt_secret, token)
+}
+
+pub async fn self_by_access(&self, access_token: &str) -> Result<SelfView, AuthError> {
         let claims = jwt::parse(&self.jwt_secret, access_token)?;
         let key = Uuid::parse_str(&claims.sub).map_err(|_| AuthError::InvalidToken)?;
         let user = self.fetch_user_by_key(key).await?;

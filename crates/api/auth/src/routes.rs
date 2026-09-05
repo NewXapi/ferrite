@@ -417,7 +417,7 @@ async fn list_sessions(
         .and_then(|s| s.strip_prefix("Bearer "))
         .ok_or(err_response(AuthError::InvalidToken))?;
 
-    let claims = crate::jwt::parse(&state.svc.jwt_secret, token).map_err(err_response)?;
+    let claims = state.svc.parse_access_claims(token).map_err(err_response)?;
     let current_sid = uuid::Uuid::parse_str(&claims.sid)
         .map_err(|_| AuthError::InvalidToken)
         .map_err(err_response)?;
@@ -472,7 +472,7 @@ async fn revoke_others_sessions(
         .and_then(|s| s.strip_prefix("Bearer "))
         .ok_or(err_response(AuthError::InvalidToken))?;
 
-    let claims = crate::jwt::parse(&state.svc.jwt_secret, token).map_err(err_response)?;
+    let claims = state.svc.parse_access_claims(token).map_err(err_response)?;
     let current_sid = uuid::Uuid::parse_str(&claims.sid)
         .map_err(|_| AuthError::InvalidToken)
         .map_err(err_response)?;
