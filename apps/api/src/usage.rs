@@ -138,7 +138,8 @@ fn spawn_record(
             &pool, &quota_snapshot, user_uuid, &username, token_uuid, &token_name,
             &model_name, prompt_tokens, completion_tokens, cost, use_time_ms, is_stream,
             &token_key,
-        );
+        )
+        .await;
     });
 }
 
