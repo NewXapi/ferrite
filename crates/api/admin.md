@@ -182,6 +182,10 @@ apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
 | PUT | `/api/option` | admin 写入（注册表校验，未知 key 拒绝） |
 
 表 `options`（key TEXT PK + JSONB value）；首批 5 项：site.registration_enabled / site.quota_new_user / gateway.retry.max_attempts / gateway.timeout.first_byte_ms / observe.retention.usage_days。
+### 已完成 — `ops/` system_info (系统信息诊断，1 端点)
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/system-info` | admin 诊断综合指标：运行时环境（OS/arch/hostname）、Uptime、内存（RSS/virt/meminfo）、CPU（核数/loadavg）、数据库连接池状态与核心业务计数 |
 
 ### 已完成 — `catalog/` route_unit (路由单元，5 端点)
 | 方法 | 路径 | 说明 |
