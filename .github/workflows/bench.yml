@@ -1,0 +1,73 @@
+name: Gateway Bench & Server Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Operation to perform"
+        required: true
+        type: choice
+        options:
+          - "setup-ssh"
+          - "bench"
+        default: "setup-ssh"
+      scenario:
+        description: "Benchmark scenario if running bench (baseline, medium_load, multi_model, streaming, stress, all)"
+        required: false
+        default: "baseline"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass openssh-client jq
+
+      - name: Setup and Verify Server Access
+        env:
+          SERVER_HOST: ${{ secrets.BENCH_SERVER_HOST }}
+          SERVER_USER: ${{ secrets.BENCH_SERVER_USER }}
+          SERVER_PASS: ${{ secrets.BENCH_SERVER_PASSWORD }}
+          SSH_PRIVATE_KEY: ${{ secrets.BENCH_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ]; then
+            echo "::error::BENCH_SERVER_HOST or BENCH_SERVER_USER secret is missing."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # 写入私钥并提取公钥
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_bench
+          chmod 600 ~/.ssh/id_bench
+          ssh-keygen -y -f ~/.ssh/id_bench > ~/.ssh/id_bench.pub
+          PUB_KEY=$(cat ~/.ssh/id_bench.pub)
+
+          echo "=== 1. Deploying public key to $SERVER_USER@$SERVER_HOST ==="
+          if [ -n "$SERVER_PASS" ]; then
+            sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              "$SERVER_USER@$SERVER_HOST" \
+              "mkdir -p ~/.ssh && chmod 700 ~/.ssh && (grep -q -F '$PUB_KEY' ~/.ssh/authorized_keys 2>/dev/null || echo '$PUB_KEY' >> ~/.ssh/authorized_keys) && chmod 600 ~/.ssh/authorized_keys"
+          else
+            echo "Password secret not provided, skipping password-based injection."
+          fi
+
+          echo "=== 2. Testing passwordless SSH connection via private key ==="
+          ssh -i ~/.ssh/id_bench -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 \
+            "$SERVER_USER@$SERVER_HOST" "uname -a && echo 'SSH Key Setup Verified Successfully!'"
+
+      - name: Run Benchmark
+        if: ${{ inputs.action == 'bench' }}
+        env:
+          SERVER_HOST: ${{ secrets.BENCH_SERVER_HOST }}
+          SERVER_USER: ${{ secrets.BENCH_SERVER_USER }}
+        run: |
+          echo "Starting benchmark on $SERVER_HOST with scenario ${{ inputs.scenario }}..."
+          # 验证远程环境准备完毕
+          ssh -i ~/.ssh/id_bench -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$SERVER_USER@$SERVER_HOST" "free -h && df -h /"
