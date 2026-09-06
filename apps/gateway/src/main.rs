@@ -93,6 +93,8 @@ async fn serve(cfg: Arc<GatewayConfig>, mut stop: tokio::sync::watch::Receiver<b
     // 用 select! 包 axum::serve 不行——那个 future 只在自身出错时结束。
     let res = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
+            // Err = sender 已被 drop（main 退出），语义上同样是"该收摊了"，
+            // 所以两种结果都让 shutdown future 结束。
             let _ = stop.wait_for(|v| *v).await;
         })
         .await;
