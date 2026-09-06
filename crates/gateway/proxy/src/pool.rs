@@ -8,7 +8,7 @@
 //! 是这一个请求走了旧出口），换来读路径零锁。需要强一致就得加读写锁，代价是
 //! 每请求争锁——不值得。
 
-use super::node::ProxyNode;
+pub use super::node::ProxyNode;
 use arc_swap::ArcSwap;
 use rand::Rng;
 use std::collections::HashMap;

@@ -12,8 +12,8 @@ use gateway_proxy::ssrf::{SsrfError, check_ip, validate_resolved, validate_url};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::str::FromStr;
 use url::Url;
-
 /// `parse_url`：各 scheme 正确映射 + 默认端口 + 认证提取 + 非法 scheme 报错
 #[test]
 fn parse_url_maps_schemes_and_defaults() {

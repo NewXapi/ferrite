@@ -3,10 +3,6 @@
 //! 完整链路: HTTP Request → Pipeline → GateChain → DispatchStage → ForwardStage → SseScanner → StreamScanner → Response
 
 use bytes::Bytes;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-
 use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable, Snapshot};
 use forward::egress::{Egress, ForwardedResponse, Timeouts};
@@ -16,6 +12,12 @@ use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, StreamedAccum
 use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
+use gateway_proxy::manager::ProxyManager;
+use gateway_proxy::node::ProxyScheme;
+use gateway_proxy::pool::{ProxyNode, ProxySnapshot};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 struct MockSseEgress {
     chunks: Vec<Bytes>,
@@ -282,4 +284,59 @@ fn e2e_truncated_stream_returns_truncated_end() {
     }
     let (end, _counts) = forward::stream::finish(ctx);
     assert_eq!(end, gateway_protocol_bridge::sse::SseEnd::Truncated);
+}
+/// build_app 不注入 proxies 时，mock egress 返回 200。
+#[tokio::test]
+async fn e2e_build_app_without_proxies_responds_200() {
+    let health = Arc::new(MemoryHealthTable::new());
+    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let egress = Arc::new(MockSseEgress { chunks: make_sse_chunks() });
+    let snapshot = make_snapshot();
+    let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health));
+    let pipeline = Arc::new(
+        Pipeline::new()
+            .push(DispatchStage::new(dispatcher))
+            .push(ForwardStage::new(egress, adaptors.clone()))
+            .push(ProtocolBridgeStage::new(adaptors)),
+    );
+    let ctx = make_ctx();
+    let resp = pipeline.run(ctx).await.expect("pipeline should respond");
+    assert_eq!(resp.status(), 200);
+}
+
+/// build_app 注入带节点的 ProxyManager 后，租约 Client 替换 mock egress。
+/// 节点指向不可达端口 → 请求失败（502），但不 panic。
+#[tokio::test]
+async fn e2e_build_app_with_proxy_node_returns_502() {
+    let health = Arc::new(MemoryHealthTable::new());
+    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let egress = Arc::new(MockSseEgress { chunks: make_sse_chunks() });
+    let proxies = Arc::new(ProxyManager::new());
+    proxies.install(ProxySnapshot {
+        nodes: vec![ProxyNode {
+            id: 1,
+            scheme: ProxyScheme::Http,
+            host: "127.0.0.1".into(),
+            port: 1,
+            auth: None,
+            channel_keys: vec!["ch1".into()],
+            priority: 10,
+        }],
+    });
+    let snapshot = make_snapshot();
+    let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health));
+    let pipeline = Arc::new(
+        Pipeline::new()
+            .push(DispatchStage::new(dispatcher))
+            .push(ForwardStage::new(egress, adaptors.clone()).with_proxies(proxies))
+            .push(ProtocolBridgeStage::new(adaptors)),
+    );
+    let ctx = make_ctx();
+    let resp = pipeline.run(ctx).await;
+    // 不可达端口 → 502 错误，但不 panic
+    let err = resp.expect_err("unreachable proxy port should produce 502");
+    assert!(
+        err.to_string().contains("502"),
+        "expected 502 error, got {err}"
+    );
 }

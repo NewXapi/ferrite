@@ -1707,6 +1707,7 @@ dependencies = [
  "gateway-pipeline",
  "gateway-protocol-bridge",
  "gateway-proxy",
+ "http",
  "metering",
  "parking_lot",
  "reqwest",
@@ -1716,6 +1717,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1928,7 +1930,9 @@ dependencies = [
  "percent-encoding",
  "rand 0.8.8",
  "reqwest",
+ "serde_json",
  "thiserror 2.0.20",
+ "tokio",
  "url",
 ]
 
@@ -4563,6 +4567,7 @@ dependencies = [
  "gateway-gate",
  "gateway-pipeline",
  "gateway-protocol-bridge",
+ "gateway-proxy",
  "http",
  "http-body-util",
  "metering",

@@ -13,13 +13,13 @@ api           = { path = "../apps/api" }
 ui-components = { path = "../crates/web/ui-components" }
 
 # Gateway crates
+gateway-gate = { path = "../crates/gateway/gate" }
+gateway-protocol-bridge = { path = "../crates/gateway/protocol-bridge" }
+gateway-proxy = { path = "../crates/gateway/proxy" }
 dispatch = { path = "../crates/gateway/dispatch" }
 forward = { path = "../crates/gateway/forward" }
 gateway-pipeline = { path = "../crates/gateway/pipeline" }
-gateway-gate = { path = "../crates/gateway/gate" }
-gateway-protocol-bridge = { path = "../crates/gateway/protocol-bridge" }
 metering = { path = "../crates/gateway/metering" }
-
 # Core
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 axum = { workspace = true }
