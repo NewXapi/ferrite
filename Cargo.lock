@@ -1706,6 +1706,7 @@ dependencies = [
  "futures-util",
  "gateway-pipeline",
  "gateway-protocol-bridge",
+ "gateway-proxy",
  "metering",
  "parking_lot",
  "reqwest",
@@ -1832,7 +1833,11 @@ dependencies = [
  "gateway-gate",
  "gateway-pipeline",
  "gateway-protocol-bridge",
+<<<<<<< HEAD
  "hex",
+=======
+ "gateway-proxy",
+>>>>>>> d674b34 (feat(gateway): wire channel egress proxy into model forward)
  "http",
  "metering",
  "reqwest",

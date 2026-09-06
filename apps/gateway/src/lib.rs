@@ -20,6 +20,7 @@ use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
+use gateway_proxy::ProxyManager;
 use metering::pricing::{ConfigPriceTable, PriceTable};
 use std::sync::Arc;
 
@@ -37,6 +38,7 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     }));
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());
+    let proxies = Arc::new(ProxyManager::new());
     let snapshot: Arc<Snapshot> = load_snapshot(cfg);
     let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health.clone()));
     let gates = build_gates(cfg);
@@ -44,7 +46,7 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
         Pipeline::new()
             .push(gates)
             .push(DispatchStage::new(dispatcher))
-            .push(ForwardStage::new(egress, adaptors.clone()))
+            .push(ForwardStage::new(egress, adaptors.clone()).with_proxies(proxies))
             .push(ProtocolBridgeStage::new(adaptors)),
     );
     gateway_pipeline::router::build_router(pipeline)

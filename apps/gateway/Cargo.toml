@@ -14,6 +14,7 @@ gateway-pipeline = { path = "../../crates/gateway/pipeline" }
 gateway-gate = { path = "../../crates/gateway/gate" }
 dispatch = { path = "../../crates/gateway/dispatch" }
 forward = { path = "../../crates/gateway/forward" }
+gateway-proxy = { path = "../../crates/gateway/proxy" }
 gateway-protocol-bridge = { path = "../../crates/gateway/protocol-bridge" }
 metering = { path = "../../crates/gateway/metering" }
 contract = { path = "../../crates/contract" }

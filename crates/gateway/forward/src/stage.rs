@@ -7,6 +7,7 @@
 //! 单次转发 + 结果落 ctx。重试编排在 retry 循环 (dispatch::retry), 不在此处。
 
 use crate::ForwardTask;
+use crate::egress::ReqwestEgress;
 use crate::stream::{self, pipe_chunk};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -14,23 +15,62 @@ use contract::error::NormalizedError;
 use gateway_pipeline::ctx::{BodySource, UpstreamResponse};
 use gateway_pipeline::{PipeStream, RequestCtx, Stage, StageError, StageOutcome};
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
+use gateway_proxy::ProxyManager;
 use std::sync::Arc;
+use std::time::Duration;
 
-/// 转发 stage — 依赖 egress (reqwest 出口) 与路径模板前缀。
+/// 转发 stage — 依赖 egress（测试 mock / 无代理）或 [`ProxyManager`] 租约 Client。
 pub struct ForwardStage {
     egress: Arc<dyn crate::egress::Egress>,
     timeouts: crate::egress::Timeouts,
     /// 厂商协议注册表；空 = 透传。
     adaptors: Arc<AdaptorRegistry>,
+    /// 生产路径注入；`None` 时使用 `egress`（测试 mock）。
+    proxies: Option<Arc<ProxyManager>>,
 }
 
 impl ForwardStage {
+    /// 使用注入的 [`crate::egress::Egress`]（测试或无代理池）。
     pub fn new(egress: Arc<dyn crate::egress::Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
         Self {
             egress,
             timeouts: crate::egress::Timeouts::default(),
             adaptors,
+            proxies: None,
         }
+    }
+
+    /// 模型请求按 `SelectedRoute.channel_key` 租出口 Client。
+    pub fn with_proxies(mut self, proxies: Arc<ProxyManager>) -> Self {
+        self.proxies = Some(proxies);
+        self
+    }
+
+    async fn forward_task(&self, task: &ForwardTask) -> Result<crate::Forwarded, NormalizedError> {
+        let Some(proxies) = self.proxies.as_ref() else {
+            return crate::pipeline::forward_once(
+                task,
+                &*self.egress,
+                &self.adaptors,
+                &self.timeouts,
+            )
+            .await;
+        };
+
+        let lease = proxies.acquire(&task.candidate.unit.channel_key);
+        let node_id = lease.node_id;
+        let client = (*lease.client).clone();
+        let egress = ReqwestEgress::with_client(client, Duration::from_secs(5));
+        let result =
+            crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await;
+        match &result {
+            Ok(forwarded) => proxies.feedback(node_id, forwarded.status, false),
+            Err(err) => {
+                let transport_err = err.status == 502 || err.status == 504;
+                proxies.feedback(node_id, err.status, transport_err);
+            }
+        }
+        result
     }
 }
 
@@ -67,6 +107,8 @@ impl Stage for ForwardStage {
                 )));
             }
         };
+        let base_url = route.base_url.clone();
+        let channel_key = route.channel_key.clone();
 
         let provider_type = candidate.provider_type.clone();
         let extra_headers = crate::adapter::extra_headers_from_settings(&candidate.settings);
@@ -83,15 +125,15 @@ impl Stage for ForwardStage {
             extra_headers,
         };
 
-        let forwarded =
-            crate::pipeline::forward_once(&task, &*self.egress, &self.adaptors, &self.timeouts)
-                .await
-                .map_err(|e: NormalizedError| {
-                    StageError::Upstream(gateway_pipeline::UpstreamError::Status {
-                        code: e.status,
-                        body_preview: e.message.into_bytes(),
-                    })
-                })?;
+        let forwarded = self
+            .forward_task(&task)
+            .await
+            .map_err(|e: NormalizedError| {
+                StageError::Upstream(gateway_pipeline::UpstreamError::Status {
+                    code: e.status,
+                    body_preview: e.message.into_bytes(),
+                })
+            })?;
 
         // 非流式 → 收 body 写入 ctx.upstream; 流式 → 交回客户端。
         if task.stream {

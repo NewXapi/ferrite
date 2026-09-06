@@ -5,13 +5,13 @@
 //! - 为什么是这个预期
 //! - 对应生产场景哪个环节
 
+use gateway_proxy::manager::ProxyManager;
 use gateway_proxy::node::{BasicAuth, ProxyNode, ProxyScheme};
 use gateway_proxy::pool::{ProxyPool, ProxySnapshot};
 use gateway_proxy::ssrf::{SsrfError, check_ip, validate_resolved, validate_url};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::str::FromStr;
 use url::Url;
 
 /// `parse_url`：各 scheme 正确映射 + 默认端口 + 认证提取 + 非法 scheme 报错
@@ -69,7 +69,7 @@ fn to_reqwest_proxy_returns_correct_variant() {
         host: "".into(),
         port: 0,
         auth: None,
-        channel_ids: vec![],
+        channel_keys: vec![],
         priority: 0,
     };
     assert!(node.to_reqwest_proxy().unwrap().is_none());
@@ -84,7 +84,7 @@ fn to_reqwest_proxy_returns_correct_variant() {
             user: "u".into(),
             pass: "p".into(),
         }),
-        channel_ids: vec![],
+        channel_keys: vec![],
         priority: 0,
     };
     let proxy = node.to_reqwest_proxy().unwrap().unwrap();
@@ -98,7 +98,7 @@ fn to_reqwest_proxy_returns_correct_variant() {
         host: "proxy.example.com".into(),
         port: 1080,
         auth: None,
-        channel_ids: vec![],
+        channel_keys: vec![],
         priority: 0,
     };
     let proxy = node.to_reqwest_proxy().unwrap().unwrap();
@@ -111,7 +111,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
     let pool = ProxyPool::new();
     let mut rng = StdRng::seed_from_u64(7);
     // 初始空
-    assert!(pool.pick(1, &mut rng).is_none());
+    assert!(pool.pick("1", &mut rng).is_none());
 
     // 安装两个节点，channel 1：prio 10 和 5
     let snap = ProxySnapshot {
@@ -122,7 +122,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
                 host: "a".into(),
                 port: 1,
                 auth: None,
-                channel_ids: vec![1],
+                channel_keys: vec!["1".into()],
                 priority: 5,
             },
             ProxyNode {
@@ -131,7 +131,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
                 host: "b".into(),
                 port: 2,
                 auth: None,
-                channel_ids: vec![1],
+                channel_keys: vec!["1".into()],
                 priority: 10,
             },
         ],
@@ -139,7 +139,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
     pool.install(snap);
     // 低优先层永不参与：不管 rng 怎么走，只能是 prio 10 的 id=2
     for _ in 0..20 {
-        let picked = pool.pick(1, &mut rng).unwrap();
+        let picked = pool.pick("1", &mut rng).unwrap();
         assert_eq!(
             picked.id, 2,
             "only highest priority layer (10) should be picked"
@@ -147,7 +147,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
     }
 
     // 未配置代理的 channel
-    assert!(pool.pick(999, &mut rng).is_none());
+    assert!(pool.pick("999", &mut rng).is_none());
 
     // 重新 install：整体替换，旧索引（含 id=2）不残留
     let snap = ProxySnapshot {
@@ -157,13 +157,13 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
             host: "c".into(),
             port: 3,
             auth: None,
-            channel_ids: vec![1],
+            channel_keys: vec!["1".into()],
             priority: 5,
         }],
     };
     pool.install(snap);
     for _ in 0..10 {
-        assert_eq!(pool.pick(1, &mut rng).unwrap().id, 3);
+        assert_eq!(pool.pick("1", &mut rng).unwrap().id, 3);
     }
 }
 
@@ -182,7 +182,7 @@ fn pick_random_within_same_priority_layer() {
                 host: "a".into(),
                 port: 1,
                 auth: None,
-                channel_ids: vec![1],
+                channel_keys: vec!["1".into()],
                 priority: 10,
             },
             ProxyNode {
@@ -191,7 +191,7 @@ fn pick_random_within_same_priority_layer() {
                 host: "b".into(),
                 port: 2,
                 auth: None,
-                channel_ids: vec![1],
+                channel_keys: vec!["1".into()],
                 priority: 10,
             },
         ],
@@ -200,7 +200,7 @@ fn pick_random_within_same_priority_layer() {
 
     let mut rng = StdRng::seed_from_u64(42);
     let mut ids: Vec<i64> = (0..50)
-        .map(|_| pool.pick(1, &mut rng).unwrap().id)
+        .map(|_| pool.pick("1", &mut rng).unwrap().id)
         .collect();
     ids.sort_unstable();
     ids.dedup();
@@ -332,4 +332,87 @@ fn validate_resolved_fails_if_any_bad_ip() {
     // 空列表 -> Dns 错误
     let err = validate_resolved(&[]).unwrap_err();
     assert!(matches!(err, SsrfError::Dns(_)));
+}
+
+fn test_node(
+    id: i64,
+    scheme: ProxyScheme,
+    host: &str,
+    port: u16,
+    key: &str,
+    priority: i32,
+) -> ProxyNode {
+    ProxyNode {
+        id,
+        scheme,
+        host: host.into(),
+        port,
+        auth: None,
+        channel_keys: vec![key.into()],
+        priority,
+    }
+}
+
+/// 无节点时 acquire 走直连（node_id = 0），生产上等于未配置出口的渠道。
+#[test]
+fn acquire_without_nodes_returns_direct() {
+    let manager = ProxyManager::new();
+    let lease = manager.acquire("missing");
+    assert_eq!(lease.node_id, 0);
+}
+
+/// HTTP 节点安装后 acquire 命中该节点，而不是直连。
+#[test]
+fn acquire_http_node_returns_that_node() {
+    let manager = ProxyManager::new();
+    manager.install(ProxySnapshot {
+        nodes: vec![test_node(
+            7,
+            ProxyScheme::Http,
+            "proxy.example",
+            8080,
+            "ch",
+            10,
+        )],
+    });
+    let lease = manager.acquire("ch");
+    assert_eq!(lease.node_id, 7);
+}
+
+/// 401 是账号问题，不冷却出口；随后仍应打到同一高优先级节点。
+#[test]
+fn feedback_401_does_not_cooldown() {
+    let manager = ProxyManager::new();
+    manager.install(ProxySnapshot {
+        nodes: vec![
+            test_node(1, ProxyScheme::Http, "a", 8080, "ch", 10),
+            test_node(2, ProxyScheme::Http, "b", 8081, "ch", 5),
+        ],
+    });
+    let lease = manager.acquire("ch");
+    assert_eq!(lease.node_id, 1);
+    manager.feedback(lease.node_id, 401, false);
+    drop(lease);
+    assert_eq!(manager.acquire("ch").node_id, 1);
+}
+
+/// 拨号失败冷却最高层后，落到下一层；两层都冷却则直连。
+#[test]
+fn transport_error_cools_node_then_falls_back() {
+    let manager = ProxyManager::new();
+    manager.install(ProxySnapshot {
+        nodes: vec![
+            test_node(1, ProxyScheme::Http, "a", 8080, "ch", 10),
+            test_node(2, ProxyScheme::Http, "b", 8081, "ch", 5),
+        ],
+    });
+    let first = manager.acquire("ch");
+    assert_eq!(first.node_id, 1);
+    manager.feedback(first.node_id, 502, true);
+    drop(first);
+    let second = manager.acquire("ch");
+    assert_eq!(second.node_id, 2);
+    manager.feedback(second.node_id, 502, true);
+    drop(second);
+    assert_eq!(manager.acquire("ch").node_id, 0);
 }
