@@ -52,8 +52,8 @@ impl TokenizerRegistry {
         let mut engines = HashMap::new();
         let mut errors = Vec::new();
 
-        let mut entries = std::fs::read_dir(dir)?;
-        while let Some(entry) = entries.next() {
+        let entries = std::fs::read_dir(dir)?;
+        for entry in entries {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {

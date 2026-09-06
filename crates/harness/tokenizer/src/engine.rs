@@ -6,6 +6,7 @@ use super::error::{TokenModelError, TokenizerError};
 
 /// Tokenizer engine that can encode/decode and count tokens.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum TokenizerEngine {
     /// HuggingFace tokenizer (loaded from JSON).
     HuggingFace(tokenizers::Tokenizer),
