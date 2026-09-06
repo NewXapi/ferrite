@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # scripts/setup_bench_ssh.sh — 一键部署压测 SSH 密钥到服务器 + GitHub secrets
+# 不依赖 sshpass，只用 OpenSSH 内置的 SSH_ASKPASS 机制
 # 用法：./scripts/setup_bench_ssh.sh
-# 需要：sshpass, ssh-copy-id, gh (GitHub CLI)
 
 set -euo pipefail
 
 KEY_PATH="$HOME/.ssh/id_bench"
 PUB_KEY_PATH="$KEY_PATH.pub"
-SECRET_NAME="BENCH_SSH_PRIVATE_KEY"
 GITHUB_REPO="NewXapi/ferrite"
 
 # 颜色
@@ -22,10 +21,9 @@ error() { echo -e "${RED}[✗]${NC} $*" >&2; exit 1; }
 
 # 检查依赖
 check_deps() {
-    command -v sshpass >/dev/null 2>&1 || error "缺少 sshpass，先安装：sudo apt install sshpass"
-    command -v ssh-copy-id >/dev/null 2>&1 || error "缺少 ssh-copy-id，先安装：sudo apt install openssh-client"
-    command -v gh >/dev/null 2>&1 || error "缺少 gh (GitHub CLI)，先安装：https://cli.github.com"
-    gh auth status >/dev/null 2>&1 || error "gh 未登录，先运行：gh auth login"
+    command -v ssh >/dev/null 2>&1 || error "缺少 ssh"
+    command -v gh >/dev/null 2>&1 || error "缺少 gh (GitHub CLI)，安装: sudo pacman -S github-cli"
+    gh auth status >/dev/null 2>&1 || error "gh 未登录，先运行: gh auth login"
 }
 
 # 生成密钥（如果不存在）
@@ -55,21 +53,44 @@ get_server_info() {
     [ -z "$SERVER_PASS" ] && error "密码不能为空"
 }
 
-# 部署公钥到服务器
+# 部署公钥到服务器（不依赖 sshpass，用 SSH_ASKPASS）
 deploy_key() {
     echo ""
     echo "=== 部署公钥到服务器 ==="
 
-    # 用 sshpass + ssh-copy-id 复制公钥
-    log "复制公钥到 ${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT}..."
-    sshpass -p "$SERVER_PASS" ssh-copy-id \
-        -i "$PUB_KEY_PATH" \
-        -p "$SERVER_PORT" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        "${SERVER_USER}@${SERVER_HOST}" 2>&1 | tail -5
+    local PUB_KEY
+    PUB_KEY=$(cat "$PUB_KEY_PATH")
 
-    if [ ${PIPESTATUS[0]} -eq 0 ]; then
+    # 创建临时 askpass 脚本（输出密码）
+    local ASKPASS
+    ASKPASS=$(mktemp)
+    cat > "$ASKPASS" << EOF
+#!/bin/bash
+echo "$SERVER_PASS"
+EOF
+    chmod +x "$ASKPASS"
+
+    # SSH_ASKPASS 机制：无 tty + DISPLAY 已设置 → ssh 调用 askpass 脚本
+    export SSH_ASKPASS="$ASKPASS"
+    export DISPLAY=
+
+    log "复制公钥到 ${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT}..."
+
+    ssh -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o BatchMode=no \
+        -p "$SERVER_PORT" \
+        "${SERVER_USER}@${SERVER_HOST}" \
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && grep -q '$PUB_KEY' ~/.ssh/authorized_keys 2>/dev/null || echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" </dev/null
+
+    local exit_code=$?
+
+    # 清理临时文件
+    rm -f "$ASKPASS"
+    unset SSH_ASKPASS
+    unset DISPLAY
+
+    if [ $exit_code -eq 0 ]; then
         log "公钥部署成功"
     else
         error "公钥部署失败，请检查账号/密码/端口"
@@ -122,8 +143,8 @@ setup_github_secret() {
     echo "=== 添加 GitHub Secret ==="
 
     # 检查是否已存在
-    if gh secret list -R "$GITHUB_REPO" 2>/dev/null | grep -q "$SECRET_NAME"; then
-        warn "Secret $SECRET_NAME 已存在，是否覆盖？"
+    if gh secret list -R "$GITHUB_REPO" 2>/dev/null | grep -q "BENCH_SSH_PRIVATE_KEY"; then
+        warn "Secret BENCH_SSH_PRIVATE_KEY 已存在，是否覆盖？"
         read -rp "覆盖? [y/N]: " overwrite
         if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
             log "跳过 GitHub secret 设置"
@@ -132,8 +153,8 @@ setup_github_secret() {
     fi
 
     # 添加私钥到 GitHub secrets
-    gh secret set "$SECRET_NAME" -R "$GITHUB_REPO" < "$KEY_PATH"
-    log "GitHub Secret 已设置: $SECRET_NAME"
+    gh secret set "BENCH_SSH_PRIVATE_KEY" -R "$GITHUB_REPO" < "$KEY_PATH"
+    log "GitHub Secret 已设置: BENCH_SSH_PRIVATE_KEY"
 
     # 同时设置服务器信息
     gh secret set "BENCH_SERVER_HOST" -R "$GITHUB_REPO" <<< "$SERVER_HOST"
@@ -154,7 +175,7 @@ summary() {
     echo "  服务器: ${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT}"
     echo ""
     echo "  GitHub Secrets:"
-    echo "    - $SECRET_NAME"
+    echo "    - BENCH_SSH_PRIVATE_KEY"
     echo "    - BENCH_SERVER_HOST"
     echo "    - BENCH_SERVER_USER"
     echo "    - BENCH_SERVER_PORT"
