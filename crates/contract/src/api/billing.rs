@@ -94,7 +94,7 @@ impl From<&RedeemCodeRecord> for RedemptionDto {
             key: r.code_hash.clone(), // 这里是 hash，前端显示可能需要另处理
             quota: Some(r.quota as f64),
             status: Some(r.redeemed_by.is_some() as i16),
-            created_at: Some(r.meta.updated_at.format("%Y-%m-%d").to_string()), // ponytail: SyncMeta 无 created_at，用 updated_at 代
+            created_at: Some(r.meta.updated_at.format("%Y-%m-%d").to_string()), // TODO(#211): SyncMeta 缺 created_at，暂用 updated_at 代
             expires_at: r.expires_at.map(|dt| dt.format("%Y-%m-%d").to_string()),
         }
     }
@@ -113,14 +113,18 @@ pub struct AliasUpsertRequest {
 }
 
 /// 创建/更新订阅产品请求 — 对标 admin-api /api/subscription。
+///
+/// quota 用 f64 与 SubscriptionDto/RedemptionDto 展示层口径一致；
+/// 记录层 SubscriptionPlanRecord.quota 用 i64 内部单位，边界处换算。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionUpsertRequest {
     pub name: String,
+    /// NUMERIC 语义：JSON 传字符串避免浮点误差（同 SubscriptionPlanRecord.price）。
     pub price: String,
     pub currency: String,
     pub duration_days: u32,
-    pub quota: i64,
+    pub quota: f64,
     pub upgrade_group: Option<String>,
     pub max_purchases: Option<u32>,
     pub enabled: Option<bool>,

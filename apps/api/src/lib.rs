@@ -45,6 +45,17 @@ use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 
 /// 组装完整应用 Router：admin-api + tavern + pipeline gateway + 用量中间件 + reload。
 pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
+    let egress: Arc<dyn forward::egress::Egress> = Arc::new(ReqwestEgress::new());
+    assemble(pool, egress).await
+}
+
+/// 组装完整应用 Router 的公共实现。
+///
+/// `egress` 可注入（e2e 传 mock），生产路径由 [`build_app`] 传入 `ReqwestEgress`。
+async fn assemble(
+    pool: PgPool,
+    egress: Arc<dyn forward::egress::Egress>,
+) -> anyhow::Result<Router> {
     // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）
     let admin = admin_router::router(pool.clone())
         .await
@@ -79,7 +90,6 @@ pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
         )));
 
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
-    let egress = Arc::new(ReqwestEgress::new());
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
@@ -109,66 +119,7 @@ pub async fn build_app_with_egress(
     pool: PgPool,
     egress: std::sync::Arc<dyn forward::egress::Egress>,
 ) -> anyhow::Result<Router> {
-    use dispatch::stage::DispatchStage;
-    use dispatch::{Dispatcher, MemoryHealthTable};
-    use forward::stage::ForwardStage;
-    use gateway_gate::auth::AuthGate;
-    use gateway_gate::chain::GateChain;
-    use gateway_gate::graylist::GrayListGate;
-    use gateway_gate::model::ModelGate;
-    use gateway_gate::quota::QuotaGate;
-    use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
-    use gateway_gate::snapshot::{IpPolicy, PricingSnapshot};
-    use gateway_gate::state::StateGate;
-    use gateway_pipeline::pipeline::Pipeline;
-    use gateway_protocol_bridge::adaptor::AdaptorRegistry;
-    use gateway_protocol_bridge::stage::ProtocolBridgeStage;
-
-    let admin = admin_router::router(pool.clone())
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
-    let tavern = tavern::router(&tavern::TavernConfig::default())?;
-    let snapshots = snapshot::load_snapshots(&pool).await?;
-    let health = Arc::new(MemoryHealthTable::new());
-    let dispatcher = Arc::new(Dispatcher::new(
-        Some(Arc::new(snapshots.dispatch.clone())),
-        health.clone(),
-    ));
-    let gates = GateChain::new()
-        .push(AuthGate::new(snapshots.token_snapshot.clone()))
-        .push(StateGate::new(
-            snapshots.user_snapshot.clone(),
-            Arc::new(arc_swap::ArcSwap::from_pointee(IpPolicy::default())),
-        ))
-        .push(ModelGate)
-        .push(QuotaGate::new(
-            snapshots.quota_snapshot.clone(),
-            Arc::new(arc_swap::ArcSwap::from_pointee(PricingSnapshot::default())),
-        ))
-        .push(RateLimitGate::new(Arc::new(RateLimiter::new(100, 60))))
-        .push(GrayListGate::new(Arc::new(
-            arc_swap::ArcSwap::from_pointee(gateway_gate::graylist::GrayListState::default()),
-        )));
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
-    let pipeline = Arc::new(
-        Pipeline::new()
-            .push(gates)
-            .push(DispatchStage::new(dispatcher))
-            .push(ForwardStage::new(egress, adaptors.clone()))
-            .push(ProtocolBridgeStage::new(adaptors)),
-    );
-    let usage_state = usage::UsageMiddlewareState {
-        pool: pool.clone(),
-        snapshots: Arc::new(snapshots),
-    };
-    let pipeline_router = gateway_pipeline::router::build_router(pipeline).layer(
-        axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware),
-    );
-    let reload = Router::new().route(
-        "/api/gateway/reload",
-        axum::routing::post(|| async { "ok" }),
-    );
-    Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
+    assemble(pool, egress).await
 }
 
 async fn reload_handler() -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
