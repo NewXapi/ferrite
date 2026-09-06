@@ -1,3 +1,31 @@
 listen = "0.0.0.0:3000"
 database_url = "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite"
 log_level = "info"
+
+# 调度健康参数；字段名对齐 dispatch::health::HealthSetting。
+# 整段可省，用下面的默认值。
+[dispatch]
+# 连续失败达此数进入冷却
+cooldown_threshold = 5
+# 冷却基础时长（秒）
+cooldown_base_seconds = 10
+# 冷却最大时长（秒）；连续冷却时长从 base 递增到此上限
+cooldown_max_seconds = 60
+
+# 重试策略。可重试的状态码由 forward 的 classify_status 判定
+# （429 / 5xx 可重试，其余 4xx 致命），配置里不重复一份。
+[retry]
+# 单请求最大尝试次数（含首次）
+max_attempts = 3
+
+# 计量定价。整段省略或 prices 为空 = 不计费（本地单机默认），转发不受影响。
+# 作为中转服务对外计费时才需要填。
+[metering.prices."gpt-4o"]
+# $/M 输入 tokens
+input = 2.5
+# $/M 输出 tokens
+output = 10.0
+# $/M 缓存读 tokens
+cache = 1.25
+# 分组倍率，默认 1.0
+group_multiplier = 1.0

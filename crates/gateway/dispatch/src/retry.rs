@@ -38,7 +38,11 @@ pub enum AttemptOutcome {
     Fatal(FailureClass),
 }
 
-/// 重试策略参数 (TODO(#311) 配置化)。
+/// 重试策略参数。
+///
+/// 只管尝试预算；"哪些状态码可重试"已由 `forward::egress::classify_status`
+/// （`NormalizedError.retryable`）与 [`health::classify`](crate::health) 判定，
+/// 不在此重复一份。
 #[derive(Debug, Clone, Copy)]
 pub struct RetryPolicy {
     /// 含首次在内最多尝试次数 (new-api retry 次数语义; wildtoken 默认 1)。
