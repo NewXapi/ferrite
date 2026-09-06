@@ -5,7 +5,6 @@ use harness_tokenizer::error::TokenModelError;
 use harness_tokenizer::registry::TokenizerRegistry;
 
 use std::fs;
-use tempfile;
 
 #[test]
 fn test_guesstimate_calculations() {
@@ -92,7 +91,7 @@ fn test_guesstimate_engine_operations() {
         TokenizerEngine::guesstimate("hello")
     );
     assert!(engine.encode("hello").is_err());
-    assert!(engine.decode(&vec![]).is_err());
+    assert!(engine.decode(&[]).is_err());
 }
 
 /// HF JSON 格式 round-trip：真实 HF Tokenizer::from_file 路径。
