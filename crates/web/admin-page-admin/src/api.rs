@@ -4,7 +4,7 @@
 //! for tokens, channels, groups, and billing entities.
 
 use client::{ApiClient, ApiResult};
-use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
+use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto};
 use contract::api::billing::{
     AliasDto, AliasUpsertRequest, RedemptionDto, RedemptionUpsertRequest, SubscriptionDto,
     SubscriptionUpsertRequest,
