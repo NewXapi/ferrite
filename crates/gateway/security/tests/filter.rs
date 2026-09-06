@@ -98,7 +98,10 @@ fn drive(words: &[&str], replacement: &str, chunks: &[&str]) -> String {
 /// 这是 `StreamFilter` 存在的唯一理由——`WordFilter` 逐 chunk 调会漏放。
 #[test]
 fn stream_filter_catches_word_split_across_chunks() {
-    assert_eq!(drive(&["secret"], "***", &["my sec", "ret here"]), "my *** here");
+    assert_eq!(
+        drive(&["secret"], "***", &["my sec", "ret here"]),
+        "my *** here"
+    );
     // 对照：逐 chunk 用一次性过滤器会漏放，证明跨 chunk 逻辑不是多余的。
     let one_shot = WordFilter::new(&FilterConfig {
         words: vec!["secret".into()],

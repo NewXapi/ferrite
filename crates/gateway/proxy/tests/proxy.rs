@@ -7,7 +7,7 @@
 
 use gateway_proxy::node::{BasicAuth, ProxyNode, ProxyScheme};
 use gateway_proxy::pool::{ProxyPool, ProxySnapshot};
-use gateway_proxy::ssrf::{check_ip, validate_resolved, validate_url, SsrfError};
+use gateway_proxy::ssrf::{SsrfError, check_ip, validate_resolved, validate_url};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -80,7 +80,10 @@ fn to_reqwest_proxy_returns_correct_variant() {
         scheme: ProxyScheme::Http,
         host: "proxy.example.com".into(),
         port: 3128,
-        auth: Some(BasicAuth { user: "u".into(), pass: "p".into() }),
+        auth: Some(BasicAuth {
+            user: "u".into(),
+            pass: "p".into(),
+        }),
         channel_ids: vec![],
         priority: 0,
     };
@@ -113,15 +116,34 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
     // 安装两个节点，channel 1：prio 10 和 5
     let snap = ProxySnapshot {
         nodes: vec![
-            ProxyNode { id: 1, scheme: ProxyScheme::Direct, host: "a".into(), port: 1, auth: None, channel_ids: vec![1], priority: 5 },
-            ProxyNode { id: 2, scheme: ProxyScheme::Direct, host: "b".into(), port: 2, auth: None, channel_ids: vec![1], priority: 10 },
+            ProxyNode {
+                id: 1,
+                scheme: ProxyScheme::Direct,
+                host: "a".into(),
+                port: 1,
+                auth: None,
+                channel_ids: vec![1],
+                priority: 5,
+            },
+            ProxyNode {
+                id: 2,
+                scheme: ProxyScheme::Direct,
+                host: "b".into(),
+                port: 2,
+                auth: None,
+                channel_ids: vec![1],
+                priority: 10,
+            },
         ],
     };
     pool.install(snap);
     // 低优先层永不参与：不管 rng 怎么走，只能是 prio 10 的 id=2
     for _ in 0..20 {
         let picked = pool.pick(1, &mut rng).unwrap();
-        assert_eq!(picked.id, 2, "only highest priority layer (10) should be picked");
+        assert_eq!(
+            picked.id, 2,
+            "only highest priority layer (10) should be picked"
+        );
     }
 
     // 未配置代理的 channel
@@ -129,9 +151,15 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
 
     // 重新 install：整体替换，旧索引（含 id=2）不残留
     let snap = ProxySnapshot {
-        nodes: vec![
-            ProxyNode { id: 3, scheme: ProxyScheme::Direct, host: "c".into(), port: 3, auth: None, channel_ids: vec![1], priority: 5 },
-        ],
+        nodes: vec![ProxyNode {
+            id: 3,
+            scheme: ProxyScheme::Direct,
+            host: "c".into(),
+            port: 3,
+            auth: None,
+            channel_ids: vec![1],
+            priority: 5,
+        }],
     };
     pool.install(snap);
     for _ in 0..10 {
@@ -148,45 +176,103 @@ fn pick_random_within_same_priority_layer() {
     let pool = ProxyPool::new();
     let snap = ProxySnapshot {
         nodes: vec![
-            ProxyNode { id: 10, scheme: ProxyScheme::Direct, host: "a".into(), port: 1, auth: None, channel_ids: vec![1], priority: 10 },
-            ProxyNode { id: 20, scheme: ProxyScheme::Direct, host: "b".into(), port: 2, auth: None, channel_ids: vec![1], priority: 10 },
+            ProxyNode {
+                id: 10,
+                scheme: ProxyScheme::Direct,
+                host: "a".into(),
+                port: 1,
+                auth: None,
+                channel_ids: vec![1],
+                priority: 10,
+            },
+            ProxyNode {
+                id: 20,
+                scheme: ProxyScheme::Direct,
+                host: "b".into(),
+                port: 2,
+                auth: None,
+                channel_ids: vec![1],
+                priority: 10,
+            },
         ],
     };
     pool.install(snap);
 
     let mut rng = StdRng::seed_from_u64(42);
-    let mut ids: Vec<i64> = (0..50).map(|_| pool.pick(1, &mut rng).unwrap().id).collect();
+    let mut ids: Vec<i64> = (0..50)
+        .map(|_| pool.pick(1, &mut rng).unwrap().id)
+        .collect();
     ids.sort_unstable();
     ids.dedup();
-    assert_eq!(ids, vec![10, 20], "both same-priority nodes must be reachable");
+    assert_eq!(
+        ids,
+        vec![10, 20],
+        "both same-priority nodes must be reachable"
+    );
 }
 
 /// SSRF: `check_ip` 拦截 loopback / private / link-local / multicast / unspecified / CGNAT
 #[test]
 fn check_ip_blocks_reserved_ranges() {
     // loopback
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))), Err(SsrfError::Loopback)));
-    assert!(matches!(check_ip(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,1))), Err(SsrfError::Loopback)));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+        Err(SsrfError::Loopback)
+    ));
+    assert!(matches!(
+        check_ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))),
+        Err(SsrfError::Loopback)
+    ));
 
     // private IPv4 (10/8, 172.16/12, 192.168/16)
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))), Err(SsrfError::PrivateIp)));
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1))), Err(SsrfError::PrivateIp)));
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))), Err(SsrfError::PrivateIp)));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
+        Err(SsrfError::PrivateIp)
+    ));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1))),
+        Err(SsrfError::PrivateIp)
+    ));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))),
+        Err(SsrfError::PrivateIp)
+    ));
 
     // link-local IPv4 (169.254/16)
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(169, 254, 0, 1))), Err(SsrfError::LinkLocal)));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(169, 254, 0, 1))),
+        Err(SsrfError::LinkLocal)
+    ));
 
     // multicast
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(224, 0, 0, 1))), Err(SsrfError::Multicast)));
-    assert!(matches!(check_ip(IpAddr::V6(Ipv6Addr::new(0xff00,0,0,0,0,0,0,0))), Err(SsrfError::Multicast)));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(224, 0, 0, 1))),
+        Err(SsrfError::Multicast)
+    ));
+    assert!(matches!(
+        check_ip(IpAddr::V6(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0))),
+        Err(SsrfError::Multicast)
+    ));
 
     // unspecified
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(0,0,0,0))), Err(SsrfError::Unspecified)));
-    assert!(matches!(check_ip(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0))), Err(SsrfError::Unspecified)));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
+        Err(SsrfError::Unspecified)
+    ));
+    assert!(matches!(
+        check_ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0))),
+        Err(SsrfError::Unspecified)
+    ));
 
     // CGNAT 100.64.0.0/10
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))), Err(SsrfError::PrivateIp)));
-    assert!(matches!(check_ip(IpAddr::V4(Ipv4Addr::new(100, 127, 255, 255))), Err(SsrfError::PrivateIp)));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))),
+        Err(SsrfError::PrivateIp)
+    ));
+    assert!(matches!(
+        check_ip(IpAddr::V4(Ipv4Addr::new(100, 127, 255, 255))),
+        Err(SsrfError::PrivateIp)
+    ));
     // CGNAT 边界外应放行
     assert!(check_ip(IpAddr::V4(Ipv4Addr::new(100, 63, 255, 255))).is_ok());
     assert!(check_ip(IpAddr::V4(Ipv4Addr::new(100, 128, 0, 0))).is_ok());
@@ -229,8 +315,8 @@ fn validate_url_ip_literals_checked_domains_skipped() {
 #[test]
 fn validate_resolved_fails_if_any_bad_ip() {
     let addrs = vec![
-        IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),       // 公网
-        IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),      // 内网
+        IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),  // 公网
+        IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), // 内网
     ];
     let err = validate_resolved(&addrs).unwrap_err();
     assert!(matches!(err, SsrfError::PrivateIp));

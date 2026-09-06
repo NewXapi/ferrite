@@ -42,23 +42,28 @@ impl ProxyNode {
     /// - 认证：username()/password() 非空时填入 auth；只有 user 无 pass 时 pass 用空串
     /// - 返回的 id=0、channel_ids=[]、priority=0，调用方后续填充
     pub fn parse_url(url: &str) -> Result<Self, ParseError> {
-        let url_obj = Url::parse(url)
-            .map_err(|e| ParseError::Invalid(format!("url parse failed: {}", e)))?;
+        let url_obj =
+            Url::parse(url).map_err(|e| ParseError::Invalid(format!("url parse failed: {}", e)))?;
         let scheme_str = url_obj.scheme();
         let scheme = match scheme_str {
             "http" | "https" => ProxyScheme::Http,
             "socks5" | "socks5h" => ProxyScheme::Socks5,
-            _ => return Err(ParseError::Invalid(format!("unsupported proxy scheme: {}", scheme_str))),
-        };
-        let host = url_obj.host_str()
-            .ok_or_else(|| ParseError::Invalid("missing host".to_string()))?;
-        let port = url_obj.port().unwrap_or_else(|| {
-            match scheme {
-                ProxyScheme::Http => 8080,
-                ProxyScheme::Socks5 => 1080,
-                ProxyScheme::Direct => 0,
+            _ => {
+                return Err(ParseError::Invalid(format!(
+                    "unsupported proxy scheme: {}",
+                    scheme_str
+                )));
             }
-        });
+        };
+        let host = url_obj
+            .host_str()
+            .ok_or_else(|| ParseError::Invalid("missing host".to_string()))?;
+        // scheme 匹配只产出 Http / Socks5，Direct 不经 URL 解析。
+        let default_port = match scheme {
+            ProxyScheme::Socks5 => 1080,
+            _ => 8080,
+        };
+        let port = url_obj.port().unwrap_or(default_port);
         // `Url::username()` / `password()` 返回 percent-encoded 原文，必须解码：
         // 用户名含 `@` 时会是 `user%40domain`，直接用会让代理认证失败。
         let auth = match url_obj.username() {
@@ -94,7 +99,7 @@ impl ProxyNode {
                     proxy = proxy.basic_auth(&auth.user, &auth.pass);
                 }
                 Ok(Some(proxy))
-            },
+            }
             ProxyScheme::Socks5 => {
                 let url = format!("socks5://{}:{}", self.host, self.port);
                 let mut proxy = reqwest::Proxy::all(url)?;
@@ -102,7 +107,7 @@ impl ProxyNode {
                     proxy = proxy.basic_auth(&auth.user, &auth.pass);
                 }
                 Ok(Some(proxy))
-            },
+            }
         }
     }
 }

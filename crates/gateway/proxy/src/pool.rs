@@ -34,7 +34,10 @@ impl ProxyPool {
         for node in snap.nodes {
             let node_arc = Arc::new(node);
             for &channel_id in &node_arc.channel_ids {
-                channel_map.entry(channel_id).or_default().push(node_arc.clone());
+                channel_map
+                    .entry(channel_id)
+                    .or_default()
+                    .push(node_arc.clone());
             }
         }
         // 每个 channel 列表按 priority 降序排序（高优先级在前）
@@ -55,7 +58,10 @@ impl ProxyPool {
         let nodes = channel_map.get(&channel_id)?;
         // 列表已按 priority 降序：最高层是前缀，取其长度即层大小。
         let max_priority = nodes.first()?.priority;
-        let tier_len = nodes.iter().take_while(|n| n.priority == max_priority).count();
+        let tier_len = nodes
+            .iter()
+            .take_while(|n| n.priority == max_priority)
+            .count();
         let idx = rng.gen_range(0..tier_len);
         Some(nodes[idx].clone())
     }

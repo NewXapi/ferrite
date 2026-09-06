@@ -92,12 +92,12 @@ fn is_private(ip: &IpAddr) -> bool {
             // CGNAT 100.64.0.0/10
             let bytes = v4.octets();
             (bytes[0] == 100 && (bytes[1] & 0xc0) == 64) || v4.is_private()
-        },
+        }
         IpAddr::V6(v6) => {
             let b = v6.octets();
             // fc00::/7
             (b[0] & 0xfe) == 0xfc
-        },
+        }
     }
 }
 
