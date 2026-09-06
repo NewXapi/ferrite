@@ -1,6 +1,9 @@
 name: Gateway Bench & Server Setup
 
 on:
+  push:
+    branches:
+      - feat/gateway-bench
   workflow_dispatch:
     inputs:
       action:
@@ -15,7 +18,6 @@ on:
         description: "Benchmark scenario if running bench (baseline, medium_load, multi_model, streaming, stress, all)"
         required: false
         default: "baseline"
-
 jobs:
   run:
     runs-on: ubuntu-latest
