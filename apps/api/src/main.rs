@@ -9,8 +9,6 @@ use std::process::ExitCode;
 use api::config;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::config::Config;
-
 /// 日志文件目录（tracing_appender 滚动写入用）
 pub const LOG_DIR: &str = "logs";
 

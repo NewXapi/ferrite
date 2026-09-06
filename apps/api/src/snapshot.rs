@@ -340,11 +340,8 @@ fn build_quota_snapshot(token_records: &[TokenRecord]) -> SharedQuota {
         quota_snapshot.upsert(token.meta.key.clone(), remaining);
     }
 
-    let shared = Arc::new(arc_swap::ArcSwap::from_pointee(quota_snapshot));
-    shared
+    Arc::new(arc_swap::ArcSwap::from_pointee(quota_snapshot))
 }
-
-/// 快照容器
 #[derive(Debug, Clone)]
 pub struct Snapshots {
     pub dispatch: DispatchSnapshot,

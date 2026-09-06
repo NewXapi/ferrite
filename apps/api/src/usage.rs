@@ -98,46 +98,53 @@ pub async fn usage_middleware(
         Ok(b) => b,
         Err(_) => {
             return Ok(record_fallback(
-                &state.pool,
-                &state.snapshots.quota_snapshot,
-                user_uuid,
-                &username,
-                token_uuid,
-                &token_name,
-                &model_name,
+                &state,
+                RecordJob {
+                    user_uuid,
+                    username,
+                    token_uuid,
+                    token_name,
+                    model_name,
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    cost: 0,
+                    use_time_ms: started.elapsed().as_millis() as i32,
+                    is_stream: false,
+                    token_key: token_entry.record.meta.key.clone(),
+                },
                 &body_bytes,
-                started,
                 resp_parts,
             ));
         }
     };
 
     let (prompt_tokens, completion_tokens, is_stream) = parse_usage(&resp_bytes);
-    let cost = (prompt_tokens + completion_tokens) as i64;
+    let cost = prompt_tokens + completion_tokens;
     let use_time_ms = started.elapsed().as_millis() as i32;
 
     spawn_record(
         state.pool.clone(),
         state.snapshots.quota_snapshot.clone(),
-        user_uuid,
-        username,
-        token_uuid,
-        token_name,
-        model_name,
-        prompt_tokens,
-        completion_tokens,
-        cost,
-        use_time_ms,
-        is_stream,
-        token_entry.record.meta.key.clone(),
+        RecordJob {
+            user_uuid,
+            username,
+            token_uuid,
+            token_name,
+            model_name,
+            prompt_tokens,
+            completion_tokens,
+            cost,
+            use_time_ms,
+            is_stream,
+            token_key: token_entry.record.meta.key.clone(),
+        },
     );
 
     Ok(Response::from_parts(resp_parts, Body::from(resp_bytes)))
 }
 
-fn spawn_record(
-    pool: PgPool,
-    quota_snapshot: gateway_gate::snapshot::SharedQuota,
+/// 一次用量记录的全部载荷（打包成 struct 避免 13 参数函数）。
+struct RecordJob {
     user_uuid: uuid::Uuid,
     username: String,
     token_uuid: uuid::Uuid,
@@ -149,56 +156,33 @@ fn spawn_record(
     use_time_ms: i32,
     is_stream: bool,
     token_key: String,
+}
+fn spawn_record(
+    mut pool: PgPool,
+    mut quota_snapshot: gateway_gate::snapshot::SharedQuota,
+    job: RecordJob,
 ) {
     tokio::spawn(async move {
-        record_usage(
-            &pool,
-            &quota_snapshot,
-            user_uuid,
-            &username,
-            token_uuid,
-            &token_name,
-            &model_name,
-            prompt_tokens,
-            completion_tokens,
-            cost,
-            use_time_ms,
-            is_stream,
-            &token_key,
-        )
-        .await;
+        record_usage(&pool, &quota_snapshot, job).await;
+        let _ = (&mut pool, &mut quota_snapshot); // 保持所有权到 spawn 结束
     });
 }
 
 fn record_fallback(
-    pool: &PgPool,
-    quota_snapshot: &gateway_gate::snapshot::SharedQuota,
-    user_uuid: uuid::Uuid,
-    username: &str,
-    token_uuid: uuid::Uuid,
-    token_name: &str,
-    model_name: &str,
+    state: &UsageMiddlewareState,
+    job: RecordJob,
     body_bytes: &[u8],
-    started: Instant,
     parts: axum::http::response::Parts,
 ) -> Response {
     let prompt = estimate_prompt_tokens(body_bytes);
-    let cost = prompt as i64;
-    let use_time_ms = started.elapsed().as_millis() as i32;
     spawn_record(
-        pool.clone(),
-        quota_snapshot.clone(),
-        user_uuid,
-        username.to_string(),
-        token_uuid,
-        token_name.to_string(),
-        model_name.to_string(),
-        prompt,
-        0,
-        cost,
-        use_time_ms,
-        false,
-        token_uuid.to_string(),
+        state.pool.clone(),
+        state.snapshots.quota_snapshot.clone(),
+        RecordJob {
+            prompt_tokens: prompt,
+            cost: prompt,
+            ..job
+        },
     );
     Response::from_parts(parts, Body::from(body_bytes.to_vec()))
 }
@@ -206,27 +190,30 @@ fn record_fallback(
 async fn record_usage(
     pool: &PgPool,
     quota_snapshot: &gateway_gate::snapshot::SharedQuota,
-    user_uuid: uuid::Uuid,
-    username: &str,
-    token_uuid: uuid::Uuid,
-    token_name: &str,
-    model_name: &str,
-    prompt_tokens: i64,
-    completion_tokens: i64,
-    cost: i64,
-    use_time_ms: i32,
-    is_stream: bool,
-    token_key: &str,
+    job: RecordJob,
 ) {
+    let RecordJob {
+        user_uuid,
+        username,
+        token_uuid,
+        token_name,
+        model_name,
+        prompt_tokens,
+        completion_tokens,
+        cost,
+        use_time_ms,
+        is_stream,
+        token_key,
+    } = job;
     let event = observe::logs::UsageEvent {
         log_type: 1, // consume
         user_key: user_uuid,
-        username: username.to_string(),
+        username: username.clone(),
         token_key: Some(token_uuid),
-        token_name: token_name.to_string(),
+        token_name,
         channel_key: None, // ponytail: pipeline 内部选定，本 PR 拿不到
         channel_name: String::new(),
-        model_name: model_name.to_string(),
+        model_name,
         prompt_tokens: prompt_tokens as i32,
         completion_tokens: completion_tokens as i32,
         quota: cost,
@@ -243,13 +230,13 @@ async fn record_usage(
     }
     if let Err(e) = sqlx::query("UPDATE api_tokens SET used_quota = used_quota + $1 WHERE key = $2")
         .bind(cost)
-        .bind(token_key)
+        .bind(&token_key)
         .execute(pool)
         .await
     {
         tracing::warn!(error = %e, "failed to update used_quota");
     }
-    quota_snapshot.load().add(token_key, -cost);
+    quota_snapshot.load().add(&token_key, -cost);
 }
 
 // ---- 辅助函数 ----
@@ -292,33 +279,33 @@ fn parse_usage(body_bytes: &[u8]) -> (i64, i64, bool) {
                 continue;
             }
             let json_str = line.trim_start_matches("data:").trim();
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                if let Some(usage) = v.get("usage") {
-                    prompt = usage
-                        .get("prompt_tokens")
-                        .and_then(|x| x.as_i64())
-                        .unwrap_or(prompt);
-                    completion = usage
-                        .get("completion_tokens")
-                        .and_then(|x| x.as_i64())
-                        .unwrap_or(completion);
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str)
+                && let Some(usage) = v.get("usage")
+            {
+                prompt = usage
+                    .get("prompt_tokens")
+                    .and_then(|x| x.as_i64())
+                    .unwrap_or(prompt);
+                completion = usage
+                    .get("completion_tokens")
+                    .and_then(|x| x.as_i64())
+                    .unwrap_or(completion);
             }
         }
         return (prompt, completion, true);
     }
-    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body_bytes) {
-        if let Some(usage) = v.get("usage") {
-            let prompt = usage
-                .get("prompt_tokens")
-                .and_then(|x| x.as_i64())
-                .unwrap_or(0);
-            let completion = usage
-                .get("completion_tokens")
-                .and_then(|x| x.as_i64())
-                .unwrap_or(0);
-            return (prompt, completion, false);
-        }
+    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body_bytes)
+        && let Some(usage) = v.get("usage")
+    {
+        let prompt = usage
+            .get("prompt_tokens")
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
+        let completion = usage
+            .get("completion_tokens")
+            .and_then(|x| x.as_i64())
+            .unwrap_or(0);
+        return (prompt, completion, false);
     }
     (0, 0, false)
 }

@@ -27,7 +27,6 @@ pub mod snapshot;
 pub mod tavern;
 pub mod usage;
 
-use admin_router::router as admin_router;
 use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable};
 use forward::egress::ReqwestEgress;
