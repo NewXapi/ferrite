@@ -5,12 +5,11 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# 配置权威 — center 对 channel/route-unit/group/user/token 的全部业务写操作。
-# 依赖 store (存储端口) 与 contract (记录定义)。
+# 配置权威 — 渠道/模型/分组/token/路由单元的全部业务写操作。
+# 依赖 contract (DTO) 与 auth (用户角色校验)。
 
 [dependencies]
 contract = { path = "../../contract" }
-store    = { path = "../admin-store" }
 auth     = { path = "../auth" }
 observe  = { path = "../admin-observe" }
 reqwest  = { workspace = true }

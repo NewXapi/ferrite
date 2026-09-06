@@ -64,32 +64,6 @@
 - 已组装 `/tavern/*` 的 characters、chats、settings、secrets 和 generate 路由。
 - `apps/api/tests/tavern.rs` 覆盖角色、聊天、设置、密钥和路径穿越的真实 HTTP 往返。
 
-## MVP：media
+## 之后 — 未做
 
-`media/` 是酒馆 API 下一项独立开发。
-
-### `media/src/lib.rs`
-
-- `AvatarStore`：`<user>/avatars` 上传、列举和删除。
-- `ChatImageStore`：`<user>/images` 聊天图片上传、读取和删除。
-- `BackgroundStore`：`<user>/backgrounds` 背景图上传、列举和删除。
-- 上传文件类型白名单：PNG、JPEG、WebP、GIF。
-- 上传大小限制。
-
-### `media/src/http.rs`
-
-- `GET/POST/DELETE /tavern/avatars`。
-- `GET/POST/DELETE /tavern/images`。
-- `GET/POST/DELETE /tavern/backgrounds`。
-
-### `media/tests/`
-
-- 上传类型和大小校验。
-- 文件名路径穿越。
-- 上传、列举、读取和删除。
-
-### 验收
-
-```sh
-cargo test -p tavern-media
-```
+- media（图片资源托管）：单机中转网关不托管图片，`tavern-media` crate 已删除。

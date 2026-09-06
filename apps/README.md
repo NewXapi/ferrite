@@ -4,7 +4,7 @@
 
 - `api/` — 后端进程，组装 gateway、admin-api、tavern-api 和 harness runtime。
 - `web/` — 管理后台浏览器应用，组装 admin-web。
-- `tavern-web/` — 酒馆浏览器应用，组装 tavern-web 和 harness-ui。
+- `tavern-web/` — 酒馆浏览器应用，组装 tavern-web。
 
 ## `api/` MVP
 

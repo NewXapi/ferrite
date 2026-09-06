@@ -10,7 +10,7 @@ admin-api 控制面的人认证 — 登录 / 注册 / refresh / logout / self / 
 
 - `password` — argon2id，PHC 字符串存 `auth_users.password_hash`。
 - `jwt` — HS256。access 15min / refresh 7d。claims: `sub`/`role`/`auth_version`/`sid`/`exp`。
-- `service::AuthService` — 业务逻辑；直连 `sqlx::PgPool`，**不走 store trait**（loose 表阶段）。
+- `service::AuthService` — 业务逻辑；直连 `sqlx::PgPool` 读写 `auth_*` 平表。
   `new()` 返回 `Result`（jwt_secret ≥32B 校验，不再 assert panic）。
 - `ddl` — `auth_users` / `auth_refresh_tokens` 启动时 `IF NOT EXISTS` 建表。
 - `routes` — axum 子路由。组装入口两个：`router(pool)`（读 env）/

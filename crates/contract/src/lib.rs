@@ -9,14 +9,13 @@
 //! |------|------|--------|
 //! | [`api`]       | 前端 ↔ console 的 REST DTO (auth/user/token/usage/admin) | web, console |
 //! | [`records`]   | 领域实体 (channel/routing/identity/usage/billing 子模块) | 全部 |
-//! | [`mutations`] | 增量同步: MutationId / Cursor / 版本摘要 | sync, store, gateway |
-//! | [`schema`]    | schema 版本常量、兼容默认值规则、fixtures | 全部 |
 //! | [`error`]     | 跨端错误码表 + 网关错误体 | gateway, console, web |
+//! | [`schema`]    | schema 版本常量、兼容默认值规则、fixtures | 全部 |
 //!
 //! ## 铁律 (违反 = PR 拒绝)
 //!
 //! 1. 本 crate 不得依赖任何 runtime (tokio/sqlx/axum/reqwest/dioxus);
-//! 2. 不放 SQL DDL (→ service/store/migrations) 与 Fjall key encoding (→ store);
+//! 2. 不放 SQL DDL (→ 各功能 crate src 内联建表) 与存储实现;
 //! 3. Web DTO 从 records 转换而来 (From 实现在本 crate);
 //! 4. 新字段必须给兼容默认值 (`#[serde(default)]`); 删字段走停写窗口。
 

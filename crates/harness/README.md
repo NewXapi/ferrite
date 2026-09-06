@@ -6,7 +6,8 @@
 - `prompt/` — 系统提示、角色资料、历史、变量和上下文裁剪。
 - `tools/` — 工具 schema、调用、结果和参数校验。
 - `runtime/` — 模型和工具循环、审批、持久化与步骤事件流。
-- `ui/` — Agent 步骤、tool call、reasoning 和审批组件。
+  （`tokenizer/` — token 估算，见 `../harness/tokenizer`。）
+  （前端可视化组件原规划在 `ui/`，当前单机中转无前端消费方，已删除。）
 
 ## 第一轮：core
 
@@ -57,7 +58,7 @@ cargo test -p harness-prompt -p harness-tools
 cargo check --target wasm32-unknown-unknown -p harness-prompt -p harness-tools
 ```
 
-## 第三轮：runtime + ui
+## 第三轮：runtime
 
 ### `runtime/src/lib.rs`
 
@@ -67,22 +68,13 @@ cargo check --target wasm32-unknown-unknown -p harness-prompt -p harness-tools
 - `RunStore`：追加保存步骤、加载 Run。
 - `StepEventStream`：把 Step 发给前端。
 
-### `ui/src/lib.rs`
-
-- `RunTimeline`：按时间显示步骤。
-- `ToolCallCard`：显示参数、执行状态和结果。
-- `ReasoningCard`：折叠 reasoning。
-- `ApprovalDialog`：批准或拒绝工具调用。
-
 ### 验收
 
 ```sh
 cargo test -p harness-runtime
-cargo check --target wasm32-unknown-unknown -p harness-ui
 ```
 
 ## 接入酒馆
 
 - `tavern-web/page-chat` 把角色卡、历史传给 `harness-prompt`。
 - `apps/api` 用 `harness-runtime` 请求 gateway。
-- `tavern-web/page-chat` 用 `harness-ui` 显示 RunTimeline。
