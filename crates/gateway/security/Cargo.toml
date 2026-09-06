@@ -5,19 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
-gateway-pipeline = { path = "../pipeline" }
-contract         = { path = "../../contract" }
-
-bytes = { workspace = true }
-tracing = { workspace = true }
-thiserror = { workspace = true }
-anyhow = "1"
-async-trait = "0.1"
-arc-swap = { workspace = true }
+aho-corasick = "1"
+serde = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "word_scan"
-harness = false
+# benchmarks removed; tests in src/tests
