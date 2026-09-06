@@ -25,8 +25,13 @@ impl Egress for MockEgress {
     ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
         let chunks = self.chunks.clone();
         Box::pin(async move {
-            let stream = futures_util::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
-            Ok(ForwardedResponse::from_stream(200, "text/event-stream", stream))
+            let stream =
+                futures_util::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
+            Ok(ForwardedResponse::from_stream(
+                200,
+                "text/event-stream",
+                stream,
+            ))
         })
     }
 }
@@ -48,8 +53,12 @@ fn pg_pool() -> sqlx::PgPool {
 
 /// 必须先建 app（触发 admin-router 的 ensure_table 建表），再插数据。
 async fn build_test_app(pool: &sqlx::PgPool) -> axum::Router {
-    let egress = Arc::new(MockEgress { chunks: sse_chunks() });
-    api::build_app_with_egress(pool.clone(), egress).await.expect("build_app_with_egress")
+    let egress = Arc::new(MockEgress {
+        chunks: sse_chunks(),
+    });
+    api::build_app_with_egress(pool.clone(), egress)
+        .await
+        .expect("build_app_with_egress")
 }
 
 async fn insert_test_user(pool: &sqlx::PgPool) -> uuid::Uuid {
@@ -112,7 +121,8 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
 
     let body = serde_json::json!({"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"hi"}]});
     let req = http::Request::builder()
-        .method("POST").uri("/v1/chat/completions")
+        .method("POST")
+        .uri("/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", plaintext))
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
@@ -121,16 +131,24 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
     let resp = ServiceExt::oneshot(app, req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "got {}", resp.status());
 
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert!(String::from_utf8_lossy(&body_bytes).contains("usage"));
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM usage_logs").fetch_one(&pool).await.unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM usage_logs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert!(count >= 1, "usage_logs rows: {}", count);
 
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM api_tokens WHERE key = $1")
-        .bind(_token_key).fetch_one(&pool).await.unwrap();
+        .bind(_token_key)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert!(used >= 15, "used_quota: {}", used);
 }
 
@@ -141,12 +159,16 @@ async fn e2e_unauthorized_without_token_returns_401() {
 
     let body = serde_json::json!({"model":"gpt-4o","stream":true,"messages":[]});
     let req = http::Request::builder()
-        .method("POST").uri("/v1/chat/completions")
+        .method("POST")
+        .uri("/v1/chat/completions")
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
 
-    assert_eq!(ServiceExt::oneshot(app, req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        ServiceExt::oneshot(app, req).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]
@@ -154,6 +176,13 @@ async fn e2e_admin_api_mounted() {
     let pool = pg_pool();
     let app = build_test_app(&pool).await;
 
-    let req = http::Request::builder().method("GET").uri("/api/token").body(Body::empty()).unwrap();
-    assert_eq!(ServiceExt::oneshot(app, req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    let req = http::Request::builder()
+        .method("GET")
+        .uri("/api/token")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        ServiceExt::oneshot(app, req).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
 }

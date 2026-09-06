@@ -75,9 +75,9 @@ pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
             Arc::new(arc_swap::ArcSwap::from_pointee(PricingSnapshot::default())),
         ))
         .push(RateLimitGate::new(Arc::new(RateLimiter::new(100, 60))))
-        .push(GrayListGate::new(Arc::new(arc_swap::ArcSwap::from_pointee(
-            gateway_gate::graylist::GrayListState::default(),
-        ))));
+        .push(GrayListGate::new(Arc::new(
+            arc_swap::ArcSwap::from_pointee(gateway_gate::graylist::GrayListState::default()),
+        )));
 
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());
@@ -94,20 +94,15 @@ pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
         pool: pool.clone(),
         snapshots: Arc::new(snapshots),
     };
-    let pipeline_router = gateway_pipeline::router::build_router(pipeline)
-        .layer(axum::middleware::from_fn_with_state(
-            usage_state,
-            usage::usage_middleware,
-        ));
+    let pipeline_router = gateway_pipeline::router::build_router(pipeline).layer(
+        axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware),
+    );
 
     // reload 端点（501 占位；真实实现需 admin 守卫 + 热更快照）
     let reload = Router::new().route("/api/gateway/reload", axum::routing::post(reload_handler));
 
     // 合并：具体路由优先，pipeline 作为 fallback 兜底 /v1/*
-    Ok(admin
-        .merge(tavern)
-        .merge(reload)
-        .merge(pipeline_router))
+    Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
 }
 
 /// 测试用：注入 mock egress 构建 Router（不发起真实上游请求）。
@@ -152,9 +147,9 @@ pub async fn build_app_with_egress(
             Arc::new(arc_swap::ArcSwap::from_pointee(PricingSnapshot::default())),
         ))
         .push(RateLimitGate::new(Arc::new(RateLimiter::new(100, 60))))
-        .push(GrayListGate::new(Arc::new(arc_swap::ArcSwap::from_pointee(
-            gateway_gate::graylist::GrayListState::default(),
-        ))));
+        .push(GrayListGate::new(Arc::new(
+            arc_swap::ArcSwap::from_pointee(gateway_gate::graylist::GrayListState::default()),
+        )));
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
     let pipeline = Arc::new(
         Pipeline::new()
@@ -167,13 +162,13 @@ pub async fn build_app_with_egress(
         pool: pool.clone(),
         snapshots: Arc::new(snapshots),
     };
-    let pipeline_router = gateway_pipeline::router::build_router(pipeline)
-        .layer(axum::middleware::from_fn_with_state(
-            usage_state,
-            usage::usage_middleware,
-        ));
-    let reload = Router::new()
-        .route("/api/gateway/reload", axum::routing::post(|| async { "ok" }));
+    let pipeline_router = gateway_pipeline::router::build_router(pipeline).layer(
+        axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware),
+    );
+    let reload = Router::new().route(
+        "/api/gateway/reload",
+        axum::routing::post(|| async { "ok" }),
+    );
     Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
 }
 

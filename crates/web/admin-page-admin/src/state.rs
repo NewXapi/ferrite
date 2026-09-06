@@ -1,4 +1,7 @@
-use crate::api::{list_channels_api, list_groups_api, list_tokens_api, list_aliases_api, list_subscriptions_api, list_redemptions_api};
+use crate::api::{
+    list_aliases_api, list_channels_api, list_groups_api, list_redemptions_api,
+    list_subscriptions_api, list_tokens_api,
+};
 use client::{ApiClient, ApiResult};
 use dioxus::prelude::*;
 

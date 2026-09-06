@@ -25,10 +25,10 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use serde_json::Value;
-use sqlx::{postgres::PgPool, Row};
+use sqlx::{Row, postgres::PgPool};
 
-use contract::records::{ChannelKey, ChannelRecord, RouteUnitRecord, TokenRecord, UserRecord};
 use contract::SCHEMA_VERSION;
+use contract::records::{ChannelKey, ChannelRecord, RouteUnitRecord, TokenRecord, UserRecord};
 
 use gateway_gate::snapshot::{
     QuotaSnapshot, SharedQuota, SharedTokenSnapshot, SharedUserSnapshot, TokenEntry, TokenSnapshot,
@@ -173,7 +173,10 @@ fn expand_models_json(
                     let public = obj.get("alias").and_then(|v| v.as_str()).unwrap_or("");
                     let upstream = obj.get("upstream").and_then(|v| v.as_str()).unwrap_or("");
                     if public.is_empty() || upstream.is_empty() {
-                        tracing::warn!("skip invalid model object at index {}: missing alias/upstream", idx);
+                        tracing::warn!(
+                            "skip invalid model object at index {}: missing alias/upstream",
+                            idx
+                        );
                         continue;
                     }
                     (public.to_string(), upstream.to_string())

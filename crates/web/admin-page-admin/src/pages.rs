@@ -9,10 +9,13 @@
 //! - 交互控件以原生为主(select / number input / checkbox),自定义件必须带状态语义;
 //! - 反馈一致:确认用「已保存/已生成/已测速」文字,危险操作用红色。
 
-use dioxus::prelude::*;
-use crate::api::{list_channels_api, list_aliases_api, list_subscriptions_api, list_redemptions_api, list_groups_api};
-use crate::state::{CHANNEL_TYPES, EntityStore, PlanRow, RedemptionRow};
+use crate::api::{
+    list_aliases_api, list_channels_api, list_groups_api, list_redemptions_api,
+    list_subscriptions_api,
+};
 use crate::entities::{EntityChip, InputCell, SelectCell, TextCell};
+use crate::state::{CHANNEL_TYPES, EntityStore, PlanRow, RedemptionRow};
+use dioxus::prelude::*;
 // ============ 文案常量 (>=2 次复用) ============
 const BTN_SAVE: &str = "保存";
 const BTN_CANCEL: &str = "取消";
@@ -635,12 +638,12 @@ pub fn SubscriptionsPage() -> Element {
             payment_method: f_payment_method(),
             group: f_group(),
             downgrade_group: f_downgrade_group(),
-              period_val: f_period_val
-                  .peek()
-                  .trim()
-                  .parse::<i32>()
-                  .unwrap_or(1)
-                  .max(1),
+            period_val: f_period_val
+                .peek()
+                .trim()
+                .parse::<i32>()
+                .unwrap_or(1)
+                .max(1),
             period_unit: f_period_unit(),
             reset_cycle: f_reset_cycle(),
             priority: 0,

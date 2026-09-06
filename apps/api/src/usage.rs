@@ -16,12 +16,12 @@ use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::snapshot::Snapshots;
 use crate::PgPool;
+use crate::snapshot::Snapshots;
 
 /// 中间件共享状态
 #[derive(Clone)]
@@ -98,8 +98,16 @@ pub async fn usage_middleware(
         Ok(b) => b,
         Err(_) => {
             return Ok(record_fallback(
-                &state.pool, &state.snapshots.quota_snapshot, user_uuid, &username,
-                token_uuid, &token_name, &model_name, &body_bytes, started, resp_parts,
+                &state.pool,
+                &state.snapshots.quota_snapshot,
+                user_uuid,
+                &username,
+                token_uuid,
+                &token_name,
+                &model_name,
+                &body_bytes,
+                started,
+                resp_parts,
             ));
         }
     };
@@ -128,15 +136,34 @@ pub async fn usage_middleware(
 }
 
 fn spawn_record(
-    pool: PgPool, quota_snapshot: gateway_gate::snapshot::SharedQuota,
-    user_uuid: uuid::Uuid, username: String, token_uuid: uuid::Uuid, token_name: String,
-    model_name: String, prompt_tokens: i64, completion_tokens: i64, cost: i64,
-    use_time_ms: i32, is_stream: bool, token_key: String,
+    pool: PgPool,
+    quota_snapshot: gateway_gate::snapshot::SharedQuota,
+    user_uuid: uuid::Uuid,
+    username: String,
+    token_uuid: uuid::Uuid,
+    token_name: String,
+    model_name: String,
+    prompt_tokens: i64,
+    completion_tokens: i64,
+    cost: i64,
+    use_time_ms: i32,
+    is_stream: bool,
+    token_key: String,
 ) {
     tokio::spawn(async move {
         record_usage(
-            &pool, &quota_snapshot, user_uuid, &username, token_uuid, &token_name,
-            &model_name, prompt_tokens, completion_tokens, cost, use_time_ms, is_stream,
+            &pool,
+            &quota_snapshot,
+            user_uuid,
+            &username,
+            token_uuid,
+            &token_name,
+            &model_name,
+            prompt_tokens,
+            completion_tokens,
+            cost,
+            use_time_ms,
+            is_stream,
             &token_key,
         )
         .await;
@@ -144,26 +171,52 @@ fn spawn_record(
 }
 
 fn record_fallback(
-    pool: &PgPool, quota_snapshot: &gateway_gate::snapshot::SharedQuota,
-    user_uuid: uuid::Uuid, username: &str, token_uuid: uuid::Uuid, token_name: &str,
-    model_name: &str, body_bytes: &[u8], started: Instant, parts: axum::http::response::Parts,
+    pool: &PgPool,
+    quota_snapshot: &gateway_gate::snapshot::SharedQuota,
+    user_uuid: uuid::Uuid,
+    username: &str,
+    token_uuid: uuid::Uuid,
+    token_name: &str,
+    model_name: &str,
+    body_bytes: &[u8],
+    started: Instant,
+    parts: axum::http::response::Parts,
 ) -> Response {
     let prompt = estimate_prompt_tokens(body_bytes);
     let cost = prompt as i64;
     let use_time_ms = started.elapsed().as_millis() as i32;
     spawn_record(
-        pool.clone(), quota_snapshot.clone(), user_uuid, username.to_string(),
-        token_uuid, token_name.to_string(), model_name.to_string(),
-        prompt, 0, cost, use_time_ms, false, token_uuid.to_string(),
+        pool.clone(),
+        quota_snapshot.clone(),
+        user_uuid,
+        username.to_string(),
+        token_uuid,
+        token_name.to_string(),
+        model_name.to_string(),
+        prompt,
+        0,
+        cost,
+        use_time_ms,
+        false,
+        token_uuid.to_string(),
     );
     Response::from_parts(parts, Body::from(body_bytes.to_vec()))
 }
 
 async fn record_usage(
-    pool: &PgPool, quota_snapshot: &gateway_gate::snapshot::SharedQuota,
-    user_uuid: uuid::Uuid, username: &str, token_uuid: uuid::Uuid, token_name: &str,
-    model_name: &str, prompt_tokens: i64, completion_tokens: i64, cost: i64,
-    use_time_ms: i32, is_stream: bool, token_key: &str,
+    pool: &PgPool,
+    quota_snapshot: &gateway_gate::snapshot::SharedQuota,
+    user_uuid: uuid::Uuid,
+    username: &str,
+    token_uuid: uuid::Uuid,
+    token_name: &str,
+    model_name: &str,
+    prompt_tokens: i64,
+    completion_tokens: i64,
+    cost: i64,
+    use_time_ms: i32,
+    is_stream: bool,
+    token_key: &str,
 ) {
     let event = observe::logs::UsageEvent {
         log_type: 1, // consume
@@ -171,7 +224,7 @@ async fn record_usage(
         username: username.to_string(),
         token_key: Some(token_uuid),
         token_name: token_name.to_string(),
-        channel_key: None,            // ponytail: pipeline 内部选定，本 PR 拿不到
+        channel_key: None, // ponytail: pipeline 内部选定，本 PR 拿不到
         channel_name: String::new(),
         model_name: model_name.to_string(),
         prompt_tokens: prompt_tokens as i32,
@@ -241,8 +294,14 @@ fn parse_usage(body_bytes: &[u8]) -> (i64, i64, bool) {
             let json_str = line.trim_start_matches("data:").trim();
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
                 if let Some(usage) = v.get("usage") {
-                    prompt = usage.get("prompt_tokens").and_then(|x| x.as_i64()).unwrap_or(prompt);
-                    completion = usage.get("completion_tokens").and_then(|x| x.as_i64()).unwrap_or(completion);
+                    prompt = usage
+                        .get("prompt_tokens")
+                        .and_then(|x| x.as_i64())
+                        .unwrap_or(prompt);
+                    completion = usage
+                        .get("completion_tokens")
+                        .and_then(|x| x.as_i64())
+                        .unwrap_or(completion);
                 }
             }
         }
@@ -250,8 +309,14 @@ fn parse_usage(body_bytes: &[u8]) -> (i64, i64, bool) {
     }
     if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body_bytes) {
         if let Some(usage) = v.get("usage") {
-            let prompt = usage.get("prompt_tokens").and_then(|x| x.as_i64()).unwrap_or(0);
-            let completion = usage.get("completion_tokens").and_then(|x| x.as_i64()).unwrap_or(0);
+            let prompt = usage
+                .get("prompt_tokens")
+                .and_then(|x| x.as_i64())
+                .unwrap_or(0);
+            let completion = usage
+                .get("completion_tokens")
+                .and_then(|x| x.as_i64())
+                .unwrap_or(0);
             return (prompt, completion, false);
         }
     }

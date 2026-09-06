@@ -5,8 +5,11 @@
 
 use client::{ApiClient, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
+use contract::api::billing::{
+    AliasDto, AliasUpsertRequest, RedemptionDto, RedemptionUpsertRequest, SubscriptionDto,
+    SubscriptionUpsertRequest,
+};
 use contract::api::token::{CreateTokenRequest, TokenDto, UpdateTokenRequest};
-use contract::api::billing::{AliasDto, AliasUpsertRequest, RedemptionDto, RedemptionUpsertRequest, SubscriptionDto, SubscriptionUpsertRequest};
 
 /// List channels from the admin API.
 pub async fn list_channels_api(client: &ApiClient) -> ApiResult<Vec<ChannelDto>> {
@@ -24,7 +27,11 @@ pub async fn create_channel_api(client: &ApiClient, req: ChannelUpsertRequest) -
 }
 
 /// Update a channel.
-pub async fn update_channel_api(client: &ApiClient, key: &str, req: ChannelUpsertRequest) -> ApiResult<()> {
+pub async fn update_channel_api(
+    client: &ApiClient,
+    key: &str,
+    req: ChannelUpsertRequest,
+) -> ApiResult<()> {
     client.put(&format!("/api/channel/{key}"), &req).await
 }
 
@@ -44,7 +51,11 @@ pub async fn create_token_api(client: &ApiClient, req: CreateTokenRequest) -> Ap
 }
 
 /// Update a token.
-pub async fn update_token_api(client: &ApiClient, key: &str, req: UpdateTokenRequest) -> ApiResult<()> {
+pub async fn update_token_api(
+    client: &ApiClient,
+    key: &str,
+    req: UpdateTokenRequest,
+) -> ApiResult<()> {
     client.put(&format!("/api/token/{key}"), &req).await
 }
 
@@ -64,7 +75,11 @@ pub async fn create_alias_api(client: &ApiClient, req: AliasUpsertRequest) -> Ap
 }
 
 /// Update an alias.
-pub async fn update_alias_api(client: &ApiClient, key: &str, req: AliasUpsertRequest) -> ApiResult<()> {
+pub async fn update_alias_api(
+    client: &ApiClient,
+    key: &str,
+    req: AliasUpsertRequest,
+) -> ApiResult<()> {
     client.put(&format!("/api/alias/{key}"), &req).await
 }
 
@@ -79,12 +94,19 @@ pub async fn list_subscriptions_api(client: &ApiClient) -> ApiResult<Vec<Subscri
 }
 
 /// Create a new subscription.
-pub async fn create_subscription_api(client: &ApiClient, req: SubscriptionUpsertRequest) -> ApiResult<()> {
+pub async fn create_subscription_api(
+    client: &ApiClient,
+    req: SubscriptionUpsertRequest,
+) -> ApiResult<()> {
     client.post("/api/subscription", &req).await
 }
 
 /// Update a subscription.
-pub async fn update_subscription_api(client: &ApiClient, key: &str, req: SubscriptionUpsertRequest) -> ApiResult<()> {
+pub async fn update_subscription_api(
+    client: &ApiClient,
+    key: &str,
+    req: SubscriptionUpsertRequest,
+) -> ApiResult<()> {
     client.put(&format!("/api/subscription/{key}"), &req).await
 }
 
@@ -99,12 +121,19 @@ pub async fn list_redemptions_api(client: &ApiClient) -> ApiResult<Vec<Redemptio
 }
 
 /// Create a new redemption.
-pub async fn create_redemption_api(client: &ApiClient, req: RedemptionUpsertRequest) -> ApiResult<()> {
+pub async fn create_redemption_api(
+    client: &ApiClient,
+    req: RedemptionUpsertRequest,
+) -> ApiResult<()> {
     client.post("/api/redemption", &req).await
 }
 
 /// Update a redemption.
-pub async fn update_redemption_api(client: &ApiClient, key: &str, req: RedemptionUpsertRequest) -> ApiResult<()> {
+pub async fn update_redemption_api(
+    client: &ApiClient,
+    key: &str,
+    req: RedemptionUpsertRequest,
+) -> ApiResult<()> {
     client.put(&format!("/api/redemption/{key}"), &req).await
 }
 

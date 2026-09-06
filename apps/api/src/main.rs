@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use std::process::ExitCode;
 
 use api::config;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::Config;
 
