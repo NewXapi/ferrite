@@ -47,12 +47,8 @@ benches/
 └── results/            # gitignore，原始结果 + 分析
 ```
 
-### 场景
-
-| 场景 | RPS | 并发 | 模型 |
-|---|---|---|---|
 | baseline | 2 | 5 | gpt-oss-20b |
-| medium_load | 5 | 20 | gpt-5.6-sol |
+| medium_load | 5 | 20 | nvidia/nemotron-3.5-lightning-30b-a3b |
 | multi_model | 3 | 15 | 轮换 |
 | streaming | 2 | 10 | gpt-oss-20b |
 | stress | 10 | 50 | gpt-oss-20b（默认关闭） |

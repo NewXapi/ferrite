@@ -35,10 +35,19 @@ benches/
 | 场景 | 描述 | RPS | 并发 | 模型 |
 |---|---|---|---|---|
 | baseline | 低并发基线 | 2 | 5 | gpt-oss-20b |
-| medium_load | 中等并发 | 5 | 20 | gpt-5.6-sol |
+| medium_load | 中等并发 | 5 | 20 | nvidia/nemotron-3.5-lightning-30b-a3b |
 | multi_model | 多模型轮换 | 3 | 15 | 轮换 |
 | streaming | 流式请求 | 2 | 10 | gpt-oss-20b |
 | stress | 压力测试（默认关闭） | 10 | 50 | gpt-oss-20b |
+
+## 模型选择
+
+| 模型 | 特点 |
+|---|---|
+| gpt-oss-20b | 免费、快 |
+| nemotron-3-ultra | 免费 |
+| nvidia/nemotron-3.5-lightning-30b-a3b | 免费、RPM 宽松 |
+
 
 ## 结果
 
@@ -62,13 +71,11 @@ benches/
 
 ## 模型选择
 
-从 wildtoken 渠道选免费、RPM 宽松的模型：
-
-| 渠道 | 模型 | 特点 |
-|---|---|---|
-| 52mxw | gpt-oss-20b | 免费、快 |
-| 52mxw | nemotron-3-ultra | 免费 |
-| 星剑雅 | gpt-5.6-sol | RPM 相对宽松 |
+| 模型 | 特点 |
+|---|---|
+| gpt-oss-20b | 免费、快 |
+| nemotron-3-ultra | 免费 |
+| nvidia/nemotron-3.5-lightning-30b-a3b | 免费、RPM 宽松 |
 
 ## 业界参考
 

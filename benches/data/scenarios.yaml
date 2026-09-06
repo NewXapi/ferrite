@@ -3,7 +3,7 @@
 # 原则：控制 RPS，遇 429 立即退避，防封号
 
 scenarios:
-  # 场景 1：低并发基线（52mxw gpt-oss-20b）
+  # 场景 1：低并发基线
   baseline:
     description: "低并发基线，测单请求延迟"
     enabled: true
@@ -17,11 +17,11 @@ scenarios:
     abort_on_429: true
     timeout_ms: 30000
 
-  # 场景 2：中等并发（星剑雅 gpt-5.6-sol）
+  # 场景 2：中等并发
   medium_load:
     description: "中等并发，测吞吐和延迟分布"
     enabled: true
-    model: "gpt-5.6-sol"
+    model: "nvidia/nemotron-3.5-lightning-30b-a3b"
     duration_seconds: 120
     rate:
       requests_per_second: 5
@@ -31,14 +31,14 @@ scenarios:
     abort_on_429: true
     timeout_ms: 30000
 
-  # 场景 3：多模型轮换（52mxw + 星剑雅）
+  # 场景 3：多模型轮换
   multi_model:
     description: "多模型轮换，分散单模型压力"
     enabled: true
     models:
       - "gpt-oss-20b"
       - "nemotron-3-ultra"
-      - "gpt-5.6-sol"
+      - "nvidia/nemotron-3.5-lightning-30b-a3b"
     duration_seconds: 120
     rate:
       requests_per_second: 3
@@ -86,7 +86,6 @@ global:
 
 # 输出
 output:
-  format: "json"  # json | csv
-  directory: "bench/results"
+  directory: "benches/results"
   save_raw_responses: false
   save_logs: true
