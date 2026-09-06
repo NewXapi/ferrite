@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # scripts/deploy_bench_key.sh — 用 GitHub Secrets 中的服务器信息部署公钥
-# 用法：./scripts/deploy_bench_key.sh
+# 用法：
+#   方式 1（环境变量，不交互）: BENCH_SERVER_HOST=xxx BENCH_SERVER_USER=yyy ./deploy_bench_key.sh
+#   方式 2（交互输入）: ./deploy_bench_key.sh
 # 需要：gh (GitHub CLI), ssh
 
 set -euo pipefail
@@ -37,26 +39,28 @@ ensure_key() {
     fi
 }
 
-# 从 GitHub Secrets 获取服务器信息
-get_secrets() {
+# 获取服务器信息（环境变量优先，否则交互输入）
+get_server_info() {
     echo ""
-    echo "=== 从 GitHub Secrets 获取服务器信息 ==="
+    echo "=== 服务器信息 ==="
 
-    # 检查 secret 是否存在
-    if ! gh secret list -R "$GITHUB_REPO" 2>/dev/null | grep -q "BENCH_SERVER_HOST"; then
-        error "GitHub Secret BENCH_SERVER_HOST 不存在"
+    # 优先从环境变量读
+    if [ -n "${BENCH_SERVER_HOST:-}" ]; then
+        SERVER_HOST="$BENCH_SERVER_HOST"
+        log "从环境变量读取 HOST: $SERVER_HOST"
+    else
+        read -rp "服务器 IP 或域名: " SERVER_HOST
     fi
-    if ! gh secret list -R "$GITHUB_REPO" 2>/dev/null | grep -q "BENCH_SERVER_USER"; then
-        error "GitHub Secret BENCH_SERVER_USER 不存在"
+
+    if [ -n "${BENCH_SERVER_USER:-}" ]; then
+        SERVER_USER="$BENCH_SERVER_USER"
+        log "从环境变量读取 USER: $SERVER_USER"
+    else
+        read -rp "SSH 用户名 [root]: " SERVER_USER
+        SERVER_USER="${SERVER_USER:-root}"
     fi
 
-    # 获取值（gh secret 不直接输出值，需要用户手动输入或从其他方式获取）
-    # 注意：gh secret 命令无法直接读取 secret 值（安全限制）
-    # 需要用户手动输入或从其他方式获取
-
-    read -rp "服务器 IP 或域名: " SERVER_HOST
-    read -rp "SSH 用户名 [root]: " SERVER_USER
-    SERVER_USER="${SERVER_USER:-root}"
+    # 密码必须手动输入（安全考虑，不存环境变量）
     read -rsp "SSH 密码: " SERVER_PASS
     echo ""
 
@@ -165,7 +169,7 @@ main() {
 
     check_deps
     ensure_key
-    get_secrets
+    get_server_info
     deploy_key
     test_connection
     setup_ssh_config
