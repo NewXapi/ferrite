@@ -82,9 +82,34 @@ impl Codec for SpyCodec {
 
 // ---------- helpers ----------
 
+/// 注册一个 codec。
+///
+/// 只覆盖 `(source, target)` 一个方向 —— 与内建注册表一致：`Codec` 有向，
+/// 请求与响应各查自己方向。
 fn mk_registry(codec: Arc<dyn Codec>) -> AdaptorRegistry {
     let mut reg = AdaptorRegistry::new();
     reg.register(codec);
+    reg
+}
+
+/// 注册请求与响应两个方向的 spy codec，模拟真实注册表的成对登记。
+fn mk_bidi_registry(
+    request_called: Arc<AtomicBool>,
+    response_called: Arc<AtomicBool>,
+) -> AdaptorRegistry {
+    let mut reg = AdaptorRegistry::new();
+    reg.register(Arc::new(SpyCodec {
+        source: Protocol::OpenAi,
+        target: Protocol::Gemini,
+        request_called: request_called.clone(),
+        response_called: response_called.clone(),
+    }));
+    reg.register(Arc::new(SpyCodec {
+        source: Protocol::Gemini,
+        target: Protocol::OpenAi,
+        request_called,
+        response_called,
+    }));
     reg
 }
 
@@ -111,10 +136,14 @@ fn mk_task(stream: bool) -> ForwardTask {
             secret: "s".into(),
             base_url: "https://upstream.example".into(),
             upstream_model: "m".into(),
+            provider_type: "gemini".into(),
+            settings: serde_json::Value::Null,
         },
         path: "/v1/chat/completions".to_string(),
         headers: vec![],
-        body: Bytes::from_static(b"{\"model\":\"gpt-4o\",\"messages\":[]}"),
+        // 公开名与上游真名一致（常见情形）：别名改写是 no-op，
+        // 这样本文件测的就只是 adaptor 转换，不掺入 model 改写。
+        body: Bytes::from_static(b"{\"model\":\"m\",\"messages\":[]}"),
         stream,
         provider_type: "gemini".into(),
         extra_headers: vec![],
@@ -168,13 +197,8 @@ async fn forward_calls_adapt_response_for_streaming() {
     let request_called = Arc::new(AtomicBool::new(false));
     let response_called = Arc::new(AtomicBool::new(false));
 
-    let codec: Arc<dyn Codec> = Arc::new(SpyCodec {
-        source: Protocol::OpenAi,
-        target: Protocol::Gemini,
-        request_called: request_called.clone(),
-        response_called: response_called.clone(),
-    });
-    let reg = mk_registry(codec);
+    // 响应方向要查 (Gemini → OpenAi)，所以两个方向都得登记。
+    let reg = mk_bidi_registry(request_called.clone(), response_called.clone());
 
     let task = mk_task(true);
     let forwarded = forward_once(&task, &egress, &reg, &Timeouts::default())
@@ -219,4 +243,70 @@ async fn forward_passthrough_when_no_adaptor() {
     // 上游收到原始 body（没有 _proxied 注入）
     let sent_body = captured.lock().clone().unwrap();
     assert_eq!(sent_body, task.body, "无 adaptor 时应原样转发");
+}
+
+/// 请求与响应必须各用自己方向的 codec。
+///
+/// `Codec` 是有向的：内建 `ClaudeCodec` 用 `to_claude` 区分方向，请求方向的
+/// 那个对 `adapt_response` 直接返回 `Unsupported`。用同一个 codec 两头转，
+/// 每个 claude / gemini 渠道的响应都会变成 502。
+///
+/// 回归：smoke 里 claude 渠道请求发出去正常、响应 502 "unsupported conversion:
+/// OpenAi -> Claude"。此处用真实内建注册表（而非双向 SpyCodec）复现。
+#[tokio::test]
+async fn forward_uses_reverse_codec_for_response() {
+    /// 假上游：回 Anthropic Messages 形状的响应。
+    struct ClaudeShapedEgress;
+    impl Egress for ClaudeShapedEgress {
+        fn execute<'a>(
+            &'a self,
+            _url: &'a str,
+            _headers: &'a [(String, String)],
+            _body: Bytes,
+            _timeouts: &'a Timeouts,
+        ) -> Pin<
+            Box<
+                dyn std::future::Future<Output = Result<ForwardedResponse, NormalizedError>>
+                    + Send
+                    + 'a,
+            >,
+        > {
+            let payload = br#"{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet","content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}"#;
+            let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(
+                Bytes::from_static(payload),
+            )]);
+            Box::pin(async move {
+                Ok(ForwardedResponse::from_stream(
+                    200,
+                    "application/json",
+                    stream,
+                ))
+            })
+        }
+    }
+
+    let mut task = mk_task(false);
+    task.provider_type = "claude".to_string();
+
+    let forwarded = forward_once(
+        &task,
+        &ClaudeShapedEgress,
+        &AdaptorRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("claude 响应应能转回 OpenAI 形状, 而不是 Unsupported");
+
+    use futures_util::StreamExt;
+    let mut body = forwarded.body;
+    let chunk = body
+        .next()
+        .await
+        .expect("应有响应体")
+        .expect("响应体应可读");
+    let v: serde_json::Value = serde_json::from_slice(&chunk).expect("应是合法 JSON");
+
+    // 客户端拿到的必须是 OpenAI chat.completion，而不是原始 Anthropic 形状。
+    assert_eq!(v["object"], "chat.completion");
+    assert_eq!(v["choices"][0]["message"]["content"], "pong");
 }

@@ -6,7 +6,6 @@
 
 use crate::{Dispatch, DispatchError};
 use async_trait::async_trait;
-use gateway_pipeline::ctx::SelectedRoute;
 use gateway_pipeline::{RequestCtx, Stage, StageError, StageOutcome};
 use std::sync::Arc;
 
@@ -37,11 +36,9 @@ impl Stage for DispatchStage {
         let public_model = ctx.requested_model.clone().unwrap_or_default();
         match self.dispatch.select(&group, &public_model, &[]) {
             Ok(candidate) => {
-                ctx.route = Some(SelectedRoute {
-                    channel_id: 0, // forward 组装时从 candidate 取, 这里仅标记已选
-                    api_type: 0,
-                    base_url: candidate.base_url.clone(),
-                });
+                // 候选本身就是 SelectedRoute：secret / upstream_model /
+                // provider_type / settings 全部随之进入 ctx，forward 不再自造。
+                ctx.route = Some(candidate);
                 Ok(StageOutcome::Continue)
             }
             Err(DispatchError::SnapshotNotReady) => Err(StageError::NotReady),

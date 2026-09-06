@@ -34,6 +34,8 @@ fn candidate(provider: &str) -> Candidate {
         secret: format!("sk-{provider}-secret"),
         base_url: "https://upstream.example".to_string(),
         upstream_model: "m".to_string(),
+        provider_type: provider.to_string(),
+        settings: serde_json::Value::Null,
     }
 }
 
@@ -218,4 +220,46 @@ fn forward_task_is_cloneable() {
     assert_eq!(clone.path, task.path);
     assert_eq!(clone.body, task.body);
     assert_eq!(clone.candidate.secret, task.candidate.secret);
+}
+
+// ---------- 公开别名 → 上游真名改写 ----------
+
+/// 上游只认真名：路由单元把 `gpt-4` 映射到 `gpt-4-0613` 时，发出去的体里
+/// `model` 必须是真名，否则上游报 model not found。
+/// 回归：smoke 发现别名映射未生效，上游收到的仍是公开别名。
+#[test]
+fn rewrite_upstream_model_replaces_alias() {
+    let body =
+        Bytes::from_static(br#"{"model":"gpt-4","messages":[{"role":"user","content":"x"}]}"#);
+    let out = forward::pipeline::rewrite_upstream_model(&body, "gpt-4-0613");
+    let v: serde_json::Value = serde_json::from_slice(&out).expect("仍是合法 JSON");
+    assert_eq!(v["model"], "gpt-4-0613");
+    // 其余字段不能被改写动作破坏。
+    assert_eq!(v["messages"][0]["content"], "x");
+}
+
+/// 没有可靠改写位置时透传，不猜测也不报错：空真名、非 JSON、无 model 字段。
+#[test]
+fn rewrite_upstream_model_passes_through_when_not_applicable() {
+    let json = Bytes::from_static(br#"{"model":"gpt-4"}"#);
+    assert_eq!(
+        forward::pipeline::rewrite_upstream_model(&json, ""),
+        json,
+        "上游真名为空时原样透传"
+    );
+
+    let not_json = Bytes::from_static(b"not json at all");
+    assert_eq!(
+        forward::pipeline::rewrite_upstream_model(&not_json, "m"),
+        not_json,
+        "非 JSON 体原样透传"
+    );
+
+    // 无 model 字段 = 非聊天类请求（如 /v1/models），不应凭空插入 model。
+    let no_model = Bytes::from_static(br#"{"input":"hi"}"#);
+    assert_eq!(
+        forward::pipeline::rewrite_upstream_model(&no_model, "m"),
+        no_model,
+        "缺 model 字段时不插入"
+    );
 }

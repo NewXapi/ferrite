@@ -57,8 +57,10 @@ impl Stage for ForwardStage {
             }
         };
 
-        let (base_url, _channel_id) = match &ctx.route {
-            Some(r) => (r.base_url.clone(), r.channel_id),
+        // 候选由 DispatchStage 写入, 已解析完整 (secret / upstream_model /
+        // provider_type / settings), forward 不查快照也不自造。
+        let candidate = match &ctx.route {
+            Some(r) => r.clone(),
             None => {
                 return Err(StageError::Internal(anyhow::anyhow!(
                     "dispatch stage did not run before forward"
@@ -66,43 +68,19 @@ impl Stage for ForwardStage {
             }
         };
 
-        // 用 path 推导 provider_type (V1: apps/gateway 组装时从 ChannelRecord
-        // 注入; 此处缺省 openai 透传, 跨协议转换留给 protocol-bridge)。
-        let provider_type = "openai";
+        let provider_type = candidate.provider_type.clone();
+        let extra_headers = crate::adapter::extra_headers_from_settings(&candidate.settings);
+        // 流式由请求体的 `stream` 字段决定 —— 路径里的 "stream" 子串不是协议信号。
+        let stream = body_wants_stream(&body);
 
         let task = ForwardTask {
-            candidate: dispatch::candidate::Candidate {
-                unit: contract::records::RouteUnitRecord {
-                    meta: contract::records::SyncMeta {
-                        key: "forward-stage".into(),
-                        schema_version: 1,
-                        logical_version: 1,
-                        origin: "gateway".into(),
-                        updated_at: chrono::Utc::now(),
-                    },
-                    group: ctx
-                        .token
-                        .as_ref()
-                        .map(|t| t.group.clone())
-                        .unwrap_or_default(),
-                    public_model: ctx.request.path.clone(),
-                    channel_key: String::new(),
-                    key_index: 0,
-                    upstream_model: String::new(),
-                    priority: 0,
-                    weight: 0,
-                    status: 1,
-                },
-                secret: String::new(), // apps/gateway 组装时从 snapshot 注入
-                base_url,
-                upstream_model: String::new(),
-            },
+            candidate,
             path: ctx.request.path.clone(),
             headers: vec![], // gate 阶段已清洗, 透传头由 apps/gateway 组装
             body,
-            stream: ctx.request.path.contains("stream"),
-            provider_type: provider_type.into(),
-            extra_headers: vec![],
+            stream,
+            provider_type,
+            extra_headers,
         };
 
         let forwarded =
@@ -139,6 +117,8 @@ impl Stage for ForwardStage {
             sse_ctx.public_model = public_model;
             sse_ctx.upstream_model = upstream_model;
 
+            // 上游的 content-type 原样回给客户端: SSE 客户端靠它判定按事件流读。
+            let content_type = forwarded.content_type.clone();
             let mapped = futures_util::stream::unfold(
                 (forwarded.body, sse_ctx),
                 move |(mut s, mut ctx)| async move {
@@ -158,8 +138,9 @@ impl Stage for ForwardStage {
             );
             let stream: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
                 Box::pin(mapped);
-            Ok(StageOutcome::Stream(PipeStream::new(
+            Ok(StageOutcome::Stream(PipeStream::with_content_type(
                 axum::body::Body::from_stream(stream),
+                content_type,
             )))
         } else {
             // 读取全部 body (非流式响应体通常较小)。
@@ -180,4 +161,22 @@ impl Stage for ForwardStage {
             Ok(StageOutcome::Continue)
         }
     }
+}
+
+/// 请求体是否要求流式响应 —— 读顶层 `stream` 布尔字段。
+///
+/// OpenAI / Claude / Gemini(OpenAI 兼容层) 都用这个字段表达流式意图。
+/// 非 JSON 或缺字段 → false（按非流式处理，整体收 body 再回）。
+///
+/// 不能用 URL 路径判断：`/v1/chat/completions` 带 `"stream": true` 是流式，
+/// 而路径里出现 "stream" 子串并不代表客户端要 SSE。
+fn body_wants_stream(body: &Bytes) -> bool {
+    #[derive(serde::Deserialize)]
+    struct StreamFlag {
+        #[serde(default)]
+        stream: bool,
+    }
+    serde_json::from_slice::<StreamFlag>(body)
+        .map(|f| f.stream)
+        .unwrap_or(false)
 }

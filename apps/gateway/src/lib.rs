@@ -4,6 +4,7 @@ pub mod config;
 pub mod observability;
 
 use crate::config::GatewayConfig;
+use crate::config::{build_route_snapshot, build_token_snapshot};
 use dispatch::health::HealthSetting;
 use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable, Snapshot};
@@ -24,8 +25,9 @@ use std::sync::Arc;
 
 /// 按配置组装 axum router。
 ///
+/// `cfg.channels` 变成 dispatch 的路由快照，`cfg.keys` 变成 gate 的 token 快照；
 /// `cfg.dispatch` 决定健康表的冷却参数；`cfg.metering.prices` 非空时装配价格表
-/// （空 = 本地单机不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。
+/// 并挂上额度闸（空 = 本地单机不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。
 pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let health = Arc::new(MemoryHealthTable::with_config(HealthSetting {
         cooldown_threshold: cfg.dispatch.cooldown_threshold,
@@ -35,9 +37,9 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     }));
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());
-    let snapshot: Arc<Snapshot> = load_snapshot();
+    let snapshot: Arc<Snapshot> = load_snapshot(cfg);
     let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health.clone()));
-    let gates = build_gates();
+    let gates = build_gates(cfg);
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
@@ -64,38 +66,48 @@ pub fn build_retry_policy(cfg: &GatewayConfig) -> dispatch::RetryPolicy {
     }
 }
 
-pub fn build_gates() -> GateChain {
-    GateChain::new()
+/// 组装准入闸链。
+///
+/// `cfg.keys` 变成 token / user 快照供 `AuthGate` 与 `StateGate` 查表；
+/// key 列表为空则任何请求都 401。
+///
+/// `QuotaGate` 只在 `[metering.prices]` 非空时挂上：`QuotaSnapshot::remaining`
+/// 对未登记的 token 返回 0，单机不计费时挂它会让每个请求恒 402。计费模式下
+/// 额度快照由计量侧写入，才有真实余额可比。
+pub fn build_gates(cfg: &GatewayConfig) -> GateChain {
+    let (tokens, users) = build_token_snapshot(&cfg.keys);
+    let mut chain = GateChain::new()
         .push(AuthGate::new(Arc::new(arc_swap::ArcSwap::from_pointee(
-            gateway_gate::snapshot::TokenSnapshot::default(),
+            tokens,
         ))))
         .push(StateGate::new(
-            Arc::new(arc_swap::ArcSwap::from_pointee(
-                gateway_gate::snapshot::UserSnapshot::default(),
-            )),
+            Arc::new(arc_swap::ArcSwap::from_pointee(users)),
             Arc::new(arc_swap::ArcSwap::from_pointee(
                 gateway_gate::snapshot::IpPolicy::default(),
             )),
         ))
-        .push(ModelGate)
-        .push(QuotaGate::new(
+        .push(ModelGate);
+    if !cfg.metering.prices.is_empty() {
+        chain = chain.push(QuotaGate::new(
             Arc::new(arc_swap::ArcSwap::from_pointee(
                 gateway_gate::snapshot::QuotaSnapshot::default(),
             )),
             Arc::new(arc_swap::ArcSwap::from_pointee(
                 gateway_gate::snapshot::PricingSnapshot::default(),
             )),
-        ))
+        ));
+    }
+    chain
         .push(RateLimitGate::new(Arc::new(RateLimiter::new(100, 60))))
         .push(GrayListGate::new(Arc::new(
             arc_swap::ArcSwap::from_pointee(gateway_gate::graylist::GrayListState::default()),
         )))
 }
 
-/// 路由快照占位：真实数据由 admin-sync 推送，进程启动时为空。
-pub fn load_snapshot() -> Arc<Snapshot> {
-    Arc::new(Snapshot {
-        units: vec![],
-        channels: std::collections::HashMap::new(),
-    })
+/// 路由快照 —— 单机模式下由 `[[channels]]` 直接构造。
+///
+/// 不依赖 admin-sync：配置就是唯一数据源，SIGHUP 重载配置即换快照
+/// （`main.rs` 重建整个 app）。渠道为空时任何转发请求返回 404 no_route。
+pub fn load_snapshot(cfg: &GatewayConfig) -> Arc<Snapshot> {
+    Arc::new(build_route_snapshot(&cfg.channels))
 }

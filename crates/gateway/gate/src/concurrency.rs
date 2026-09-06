@@ -1,7 +1,10 @@
 //! `concurrency` —— gate 7：post-dispatch 并发槽（每 channel Semaphore）
 //!
-//! 与其它 gate 不同：本 gate 在 dispatch 之后执行（需要 channel_id 才能占用）。
+//! 与其它 gate 不同：本 gate 在 dispatch 之后执行（需要选中的渠道才能占用）。
 //! 在 pipeline 中按 post-dispatch 顺序注册。
+//!
+//! 索引口径是 `ChannelRecord.meta.key`（即 `RouteUnitRecord.channel_key`），
+//! 与 catalog 快照、健康表、dispatch 限速表一致；渠道没有数字 id。
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,8 +15,8 @@ use gateway_pipeline::{RequestCtx, Stage, StageError, StageOutcome};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 pub struct ConcurrencyState {
-    /// channel_id → Semaphore
-    pub semaphores: DashMap<i64, Arc<Semaphore>>,
+    /// channel_key → Semaphore
+    pub semaphores: DashMap<String, Arc<Semaphore>>,
     /// hold_id → permit（移除 entry → permit drop → 槽位归还）
     pub holds: DashMap<u64, OwnedSemaphorePermit>,
     pub next_hold_id: AtomicU64,
@@ -39,10 +42,10 @@ impl ConcurrencyGate {
     }
 
     /// 注册 / 更新 channel 的并发上限。
-    pub fn register_channel(&self, channel_id: i64, max_concurrency: u32) {
+    pub fn register_channel(&self, channel_key: &str, max_concurrency: u32) {
         self.state
             .semaphores
-            .entry(channel_id)
+            .entry(channel_key.to_string())
             .or_insert_with(|| Arc::new(Semaphore::new(max_concurrency as usize)));
         // ponytail: 暂不处理"缩小"语义——已签发 permit 不能撤销；新值由下次 register 重建。
     }
@@ -53,31 +56,20 @@ impl ConcurrencyGate {
     }
 
     /// 同步尝试占用一个槽；返回 hold_id 或 None（槽满）。
-    pub fn try_hold(&self, channel_id: i64) -> Option<u64> {
-        let sem = self.state.semaphores.get(&channel_id)?.clone();
+    pub fn try_hold(&self, channel_key: &str) -> Option<u64> {
+        let sem = self.state.semaphores.get(channel_key)?.clone();
         let permit = sem.try_acquire_owned().ok()?;
         let hold_id = self.state.next_hold_id.fetch_add(1, Ordering::Relaxed);
         self.state.holds.insert(hold_id, permit);
         Some(hold_id)
     }
 
-    /// 当前已占用数（含已签发未释放的）。
-    pub fn in_flight(&self, channel_id: i64) -> usize {
+    /// 当前可用槽数（`Semaphore::available_permits`）。
+    pub fn in_flight(&self, channel_key: &str) -> usize {
         self.state
             .semaphores
-            .get(&channel_id)
-            .map(|s| {
-                let total = s.available_permits();
-                let max_permits = self
-                    .state
-                    .semaphores
-                    .get(&channel_id)
-                    .map(|x| x.available_permits())
-                    .unwrap_or(0);
-                // ponytail: 仅返回 available；总上限可由调用方持有
-                let _ = max_permits;
-                total
-            })
+            .get(channel_key)
+            .map(|s| s.available_permits())
             .unwrap_or(0)
     }
 }
@@ -89,17 +81,17 @@ impl Stage for ConcurrencyGate {
     }
 
     async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, StageError> {
-        // 1. 必须有 SelectedRoute 才能拿 channel_id
+        // 1. 必须有 SelectedRoute 才能知道占哪个渠道的槽
         let route = ctx.route.as_ref().ok_or_else(|| {
             StageError::Internal(anyhow::anyhow!("concurrency gate requires SelectedRoute"))
         })?;
-        let channel_id = route.channel_id;
+        let channel_key = route.unit.channel_key.clone();
 
         // 2. 拿 semaphore
         let sem = self
             .state
             .semaphores
-            .entry(channel_id)
+            .entry(channel_key)
             .or_insert_with(|| Arc::new(Semaphore::new(0)))
             .clone();
 

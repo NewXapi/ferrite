@@ -1,5 +1,6 @@
+# apps/gateway 单机配置 —— 渠道与本地 key 就是数据面的唯一来源，
+# 不需要数据库。本文件已 gitignore（config/config.toml），示例只放占位符。
 listen = "0.0.0.0:3000"
-database_url = "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite"
 log_level = "info"
 
 # 调度健康参数；字段名对齐 dispatch::health::HealthSetting。
@@ -19,13 +20,44 @@ cooldown_max_seconds = 60
 max_attempts = 3
 
 # 计量定价。整段省略或 prices 为空 = 不计费（本地单机默认），转发不受影响。
-# 作为中转服务对外计费时才需要填。
-[metering.prices."gpt-4o"]
-# $/M 输入 tokens
-input = 2.5
-# $/M 输出 tokens
-output = 10.0
-# $/M 缓存读 tokens
-cache = 1.25
-# 分组倍率，默认 1.0
-group_multiplier = 1.0
+# 填了价格就会挂上额度闸 QuotaGate；此时额度快照必须有对应 token 的余额，
+# 否则请求恒 402。作为中转服务对外计费时才解开注释。
+# [metering.prices."gpt-4o"]
+# input = 2.5              # $/M 输入 tokens
+# output = 10.0            # $/M 输出 tokens
+# cache = 1.25             # $/M 缓存读 tokens
+# group_multiplier = 1.0   # 分组倍率，默认 1.0
+
+# 渠道配置。每个渠道定义一个上游供应商接入点。
+# 整段省略 = 无渠道（空快照）。
+[[channels]]
+# 渠道名称（配置标识），作为 ChannelRecord.meta.key
+name = "openai"
+# 供应商协议族，默认 "openai"
+provider_type = "openai"
+# 上游服务基础地址
+base_url = "https://api.example.com"
+# API 密钥（本地明文）
+api_key = "<UPSTREAM_API_KEY>"
+# 对外提供的公开模型名列表
+models = ["gpt-4o", "gpt-4"]
+# 公开名 → 上游真实模型名的映射（可选，缺省时上游名 == 公开名）
+# upstream_models = { "gpt-4" = "gpt-4o-2024-08-06" }
+# 调度权重（默认 1）
+weight = 1
+# 调度优先级（默认 0）
+priority = 0
+# 最大并发数（默认 0 = 不限）
+max_concurrency = 0
+
+# 本地密钥配置。每个 key 用于鉴权。
+# 整段省略 = 无本地 key（空快照）。
+[[keys]]
+# 明文 API 密钥（如 sk-local-xxx）
+key = "sk-local-<RANDOM>"
+# 密钥显示名称（可选）
+name = "local-key-1"
+# 密钥所属组，默认 "default"
+group = "default"
+# 允许的模型列表；空列表表示无限制
+allowed_models = []

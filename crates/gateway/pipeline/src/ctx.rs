@@ -61,12 +61,31 @@ pub struct RequestMeta {
     pub inbound_protocol: ProtocolKind,
 }
 
-/// 路由选路产物（Dispatch 写入）
+/// 路由选路产物（Dispatch 写入）—— 一个可直接转发的完整目标。
+///
+/// 解析完成度是本类型的核心不变量：forward 拿到它之后**不需要再查任何快照**。
+/// `provider_type` 与 `settings` 来自 `ChannelRecord`，由 dispatch 的
+/// `resolve_candidate` 在选路时一并解析，避免 forward 反向依赖 catalog 快照。
+///
+/// 为什么定义在 `pipeline` 而不是 `dispatch`：`pipeline` 是全部 stage crate 的
+/// 公共基座，反向不依赖任何具体 stage（见 crate 文档）。路由产物要经 `RequestCtx`
+/// 跨 stage 传递，只能落在基座里；`dispatch::Candidate` 是本类型的别名。
 #[derive(Debug, Clone)]
 pub struct SelectedRoute {
-    pub channel_id: i64,
-    pub api_type: u32,
+    /// 命中的路由单元（原始记录，供计量/日志引用）。
+    pub unit: contract::records::RouteUnitRecord,
+    /// 解析后的上游凭据（`channel.keys[key_index].secret`）。
+    pub secret: String,
+    /// 上游 base_url（路径拼接规则见 `forward::adapter::build_url`）。
     pub base_url: String,
+    /// 上游真名（`unit.upstream_model`），发往上游的 model 字段用它。
+    pub upstream_model: String,
+    /// 渠道协议族（`ChannelRecord.provider_type`）："openai" / "claude" /
+    /// "gemini" / "passthrough"，决定鉴权头与路径模板。
+    pub provider_type: String,
+    /// 渠道级覆盖（`ChannelRecord.settings`）；`headers` 子集由 forward 消费，
+    /// 其余留给计量与审计。
+    pub settings: serde_json::Value,
 }
 
 /// 上游响应（非流式，Forward 写入）
@@ -86,21 +105,38 @@ pub struct StreamedAccum {
 
 /// 流式响应（Forward → 客户端接管）
 ///
-/// 包装 axum Body；`gateway-forward` 的 SsePipe 通过 `PipeStream::new` 构造。
+/// 包装 axum Body 与上游的 `content-type`；`gateway-forward` 的 SsePipe 通过
+/// [`PipeStream::with_content_type`] / [`PipeStream::new`] 构造。
 #[derive(Debug)]
 pub struct PipeStream {
     body: axum::body::Body,
+    content_type: String,
 }
 
 impl PipeStream {
-    /// 由上游 SSE 流构造（forward 调用）
-    pub fn new(body: axum::body::Body) -> Self {
-        Self { body }
+    /// 由上游流构造，显式给出回给客户端的 `content-type`。
+    ///
+    /// 必须带上：SSE 客户端（OpenAI / Anthropic SDK）靠 `text/event-stream`
+    /// 判定要按事件流读，缺了它会把响应当普通 body 一次性收完。
+    pub fn with_content_type(body: axum::body::Body, content_type: impl Into<String>) -> Self {
+        Self {
+            body,
+            content_type: content_type.into(),
+        }
     }
 
-    /// 转换为 axum Response
+    /// 由上游 SSE 流构造（forward 调用），content-type 取 `text/event-stream`。
+    pub fn new(body: axum::body::Body) -> Self {
+        Self::with_content_type(body, "text/event-stream")
+    }
+
+    /// 转换为 axum Response，带回上游的 `content-type`。
     pub fn into_response(self) -> http::Response<axum::body::Body> {
-        http::Response::new(self.body)
+        http::Response::builder()
+            .header(http::header::CONTENT_TYPE, &self.content_type)
+            .body(self.body)
+            // header 值来自上游 content-type 字符串；非法值退回无头响应而不是 panic。
+            .unwrap_or_else(|_| http::Response::new(axum::body::Body::empty()))
     }
 }
 
