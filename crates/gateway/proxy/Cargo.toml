@@ -4,17 +4,13 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-[dependencies]
-gateway-pipeline = { path = "../pipeline" }
-contract         = { path = "../../contract" }
+# 出口代理节点：配置解析 + 按 channel 选节点 + SSRF 校验。
+# 拨号不在此 crate —— 见 lib.rs 模块文档。
 
-hyper = { workspace = true, features = ["client", "http2"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time", "net", "io-util"] }
-url = "2"
-bytes = { workspace = true }
-tracing = { workspace = true }
+[dependencies]
+reqwest   = { workspace = true }
+url       = "2"
+percent-encoding = "2"
 thiserror = { workspace = true }
-anyhow = "1"
-async-trait = "0.1"
-dashmap = "6"
-arc-swap = { workspace = true }
+arc-swap  = { workspace = true }
+rand      = { workspace = true }

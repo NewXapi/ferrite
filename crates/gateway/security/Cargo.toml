@@ -4,9 +4,8 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+# 过滤词扫描：请求/响应（含流式）按配置词表替换。纯逻辑，无 pipeline stage。
+
 [dependencies]
 aho-corasick = "1"
 serde = { workspace = true }
-
-[dev-dependencies]
-# benchmarks removed; tests in src/tests

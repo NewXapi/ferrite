@@ -1,23 +1,12 @@
-/// 过滤词测试覆盖 WordFilter + StreamFilter 的主要行为和边界情况。
-///
-/// 每个测试均写明测试目的和预期理由，以便快速理解设计约束。
-///
-/// ## 测试概述
-/// - 空词表时的零分配热路径保证。
-/// - 大小写不敏感与替换逻辑。
-/// - 跨 chunk 流式捕获（词 "secret" 分 "my sec" + "ret here"）。
-/// - UTF-8 字符边界处理（中文 "敏感" 切字节中间）。
-/// - 词跨三个 chunk 的边界情况。
-/// - FilterConfig 默认值与 serde 解析。
-/// - StreamFilter flush 行为与 pending 状态。
-/// - WordFilter::has_match 用于快速路径裁剪。
-///
-/// 上述要求覆盖了 `gateway-security` crate 的整个功能边界。
+//! 过滤词测试 —— `WordFilter` 一次性过滤 + `StreamFilter` 跨 chunk 流式过滤。
+//!
+//! 断言的是消费者能观察到的契约：过滤结果与零分配热路径。
+//! `StreamFilter` 单次 `push` 返回多少字节是内部 hold 策略，不钉死。
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use gateway_security::{FilterConfig, WordFilter, StreamFilter};
+use gateway_security::{FilterConfig, StreamFilter, WordFilter};
 
 /// 在 `wordlist.rs` 中的 FilterConfig 默认行为与 serde 行为一致。
 #[test]
@@ -79,108 +68,111 @@ fn test_multiple_matches() {
     };
     let filter = WordFilter::new(&config);
     let text = "This is a bad word and another bad.";
-    let filtered = filter.filter(text).as_ref();
-    // 预期："This is a *** *** and another ***."
-    assert_eq!(filtered, "This is a *** *** and another ***.");
+    assert_eq!(
+        filter.filter(text).as_ref(),
+        "This is a *** *** and another ***."
+    );
 }
 
-/// StreamFilter 跨 chunk：词 "secret" 分 "my sec" + "ret here" 时，输出必须是 "my *** here"。
-#[test]
-fn test_stream_filter_cross_chunk() {
+/// 把 chunk 序列喂进 `StreamFilter`，返回 push 输出与 flush 拼接后的完整结果。
+///
+/// 这是 `StreamFilter` 的唯一契约：客户端看到的是拼接流，单次 `push` 返回多少
+/// 字节是内部 hold 策略，不该被测试钉死。
+fn drive(words: &[&str], replacement: &str, chunks: &[&str]) -> String {
     let config = FilterConfig {
-        words: vec!["secret".to_string()],
-        replacement: "***".to_string(),
+        words: words.iter().map(|w| w.to_string()).collect(),
+        replacement: replacement.to_string(),
         ..Default::default()
     };
     let filter = Arc::new(WordFilter::new(&config));
-    let mut stream_filter = StreamFilter::new(filter);
-
-    // 第一个 chunk "my sec"，不会完整匹配
-    let out1 = stream_filter.push("my sec");
-    assert_eq!(out1, "my sec");
-
-    // 第二个 chunk "ret here"，完整匹配 "secret"
-    let out2 = stream_filter.push("ret here");
-    assert_eq!(out2, "my *** here");
-
-    // flush 时无输出（pending 为空）
-    let out3 = stream_filter.flush();
-    assert_eq!(out3, "");
+    let mut sf = StreamFilter::new(filter);
+    let mut out = String::new();
+    for c in chunks {
+        out.push_str(&sf.push(c));
+    }
+    out.push_str(&sf.flush());
+    out
 }
 
-/// UTF-8 字符边界处理：中文过滤词 "敏感" 切在 3 字节中间。
-/// 确保不 panic 且最终输出正确（整个词被替换为 "***"）。
+/// 跨 chunk 命中：词 "secret" 被切成 "my sec" + "ret here"，单看任一 chunk 都不命中。
+/// 这是 `StreamFilter` 存在的唯一理由——`WordFilter` 逐 chunk 调会漏放。
 #[test]
-fn test_stream_filter_utf8_boundary() {
-    let config = FilterConfig {
-        words: vec!["敏感".to_string()],
-        replacement: "***".to_string(),
+fn stream_filter_catches_word_split_across_chunks() {
+    assert_eq!(drive(&["secret"], "***", &["my sec", "ret here"]), "my *** here");
+    // 对照：逐 chunk 用一次性过滤器会漏放，证明跨 chunk 逻辑不是多余的。
+    let one_shot = WordFilter::new(&FilterConfig {
+        words: vec!["secret".into()],
+        replacement: "***".into(),
         ..Default::default()
-    };
-    let filter = Arc::new(WordFilter::new(&config));
-    let mut stream_filter = StreamFilter::new(filter);
-
-    // 手动按字节切分，以模拟流式切分在字符中间（不安全的做法）
-    // "这是" (6 bytes) + "敏感" (6 bytes) = 12 bytes
-    // 先推入 "这是" (valid char boundary)
-    let out1 = stream_filter.push("这是");
-    assert_eq!(out1, "这是");
-
-    // 再推入 "敏感" (partial match should complete)
-    let out2 = stream_filter.push("敏感");
-    assert_eq!(out2, "***");
-
-    let out3 = stream_filter.flush();
-    assert_eq!(out3, "");
+    });
+    let leaked: String = ["my sec", "ret here"]
+        .iter()
+        .map(|c| one_shot.filter(c).into_owned())
+        .collect();
+    assert_eq!(leaked, "my secret here", "逐 chunk 过滤必然漏放");
 }
 
-/// 词跨三个 chunk 时：每个 chunk 只有 1-2 字节。
+/// UTF-8 边界：中文一个字 3 字节，`hold_len` 按字节算时会落在字中间，必须回退到
+/// 字符边界，否则 `is_char_boundary` 之外的切片直接 panic。
+///
+/// 词 "敏感" 是 6 字节 → `hold_len = 5`，逐字（3 字节）喂入时每次切分都要回退。
 #[test]
-fn test_stream_filter_three_chunks() {
-    let config = FilterConfig {
-        words: vec!["abcdef".to_string()],
-        replacement: "***".to_string(),
-        ..Default::default()
-    };
-    let filter = Arc::new(WordFilter::new(&config));
-    let mut stream_filter = StreamFilter::new(filter);
+fn stream_filter_handles_utf8_split_mid_character() {
+    let text = "这是敏感内容";
+    let chunks: Vec<String> = text.chars().map(|c| c.to_string()).collect();
+    let refs: Vec<&str> = chunks.iter().map(String::as_str).collect();
+    assert_eq!(drive(&["敏感"], "***", &refs), "这是***内容");
 
-    // chunk1 "ab"
-    let out1 = stream_filter.push("ab");
-    assert_eq!(out1, "ab");
-
-    // chunk2 "cd"
-    let out2 = stream_filter.push("cd");
-    assert_eq!(out2, "abcd");
-
-    // chunk3 "ef"
-    let out3 = stream_filter.push("ef");
-    assert_eq!(out3, "abcdef");
-
-    let out4 = stream_filter.flush();
-    assert_eq!(out4, "");
+    // 混合切分：把 "敏感" 的两个字分到不同 chunk，且首尾带 ASCII。
+    assert_eq!(drive(&["敏感"], "#", &["ab敏", "感cd"]), "ab#cd");
 }
 
-/// StreamFilter flush 后，pending 应清空；后续 push 独立工作。
+/// 词横跨三个 chunk，每个 chunk 只有 2 字节。
 #[test]
-fn test_stream_filter_flush_reset() {
-    let config = FilterConfig {
-        words: vec!["secret".to_string()],
-        replacement: "***".to_string(),
+fn stream_filter_catches_word_split_across_three_chunks() {
+    assert_eq!(drive(&["abcdef"], "***", &["ab", "cd", "ef"]), "***");
+    assert_eq!(drive(&["abcdef"], "***", &["xab", "cd", "efy"]), "x***y");
+}
+
+/// 紧邻重复词：`abababab` 里 `ab` 连续出现，hold 边界若只按固定长度算会拆开漏放。
+/// 这是回归测试——曾经的实现在这里既 panic 又漏放。
+#[test]
+fn stream_filter_handles_adjacent_repeated_words() {
+    assert_eq!(drive(&["ab"], "", &["ababababab"]), "");
+    assert_eq!(drive(&["ab"], "-", &["aba", "bab", "ab"]), "----");
+}
+
+/// `flush` 后状态复位，同一实例可继续用于下一条流。
+#[test]
+fn stream_filter_resets_after_flush() {
+    let filter = Arc::new(WordFilter::new(&FilterConfig {
+        words: vec!["secret".into()],
+        replacement: "***".into(),
         ..Default::default()
-    };
-    let filter = Arc::new(WordFilter::new(&config));
-    let mut stream_filter = StreamFilter::new(filter);
+    }));
+    let mut sf = StreamFilter::new(filter);
 
-    // 完整匹配在第一个 chunk 中
-    let out1 = stream_filter.push("secret");
-    assert_eq!(out1, "***");
+    let mut first = sf.push("secret");
+    first.push_str(&sf.flush());
+    assert_eq!(first, "***");
 
-    // flush 时无输出（pending 清空）
-    let out2 = stream_filter.flush();
-    assert_eq!(out2, "");
+    // flush 后不残留上一条流的字节。
+    let mut second = sf.push("plain");
+    second.push_str(&sf.flush());
+    assert_eq!(second, "plain");
+}
 
-    // 再次 push，不应有任何 pending 字节
-    let out3 = stream_filter.push("x");
-    assert_eq!(out3, "x");
+/// 替换串比词长/短都不能错位：长度变化不影响 hold 边界计算。
+#[test]
+fn stream_filter_handles_replacement_length_change() {
+    // 缩短：6 字节 → 0 字节
+    assert_eq!(drive(&["secret"], "", &["a secret b"]), "a  b");
+    // 变长：1 字节 → 4 字节
+    assert_eq!(drive(&["x"], "LONG", &["axbxc"]), "aLONGbLONGc");
+}
+
+/// 空词表：不缓冲、不分配，原样透传。缓冲会凭空增加首字延迟。
+#[test]
+fn stream_filter_passes_through_when_wordlist_empty() {
+    assert_eq!(drive(&[], "***", &["hello ", "world"]), "hello world");
 }

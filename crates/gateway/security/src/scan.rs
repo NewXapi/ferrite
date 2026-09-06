@@ -1,166 +1,139 @@
-//! 过滤词扫描 —— 一次性文本 + 跨 chunk 流式
+//! 过滤词扫描 —— 一次性文本（[`WordFilter`]）+ 跨 chunk 流式（[`StreamFilter`]）
 //!
-//! 本 crate 提供两套纯逻辑类型，不含 pipeline stage。
-//! - `WordFilter`：一次性文本过滤，词库在构建时解析，扫描零拷贝（Cow）。
-//! - `StreamFilter`：跨 chunk 流式过滤（用于 SSE 流），自动维护 max_pattern_len-1 字节尾巴以捕获跨 chunk 词。
-//!
-//! 接线位置（后续 PR 独立实现）：
-//! - 请求体解析：`crate::gateway::request::body::process` 侧。
-//! - 响应流式：`crate::gateway::stream::pipe_chunk` 侧（SseScanner/StreamScanner 内）。
-//!   当前 two-level proxy 架构中，stream.rs 已内置扫描逻辑，但 stage 的存在阻碍了接线。
-//!   完成此 crate 后即可移除 stage 并完成接线。
-//!
-//! `[security]` 配置示例（由外部 apps.gateways 读取）：
-//! ```toml
-//! [security]
-//! words = ["sensitive", "classified"]
-//! replacement = "***"
-//! filter_request = true
-//! filter_response = true
-//! ```
+//! 接线位置与配置格式见 crate 根文档。
 
 use std::sync::Arc;
 
 use aho_corasick::AhoCorasick;
 
-/// 一次性文本过滤器，使用 AhoCorasick 实现大小写不敏感词表扫描。
-/// - 空词表时构建成功，但所有方法直接返回无操作结果（零分配热路径）。
-/// - 使用 `Cow` 实现无命中直接返回原字符串（零分配），有命中返回新分配的 `String`。
+/// 一次性文本过滤器：ASCII 大小写不敏感的词表扫描 + 替换。
+///
+/// 空词表构建成功但永不命中；无命中时 [`filter`](Self::filter) 返回
+/// `Cow::Borrowed`（零分配热路径）。
 pub struct WordFilter {
     ac: AhoCorasick,
-    replacement: String,
+    /// `replace_all` 要求每个模式一个替换串，这里全部指向同一个 `replacement`。
+    replacements: Vec<String>,
     max_pattern_len: usize,
-    pattern_count: usize,
 }
 
 impl WordFilter {
-    /// 根据 `FilterConfig` 构建 WordFilter。
-    /// - 使用 `ascii_case_insensitive(true)`，满足过滤词场景的基本要求。
-    /// - 空词表时构建一个始终无匹配的 AhoCorasick 实例。
+    /// 从 [`FilterConfig`](crate::wordlist::FilterConfig) 构建。
+    ///
+    /// `ascii_case_insensitive(true)`：过滤词场景默认忽略 ASCII 大小写。
+    /// CJK 无大小写概念，不受影响。
+    ///
+    /// # Panics
+    /// 词表使自动机超出 `aho-corasick` 的状态数上限时 panic（词表来自配置，
+    /// 启动期失败优于运行期静默不过滤）。
     pub fn new(config: &crate::wordlist::FilterConfig) -> Self {
-        let pattern_count = config.words.len();
-        let ac = if pattern_count == 0 {
-            // 空词表：构建一个空模式的自动机
-            let patterns: Vec<&str> = Vec::new();
-            AhoCorasick::builder()
-                .build(patterns)
-                .expect("构建空 AhoCorasick 失败")
-        } else {
-            AhoCorasick::builder()
-                .ascii_case_insensitive(true)
-                .build(&config.words)
-                .expect("构建 AhoCorasick 自动机失败")
-        };
-
-        let max_pattern_len = config.words.iter().map(|s| s.len()).max().unwrap_or(0);
+        let ac = AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&config.words)
+            .expect("过滤词表构建 AhoCorasick 失败");
         Self {
+            replacements: vec![config.replacement.clone(); config.words.len()],
+            max_pattern_len: config.words.iter().map(|s| s.len()).max().unwrap_or(0),
             ac,
-            replacement: config.replacement.clone(),
-            max_pattern_len,
-            pattern_count,
         }
     }
 
-    /// 过滤文本，大小写不敏感。
-    /// - 无匹配时返回 `Cow::Borrowed`（零分配）。
-    /// - 有匹配时返回 `Cow::Owned`，用 replacement 替换所有匹配项。
+    /// 过滤文本（ASCII 大小写不敏感），命中处替换为配置的 `replacement`。
+    ///
+    /// 无命中或词表为空时返回 `Cow::Borrowed` —— 绝大多数请求不命中，这是热路径，
+    /// 必须不分配。
     pub fn filter<'a>(&self, text: &'a str) -> std::borrow::Cow<'a, str> {
-        if self.pattern_count == 0 {
+        if self.replacements.is_empty() || !self.ac.is_match(text) {
             return std::borrow::Cow::Borrowed(text);
         }
-
-        // 替换所有匹配项
-        let replaced = self.ac.replace_all(text, &[self.replacement.as_str()]);
-        std::borrow::Cow::Owned(replaced)
+        std::borrow::Cow::Owned(self.ac.replace_all(text, &self.replacements))
     }
 
-    /// 检查是否有任何匹配项，用于快速路径裁剪。
+    /// 流式过滤的 emit 边界：`text` 中可以安全输出的字节数。
+    ///
+    /// 规则：末尾 `max_pattern_len - 1` 字节可能是跨 chunk 词的前半，必须 hold；
+    /// 但已经完整命中的部分不必再等，所以边界取"最后一个命中的 end"与
+    /// "`len - hold`"的较大者。边界永不落在某个命中内部。
+    ///
+    /// 返回值已回退到 UTF-8 字符边界。
+    fn emit_boundary(&self, text: &str) -> usize {
+        let hold = self.max_pattern_len.saturating_sub(1);
+        let by_len = text.len().saturating_sub(hold);
+        let by_match = self.ac.find_iter(text).last().map_or(0, |m| m.end());
+        let mut at = by_len.max(by_match);
+        // 切片必须落在字符边界：中文一个字 3 字节，切中间会 panic。
+        // by_match 来自命中 end，天然在边界上；只有 by_len 可能落在字符内部。
+        while at > 0 && !text.is_char_boundary(at) {
+            at -= 1;
+        }
+        at
+    }
+
+    /// 词表是否为空（调用方可整条跳过过滤）。
+    pub fn is_empty(&self) -> bool {
+        self.replacements.is_empty()
+    }
+
+    /// 检查是否命中，用于只需判断的调用方。
     pub fn has_match(&self, text: &str) -> bool {
         self.ac.is_match(text)
     }
-
-    /// 检查词表是否为空。
-    pub fn is_empty(&self) -> bool {
-        self.pattern_count == 0
-    }
-
-    /// 获取最大模式长度（用于 StreamFilter 的尾巴缓冲区大小）。
-    pub fn max_pattern_len(&self) -> usize {
-        self.max_pattern_len
-    }
 }
 
-/// 跨 chunk 流式过滤器，用于处理可能被拆分的流式文本（如 SSE）。
-/// - 内部维护一个 `pending` 缓冲区，保留恰好 `max_pattern_len - 1` 字节以捕获跨 chunk 词。
-/// - 对于 UTF-8 字符边界，使用 `str::floor_char_boundary` 等效逻辑找到安全的切分点。
-/// - 空词表时直接透传 chunk，无缓冲区操作（避免不必要的分配和延迟）。
+/// 跨 chunk 流式过滤器：处理被网络层切成任意长度的流式文本（如 SSE）。
+///
+/// 过滤词可能横跨 chunk 边界（`"my sec"` + `"ret here"`），单看任一 chunk 都不命中。
+/// 因此 `push` 只输出**已确定不会再参与匹配**的前缀，其余留在 `pending` 里等下一个
+/// chunk 拼接。切分在替换前的原文坐标系上做，只对要发出的前缀替换 —— 反过来
+/// （先替换再按原文长度切）会因替换改变长度而切错位甚至越界 panic。
+///
+/// ponytail: hold 住尾巴会让这点内容延后一个 chunk 才发出；词表里有超长词时首字
+/// 延迟随之变大。需要更精细就用 aho-corasick 的 `Automaton` 低阶 API 拿状态机
+/// 位置，只 hold 真正处于匹配中途的字节。
 pub struct StreamFilter {
     filter: Arc<WordFilter>,
+    /// 尚未确认可输出的**原文**（未替换）。
     pending: String,
-    hold_len: usize, // = max_pattern_len - 1
-    // ponytail: 当前实现每次 push 后全量扫描 pending 内容
-    // 优化方向：使用 aho-corasick 的流式 API（如果有的话）以避免全量扫描
-    // 另一种方案：维护 max_pattern_len-1 字节的尾巴，交由下游处理实现更细致的增量扫描
 }
 
 impl StreamFilter {
-    /// 创建新的 StreamFilter。
+    /// 用共享的 [`WordFilter`] 创建流式过滤器。
     pub fn new(filter: Arc<WordFilter>) -> Self {
-        let hold_len = if filter.max_pattern_len() > 0 {
-            filter.max_pattern_len() - 1
-        } else {
-            0
-        };
         Self {
             filter,
             pending: String::new(),
-            hold_len,
         }
     }
 
-    /// 推入一个 chunk，返回已确认安全可输出的文本。
-    /// - 对于空词表，直接追加到 pending 并返回原 chunk。
-    /// - 对于非空词表，合并 pending+chunk，扫描替换，将前 len-output 字节输出，保留最后 hold_len 字节在 pending 中。
-    /// - 确保仅在字符边界切分 pending（避免 UTF-8 无效序列）。
+    /// 推入一个 chunk，返回已确认安全可输出的（过滤后）文本。
+    ///
+    /// 空词表时原样透传不缓冲，否则会凭空增加首字延迟。
+    ///
+    /// 契约：所有 `push` 返回值按序拼接再接上 [`flush`](Self::flush)，等于对完整
+    /// 原文调一次 [`WordFilter::filter`]。单次返回多少字节是内部 hold 策略。
     pub fn push(&mut self, chunk: &str) -> String {
         if self.filter.is_empty() {
-            // 空词表：不缓冲，直接返回 chunk
-            self.pending.clear();
             return chunk.to_string();
         }
 
-        // 合并 pending 和新 chunk
-        let combined = format!("{}{}", self.pending, chunk);
+        self.pending.push_str(chunk);
 
-        // 扫描和替换
-        let output = self.filter.filter(&combined);
-
-        // 计算需要保留的末尾字节数（hold_len），但要确保是字符边界
-        let mut output_bytes = output.len();
-
-        // 确定需要保留的字节数：如果 combined 长度 >= hold_len，则保留末尾 hold_len 字节
-        if combined.len() >= self.hold_len {
-            // 找到安全字符边界：向前查找 hold_len 位置，如果不安全，则向前移动
-            let mut boundary = combined.len() - self.hold_len;
-            while boundary > 0 && !combined.is_char_boundary(boundary) {
-                boundary -= 1;
-            }
-            output_bytes = boundary;
+        let at = self.filter.emit_boundary(&self.pending);
+        if at == 0 {
+            return String::new();
         }
 
-        let (output_prefix, output_suffix) = output.split_at(output_bytes);
-
-        // 更新 pending：保留 suffix
-        self.pending = output_suffix.to_string();
-
-        output_prefix.to_string()
+        let tail = self.pending.split_off(at);
+        let emit = std::mem::replace(&mut self.pending, tail);
+        self.filter.filter(&emit).into_owned()
     }
 
-    /// 最终 chunk 后调用 flush，输出 pending 中的所有剩余内容。
+    /// 流结束时输出 `pending` 里剩下的全部内容（过滤后）。
+    ///
+    /// 调用后状态复位，同一实例可用于下一条流。
     pub fn flush(&mut self) -> String {
-        let output = self.filter.filter(&self.pending);
-        let flushed = output.to_string();
+        let out = self.filter.filter(&self.pending).into_owned();
         self.pending.clear();
-        flushed
+        out
     }
 }

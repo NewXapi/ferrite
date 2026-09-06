@@ -1,7 +1,10 @@
 //! `ssrf` —— SSRF 防护
 //!
-//! 双重 IP 校验：解析时（URL 解析出的 host）+ 拨号时（实际 DNS 解析结果）。
-//! 防止 DNS rebinding 攻击：攻击者控制 DNS 第一次返回公网 IP、第二次返回内网 IP。
+//! 双重 IP 校验：解析时（URL 解析出的 IP 字面量）+ 拨号时（实际 DNS 解析结果）。
+//! 域名由调用方 DNS 解析后再校验；`validate_url` 仅做 IP 字面量校验。
+//!
+//! IPv4-mapped IPv6（`::ffff:a.b.c.d`）绕过 loopback 检查，必须拦截。
+//! CGNAT（100.64.0.0/10）为保留地址段，亦应拦截。
 
 use std::net::IpAddr;
 use thiserror::Error;
@@ -23,22 +26,36 @@ pub enum SsrfError {
     Dns(String),
 }
 
-/// URL 校验：解析时检查 + 拨号时检查（异步）
+/// URL 校验：仅检查 IP 字面量；域名需调用方 DNS 解析后通过 `validate_resolved`
 pub fn validate_url(url: &Url) -> Result<(), SsrfError> {
     let host = url.host().ok_or(SsrfError::Dns("no host".into()))?;
     match host {
         url::Host::Ipv4(ip) => check_ip(IpAddr::V4(ip))?,
         url::Host::Ipv6(ip) => check_ip(IpAddr::V6(ip))?,
         url::Host::Domain(d) => {
-            // TODO: 解析时不做 DNS（防 DoS），由调用方在拨号时解析
+            // 域名不做 DNS 解析，由调用方在拨号时解析并校验
             let _ = d;
         }
     }
     Ok(())
 }
 
-/// 单个 IP 校验
+/// 单个 IP 校验：保留段一律拒绝。
+///
+/// IPv4-mapped IPv6（`::ffff:a.b.c.d`）先 unmap 再按 IPv4 规则查——否则
+/// `::ffff:127.0.0.1` 的 `is_loopback()` 为 false，能绕过整套检查。
+///
+/// # Errors
+/// loopback / unspecified / multicast / private（含 CGNAT）/ link-local 各返回对应变体。
 pub fn check_ip(ip: IpAddr) -> Result<(), SsrfError> {
+    // 折叠到规范形式：IPv4-mapped 一律按 IPv4 规则判定。
+    let ip = match ip {
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => IpAddr::V6(v6),
+        },
+        v4 => v4,
+    };
     if ip.is_loopback() {
         return Err(SsrfError::Loopback);
     }
@@ -57,8 +74,8 @@ pub fn check_ip(ip: IpAddr) -> Result<(), SsrfError> {
     Ok(())
 }
 
-/// 拨号前再次校验（防 DNS rebinding）
-pub async fn validate_resolved(addrs: &[IpAddr]) -> Result<IpAddr, SsrfError> {
+/// 拨号前再次校验（防 DNS rebinding）——同步版本
+pub fn validate_resolved(addrs: &[IpAddr]) -> Result<IpAddr, SsrfError> {
     for ip in addrs {
         check_ip(*ip)?;
     }
@@ -68,17 +85,23 @@ pub async fn validate_resolved(addrs: &[IpAddr]) -> Result<IpAddr, SsrfError> {
         .ok_or(SsrfError::Dns("no addresses".into()))
 }
 
+/// 判断是否为私有地址（含 CGNAT 100.64.0.0/10）
 fn is_private(ip: &IpAddr) -> bool {
     match ip {
-        IpAddr::V4(v4) => v4.is_private(),
+        IpAddr::V4(v4) => {
+            // CGNAT 100.64.0.0/10
+            let bytes = v4.octets();
+            (bytes[0] == 100 && (bytes[1] & 0xc0) == 64) || v4.is_private()
+        },
         IpAddr::V6(v6) => {
-            // fc00::/7
             let b = v6.octets();
+            // fc00::/7
             (b[0] & 0xfe) == 0xfc
-        }
+        },
     }
 }
 
+/// 判断是否为链路本地地址
 fn is_link_local(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4.is_link_local(),
