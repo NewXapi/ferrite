@@ -134,6 +134,7 @@ impl RouteUnitService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         group_id: &str,
@@ -176,17 +177,17 @@ impl RouteUnitService {
         let offset = (page.max(1) - 1) * size;
         let mut conds: Vec<String> = vec![];
         let mut binds: Vec<String> = vec![];
-        if let Some(g) = group {
-            if !g.trim().is_empty() {
-                conds.push(format!("group_id = ${}", binds.len() + 1));
-                binds.push(g.trim().into());
-            }
+        if let Some(g) = group
+            && !g.trim().is_empty()
+        {
+            conds.push(format!("group_id = ${}", binds.len() + 1));
+            binds.push(g.trim().into());
         }
-        if let Some(m) = public_model {
-            if !m.trim().is_empty() {
-                conds.push(format!("public_model = ${}", binds.len() + 1));
-                binds.push(m.trim().into());
-            }
+        if let Some(m) = public_model
+            && !m.trim().is_empty()
+        {
+            conds.push(format!("public_model = ${}", binds.len() + 1));
+            binds.push(m.trim().into());
         }
         let w = if conds.is_empty() {
             String::new()
@@ -214,6 +215,7 @@ impl RouteUnitService {
         Ok((rows.into_iter().map(row_to_view).collect(), total))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         key: Uuid,
@@ -238,10 +240,10 @@ impl RouteUnitService {
             )
             .await?;
         }
-        if let Some(s) = status {
-            if ![1, 2].contains(&s) {
-                return Err(AuthError::BadRequest("status must be 1|2".into()));
-            }
+        if let Some(s) = status
+            && ![1, 2].contains(&s)
+        {
+            return Err(AuthError::BadRequest("status must be 1|2".into()));
         }
         sqlx::query(
             r#"UPDATE route_units SET
