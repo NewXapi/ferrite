@@ -2,6 +2,11 @@
 //!
 //! 单一状态 `ArcSwap<HashMap<channel_id, Vec<Arc<ProxyNode>>>>`：install 一次性
 //! 建好索引整体换掉，读走 `load()` 无锁。
+//!
+//! 一致性是**最终一致**：`install` 原子换指针，但已经拿到旧 `Arc` 的读者会继续
+//! 看旧快照直到下次 `load()`。代理选择容忍这点滞后（选到刚被移除的节点，最坏结果
+//! 是这一个请求走了旧出口），换来读路径零锁。需要强一致就得加读写锁，代价是
+//! 每请求争锁——不值得。
 
 use super::node::ProxyNode;
 use arc_swap::ArcSwap;
