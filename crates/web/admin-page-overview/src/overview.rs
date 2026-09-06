@@ -16,7 +16,7 @@ pub fn OverviewPanel() -> Element {
     let timeframe = use_signal(|| "今天"); // "今天", "本周", "本月", "今年"
 
     // ponytail: live summary from /api/dashboard; fallback to timeframe mock on failure
-    let mut live_stats = use_signal(|| Vec::<(String, String)>::new());
+    let mut live_stats = use_signal(Vec::<(String, String)>::new);
     use_hook(move || {
         spawn(async move {
             let client = client::ApiClient::new();
