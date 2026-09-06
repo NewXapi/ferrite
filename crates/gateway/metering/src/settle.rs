@@ -1,7 +1,7 @@
-//! 结算 — 扫描结果 + 定价 → UsageEvent (写 WAL)。
+//! 结算 — 扫描结果 + 定价 → UsageEvent (写 usage_logs 平表)。
 //!
-//! 调用方: dispatch::retry 的成功/失败出口。结算后事件进 store::UsageStore
-//! (edge = 本地 WAL append; 不阻塞转发)。
+//! 调用方: dispatch::retry 的成功/失败出口。结算后事件落 usage_logs，
+//! admin-observe 直接查表聚合，不阻塞转发。
 
 use contract::SCHEMA_VERSION;
 use contract::records::{SyncMeta, UsageEventRecord};

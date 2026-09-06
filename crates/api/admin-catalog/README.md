@@ -2,15 +2,16 @@
 
 ## 文件
 
-- `src/lib.rs` — 模块地图与原 Catalog trait（store-trait 设计态骨架，sync/outbox
-  推迟；channels/groups/tokens 已由平表直连 sqlx 的实现替代，骨架保留仅作文档参考）。
+- `src/lib.rs` — 模块地图（channels/groups/models/routes/tokens；平表直连 sqlx，
+  无 store trait 抽象）。
 - `src/channels.rs` — 渠道 CRUD/search/启停 + **探活**（`test_channel`/`test_all`，
   reqwest 真调 chat/completions，结果落 observe::monitor）+ axum 路由（9 端点）。
 - `src/groups.rs` — 分组 CRUD、倍率、白名单，default 组保护与引用检查 + 路由（4 端点）。
 - `src/tokens.rs` — API Key 创建（明文一次性/sha256 入库）、CRUD/search、
   `regenerate_key`（重取=重新生成）+ 路由（6 端点）。
-- `src/routes.rs` — 模型到渠道 RouteUnit 映射（**骨架未实现**，等 gateway 接线）。
-- `src/users.rs` — 管理用户角色、状态和配额（**骨架未实现**，auth::service::manage_user 已覆盖）。
+- `src/models.rs` — 模型 CRUD / missing / search + 路由。
+- `src/routes.rs` — 模型到渠道 RouteUnit 映射 + 写前校验 + 路由（5 端点）。
+  （用户管理不在本 crate，由 `auth::service::manage_user` 覆盖。）
 
 ## 表（loose，无 FK）
 
