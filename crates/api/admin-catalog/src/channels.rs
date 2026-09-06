@@ -22,12 +22,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    // 迁移：旧表补 tags 列（必须在 CREATE INDEX 之前）
-    sqlx::raw_sql(
-        "ALTER TABLE api_channels ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'",
-    )
-    .execute(pool)
-    .await?;
     const DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS api_channels (
     key           UUID PRIMARY KEY,
@@ -46,6 +40,9 @@ CREATE TABLE IF NOT EXISTS api_channels (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 旧库迁移：CREATE TABLE IF NOT EXISTS 对已存在的表不加列，这里补 tags；
+-- 必须在 CREATE TABLE 之后（新库首次启动时表还不存在，ALTER 会失败）、CREATE INDEX 之前。
+ALTER TABLE api_channels ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]';
 CREATE INDEX IF NOT EXISTS idx_api_channels_tags ON api_channels USING GIN (tags);
 "#;
     sqlx::raw_sql(DDL).execute(pool).await?;

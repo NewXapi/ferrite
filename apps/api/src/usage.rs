@@ -228,15 +228,24 @@ async fn record_usage(
         Ok(id) => tracing::debug!(usage_id = %id, "usage recorded"),
         Err(e) => tracing::warn!(error = %e, "failed to record usage"),
     }
-    if let Err(e) = sqlx::query("UPDATE api_tokens SET used_quota = used_quota + $1 WHERE key = $2")
-        .bind(cost)
-        .bind(&token_key)
-        .execute(pool)
-        .await
-    {
-        tracing::warn!(error = %e, "failed to update used_quota");
+    // api_tokens.key 是 UUID 列：必须绑 Uuid，绑 String 会类型不匹配导致 0 行更新
+    match uuid::Uuid::parse_str(&token_key) {
+        Ok(key_uuid) => {
+            if let Err(e) =
+                sqlx::query("UPDATE api_tokens SET used_quota = used_quota + $1 WHERE key = $2")
+                    .bind(cost)
+                    .bind(key_uuid)
+                    .execute(pool)
+                    .await
+            {
+                tracing::warn!(error = %e, "failed to update used_quota");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, token_key = %token_key, "token key is not a uuid"),
     }
-    quota_snapshot.load().add(&token_key, -cost);
+    // DB 用 UUID 主键，内存 quota 快照用 gate 口径（见 snapshot::build_quota_snapshot）
+    let gate_id = token_key.parse::<i64>().unwrap_or(0).to_string();
+    quota_snapshot.load().add(&gate_id, -cost);
 }
 
 // ---- 辅助函数 ----
@@ -250,14 +259,13 @@ fn extract_bearer(request: &Request) -> Option<String> {
         .map(|h| h.strip_prefix("Bearer ").unwrap().to_string())
 }
 
+/// AuthGate 用 sha256(明文 key) 查 TokenSnapshot，这里必须一致：
+/// bearer 是 `sk-<random>` 明文而非 hex，早期误用 hex::decode 导致中间件恒 401。
 fn sha256_key(token_key: &str) -> Option<[u8; 32]> {
-    let bytes = hex::decode(token_key).ok()?;
-    if bytes.len() != 32 {
-        return None;
-    }
-    let mut arr = [0u8; 32];
-    arr.copy_from_slice(&bytes);
-    Some(arr)
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(token_key.as_bytes());
+    Some(hasher.finalize().into())
 }
 
 fn extract_model(body_bytes: &[u8]) -> String {

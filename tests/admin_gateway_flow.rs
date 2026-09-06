@@ -64,11 +64,16 @@ async fn pg_pool() -> Option<sqlx::PgPool> {
     }
 }
 
+/// 三个测试并行跑，各自建 app 会并发执行 CREATE TABLE/TYPE 撞 PG catalog
+/// 唯一约束（pg_type_typname_nsp_index）。用全局 mutex 串行化建表段。
+static DDL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// 必须先建 app（触发 admin-router 的 ensure_table 建表），再插数据。
 async fn build_test_app(pool: &sqlx::PgPool) -> axum::Router {
     let egress = Arc::new(MockEgress {
         chunks: sse_chunks(),
     });
+    let _guard = DDL_LOCK.lock().await;
     api::build_app_with_egress(pool.clone(), egress)
         .await
         .expect("build_app_with_egress")
@@ -89,11 +94,15 @@ async fn insert_test_user(pool: &sqlx::PgPool) -> uuid::Uuid {
 }
 
 async fn insert_channel(pool: &sqlx::PgPool) {
+    let key = uuid::Uuid::new_v4();
+    // 渠道名唯一约束：用 uuid 前缀避免重跑撞 api_channels_name_key
+    let name = format!("ch_{}", &key.to_string()[..8]);
     sqlx::query(
         r#"INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name, status)
-           VALUES ($1, 'ch', 'openai', 'http://mock', '["sk"]', '["gpt-4o"]', 'default', 1)"#,
+           VALUES ($1, $2, 'openai', 'http://mock', '["sk"]', '["gpt-4o"]', 'default', 1)"#,
     )
-    .bind(uuid::Uuid::new_v4())
+    .bind(key)
+    .bind(&name)
     .execute(pool)
     .await
     .unwrap();
