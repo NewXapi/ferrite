@@ -1,0 +1,45 @@
+name: Gateway Bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Scenario to run (baseline, medium_load, multi_model, streaming, stress, or all)"
+        required: true
+        default: "all"
+      server:
+        description: "Target server (empty for localhost)"
+        required: false
+        default: ""
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install hey
+        run: go install github.com/rakyll/hey@latest
+
+      - name: Build gateway (release)
+        run: cargo build -p gateway --release
+        timeout: 600
+
+      - name: Run bench (localhost)
+        if: ${{ inputs.server == '' }}
+        run: |
+          # Start gateway
+          nohup ./target/release/gateway > /tmp/gw.log 2>&1 &
+          sleep 3
+          # Run bench
+          ./bench/scripts/bench_gateway.sh ${{ inputs.scenario }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ inputs.scenario }}
+          path: bench/results/
+          retention-days: 30

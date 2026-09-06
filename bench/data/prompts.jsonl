@@ -1,0 +1,9 @@
+{"id": "short-1", "length": "short", "messages": [{"role": "user", "content": "hi"}]}
+{"id": "short-2", "length": "short", "messages": [{"role": "user", "content": "1+1=?"}]}
+{"id": "short-3", "length": "short", "messages": [{"role": "user", "content": "say hello"}]}
+{"id": "medium-1", "length": "medium", "messages": [{"role": "user", "content": "用一句话介绍你自己。"}]}
+{"id": "medium-2", "length": "medium", "messages": [{"role": "user", "content": "解释什么是 REST API，给出 3 个关键特点。"}]}
+{"id": "medium-3", "length": "medium", "messages": [{"role": "user", "content": "写一个 Python 函数计算斐波那契数列的第 n 项。"}]}
+{"id": "long-1", "length": "long", "messages": [{"role": "user", "content": "请详细解释 Rust 的所有权系统，包括所有权规则、借用、生命周期，并给出代码示例说明常见错误和修复方法。"}]}
+{"id": "long-2", "length": "long", "messages": [{"role": "user", "content": "设计一个支持 1000 QPS 的 API 网关，需要考虑哪些关键组件？请给出架构图描述和每个组件的职责。"}]}
+{"id": "long-3", "length": "long", "messages": [{"role": "user", "content": "比较微服务架构和单体架构的优缺点，在什么场景下应该选择哪种？请结合实际案例分析。"}]}
