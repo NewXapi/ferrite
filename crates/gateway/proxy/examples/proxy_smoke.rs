@@ -89,7 +89,10 @@ async fn main() {
         manager.feedback(lease.node_id, 502, true);
         drop(lease);
         let lease2 = manager.acquire("ch");
-        assert_eq!(lease2.node_id, 0, "after cooldown should fall back to direct");
+        assert_eq!(
+            lease2.node_id, 0,
+            "after cooldown should fall back to direct"
+        );
         println!("  ✓ 冷却后直连");
     }
 

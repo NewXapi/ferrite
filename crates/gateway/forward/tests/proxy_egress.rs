@@ -7,15 +7,15 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::Bytes;
 use forward::egress::{Egress, ForwardedResponse, Timeouts};
 use forward::stage::ForwardStage;
+use gateway_pipeline::TokenInfo;
 use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, SelectedRoute, StreamedAccum};
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_pipeline::TokenInfo;
 use gateway_proxy::manager::ProxyManager;
 use gateway_proxy::node::ProxyScheme;
 use gateway_proxy::pool::{ProxyNode, ProxySnapshot};
@@ -39,8 +39,13 @@ impl Egress for SpyEgress {
         _headers: &'a [(String, String)],
         _body: Bytes,
         _timeouts: &'a Timeouts,
-    ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, contract::error::NormalizedError>> + Send + 'a>>
-    {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<ForwardedResponse, contract::error::NormalizedError>>
+                + Send
+                + 'a,
+        >,
+    > {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
             let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(
@@ -90,20 +95,15 @@ fn route_for(key: &str, base: &str) -> SelectedRoute {
     }
 }
 
-fn make_pipeline_with(
-    egress: Arc<SpyEgress>,
-    proxies: Option<Arc<ProxyManager>>,
-) -> Arc<Pipeline> {
+fn make_pipeline_with(egress: Arc<SpyEgress>, proxies: Option<Arc<ProxyManager>>) -> Arc<Pipeline> {
     let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::with_defaults());
     let mut stage = ForwardStage::new(egress, adaptors.clone());
     if let Some(proxies) = proxies {
         stage = stage.with_proxies(proxies);
     }
-    Arc::new(
-        Pipeline::new()
-            .push(stage)
-            .push(gateway_protocol_bridge::stage::ProtocolBridgeStage::new(adaptors)),
-    )
+    Arc::new(Pipeline::new().push(stage).push(
+        gateway_protocol_bridge::stage::ProtocolBridgeStage::new(adaptors),
+    ))
 }
 
 // ---------- tests ----------
@@ -118,7 +118,11 @@ async fn proxies_none_uses_injected_egress() {
     let ctx = make_ctx(Some(route_for("ch", "https://upstream.example")));
     let resp = pipe.run(ctx).await.expect("pipeline should succeed");
     assert_eq!(resp.status(), 200);
-    assert_eq!(spy.call_count.load(Ordering::SeqCst), 1, "mock egress should be called");
+    assert_eq!(
+        spy.call_count.load(Ordering::SeqCst),
+        1,
+        "mock egress should be called"
+    );
 }
 
 /// proxies = Some(manager with node) → 租约 Client 替换 mock；mock 不被调用。

@@ -290,7 +290,9 @@ fn e2e_truncated_stream_returns_truncated_end() {
 async fn e2e_build_app_without_proxies_responds_200() {
     let health = Arc::new(MemoryHealthTable::new());
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
-    let egress = Arc::new(MockSseEgress { chunks: make_sse_chunks() });
+    let egress = Arc::new(MockSseEgress {
+        chunks: make_sse_chunks(),
+    });
     let snapshot = make_snapshot();
     let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health));
     let pipeline = Arc::new(
@@ -310,7 +312,9 @@ async fn e2e_build_app_without_proxies_responds_200() {
 async fn e2e_build_app_with_proxy_node_returns_502() {
     let health = Arc::new(MemoryHealthTable::new());
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
-    let egress = Arc::new(MockSseEgress { chunks: make_sse_chunks() });
+    let egress = Arc::new(MockSseEgress {
+        chunks: make_sse_chunks(),
+    });
     let proxies = Arc::new(ProxyManager::new());
     proxies.install(ProxySnapshot {
         nodes: vec![ProxyNode {
