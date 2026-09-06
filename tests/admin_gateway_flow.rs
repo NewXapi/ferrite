@@ -45,10 +45,23 @@ fn sse_chunks() -> Vec<Bytes> {
     ]
 }
 
-fn pg_pool() -> sqlx::PgPool {
+/// 连不上 PG 时返回 None，调用方跳过测试（CI 无 postgres service）。
+/// 需要真链路验证时设 FERRITE_E2E_DATABASE_URL 或起本地 5433 PG。
+async fn pg_pool() -> Option<sqlx::PgPool> {
     let url = std::env::var("FERRITE_E2E_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite_e2e".into());
-    sqlx::PgPool::connect_lazy(&url).expect("connect_lazy")
+    let pool = sqlx::PgPool::connect_lazy(&url).ok()?;
+    // connect_lazy 不立即连；用一次轻查询探活
+    match sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&pool)
+        .await
+    {
+        Ok(_) => Some(pool),
+        Err(e) => {
+            eprintln!("skipping e2e: postgres unreachable at {url}: {e}");
+            None
+        }
+    }
 }
 
 /// 必须先建 app（触发 admin-router 的 ensure_table 建表），再插数据。
@@ -107,7 +120,9 @@ async fn insert_token(pool: &sqlx::PgPool, user_key: uuid::Uuid) -> (uuid::Uuid,
 
 #[tokio::test]
 async fn e2e_create_channel_token_call_v1_records_usage() {
-    let pool = pg_pool();
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
     // 建 app → 建表
     let _app = build_test_app(&pool).await;
 
@@ -154,7 +169,9 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
 
 #[tokio::test]
 async fn e2e_unauthorized_without_token_returns_401() {
-    let pool = pg_pool();
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
     let app = build_test_app(&pool).await;
 
     let body = serde_json::json!({"model":"gpt-4o","stream":true,"messages":[]});
@@ -173,7 +190,9 @@ async fn e2e_unauthorized_without_token_returns_401() {
 
 #[tokio::test]
 async fn e2e_admin_api_mounted() {
-    let pool = pg_pool();
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
     let app = build_test_app(&pool).await;
 
     let req = http::Request::builder()
