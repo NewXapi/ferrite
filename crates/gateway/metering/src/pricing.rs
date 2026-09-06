@@ -6,8 +6,13 @@
 //! 价格表来源: catalog 快照的模型价格 (对齐 mock::models::GroupPrice 三列:
 //! input/output/cache, 单位 $/M tokens)。
 
+use std::collections::HashMap;
+
 /// 单模型价格 (对齐 mock::models::GroupPrice)。
-#[derive(Debug, Clone, Copy)]
+///
+/// 可从配置反序列化：`apps/gateway` 的 `[metering.prices.<model>]` 段直接读成本类型，
+/// 避免在 binary 侧重复定义同字段结构。
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct ModelPrice {
     /// $/M 输入 tokens。
     pub input: f64,
@@ -16,7 +21,12 @@ pub struct ModelPrice {
     /// $/M 缓存读 tokens。
     pub cache: f64,
     /// 分组倍率 (GroupRecord.rate_multiplier)。
+    #[serde(default = "default_group_multiplier")]
     pub group_multiplier: f64,
+}
+
+fn default_group_multiplier() -> f64 {
+    1.0
 }
 
 /// 定价表 trait — catalog 快照的投影。
@@ -35,9 +45,6 @@ pub fn price_of(counts: crate::scanner::TokenCounts, price: &ModelPrice) -> i64 
     let total_dollars = (input_cost + output_cost + cache_cost) * price.group_multiplier;
     (total_dollars * 500_000.0).ceil() as i64
 }
-
-use std::collections::HashMap;
-
 /// 来自配置的定价表实现。
 #[derive(Debug, Clone)]
 pub struct ConfigPriceTable {
@@ -45,7 +52,9 @@ pub struct ConfigPriceTable {
 }
 
 impl ConfigPriceTable {
-    pub fn new(prices: HashMap<String, ModelPrice>) -> Self { Self { prices } }
+    pub fn new(prices: HashMap<String, ModelPrice>) -> Self {
+        Self { prices }
+    }
 }
 
 impl PriceTable for ConfigPriceTable {

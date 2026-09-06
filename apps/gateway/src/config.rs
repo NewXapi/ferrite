@@ -1,52 +1,76 @@
-//! 网关配置 — 从 config/config.toml 加载。
+//! 网关配置 — 从 `config/config.toml` 加载。
+//!
+//! 配置结构在此，各 crate 的运行期类型（`HealthSetting` / `ConfigPriceTable` /
+//! `ConfigRetryLoop`）由 `lib.rs` 的 `build_app` 组装，配置结构不反向依赖它们的语义。
 
-use std::collections::HashMap;
+use metering::pricing::ModelPrice;
 use serde::Deserialize;
+use std::collections::HashMap;
 
-#[derive(Debug, Deserialize, Clone, Default)]
+/// 调度健康参数；字段名对齐 `dispatch::health::HealthSetting`。
+#[derive(Debug, Deserialize, Clone)]
 pub struct DispatchConfig {
-    #[serde(default = "default_health_fail_streak_threshold")]
-    pub health_fail_streak_threshold: u32,
-    #[serde(default = "default_cooldown_seconds")]
-    pub cooldown_seconds: u64,
+    /// 连续失败达此数进入冷却。
+    #[serde(default = "default_cooldown_threshold")]
+    pub cooldown_threshold: u32,
+    /// 冷却基础时长（秒）。
+    #[serde(default = "default_cooldown_base_seconds")]
+    pub cooldown_base_seconds: u64,
+    /// 冷却最大时长（秒）；连续冷却时长递增到此上限。
+    #[serde(default = "default_cooldown_max_seconds")]
+    pub cooldown_max_seconds: u64,
 }
 
-fn default_health_fail_streak_threshold() -> u32 { 3 }
-fn default_cooldown_seconds() -> u64 { 60 }
+impl Default for DispatchConfig {
+    fn default() -> Self {
+        Self {
+            cooldown_threshold: default_cooldown_threshold(),
+            cooldown_base_seconds: default_cooldown_base_seconds(),
+            cooldown_max_seconds: default_cooldown_max_seconds(),
+        }
+    }
+}
 
+fn default_cooldown_threshold() -> u32 {
+    5
+}
+fn default_cooldown_base_seconds() -> u64 {
+    10
+}
+fn default_cooldown_max_seconds() -> u64 {
+    60
+}
+
+/// 计量配置；`prices` 为空 = 不计费（本地单机默认）。
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct MeteringConfig {
+    /// model 名 → 价格；键是对外模型名。
     #[serde(default)]
     pub prices: HashMap<String, ModelPrice>,
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
+/// 重试策略。
+///
+/// 只有尝试预算：可重试的状态码由 `forward::egress::classify_status` 判定
+/// （429 / 5xx 可重试，其余 4xx 致命），不在配置里开第二个判定口。
+#[derive(Debug, Deserialize, Clone)]
 pub struct RetryConfig {
+    /// 单请求最大尝试次数（含首次）。
     #[serde(default = "default_max_attempts")]
     pub max_attempts: u32,
-    #[serde(default = "default_backoff_base_ms")]
-    pub backoff_base_ms: u64,
-    #[serde(default)]
-    pub retryable_status_codes: Vec<u16>,
 }
 
-fn default_max_attempts() -> u32 { 3 }
-fn default_backoff_base_ms() -> u64 { 100 }
-
-#[derive(Debug, Deserialize, Clone, Copy)]
-pub struct ModelPrice {
-    /// $/M 输入 tokens
-    pub input: f64,
-    /// $/M 输出 tokens
-    pub output: f64,
-    /// $/M 缓存读 tokens
-    pub cache: f64,
-    /// 分组倍率 (GroupRecord.rate_multiplier)
-    #[serde(default = "default_group_multiplier")]
-    pub group_multiplier: f64,
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: default_max_attempts(),
+        }
+    }
 }
 
-fn default_group_multiplier() -> f64 { 1.0 }
+fn default_max_attempts() -> u32 {
+    3
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct GatewayConfig {

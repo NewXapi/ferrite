@@ -38,7 +38,11 @@ pub enum AttemptOutcome {
     Fatal(FailureClass),
 }
 
-/// 重试策略参数 (TODO(#311) 配置化)。
+/// 重试策略参数。
+///
+/// 只管尝试预算；"哪些状态码可重试"已由 `forward::egress::classify_status`
+/// （`NormalizedError.retryable`）与 [`health::classify`](crate::health) 判定，
+/// 不在此重复一份。
 #[derive(Debug, Clone, Copy)]
 pub struct RetryPolicy {
     /// 含首次在内最多尝试次数 (new-api retry 次数语义; wildtoken 默认 1)。
@@ -181,25 +185,4 @@ where
         group: group.to_string(),
         model: model.to_string(),
     })
-}
-
-/// 来自配置的重试策略实现。
-#[derive(Debug, Clone)]
-pub struct ConfigRetryLoop {
-    max_attempts: u32,
-    retryable_status_codes: Vec<u16>,
-}
-
-impl ConfigRetryLoop {
-    pub fn new(max_attempts: u32, retryable_status_codes: Vec<u16>) -> Self {
-        Self { max_attempts, retryable_status_codes }
-    }
-    pub fn max_attempts(&self) -> u32 { self.max_attempts }
-    pub fn is_retryable(&self, status: u16) -> bool {
-        if self.retryable_status_codes.is_empty() {
-            matches!(status, 429 | 500..=599)
-        } else {
-            self.retryable_status_codes.contains(&status)
-        }
-    }
 }

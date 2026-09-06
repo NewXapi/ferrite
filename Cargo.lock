@@ -1914,6 +1914,7 @@ dependencies = [
  "gateway-pipeline",
  "gateway-protocol-bridge",
  "http",
+ "metering",
  "reqwest",
  "serde",
  "serde_json",

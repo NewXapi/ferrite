@@ -1,10 +1,8 @@
-mod config;
-mod observability;
-
-use crate::config::GatewayConfig;
-use crate::observability::init_tracing;
 use gateway::build_app;
+use gateway::config::GatewayConfig;
+use gateway::observability::init_tracing;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -16,11 +14,10 @@ async fn main() -> ExitCode {
     init_tracing(&config.log_level);
 
     let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-    let mut _server: Option<tokio::task::JoinHandle<()>> = None;
-    let addr = config.listen.clone();
 
     let tx = shutdown_tx.clone();
-    _server = Some(tokio::spawn(async move { serve(&addr, tx).await }));
+    let cfg = Arc::new(config.clone());
+    let mut server = Some(tokio::spawn(async move { serve(cfg, tx).await }));
 
     let mut hup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
         .expect("install sighup handler");
@@ -32,14 +29,20 @@ async fn main() -> ExitCode {
                     Ok(c) => {
                         config = c;
                         init_tracing(&config.log_level);
-                        if let Some(h) = _server.take() {
+                        if let Some(h) = server.take() {
                             let _ = shutdown_tx.send(true);
                             let _ = h.await;
                         }
                         let tx = shutdown_tx.clone();
-                        let addr = config.listen.clone();
-                        _server = Some(tokio::spawn(async move { serve(&addr, tx).await }));
-                        tracing::info!("reload complete, listen={}", config.listen);
+                        let cfg = Arc::new(config.clone());
+                        server = Some(tokio::spawn(async move { serve(cfg, tx).await }));
+                        tracing::info!(
+                            listen = %config.listen,
+                            cooldown_threshold = config.dispatch.cooldown_threshold,
+                            priced_models = config.metering.prices.len(),
+                            max_attempts = config.retry.max_attempts,
+                            "reload complete",
+                        );
                     }
                     Err(e) => tracing::error!(error = %e, "reload config failed"),
                 }
@@ -48,16 +51,22 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn serve(addr: &str, shutdown: tokio::sync::watch::Sender<bool>) {
-    let app = build_app();
-    let listener = match tokio::net::TcpListener::bind(addr).await {
+async fn serve(cfg: Arc<GatewayConfig>, shutdown: tokio::sync::watch::Sender<bool>) {
+    let app = build_app(&cfg);
+    let listener = match tokio::net::TcpListener::bind(&cfg.listen).await {
         Ok(l) => l,
         Err(e) => {
-            tracing::error!(error = %e, "failed to bind {addr}");
+            tracing::error!(error = %e, listen = %cfg.listen, "failed to bind");
             return;
         }
     };
-    tracing::info!(listen = %addr, "gateway serving");
+    tracing::info!(
+        listen = %cfg.listen,
+        cooldown_threshold = cfg.dispatch.cooldown_threshold,
+        priced_models = cfg.metering.prices.len(),
+        max_attempts = cfg.retry.max_attempts,
+        "gateway serving",
+    );
     tokio::select! {
         res = axum::serve(listener, app) => {
             if let Err(e) = res { tracing::error!(error = %e, "serve error"); }
