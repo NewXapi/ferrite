@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# scripts/setup_bench_ssh.sh — 一键部署压测 SSH 密钥到服务器 + GitHub secrets
-# 不依赖 sshpass，只用 OpenSSH 内置的 SSH_ASKPASS 机制
-# 用法：./scripts/setup_bench_ssh.sh
+# benches/scripts/setup_bench_ssh.sh — 压测服务器 SSH 密钥一键配置
+# 纯系统原生：使用 openssh 自带工具，不需要额外安装 sshpass 或任何依赖。
 
 set -euo pipefail
 
@@ -10,118 +9,82 @@ PUB_KEY_PATH="$KEY_PATH.pub"
 GITHUB_REPO="NewXapi/ferrite"
 
 # 颜色
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 log() { echo -e "${GREEN}[✓]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[✗]${NC} $*" >&2; exit 1; }
 
-# 检查依赖
-check_deps() {
-    command -v ssh >/dev/null 2>&1 || error "缺少 ssh"
-    command -v gh >/dev/null 2>&1 || error "缺少 gh (GitHub CLI)，安装: sudo pacman -S github-cli"
-    gh auth status >/dev/null 2>&1 || error "gh 未登录，先运行: gh auth login"
+echo "========================================"
+echo "   Ferrite Bench 服务器 SSH 一键配置"
+echo "========================================"
+echo ""
+
+# 1. 检查基础工具
+command -v ssh >/dev/null 2>&1 || error "系统未检测到 ssh 命令，请确保已安装 openssh"
+command -v ssh-copy-id >/dev/null 2>&1 || error "系统未检测到 ssh-copy-id 命令"
+
+# 2. 检查或生成专用密钥
+if [ -f "$KEY_PATH" ]; then
+    log "检测到已有压测专用密钥: $KEY_PATH"
+else
+    log "生成专用压测密钥 (ED25519)..."
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    ssh-keygen -t ed25519 -C "bench@ferrite" -f "$KEY_PATH" -N ""
+    log "密钥已生成: $KEY_PATH"
+fi
+
+PUB_KEY=$(cat "$PUB_KEY_PATH")
+
+# 3. 收集服务器信息
+echo ""
+read -rp "请输入新服务器 IP 或域名: " SERVER_HOST
+[ -z "$SERVER_HOST" ] && error "服务器地址不能为空"
+
+read -rp "请输入 SSH 用户名 [默认: root]: " SERVER_USER
+SERVER_USER="${SERVER_USER:-root}"
+
+read -rp "请输入 SSH 端口 [默认: 22]: " SERVER_PORT
+SERVER_PORT="${SERVER_PORT:-22}"
+
+echo ""
+log "目标服务器: ${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT}"
+log "接下来系统会提示你输入服务器的登录密码..."
+echo ""
+
+# 4. 使用官方标准的 ssh-copy-id 部署公钥
+# 不经过任何 stdin 重定向，让 OpenSSH 正常读取终端输入密码
+ssh-copy-id -i "$PUB_KEY_PATH" -p "$SERVER_PORT" -o StrictHostKeyChecking=no "${SERVER_USER}@${SERVER_HOST}" || {
+    echo ""
+    error "公钥部署未成功完成。请核对输入的密码是否正确，或者服务器是否开启了密码认证。"
 }
 
-# 生成密钥（如果不存在）
-ensure_key() {
-    if [ -f "$KEY_PATH" ]; then
-        log "密钥已存在: $KEY_PATH"
-    else
-        log "生成新密钥..."
-        ssh-keygen -t ed25519 -C "bench@ferrite" -f "$KEY_PATH" -N ""
-        log "密钥已生成: $KEY_PATH"
-    fi
+# 5. 校验免密登录
+echo ""
+log "测试使用新私钥免密登录..."
+ssh -i "$KEY_PATH" -p "$SERVER_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+    "${SERVER_USER}@${SERVER_HOST}" "echo -n '远程内核: ' && uname -sr && echo -n '系统架构: ' && uname -m" || {
+    warn "免密测试未通过，请检查 authorized_keys 权限。"
 }
 
-# 获取服务器信息
-get_server_info() {
-    echo ""
-    echo "=== 服务器信息 ==="
-    read -rp "服务器 IP 或域名: " SERVER_HOST
-    read -rp "SSH 用户名 [root]: " SERVER_USER
-    SERVER_USER="${SERVER_USER:-root}"
-    read -rp "SSH 端口 [22]: " SERVER_PORT
-    SERVER_PORT="${SERVER_PORT:-22}"
-    read -rsp "SSH 密码: " SERVER_PASS
-    echo ""
+# 6. 写入本地 ~/.ssh/config 别名
+CONFIG_FILE="$HOME/.ssh/config"
+touch "$CONFIG_FILE"
+chmod 600 "$CONFIG_FILE"
 
-    [ -z "$SERVER_HOST" ] && error "服务器地址不能为空"
-    [ -z "$SERVER_PASS" ] && error "密码不能为空"
-}
+# 如果已有旧配置先清理，保持别名最新
+if grep -q "Host bench-server" "$CONFIG_FILE" 2>/dev/null; then
+    # 临时文件处理
+    sed -i '/# ferrite bench server/,+7d' "$CONFIG_FILE" 2>/dev/null || true
+fi
 
-# 部署公钥到服务器（不依赖 sshpass，用 SSH_ASKPASS）
-deploy_key() {
-    echo ""
-    echo "=== 部署公钥到服务器 ==="
+cat >> "$CONFIG_FILE" << EOF
 
-    local PUB_KEY
-    PUB_KEY=$(cat "$PUB_KEY_PATH")
-
-    # 创建临时 askpass 脚本（输出密码）
-    local ASKPASS
-    ASKPASS=$(mktemp)
-    cat > "$ASKPASS" << EOF
-#!/bin/bash
-echo "$SERVER_PASS"
-EOF
-    chmod +x "$ASKPASS"
-
-    # SSH_ASKPASS 机制：无 tty + DISPLAY 已设置 → ssh 调用 askpass 脚本
-    export SSH_ASKPASS="$ASKPASS"
-    export DISPLAY=
-
-    log "复制公钥到 ${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT}..."
-
-    ssh -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o BatchMode=no \
-        -p "$SERVER_PORT" \
-        "${SERVER_USER}@${SERVER_HOST}" \
-        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && grep -q '$PUB_KEY' ~/.ssh/authorized_keys 2>/dev/null || echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" </dev/null
-
-    local exit_code=$?
-
-    # 清理临时文件
-    rm -f "$ASKPASS"
-    unset SSH_ASKPASS
-    unset DISPLAY
-
-    if [ $exit_code -eq 0 ]; then
-        log "公钥部署成功"
-    else
-        error "公钥部署失败，请检查账号/密码/端口"
-    fi
-}
-
-# 测试 SSH 连接
-test_connection() {
-    echo ""
-    echo "=== 测试 SSH 连接 ==="
-    ssh -i "$KEY_PATH" -p "$SERVER_PORT" -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o ConnectTimeout=10 \
-        "${SERVER_USER}@${SERVER_HOST}" "echo 'SSH 连接成功!'; uname -a" 2>&1 | head -5
-}
-
-# 配置本地 SSH config
-setup_ssh_config() {
-    echo ""
-    echo "=== 配置本地 SSH config ==="
-    local config_file="$HOME/.ssh/config"
-
-    # 检查是否已存在
-    if grep -q "Host bench-server" "$config_file" 2>/dev/null; then
-        warn "bench-server 配置已存在，跳过"
-        return
-    fi
-
-    cat >> "$config_file" << EOF
-
-# ferrite bench 服务器
+# ferrite bench server
 Host bench-server
     HostName ${SERVER_HOST}
     User ${SERVER_USER}
@@ -129,74 +92,36 @@ Host bench-server
     IdentityFile ${KEY_PATH}
     IdentitiesOnly yes
     StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
 EOF
 
-    chmod 600 "$config_file"
-    log "SSH config 已更新: $config_file"
-    log "以后可以用: ssh bench-server"
-}
+log "本地快捷别名配置完成！以后你在终端直接输入: ssh bench-server 即可登录。"
 
-# 添加 GitHub secret
-setup_github_secret() {
-    echo ""
-    echo "=== 添加 GitHub Secret ==="
-
-    # 检查是否已存在
-    if gh secret list -R "$GITHUB_REPO" 2>/dev/null | grep -q "BENCH_SSH_PRIVATE_KEY"; then
-        warn "Secret BENCH_SSH_PRIVATE_KEY 已存在，是否覆盖？"
-        read -rp "覆盖? [y/N]: " overwrite
-        if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
-            log "跳过 GitHub secret 设置"
-            return
-        fi
+# 7. 处理 GitHub Secrets（可选增强，绝不因未登录而阻塞）
+echo ""
+echo "=== 同步 GitHub Secrets（用于云端压测）==="
+HAS_GH=false
+if command -v gh >/dev/null 2>&1; then
+    if gh auth status >/dev/null 2>&1; then
+        HAS_GH=true
     fi
+fi
 
-    # 添加私钥到 GitHub secrets
-    gh secret set "BENCH_SSH_PRIVATE_KEY" -R "$GITHUB_REPO" < "$KEY_PATH"
-    log "GitHub Secret 已设置: BENCH_SSH_PRIVATE_KEY"
+if [ "$HAS_GH" = true ]; then
+    log "检测到 gh 已登录，自动为你更新 GitHub Secrets..."
+    gh secret set BENCH_SERVER_HOST -R "$GITHUB_REPO" <<< "$SERVER_HOST" >/dev/null 2>&1 || true
+    gh secret set BENCH_SERVER_USER -R "$GITHUB_REPO" <<< "$SERVER_USER" >/dev/null 2>&1 || true
+    gh secret set BENCH_SSH_PRIVATE_KEY -R "$GITHUB_REPO" < "$KEY_PATH" >/dev/null 2>&1 || true
+    log "GitHub Secrets (HOST, USER, SSH_PRIVATE_KEY) 更新完毕！"
+else
+    warn "当前环境未登录 gh CLI，已自动跳过 Secrets 同步。"
+    echo "  如果你之后需要云端 Actions 访问，可在 GitHub 仓库手动更新这几个 Secrets："
+    echo "  - BENCH_SERVER_HOST: $SERVER_HOST"
+    echo "  - BENCH_SERVER_USER: $SERVER_USER"
+    echo "  - BENCH_SSH_PRIVATE_KEY: (内容为 ~/.ssh/id_bench)"
+fi
 
-    # 同时设置服务器信息
-    gh secret set "BENCH_SERVER_HOST" -R "$GITHUB_REPO" <<< "$SERVER_HOST"
-    gh secret set "BENCH_SERVER_USER" -R "$GITHUB_REPO" <<< "$SERVER_USER"
-    gh secret set "BENCH_SERVER_PORT" -R "$GITHUB_REPO" <<< "$SERVER_PORT"
-    log "GitHub Secrets 已设置: BENCH_SERVER_HOST, BENCH_SERVER_USER, BENCH_SERVER_PORT"
-}
-
-# 输出摘要
-summary() {
-    echo ""
-    echo "========================================"
-    echo "  部署完成！"
-    echo "========================================"
-    echo ""
-    echo "  私钥: $KEY_PATH"
-    echo "  公钥: $PUB_KEY_PATH"
-    echo "  服务器: ${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT}"
-    echo ""
-    echo "  GitHub Secrets:"
-    echo "    - BENCH_SSH_PRIVATE_KEY"
-    echo "    - BENCH_SERVER_HOST"
-    echo "    - BENCH_SERVER_USER"
-    echo "    - BENCH_SERVER_PORT"
-    echo ""
-    echo "  测试连接: ssh bench-server"
-    echo "========================================"
-}
-
-# 主流程
-main() {
-    echo "=== Ferrite Bench SSH 密钥部署 ==="
-    echo ""
-
-    check_deps
-    ensure_key
-    get_server_info
-    deploy_key
-    test_connection
-    setup_ssh_config
-    setup_github_secret
-    summary
-}
-
-main "$@"
+echo ""
+echo "========================================"
+echo -e "${GREEN}  全部配置顺利完成！${NC}"
+echo "  测试连接命令: ssh bench-server"
+echo "========================================"
