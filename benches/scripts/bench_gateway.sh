@@ -10,6 +10,7 @@ BENCH_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="$BENCH_DIR/data"
 RESULTS_DIR="$BENCH_DIR/results"
 SCENARIOS="$DATA_DIR/scenarios.yaml"
+PROMPTS_FILE="$DATA_DIR/prompts.jsonl"
 
 # 颜色
 RED='\033[0;31m'
@@ -29,9 +30,45 @@ check_deps() {
     command -v python3 >/dev/null 2>&1 || missing+=("python3")
     if [ ${#missing[@]} -gt 0 ]; then
         error "缺少依赖: ${missing[*]}"
-        echo "安装: go install github.com/rakyll/hey@latest"
+        echo "安装 hey: go install github.com/rakyll/hey@latest"
         exit 1
     fi
+}
+
+# 随机选一个 prompt（按权重：短 40%, 中 40%, 长 20%）
+random_prompt() {
+    python3 << 'PYEOF'
+import json
+import random
+import sys
+
+prompts = []
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            prompts.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+if not prompts:
+    print(json.dumps({"model":"gpt-oss-20b","messages":[{"role":"user","content":"hi"}]}))
+    sys.exit(0)
+
+# 随机选择
+p = random.choice(prompts)
+msg = p.get("messages", [{"role":"user","content":"hi"}])
+model = p.get("model", "gpt-oss-20b")
+stream = p.get("stream", False)
+
+result = {"model": model, "messages": msg}
+if stream:
+    result["stream"] = True
+
+print(json.dumps(result, ensure_ascii=False))
+PYEOF
 }
 
 # 解析 yaml（用 python3，避免依赖 yq）
@@ -41,7 +78,6 @@ import yaml, sys, json
 with open('$SCENARIOS') as f:
     data = yaml.safe_load(f)
 print(json.dumps(data, ensure_ascii=False))
-"
 }
 
 # 获取场景配置
@@ -81,7 +117,7 @@ run_scenario() {
     local api_key
     api_key=$(echo "$global_json" | jq -r '.api_key // "sk-ferrite-local"')
 
-    model=$(echo "$scenario_json" | jq -r '.model // .models[0] // "north-mini-code"')
+    model=$(echo "$scenario_json" | jq -r '.model // .models[0] // "gpt-oss-20b"')
     duration=$(echo "$scenario_json" | jq -r '.duration_seconds // 60')
     rps=$(echo "$scenario_json" | jq -r '.rate.requests_per_second // 2')
     burst=$(echo "$scenario_json" | jq -r '.rate.burst // 5')
@@ -109,7 +145,7 @@ run_scenario() {
     local result_dir="$RESULTS_DIR/${scenario_name}_${timestamp}"
     mkdir -p "$result_dir"
 
-    local hey_out="$result_dir/hey_output.txt"
+    local hey_out="$result_dir/hey_output.csv"
     local gateway_log_before="$result_dir/gateway_log_before.log"
     local gateway_log_after="$result_dir/gateway_log_after.log"
     local analysis_out="$result_dir/analysis.json"
@@ -122,18 +158,14 @@ run_scenario() {
         cp "$gw_log_file" "$gateway_log_before"
     fi
 
-    # 构建请求体
+    # 构建请求体（随机选 prompt）
     local body_file="$result_dir/request_body.json"
-    if [ "$stream" = "true" ]; then
-        echo "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"say hello\"}],\"stream\":true}" > "$body_file"
-    else
-        echo "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"say hello\"}]}" > "$body_file"
-    fi
+    random_prompt "$PROMPTS_FILE" > "$body_file"
+    log "使用 prompt: $(cat "$body_file" | head -c 100)..."
 
     log "开始压测..."
 
     # 用 hey 跑压测
-    # hey 本身不支持精确 RPS 控制，用 -n 总请求数 -c 并发 -q 每秒请求数
     local total_requests=$((rps * duration))
 
     # 运行 hey
@@ -168,7 +200,7 @@ analyze_results() {
     local duration="$4"
     local rps="$5"
 
-    local hey_out="$result_dir/hey_output.txt"
+    local hey_out="$result_dir/hey_output.csv"
     local analysis_out="$result_dir/analysis.json"
 
     log "分析结果..."
@@ -235,9 +267,7 @@ if os.path.exists(gateway_log):
     with open(gateway_log, 'r') as f:
         for line in f:
             if "request completed" in line:
-                # 解析结构化日志
                 try:
-                    # 提取字段
                     entry = {}
                     for match in re.finditer(r'(\w+)=("([^"]*)"|(\S+))', line):
                         key = match.group(1)
@@ -261,7 +291,7 @@ analysis = {
         "total_requests": total_requests,
         "successful_requests": status_codes.get(200, 0),
         "failed_requests": total_requests - status_codes.get(200, 0),
-        "status_codes": status_codes,
+        "status_codes": {str(k): v for k, v in status_codes.items()},
         "latency_ms": {
             "avg": round(avg_latency, 2),
             "p50": round(p50, 2),
