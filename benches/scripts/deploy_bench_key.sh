@@ -27,13 +27,14 @@ SERVER_USER="${SERVER_USER:-root}"
 
 [ -z "$SERVER_HOST" ] && error "服务器地址不能为空"
 
-# 部署公钥（直接 ssh，交互式输密码）
+# 部署公钥（直接 ssh，交互式输密码，不重定向 stdin）
 log "部署公钥到 ${SERVER_USER}@${SERVER_HOST}..."
-log "请输入密码："
+PUB_KEY=$(cat "$PUB_KEY_PATH")
+
 ssh -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     "${SERVER_USER}@${SERVER_HOST}" \
-    "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" < "$PUB_KEY_PATH"
+    "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 
 log "公钥部署成功"
 
