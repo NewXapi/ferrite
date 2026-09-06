@@ -70,6 +70,10 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         auth: auth_svc.clone(),
     });
 
+    // auth 子路由自身不带前缀（/login /register ...），必须 nest 到 /api/user
+    // 与前端 admin-client 约定的 /api/user/{login,register,...} 对齐。
+    let auth_router = Router::new().nest("/api/user", auth_router);
+
     Ok(auth_router
         .merge(token_router)
         .merge(channel_router)
