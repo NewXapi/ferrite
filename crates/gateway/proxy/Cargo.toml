@@ -8,8 +8,10 @@ publish = false
 
 [dependencies]
 reqwest   = { workspace = true }
-url       = "2"
-percent-encoding = "2"
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 arc-swap  = { workspace = true }
 rand      = { workspace = true }
+tokio     = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+url       = "2"
+percent-encoding = "2"
