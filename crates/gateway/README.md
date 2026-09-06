@@ -85,6 +85,22 @@ cargo test -p forward -p gateway-protocol-bridge
 cargo test -p metering
 ```
 
+## MVP：单机 standalone 组装
+
+`apps/gateway` 从 `config/config.toml` 直接构造数据面快照，不依赖 Postgres、
+`admin-sync` 与计费。渠道与本地 key 写在配置里，进程启动即可转发。
+
+- `[[channels]]` → `dispatch::Snapshot`（`ChannelRecord` + `RouteUnitRecord`）。
+- `[[keys]]` → `gateway_gate::snapshot::TokenSnapshot` / `UserSnapshot`。
+- `SelectedRoute` 携带 `dispatch::Candidate`，`forward` 不再自造空候选。
+- `stream` 取自请求体的 `stream` 字段，不按 URL 路径猜。
+
+### 验收
+
+```sh
+cargo check -p gateway
+```
+
 ## 后续 crate
 
 - `proxy/`：渠道出口代理、SSRF、HTTP CONNECT、SOCKS5。
