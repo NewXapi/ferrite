@@ -1,11 +1,12 @@
-//! `pool` —— `ProxyPool`：按 channel 索引的代理节点池
+//! `pool` —— 代理节点池（ArcSwap 单源，channel 索引）
 //!
-//! 数据源：`service::sync` 推送的 `ProxySnapshot`，全量替换（ArcSwap）。
-//! 进程内：`DashMap<i64 channel_id, Vec<Arc<ProxyNode>>>` 索引。
+//! 单一状态 `ArcSwap<HashMap<channel_id, Vec<Arc<ProxyNode>>>>`：install 一次性
+//! 建好索引整体换掉，读走 `load()` 无锁。
 
 use super::node::ProxyNode;
 use arc_swap::ArcSwap;
-use dashmap::DashMap;
+use rand::Rng;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// 全量代理节点快照（来自 service::sync）
@@ -16,30 +17,53 @@ pub struct ProxySnapshot {
 
 /// 代理节点池
 pub struct ProxyPool {
-    by_channel: DashMap<i64, Arc<Vec<Arc<ProxyNode>>>>,
-    #[allow(dead_code)] // ponytail: 桩 — install 实现后读取
-    snapshot: Arc<ArcSwap<ProxySnapshot>>,
+    // 单一状态：channel_id -> 按 priority 降序的 ProxyNode 列表
+    by_channel: ArcSwap<HashMap<i64, Vec<Arc<ProxyNode>>>>,
 }
 
 impl ProxyPool {
     pub fn new() -> Self {
         Self {
-            by_channel: DashMap::new(),
-            snapshot: Arc::new(ArcSwap::from_pointee(ProxySnapshot::default())),
+            by_channel: ArcSwap::from(Arc::new(HashMap::new())),
         }
     }
 
-    /// 按 channel_id 选代理节点（priority + 随机）
-    pub fn pick(&self, channel_id: i64) -> Option<Arc<ProxyNode>> {
-        let _list = self.by_channel.get(&channel_id)?;
-        // TODO: 按 priority 分层 + 加权随机
-        unimplemented!("ProxyPool::pick")
+    /// 全量替换快照：重建 channel 索引
+    pub fn install(&self, snap: ProxySnapshot) {
+        let mut channel_map: HashMap<i64, Vec<Arc<ProxyNode>>> = HashMap::new();
+        for node in snap.nodes {
+            let node_arc = Arc::new(node);
+            for &channel_id in &node_arc.channel_ids {
+                channel_map
+                    .entry(channel_id)
+                    .or_default()
+                    .push(node_arc.clone());
+            }
+        }
+        // 每个 channel 列表按 priority 降序排序（高优先级在前）
+        for nodes in channel_map.values_mut() {
+            nodes.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.id.cmp(&b.id)));
+        }
+        self.by_channel.store(Arc::new(channel_map));
     }
 
-    /// 全量替换快照
-    pub fn install(&self, _snap: ProxySnapshot) {
-        // TODO: 重建 by_channel 索引
-        unimplemented!("ProxyPool::install")
+    /// 按 channel 选代理节点（priority 分层 + 层内随机）
+    ///
+    /// `rng` 注入使随机选择的测试完全确定性，与 `dispatch::selector::Selector::pick`
+    /// 同一约定（不依赖全局随机源）。
+    ///
+    /// 返回 `None`：该 channel 无代理节点（调用方按直连处理）。
+    pub fn pick(&self, channel_id: i64, rng: &mut dyn rand::RngCore) -> Option<Arc<ProxyNode>> {
+        let channel_map = self.by_channel.load();
+        let nodes = channel_map.get(&channel_id)?;
+        // 列表已按 priority 降序：最高层是前缀，取其长度即层大小。
+        let max_priority = nodes.first()?.priority;
+        let tier_len = nodes
+            .iter()
+            .take_while(|n| n.priority == max_priority)
+            .count();
+        let idx = rng.gen_range(0..tier_len);
+        Some(nodes[idx].clone())
     }
 }
 

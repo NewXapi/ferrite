@@ -1,26 +1,34 @@
-//! `gateway-security` —— 内容安全（Aho-Corasick 敏感词 / 流式截断 / 第三方审核）
+//! `gateway-security` —— 过滤词扫描
 //!
-//! 通过 `apps/gateway` 的 `extension-security` Cargo feature 条件编译链接。
+//! 纯过滤逻辑，不含 pipeline stage：配置里给一份过滤词表，对模型请求上下文
+//! （输入）与响应（输出，含流式）扫描替换。
 //!
-//! ## 文件分工
+//! ## 核心类型
 //!
-//! - [`wordlist`] —— 加密词库加载
-//! - [`aho_corasick`] —— 字节级 AC 自动机
-//! - [`ctx_tail`] —— `CtxTail` 跨 chunk 状态机
-//! - [`sanitize`] —— 输入静默脱敏
-//! - [`moderation`] —— `Moderation` trait + 第三方实现
-//! - [`stage`] —— `StreamingInterceptStage`
+//! - [`WordFilter`]：一次性文本过滤，`aho-corasick` 自动机，无命中零分配（`Cow`）。
+//! - [`StreamFilter`]：跨 chunk 流式过滤，hold 尾巴捕获跨 chunk 边界的词。
+//!
+//! ## 接线（后续 PR）
+//!
+//! 接线属 `forward` 域，本 crate 只交付逻辑：
+//! - 请求侧：`forward::stage::ForwardStage::handle` 读 body 后过 [`WordFilter::filter`]。
+//! - 响应侧：`forward::stream::pipe_chunk` 逐 chunk 过 [`StreamFilter::push`]，
+//!   流结束调 [`StreamFilter::flush`]。
+//!
+//! ## 配置
+//!
+//! [`FilterConfig`] 由 `apps/gateway` 的 `GatewayConfig` 从 `[security]` 段读入：
+//!
+//! ```toml
+//! [security]
+//! words = ["sensitive", "classified"]
+//! replacement = "***"
+//! filter_request = true
+//! filter_response = true
+//! ```
 
-pub mod aho_corasick;
-pub mod ctx_tail;
-pub mod moderation;
-pub mod sanitize;
-pub mod stage;
+pub mod scan;
 pub mod wordlist;
 
-pub use aho_corasick::AhoCorasick;
-pub use ctx_tail::CtxTail;
-pub use moderation::{Disabled, Moderation, ModerationResult, OpenAiOmnimod, QwenGuard};
-pub use sanitize::sanitize;
-pub use stage::StreamingInterceptStage;
-pub use wordlist::{Category, LoadError, WordList};
+pub use scan::{StreamFilter, WordFilter};
+pub use wordlist::FilterConfig;

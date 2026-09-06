@@ -1,59 +1,42 @@
-//! `wordlist` —— 加密词库加载
-//!
-//! 词库二进制用 `include_bytes!` 嵌入到 crate，启动时通过 argon2id 派生 key 解密。
-//! 替换走 `ArcSwap<WordList>`，由 `service::sync` 推送。
+//! `wordlist` —— 过滤词配置（`config.toml` 的 `[security]` 段）
 
-use arc_swap::ArcSwap;
-use std::collections::HashMap;
-use std::sync::Arc;
-use thiserror::Error;
+use serde::Deserialize;
 
-/// 词条分类
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Category {
-    Political,
-    Porn,
-    Violence,
-    Fraud,
-    Custom,
+/// 过滤词配置。
+///
+/// `Default` 与 serde 默认值走同一组函数：两条路径给不同默认值会让
+/// `FilterConfig::default()` 和空 `[security]` 段行为分叉。
+#[derive(Debug, Clone, Deserialize)]
+pub struct FilterConfig {
+    /// 过滤词列表；空 = 不过滤。
+    #[serde(default)]
+    pub words: Vec<String>,
+    /// 命中时的替换文本。
+    #[serde(default = "default_replacement")]
+    pub replacement: String,
+    /// 是否过滤请求（输入）。
+    #[serde(default = "default_true")]
+    pub filter_request: bool,
+    /// 是否过滤响应（输出，含流式）。
+    #[serde(default = "default_true")]
+    pub filter_response: bool,
 }
 
-/// 词库
-#[derive(Default)]
-pub struct WordList {
-    /// 明文词条
-    words: Vec<String>,
-    /// 词 → 分类
-    classification: HashMap<String, Category>,
-}
-
-impl WordList {
-    /// 启动时加载（include_bytes! 嵌入 + argon2id 派生 key + AES-GCM 解密）
-    pub fn load() -> Result<Arc<Self>, LoadError> {
-        // TODO: include_bytes! + decrypt
-        unimplemented!("WordList::load")
-    }
-
-    /// 替换快照（service::sync 推送）
-    pub fn install_into(swap: &ArcSwap<Self>, new: Arc<Self>) {
-        swap.store(new);
-    }
-
-    /// 查询所有词条
-    pub fn words(&self) -> &[String] {
-        &self.words
-    }
-
-    /// 查询词条分类
-    pub fn classify(&self, word: &str) -> Option<Category> {
-        self.classification.get(word).copied()
+impl Default for FilterConfig {
+    fn default() -> Self {
+        Self {
+            words: Vec::new(),
+            replacement: default_replacement(),
+            filter_request: default_true(),
+            filter_response: default_true(),
+        }
     }
 }
 
-#[derive(Debug, Error)]
-pub enum LoadError {
-    #[error("decrypt failed")]
-    Decrypt,
-    #[error("invalid format")]
-    Format,
+fn default_replacement() -> String {
+    "***".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }

@@ -1,23 +1,19 @@
-//! `gateway-proxy` —— 出口代理池（hyper 客户端 + SOCKS5 / HTTP 代理 + SSRF 防护）
+//! `gateway-proxy` —— 代理节点解析 + 按 channel 选节点 + SSRF 校验
 //!
-//! 提供**唯一的网络出口能力**给 `gateway-forward` 使用。
+//! ponytail: 本 crate 不拨号。`reqwest`（workspace 已启用 `socks` feature）原生
+//! 支持 HTTP CONNECT 与 SOCKS5 握手，所以出口代理只需在构造
+//! `forward::ReqwestEgress` 的 `reqwest::Client` 时把 [`ProxyNode::to_reqwest_proxy`]
+//! 的结果喂给 `ClientBuilder::proxy()`。自己实现 dialer 会绕过 reqwest 的连接池。
 //!
 //! ## 文件分工
 //!
-//! - [`pool`] —— `ProxyPool`：代理节点池
-//! - [`node`] —— `ProxyNode`：解析后的代理节点
-//! - [`dialer`] —— `Dialer` trait + 多种实现
-//! - [`ssrf`] —— SSRF 防护
-//! - [`stage`] —— `ProxyStage`：接入 pipeline
-
-pub mod dialer;
+//! - [`node`] —— 代理节点：URL 解析与 `reqwest::Proxy` 映射
+//! - [`pool`] —— `ProxyPool`：按 channel 索引 + priority 分层选节点
+//! - [`ssrf`] —— SSRF 防护：IP 字面量与 DNS 解析结果双重校验
 pub mod node;
 pub mod pool;
 pub mod ssrf;
-pub mod stage;
 
-pub use dialer::Dialer;
 pub use node::{BasicAuth, ProxyNode, ProxyScheme};
 pub use pool::ProxyPool;
 pub use ssrf::validate_url;
-pub use stage::ProxyStage;

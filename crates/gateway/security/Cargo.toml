@@ -4,20 +4,8 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+# 过滤词扫描：请求/响应（含流式）按配置词表替换。纯逻辑，无 pipeline stage。
+
 [dependencies]
-gateway-pipeline = { path = "../pipeline" }
-contract         = { path = "../../contract" }
-
-bytes = { workspace = true }
-tracing = { workspace = true }
-thiserror = { workspace = true }
-anyhow = "1"
-async-trait = "0.1"
-arc-swap = { workspace = true }
-
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "word_scan"
-harness = false
+aho-corasick = "1"
+serde = { workspace = true }
