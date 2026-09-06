@@ -29,13 +29,13 @@ go install github.com/rakyll/hey@latest
 ./target/debug/gateway &
 
 # 3. 跑压测
-./bench/scripts/bench_gateway.sh baseline
+./benches/scripts/bench_gateway.sh baseline
 ```
 
 ### 目录结构
 
 ```
-bench/
+benches/
 ├── README.md           # 详细文档
 ├── data/
 │   ├── prompts.jsonl   # 测试 prompts（短/中/长）
@@ -59,7 +59,7 @@ bench/
 
 ### 结果
 
-结果存 `bench/results/<scenario>_<timestamp>/`：
+结果存 `benches/results/<scenario>_<timestamp>/`：
 - `hey_output.txt`：hey 原始输出
 - `analysis.json`：延迟分布（p50/p95/p99）、吞吐、错误率
 - `gateway_log_before/after.log`：gateway 日志快照
@@ -71,4 +71,4 @@ bench/
 - 单模型 RPM 上限 60
 - 多模型轮换分散压力
 
-详细文档见 [bench/README.md](bench/README.md)。
+详细文档见 [benches/README.md](benches/README.md)。

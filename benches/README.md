@@ -1,11 +1,11 @@
-# bench/
+# benches/
 
 Gateway 压测工具。测 gateway 本身性能（gate/dispatch/forward 各层延迟、吞吐、错误率），上游模型只是产生 200 响应。
 
 ## 目录
 
 ```
-bench/
+benches/
 ├── README.md           # 本文件
 ├── data/
 │   ├── prompts.jsonl   # 测试 prompts（短/中/长）
@@ -21,13 +21,13 @@ bench/
 
 ```bash
 # 列出场景
-./bench/scripts/bench_gateway.sh
+./benches/scripts/bench_gateway.sh
 
 # 运行单个场景
-./bench/scripts/bench_gateway.sh baseline
+./benches/scripts/bench_gateway.sh baseline
 
 # 运行所有启用的场景
-./bench/scripts/bench_gateway.sh all
+./benches/scripts/bench_gateway.sh all
 ```
 
 ## 场景
@@ -42,7 +42,7 @@ bench/
 
 ## 结果
 
-结果存 `bench/results/<scenario>_<timestamp>/`：
+结果存 `benches/results/<scenario>_<timestamp>/`：
 - `hey_output.txt`：hey 原始输出
 - `analysis.json`：延迟分布（p50/p95/p99）、吞吐、错误率
 - `gateway_log_before/after.log`：gateway 日志快照
