@@ -72,7 +72,7 @@
 - ✅ 系统选项（PR #63）：options 平表 + 类型化注册表（5 个首批选项）+ /api/option GET/PUT
 - ✅ RouteUnit 写侧（PR #63）：route_units 平表 + CRUD + 引用完整性 + invalidate_by_channel 级联
 - 删除账户：/api/user/self DELETE 已有
-- 系统信息展示 /api/system-info：低优先，未做
+- ✅ 系统信息展示 /api/system-info（PR #65）：runtime / uptime / memory / cpu / db 综合指标采集与鉴权端点
 
 ### P3 — 快速收窄（暂不整合）
 

@@ -2,8 +2,8 @@
 
 use std::{collections::HashMap, path::Path};
 
-use super::error::TokenModelError;
 use super::engine::TokenizerEngine;
+use super::error::TokenModelError;
 
 /// Registry for loading and managing tokenizer models.
 #[derive(Debug, Default)]
@@ -48,14 +48,12 @@ impl TokenizerRegistry {
     ///
     /// # Errors
     /// This function can return `std::io::Error` if the directory cannot be read.
-    pub fn from_dir(
-        dir: &Path,
-    ) -> Result<(Self, Vec<(String, TokenModelError)>), std::io::Error> {
+    pub fn from_dir(dir: &Path) -> Result<(Self, Vec<(String, TokenModelError)>), std::io::Error> {
         let mut engines = HashMap::new();
         let mut errors = Vec::new();
 
-        let mut entries = std::fs::read_dir(dir)?;
-        while let Some(entry) = entries.next() {
+        let entries = std::fs::read_dir(dir)?;
+        for entry in entries {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {

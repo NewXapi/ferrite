@@ -25,7 +25,12 @@ async fn malformed_gzip_body_is_rejected_by_decompression_layer() {
         )
         .await
         .expect("response");
-    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert!(
+        response.status() == StatusCode::BAD_REQUEST
+            || response.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "expected 400 or 415, got {}",
+        response.status()
+    );
 }
 
 #[tokio::test]

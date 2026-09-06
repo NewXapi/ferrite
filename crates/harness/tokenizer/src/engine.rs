@@ -6,6 +6,7 @@ use super::error::{TokenModelError, TokenizerError};
 
 /// Tokenizer engine that can encode/decode and count tokens.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum TokenizerEngine {
     /// HuggingFace tokenizer (loaded from JSON).
     HuggingFace(tokenizers::Tokenizer),
@@ -24,7 +25,9 @@ impl TokenizerEngine {
             Err(_) => {
                 // Determine error kind: unsupported path extension? tokenizers crate returns Error::InvalidFile
                 // For simplicity, treat any non-JSON error as UnsupportedFormat.
-                Err(TokenModelError::UnsupportedFormat { path: path.to_path_buf() })
+                Err(TokenModelError::UnsupportedFormat {
+                    path: path.to_path_buf(),
+                })
             }
         }
     }

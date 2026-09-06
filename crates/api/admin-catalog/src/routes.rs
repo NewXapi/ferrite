@@ -13,7 +13,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
@@ -104,17 +104,24 @@ impl RouteUnitService {
 
     /// 写前引用完整性校验（原 TODO(#425)）：
     /// 渠道存在且启用、key_index 在 keys 范围内。
-    async fn validate(&self, group: &str, public_model: &str, channel_key: Uuid, key_index: i32) -> Result<(), AuthError> {
+    async fn validate(
+        &self,
+        group: &str,
+        public_model: &str,
+        channel_key: Uuid,
+        key_index: i32,
+    ) -> Result<(), AuthError> {
         if group.trim().is_empty() || public_model.trim().is_empty() {
-            return Err(AuthError::BadRequest("group and public_model required".into()));
+            return Err(AuthError::BadRequest(
+                "group and public_model required".into(),
+            ));
         }
-        let (channel_status, keys): (i16, Value) = sqlx::query_as(
-            "SELECT status, keys FROM api_channels WHERE key = $1",
-        )
-        .bind(channel_key)
-        .fetch_optional(&self.pool)
-        .await?
-        .ok_or(AuthError::NotFound("channel not found".into()))?;
+        let (channel_status, keys): (i16, Value) =
+            sqlx::query_as("SELECT status, keys FROM api_channels WHERE key = $1")
+                .bind(channel_key)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or(AuthError::NotFound("channel not found".into()))?;
         if channel_status != 1 {
             return Err(AuthError::BadRequest("channel is disabled".into()));
         }
@@ -127,6 +134,7 @@ impl RouteUnitService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         group_id: &str,
@@ -137,7 +145,8 @@ impl RouteUnitService {
         priority: i32,
         weight: i32,
     ) -> Result<RouteUnitView, AuthError> {
-        self.validate(group_id, public_model, channel_key, key_index).await?;
+        self.validate(group_id, public_model, channel_key, key_index)
+            .await?;
         let key = Uuid::new_v4();
         sqlx::query(
             r#"INSERT INTO route_units
@@ -168,17 +177,17 @@ impl RouteUnitService {
         let offset = (page.max(1) - 1) * size;
         let mut conds: Vec<String> = vec![];
         let mut binds: Vec<String> = vec![];
-        if let Some(g) = group {
-            if !g.trim().is_empty() {
-                conds.push(format!("group_id = ${}", binds.len() + 1));
-                binds.push(g.trim().into());
-            }
+        if let Some(g) = group
+            && !g.trim().is_empty()
+        {
+            conds.push(format!("group_id = ${}", binds.len() + 1));
+            binds.push(g.trim().into());
         }
-        if let Some(m) = public_model {
-            if !m.trim().is_empty() {
-                conds.push(format!("public_model = ${}", binds.len() + 1));
-                binds.push(m.trim().into());
-            }
+        if let Some(m) = public_model
+            && !m.trim().is_empty()
+        {
+            conds.push(format!("public_model = ${}", binds.len() + 1));
+            binds.push(m.trim().into());
         }
         let w = if conds.is_empty() {
             String::new()
@@ -206,6 +215,7 @@ impl RouteUnitService {
         Ok((rows.into_iter().map(row_to_view).collect(), total))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         key: Uuid,
@@ -222,12 +232,18 @@ impl RouteUnitService {
         if key_index.is_some() || group_id.is_some() || public_model.is_some() {
             let g = group_id.unwrap_or(&existing.group_id);
             let m = public_model.unwrap_or(&existing.public_model);
-            self.validate(g, m, existing.channel_key, key_index.unwrap_or(existing.key_index)).await?;
+            self.validate(
+                g,
+                m,
+                existing.channel_key,
+                key_index.unwrap_or(existing.key_index),
+            )
+            .await?;
         }
-        if let Some(s) = status {
-            if ![1, 2].contains(&s) {
-                return Err(AuthError::BadRequest("status must be 1|2".into()));
-            }
+        if let Some(s) = status
+            && ![1, 2].contains(&s)
+        {
+            return Err(AuthError::BadRequest("status must be 1|2".into()));
         }
         sqlx::query(
             r#"UPDATE route_units SET
@@ -254,7 +270,8 @@ impl RouteUnitService {
             .bind(key)
             .execute(&self.pool)
             .await?
-            .rows_affected() == 0
+            .rows_affected()
+            == 0
         {
             return Err(AuthError::NotFound("route unit not found".into()));
         }
@@ -296,7 +313,10 @@ pub fn router(state: RouteUnitAppState) -> axum::Router {
     use axum::routing::get;
     axum::Router::new()
         .route("/api/route_unit", get(list).post(create))
-        .route("/api/route_unit/{key}", get(get_one).put(update).delete(remove))
+        .route(
+            "/api/route_unit/{key}",
+            get(get_one).put(update).delete(remove),
+        )
         .with_state(state)
 }
 
@@ -311,7 +331,10 @@ async fn require_admin(auth: &AuthService, h: &HeaderMap) -> Result<(), AuthErro
 
 type ErrResp = (StatusCode, Json<Value>);
 fn err_json(e: AuthError) -> ErrResp {
-    (e.status(), Json(json!({ "code": e.code(), "message": e.to_string() })))
+    (
+        e.status(),
+        Json(json!({ "code": e.code(), "message": e.to_string() })),
+    )
 }
 
 async fn parse_key(key: &str) -> Result<Uuid, ErrResp> {
@@ -385,7 +408,12 @@ async fn list(
     require_admin(&s.auth, &h).await.map_err(err_json)?;
     match s
         .svc
-        .list(q.group_id.as_deref(), q.public_model.as_deref(), q.page, q.size)
+        .list(
+            q.group_id.as_deref(),
+            q.public_model.as_deref(),
+            q.page,
+            q.size,
+        )
         .await
     {
         Ok((items, total)) => Ok(Json(json!({ "items": items, "total": total }))),

@@ -58,7 +58,6 @@ pub enum TokenizerError {
     },
 }
 
-
 /// Result type for tokenizer model operations.
 pub type TokenModelResult<T> = Result<T, TokenModelError>;
 

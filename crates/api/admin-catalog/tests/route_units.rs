@@ -3,8 +3,8 @@
 //! 跑：`DATABASE_URL=postgres://ferrite:ferrite@127.0.0.1:5433/ferrite \
 //!      cargo test -p catalog --test route_units -- --ignored`
 
-use catalog::routes::RouteUnitService;
 use catalog::channels::ChannelService;
+use catalog::routes::RouteUnitService;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use uuid::Uuid;
@@ -24,8 +24,12 @@ async fn make_svcs() -> (RouteUnitService, ChannelService, sqlx::PgPool) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    catalog::channels::ensure_table(&pool).await.expect("channels ddl");
-    catalog::routes::ensure_table(&pool).await.expect("routes ddl");
+    catalog::channels::ensure_table(&pool)
+        .await
+        .expect("channels ddl");
+    catalog::routes::ensure_table(&pool)
+        .await
+        .expect("routes ddl");
     (
         RouteUnitService::new(pool.clone()),
         ChannelService::new(pool.clone()),
@@ -66,7 +70,15 @@ async fn route_unit_crud_flow() {
 
     // 正常创建：group/model/channel 组合
     let ru = svc
-        .create("default", "gpt-4o", Uuid::parse_str(&channel_key).unwrap(), 0, "gpt-4o-upstream", 5, 10)
+        .create(
+            "default",
+            "gpt-4o",
+            Uuid::parse_str(&channel_key).unwrap(),
+            0,
+            "gpt-4o-upstream",
+            5,
+            10,
+        )
         .await
         .expect("create route unit");
     assert_eq!(ru.public_model, "gpt-4o");
@@ -75,7 +87,15 @@ async fn route_unit_crud_flow() {
 
     // key_index 越界（渠道只有 2 把 key，index=5 应拒绝）
     let bad = svc
-        .create("default", "gpt-4o", Uuid::parse_str(&channel_key).unwrap(), 5, "x", 0, 10)
+        .create(
+            "default",
+            "gpt-4o",
+            Uuid::parse_str(&channel_key).unwrap(),
+            5,
+            "x",
+            0,
+            10,
+        )
         .await;
     assert!(matches!(bad, Err(auth::AuthError::BadRequest(_))));
 
@@ -104,15 +124,22 @@ async fn route_unit_list_filter() {
     let group = uniq("grp");
     let ck = Uuid::parse_str(&channel_key).unwrap();
 
-    svc.create(&group, "m1", ck, 0, "m1-up", 0, 10).await.expect("create 1");
-    svc.create(&group, "m2", ck, 0, "m2-up", 0, 10).await.expect("create 2");
+    svc.create(&group, "m1", ck, 0, "m1-up", 0, 10)
+        .await
+        .expect("create 1");
+    svc.create(&group, "m2", ck, 0, "m2-up", 0, 10)
+        .await
+        .expect("create 2");
 
     let (items, total) = svc.list(Some(&group), None, 1, 50).await.expect("list");
     assert_eq!(total, 2);
     assert_eq!(items.len(), 2);
 
     // 精确 public_model 过滤
-    let (items, _) = svc.list(Some(&group), Some("m1"), 1, 50).await.expect("list by model");
+    let (items, _) = svc
+        .list(Some(&group), Some("m1"), 1, 50)
+        .await
+        .expect("list by model");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].public_model, "m1");
 }
@@ -125,7 +152,10 @@ async fn route_unit_channel_cascade() {
     let channel_key = make_channel(&channel_svc, &uniq("ru_channel")).await;
     let ck = Uuid::parse_str(&channel_key).unwrap();
 
-    let ru = svc.create("default", "m-x", ck, 0, "m-x-up", 0, 10).await.expect("create");
+    let ru = svc
+        .create("default", "m-x", ck, 0, "m-x-up", 0, 10)
+        .await
+        .expect("create");
 
     // 渠道删除前先手工级联（channels::delete 未来接入）
     let n = svc.invalidate_by_channel(ck).await.expect("invalidate");
@@ -133,7 +163,16 @@ async fn route_unit_channel_cascade() {
 
     // 级联后 unit status=2（查列表应不含 status=1 的活跃单元——这里直接验证 update）
     let updated = svc
-        .update(Uuid::parse_str(&ru.key).unwrap(), None, None, None, None, None, None, Some(2))
+        .update(
+            Uuid::parse_str(&ru.key).unwrap(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(2),
+        )
         .await
         .expect("update after invalidate");
     assert_eq!(updated.status, 2);
@@ -151,7 +190,8 @@ async fn route_unit_validation_rejected() {
     assert!(svc.create("default", "", ck, 0, "up", 0, 10).await.is_err());
     // 不存在的渠道
     assert!(matches!(
-        svc.create("default", "m", Uuid::new_v4(), 0, "up", 0, 10).await,
+        svc.create("default", "m", Uuid::new_v4(), 0, "up", 0, 10)
+            .await,
         Err(auth::AuthError::NotFound(_))
     ));
 }

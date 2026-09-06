@@ -62,6 +62,13 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         deps: observe::monitor::MonitorDeps::new(pool.clone()),
         auth: auth_svc.clone(),
     });
+    let system_info_router = ops::system_info_router(ops::SystemInfoAppState {
+        svc: std::sync::Arc::new(ops::SystemInfoService::new(
+            pool.clone(),
+            ops::ProcessTimeTracker::default(),
+        )),
+        auth: auth_svc.clone(),
+    });
 
     Ok(auth_router
         .merge(token_router)
@@ -72,5 +79,6 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         .merge(options_router)
         .merge(route_unit_router)
         .merge(log_router)
-        .merge(monitor_router))
+        .merge(monitor_router)
+        .merge(system_info_router))
 }
