@@ -1,50 +1,62 @@
-name: Debug Server Connection
+name: Gateway Bench (Remote Server)
 
 on:
   push:
     branches:
       - feat/gateway-bench
   workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Benchmark scenario (baseline, medium_load, multi_model, streaming, stress, all)"
+        required: false
+        default: "baseline"
 
 jobs:
-  diagnose:
+  bench:
+    name: Run Benchmark on Remote Server
     runs-on: ubuntu-latest
-    steps:
-      - name: Install Tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq sshpass openssh-client
+    timeout-minutes: 30
 
-      - name: Test Direct SSH Connection with Password
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Secrets
         env:
           HOST: ${{ secrets.BENCH_SERVER_HOST }}
           USER: ${{ secrets.BENCH_SERVER_USER }}
-          PASS: ${{ secrets.BENCH_SERVER_PASSWORD }}
+          SSH_KEY: ${{ secrets.BENCH_SSH_PRIVATE_KEY }}
         run: |
-          echo "=== 1. Checking Secret Variables Presence ==="
-          [ -z "$HOST" ] && echo "HOST is EMPTY" || echo "HOST is provided (len: ${#HOST})"
-          [ -z "$USER" ] && echo "USER is EMPTY" || echo "USER is provided: $USER"
-          [ -z "$PASS" ] && echo "PASS is EMPTY" || echo "PASS is provided (len: ${#PASS})"
+          missing=()
+          [ -z "$HOST" ] && missing+=("BENCH_SERVER_HOST")
+          [ -z "$USER" ] && missing+=("BENCH_SERVER_USER")
+          [ -z "$SSH_KEY" ] && missing+=("BENCH_SSH_PRIVATE_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required Secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "Target server: $USER@$HOST"
 
-          echo ""
-          echo "=== 2. Testing Network Port 22 Reachability ==="
-          nc -zv -w 5 "$HOST" 22 || echo "Port 22 connect failed"
+      - name: Configure SSH Key
+        env:
+          HOST: ${{ secrets.BENCH_SERVER_HOST }}
+          SSH_KEY: ${{ secrets.BENCH_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/bench_key
+          chmod 600 ~/.ssh/bench_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
 
-          echo ""
-          echo "=== 3. Testing SSH Login with Password (Verbose -vvv) ==="
-          # 用 sshpass 尝试最简单的 whoami 命令，带详细调试输出
-          sshpass -p "$PASS" ssh -vvv \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o PreferredAuthentications=password,keyboard-interactive \
-            -o ConnectTimeout=10 \
-            "$USER@$HOST" "echo 'SUCCESS: logged in as \$(whoami)'; uname -a" || {
-              EXIT_CODE=$?
-              echo ""
-              echo "=== 4. Failure Summary ==="
-              echo "SSH command failed with exit code: $EXIT_CODE"
-              if [ $EXIT_CODE -eq 5 ]; then
-                echo "Explanation: Exit code 5 from sshpass means the server explicitly rejected the password or PasswordAuthentication is disabled."
-              fi
-              exit $EXIT_CODE
-            }
+      - name: Verify Remote Server Connection
+        env:
+          HOST: ${{ secrets.BENCH_SERVER_HOST }}
+          USER: ${{ secrets.BENCH_SERVER_USER }}
+        run: |
+          echo "=== Verifying Passwordless SSH Access ==="
+          ssh -i ~/.ssh/bench_key "$USER@$HOST" bash -s << 'REMOTE'
+            echo "Successfully logged into: $(hostname)"
+            echo "Kernel: $(uname -sr)"
+            echo "Docker containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -6
+          REMOTE
+          echo "SSH verification PASSED!"
