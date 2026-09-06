@@ -34,18 +34,10 @@ impl Drop for Lease {
     }
 }
 
+#[derive(Default)]
 struct NodeHealth {
     failure_count: u32,
     cooldown_until: Option<Instant>,
-}
-
-impl Default for NodeHealth {
-    fn default() -> Self {
-        Self {
-            failure_count: 0,
-            cooldown_until: None,
-        }
-    }
 }
 
 /// 渠道出口管理器：选节点、缓存 Client、按反馈冷却。
