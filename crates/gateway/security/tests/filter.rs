@@ -44,6 +44,33 @@ fn test_empty_wordlist() {
     assert!(!filter.has_match(text));
 }
 
+/// 配置里的空词条必须被丢弃。
+///
+/// 回归测试：`aho-corasick` 对空 pattern 在每个字符间隙都命中，`words = [""]`
+/// 会把 `"a bad thing"` 替换成 `"XaX XbXaXdX XtXhXiXnXgX"`，并让 `is_match`
+/// 恒为 true、零分配快路径失效。配置是信任边界。
+#[test]
+fn empty_pattern_in_config_is_discarded() {
+    let only_empty = WordFilter::new(&FilterConfig {
+        words: vec![String::new()],
+        replacement: "X".into(),
+        ..Default::default()
+    });
+    assert!(only_empty.is_empty(), "只有空词条应等价于无词表");
+    assert!(!only_empty.has_match("anything"));
+    assert!(matches!(only_empty.filter("a bad thing"), Cow::Borrowed(_)));
+
+    // 空词条混在真词条里：真词条照常生效，空词条不污染输出。
+    let mixed = WordFilter::new(&FilterConfig {
+        words: vec![String::new(), "bad".into()],
+        replacement: "***".into(),
+        ..Default::default()
+    });
+    assert_eq!(mixed.filter("a bad thing").as_ref(), "a *** thing");
+    assert!(!mixed.has_match("clean text"));
+    assert!(matches!(mixed.filter("clean text"), Cow::Borrowed(_)));
+}
+
 /// 大小写不敏感替换正确。包含大小写变体的 "Secret" 应该被替换为 "***"。
 #[test]
 fn test_case_insensitive_match() {

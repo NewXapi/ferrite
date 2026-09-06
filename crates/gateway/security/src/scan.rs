@@ -23,17 +23,28 @@ impl WordFilter {
     /// `ascii_case_insensitive(true)`：过滤词场景默认忽略 ASCII 大小写。
     /// CJK 无大小写概念，不受影响。
     ///
+    /// 空词条被丢弃：`aho-corasick` 对空 pattern 在每个字符间隙都命中，
+    /// 一个手误的 `words = [""]` 会把 `"a bad"` 替换成 `"XaX XbXaXdX"`，
+    /// 并让 `is_match` 恒为 true、零分配快路径失效。配置是信任边界，必须挡。
+    ///
     /// # Panics
-    /// 词表使自动机超出 `aho-corasick` 的状态数上限时 panic（词表来自配置，
-    /// 启动期失败优于运行期静默不过滤）。
+    /// 词表使自动机超出 `aho-corasick` 的状态数上限时 panic。过滤词是安全功能，
+    /// 启动期崩溃优于运行期静默不过滤——返回 `Result` 会让调用方有机会忽略错误
+    /// 继续跑一个不过滤的网关。
     pub fn new(config: &crate::wordlist::FilterConfig) -> Self {
+        let words: Vec<&str> = config
+            .words
+            .iter()
+            .map(String::as_str)
+            .filter(|w| !w.is_empty())
+            .collect();
         let ac = AhoCorasick::builder()
             .ascii_case_insensitive(true)
-            .build(&config.words)
+            .build(&words)
             .expect("过滤词表构建 AhoCorasick 失败");
         Self {
-            replacements: vec![config.replacement.clone(); config.words.len()],
-            max_pattern_len: config.words.iter().map(|s| s.len()).max().unwrap_or(0),
+            replacements: vec![config.replacement.clone(); words.len()],
+            max_pattern_len: words.iter().map(|w| w.len()).max().unwrap_or(0),
             ac,
         }
     }
