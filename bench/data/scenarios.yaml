@@ -3,11 +3,11 @@
 # 原则：控制 RPS，遇 429 立即退避，防封号
 
 scenarios:
-  # 场景 1：低并发基线
+  # 场景 1：低并发基线（52mxw gpt-oss-20b）
   baseline:
     description: "低并发基线，测单请求延迟"
     enabled: true
-    model: "north-mini-code"  # 免费、RPM 宽松
+    model: "gpt-oss-20b"
     duration_seconds: 60
     rate:
       requests_per_second: 2
@@ -17,11 +17,11 @@ scenarios:
     abort_on_429: true
     timeout_ms: 30000
 
-  # 场景 2：中等并发
+  # 场景 2：中等并发（星剑雅 gpt-5.6-sol）
   medium_load:
     description: "中等并发，测吞吐和延迟分布"
     enabled: true
-    model: "north-mini-code"
+    model: "gpt-5.6-sol"
     duration_seconds: 120
     rate:
       requests_per_second: 5
@@ -31,14 +31,14 @@ scenarios:
     abort_on_429: true
     timeout_ms: 30000
 
-  # 场景 3：多模型轮换
+  # 场景 3：多模型轮换（52mxw + 星剑雅）
   multi_model:
     description: "多模型轮换，分散单模型压力"
     enabled: true
     models:
-      - "north-mini-code"
       - "gpt-oss-20b"
-      - "deepseek-v4-flash"
+      - "nemotron-3-ultra"
+      - "gpt-5.6-sol"
     duration_seconds: 120
     rate:
       requests_per_second: 3
@@ -52,7 +52,7 @@ scenarios:
   streaming:
     description: "流式请求，测 SSE 稳定性"
     enabled: true
-    model: "north-mini-code"
+    model: "gpt-oss-20b"
     duration_seconds: 60
     rate:
       requests_per_second: 2
@@ -67,7 +67,7 @@ scenarios:
   stress:
     description: "压力测试，找 gateway 极限"
     enabled: false  # 默认关闭，手动开启
-    model: "north-mini-code"
+    model: "gpt-oss-20b"
     duration_seconds: 300
     rate:
       requests_per_second: 10
