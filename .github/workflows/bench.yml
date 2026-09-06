@@ -1,75 +1,50 @@
-name: Gateway Bench & Server Setup
+name: Debug Server Connection
 
 on:
   push:
     branches:
       - feat/gateway-bench
   workflow_dispatch:
-    inputs:
-      action:
-        description: "Operation to perform"
-        required: true
-        type: choice
-        options:
-          - "setup-ssh"
-          - "bench"
-        default: "setup-ssh"
-      scenario:
-        description: "Benchmark scenario if running bench (baseline, medium_load, multi_model, streaming, stress, all)"
-        required: false
-        default: "baseline"
+
 jobs:
-  run:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install System Dependencies
+      - name: Install Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq sshpass openssh-client jq
+          sudo apt-get install -y -qq sshpass openssh-client
 
-      - name: Setup and Verify Server Access
+      - name: Test Direct SSH Connection with Password
         env:
-          SERVER_HOST: ${{ secrets.BENCH_SERVER_HOST }}
-          SERVER_USER: ${{ secrets.BENCH_SERVER_USER }}
-          SERVER_PASS: ${{ secrets.BENCH_SERVER_PASSWORD }}
-          SSH_PRIVATE_KEY: ${{ secrets.BENCH_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.BENCH_SERVER_HOST }}
+          USER: ${{ secrets.BENCH_SERVER_USER }}
+          PASS: ${{ secrets.BENCH_SERVER_PASSWORD }}
         run: |
-          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ]; then
-            echo "::error::BENCH_SERVER_HOST or BENCH_SERVER_USER secret is missing."
-            exit 1
-          fi
+          echo "=== 1. Checking Secret Variables Presence ==="
+          [ -z "$HOST" ] && echo "HOST is EMPTY" || echo "HOST is provided (len: ${#HOST})"
+          [ -z "$USER" ] && echo "USER is EMPTY" || echo "USER is provided: $USER"
+          [ -z "$PASS" ] && echo "PASS is EMPTY" || echo "PASS is provided (len: ${#PASS})"
 
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          echo ""
+          echo "=== 2. Testing Network Port 22 Reachability ==="
+          nc -zv -w 5 "$HOST" 22 || echo "Port 22 connect failed"
 
-          # 写入私钥并提取公钥
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_bench
-          chmod 600 ~/.ssh/id_bench
-          ssh-keygen -y -f ~/.ssh/id_bench > ~/.ssh/id_bench.pub
-          PUB_KEY=$(cat ~/.ssh/id_bench.pub)
-
-          echo "=== 1. Deploying public key to $SERVER_USER@$SERVER_HOST ==="
-          if [ -n "$SERVER_PASS" ]; then
-            sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              "$SERVER_USER@$SERVER_HOST" \
-              "mkdir -p ~/.ssh && chmod 700 ~/.ssh && (grep -q -F '$PUB_KEY' ~/.ssh/authorized_keys 2>/dev/null || echo '$PUB_KEY' >> ~/.ssh/authorized_keys) && chmod 600 ~/.ssh/authorized_keys"
-          else
-            echo "Password secret not provided, skipping password-based injection."
-          fi
-
-          echo "=== 2. Testing passwordless SSH connection via private key ==="
-          ssh -i ~/.ssh/id_bench -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 \
-            "$SERVER_USER@$SERVER_HOST" "uname -a && echo 'SSH Key Setup Verified Successfully!'"
-
-      - name: Run Benchmark
-        if: ${{ inputs.action == 'bench' }}
-        env:
-          SERVER_HOST: ${{ secrets.BENCH_SERVER_HOST }}
-          SERVER_USER: ${{ secrets.BENCH_SERVER_USER }}
-        run: |
-          echo "Starting benchmark on $SERVER_HOST with scenario ${{ inputs.scenario }}..."
-          # 验证远程环境准备完毕
-          ssh -i ~/.ssh/id_bench -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            "$SERVER_USER@$SERVER_HOST" "free -h && df -h /"
+          echo ""
+          echo "=== 3. Testing SSH Login with Password (Verbose -vvv) ==="
+          # 用 sshpass 尝试最简单的 whoami 命令，带详细调试输出
+          sshpass -p "$PASS" ssh -vvv \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o PreferredAuthentications=password,keyboard-interactive \
+            -o ConnectTimeout=10 \
+            "$USER@$HOST" "echo 'SUCCESS: logged in as \$(whoami)'; uname -a" || {
+              EXIT_CODE=$?
+              echo ""
+              echo "=== 4. Failure Summary ==="
+              echo "SSH command failed with exit code: $EXIT_CODE"
+              if [ $EXIT_CODE -eq 5 ]; then
+                echo "Explanation: Exit code 5 from sshpass means the server explicitly rejected the password or PasswordAuthentication is disabled."
+              fi
+              exit $EXIT_CODE
+            }
