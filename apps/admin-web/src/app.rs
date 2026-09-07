@@ -19,7 +19,8 @@ pub fn RootApp() -> Element {
             retro.set(h == "#retro");
             is_auth.set(is_auth_hash(&h));
         });
-        window().set_onhashchange(Some(cb.as_ref().unchecked_ref()));
+        let _ =
+            window().add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());
         cb.forget();
     });
 

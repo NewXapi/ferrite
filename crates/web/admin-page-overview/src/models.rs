@@ -192,7 +192,7 @@ pub fn ModelsPanel() -> Element {
                 h2 { class: "text-base font-semibold text-zinc-100", "模型" }
                 span { class: "text-xs text-zinc-600", "mock · {models.len()} 个" }
             }
-            div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-5",
+            div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5",
                 for m in models {
                     ModelCard { model: m.clone() }
                 }

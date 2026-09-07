@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::api;
 
 // Layout convention (共享给所有面板组件, 详见仓库 README.md):
-//   页面网格  `grid-cols-1 md:grid-cols-3 xl:grid-cols-5`  —— 手机 1 栏 / 平板 3 栏 / Web 5 栏。
+//   页面网格  `grid-cols-1 md:grid-cols-3 lg:grid-cols-5`  —— 手机 1 栏 / 平板 3 栏 / Web 5 栏。
 //   小卡片(统计卡)占 1 栏; 宽面板并排: 热力图类 `md:col-span-2 xl:col-span-3`,
 //   列表/分布类 `md:col-span-1 xl:col-span-2`; 手机端一律堆叠, 定宽内容用横向滚动。
 
@@ -41,7 +41,8 @@ pub fn OverviewPanel() -> Element {
             // 模型调用健康度统计卡片
             crate::health::HealthStats {}
 
-            section { class: "grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5",
+            // Top-level stats
+            section { class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5",
                 if live_stats.read().is_empty() {
                     for &(value, label) in stats.iter() {
                         StatCard { value: value.to_string(), label: label.to_string() }

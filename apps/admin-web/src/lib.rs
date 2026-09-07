@@ -4,6 +4,8 @@ pub mod retro;
 pub use app::RootApp;
 
 use dioxus::prelude::*;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 // Page roots that implement each panel.
 use page_account::{KeysPanel, RewardsPanel, UsageLogsPanel};
@@ -40,6 +42,7 @@ pub enum Theme {
     Dark,
     Light,
 }
+
 /// Miniature top-nav pinned to the left edge: one dot per section, the focused
 /// one stretches into a bright bar. Mouse wheel cycles through sections.
 #[component]
@@ -47,12 +50,16 @@ pub fn SectionPill(active: Section, on_select: EventHandler<Section>) -> Element
     let wheel = on_select;
     rsx! {
         div {
-            class: "fixed left-2 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center gap-2 rounded-full border border-zinc-800/80 bg-zinc-900/70 px-2 py-3 backdrop-blur-xl shadow-lg shadow-black/20",
+            class: "fixed left-2 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center gap-2.5 p-1 bg-transparent",
             onwheel: move |e: WheelEvent| wheel_step(e, active, &wheel),
             for s in SECTIONS {
                 button {
                     key: "{s.label()}",
-                    class: if active == s { "h-10 w-2.5 rounded-full bg-zinc-100 transition-all" } else { "h-2.5 w-2.5 rounded-full bg-zinc-600 transition-all hover:bg-zinc-400" },
+                    class: if active == s {
+                        "h-9 w-2 rounded-full bg-gradient-to-b from-zinc-400 to-zinc-500 shadow-sm shadow-black/60 ring-1 ring-white/10 transition-all hover:from-zinc-300 hover:to-zinc-400"
+                    } else {
+                        "h-2 w-2 rounded-full bg-zinc-700/60 ring-1 ring-white/5 transition-all hover:bg-zinc-500"
+                    },
                     "aria-label": "{s.label()}",
                     title: "{s.label()}",
                     onclick: move |_| on_select.call(s),
@@ -149,13 +156,52 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
     }
 }
 
+fn get_initial_route() -> (Section, u8) {
+    if let Some(w) = web_sys::window() {
+        if let Ok(loc) = w.location().hash() {
+            return match loc.as_str() {
+                "#overview" => (Section::Dashboard, 0),
+                "#models" => (Section::Dashboard, 1),
+                "#leaderboard" => (Section::Dashboard, 2),
+                "#account" => (Section::Account, 0),
+                "#usage" => (Section::Account, 1),
+                "#rewards" => (Section::Account, 2),
+                "#manage" | "#network" => (Section::Manage, 0),
+                "#users" => (Section::Manage, 1),
+                "#groups" => (Section::Manage, 2),
+                "#aliases" => (Section::Manage, 3),
+                "#channels" => (Section::Manage, 4),
+                "#subscriptions" => (Section::Manage, 5),
+                "#redemptions" => (Section::Manage, 6),
+                "#system" => (Section::Manage, 7),
+                _ => (Section::Dashboard, 0),
+            };
+        }
+    }
+    (Section::Dashboard, 0)
+}
+
 #[component]
 pub fn HomePage() -> Element {
-    let mut section = use_signal(|| Section::Dashboard);
-    let mut dash_tab = use_signal(|| 0u8);
+    let (init_sec, init_tab) = get_initial_route();
+    let mut section = use_signal(move || init_sec);
+    let mut dash_tab = use_signal(move || init_tab);
     let mut theme = use_signal(|| Theme::Dark);
     use_context_provider(EntityStore::seed);
     let is_light = theme() == Theme::Light;
+
+    use_hook(move || {
+        let cb = Closure::<dyn FnMut()>::new(move || {
+            let (s, t) = get_initial_route();
+            section.set(s);
+            dash_tab.set(t);
+        });
+        if let Some(w) = web_sys::window() {
+            let _ = w.add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());
+        }
+        cb.forget();
+    });
+
     // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
     let labels: Vec<String> = match section() {
         Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
@@ -226,7 +272,6 @@ pub fn HomePage() -> Element {
                     }
                 }
             }
-            SectionPill { active: section(), on_select: move |s| section.set(s) }
             main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "Ferrite · 控制台" }

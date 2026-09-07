@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
-use ui::ScrollSpyNav;
 
 use crate::api::{self, Invitee, Recharge, RewardStat};
 
@@ -36,16 +35,6 @@ pub fn RewardsPanel() -> Element {
     };
 
     rsx! {
-        div { class: "pl-8",
-            ScrollSpyNav {
-                container: "panel-scroll",
-                items: vec![
-                    ("钱包".to_string(), "rewards-sec-wallet".to_string()),
-                    ("邀请".to_string(), "rewards-sec-invite".to_string()),
-                    ("被邀人".to_string(), "rewards-sec-list".to_string()),
-                ],
-            }
-
             div { class: "flex flex-col gap-6",
                     // 钱包区
                     section { id: "rewards-sec-wallet", class: "scroll-mt-8 space-y-4",
@@ -130,7 +119,7 @@ pub fn RewardsPanel() -> Element {
                         }
 
                         // 奖励统计 - 1/3/5 栅格
-                        section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                        section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             for RewardStat { value, label, desc } in stats {
                                 div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
                                     p { class: "text-4xl font-semibold tracking-tight text-amber-300 tabular-nums", "{value}" }
@@ -166,6 +155,5 @@ pub fn RewardsPanel() -> Element {
                         }
                     }
             }
-        }
     }
 }

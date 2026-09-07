@@ -107,7 +107,6 @@ impl Stage for ForwardStage {
                 )));
             }
         };
-        let base_url = candidate.base_url.clone();
         let provider_type = candidate.provider_type.clone();
         let extra_headers = crate::adapter::extra_headers_from_settings(&candidate.settings);
         // 流式由请求体的 `stream` 字段决定 —— 路径里的 "stream" 子串不是协议信号。

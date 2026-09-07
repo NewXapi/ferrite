@@ -1,6 +1,5 @@
 use chrono::{DateTime, Duration, Local, Utc};
 use dioxus::prelude::*;
-use ui::ScrollSpyNav;
 use ui::SegmentedCapsule;
 
 use crate::api;
@@ -118,21 +117,11 @@ pub fn UsageLogsPanel() -> Element {
     let total_len = filtered_logs.read().len();
 
     rsx! {
-        div { class: "pl-8",
-            ScrollSpyNav {
-                container: "panel-scroll",
-                items: vec![
-                    ({SEC_STATS}.to_string(), "usage-sec-stats".to_string()),
-                    ("筛选".to_string(), "usage-sec-filter".to_string()),
-                    ({SEC_LOGS}.to_string(), "usage-sec-logs".to_string()),
-                ],
-            }
-
                 div { class: "flex flex-col gap-6",
             // 统计卡 - 1/3/5 grid
             section { id: "usage-sec-stats", class: "scroll-mt-8 space-y-3",
                 h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
-                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                 for &(value, label) in stats {
                     StatCard { value, label }
                 }
@@ -173,7 +162,7 @@ pub fn UsageLogsPanel() -> Element {
             // 日志卡片网格(宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏)
             section { id: "usage-sec-logs", class: "scroll-mt-8 space-y-3",
                 h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LOGS}" }
-                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                     for log in displayed_logs {
                         LogCard {
                             key: "{log.id}",
@@ -212,7 +201,6 @@ pub fn UsageLogsPanel() -> Element {
                     on_close: move |_| detail.set(None),
                 }
             }
-        }
         }
     }
 }

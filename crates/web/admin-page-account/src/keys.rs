@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use ui::ScrollSpyNav;
 
 use crate::api::{self, ApiKey};
 
@@ -32,18 +31,6 @@ pub fn KeysPanel() -> Element {
     let profile = api::fetch_profile();
     let keys = api::fetch_keys();
     rsx! {
-        div {
-            class: "pl-8",
-
-            ScrollSpyNav {
-                container: "panel-scroll",
-                items: vec![
-                    ({SEC_STATS}.to_string(), "keys-sec-stats".to_string()),
-                    ({SEC_PROFILE}.to_string(), "keys-sec-profile".to_string()),
-                    ({SEC_KEYS}.to_string(), "keys-sec-keys".to_string()),
-                ],
-            }
-
             div { class: "flex flex-col gap-6",
 
                     // 1. 统计区
@@ -52,7 +39,7 @@ pub fn KeysPanel() -> Element {
                         class: "scroll-mt-8 space-y-3",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                         // 宽度约定:总栅格 = 手机 1 栏 / 平板 3 栏 / Web 5 栏,所有卡片各占 1 栏。
-                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             for (i, &(value, label)) in stats.iter().enumerate() {
                                 if i == 0 && live_token_count.read().is_some() {
                                     StatCard { value: live_token_count.read().unwrap().to_string(), label: label.to_string() }
@@ -68,7 +55,7 @@ pub fn KeysPanel() -> Element {
                         id: "keys-sec-profile",
                         class: "scroll-mt-8 space-y-3",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
-                        div { class: "grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5",
+                        div { class: "grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5",
                             // 个人资料卡 (占 3 栏)
                             div { class: "md:col-span-2 xl:col-span-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
                                 div { class: "flex items-start justify-between",
@@ -117,7 +104,7 @@ pub fn KeysPanel() -> Element {
                             }
 
                             // 密钥卡片网格:卡片各占 1 栏 → 手机 1 张/排,平板 3 张/排,Web 5 张/排。
-                            div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                            div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                                 for key in keys {
                                     KeyCard { entry: key }
                                 }
@@ -139,7 +126,6 @@ pub fn KeysPanel() -> Element {
                     }
                 }
             }
-        }
     }
 }
 
@@ -205,15 +191,15 @@ fn KeyCard(entry: &'static ApiKey) -> Element {
 
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
                     "编辑"
                 }
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-amber-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
                     "停用"
                 }
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-zinc-400 transition-colors hover:bg-red-950 hover:text-red-400",
+                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
                     "删除"
                 }
             }

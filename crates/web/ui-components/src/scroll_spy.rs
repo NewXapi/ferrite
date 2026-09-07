@@ -105,8 +105,8 @@ pub fn ScrollSpyNav(
 
     rsx! {
         nav {
-            class: "fixed left-9 top-[15%] z-30 flex-col items-center sm:left-11",
-            class: if can_scroll() { "flex" } else { "hidden" },
+            class: "hidden xl:flex fixed left-5 top-[20%] z-30 flex-col items-center",
+            class: if can_scroll() { "xl:flex" } else { "hidden" },
             onwheel: move |e: WheelEvent| {
                 use dioxus::html::geometry::WheelDelta;
                 e.prevent_default();
@@ -123,7 +123,7 @@ pub fn ScrollSpyNav(
             for (i, (label, target)) in items.iter().enumerate() {
                 if i > 0 {
                     // 点间短线,两端不留线头
-                    div { class: "my-1 h-2 w-px bg-zinc-700" }
+                    div { class: "my-1 h-2 w-px bg-zinc-800" }
                 }
                 {
                     let target_id = target.clone();
@@ -131,7 +131,7 @@ pub fn ScrollSpyNav(
                     rsx! {
                         button {
                             key: "{label}",
-                            class: "group relative flex items-center",
+                            class: "group relative flex items-center p-1",
                             "aria-label": "{label}",
                             onclick: move |_| {
                                 let _ = document::eval(&format!(
@@ -140,12 +140,12 @@ pub fn ScrollSpyNav(
                             },
                             span {
                                 class: if on {
-                                    "block h-6 w-1.5 rounded-full bg-zinc-100 transition-all"
+                                    "block h-6 w-1.5 rounded-full bg-zinc-400 shadow-sm ring-1 ring-white/10 transition-all"
                                 } else {
-                                    "block h-2.5 w-2.5 rounded-full bg-zinc-500 transition-all group-hover:bg-zinc-300"
+                                    "block h-2 w-2 rounded-full bg-zinc-700/60 transition-all group-hover:bg-zinc-400"
                                 }
                             }
-                            span { class: "pointer-events-none absolute left-4 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-opacity group-hover:opacity-100",
+                            span { class: "spy-tooltip pointer-events-none absolute left-6 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 shadow-xl z-50",
                                 "{label}"
                             }
                         }
