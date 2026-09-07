@@ -76,13 +76,19 @@ pub async fn forward_once(
         _ => Protocol::OpenAi,
     };
     // 中枢格式语义: ferrite 入站统一 OpenAI Chat Completions, 由 target 决定上游协议。
-    let source = Protocol::OpenAi;
-    let codec = adaptors.resolve(source, upstream_protocol);
-    let body = match codec.as_ref() {
+    //
+    // 两个方向各要一个 codec: `Codec` 是有向的 (ClaudeCodec 的 to_claude 决定它
+    // 只做请求或只做响应), 用请求 codec 转响应会拿到 Unsupported。
+    let request_codec = adaptors.resolve(Protocol::OpenAi, upstream_protocol);
+    let response_codec = adaptors.resolve(upstream_protocol, Protocol::OpenAi);
+    // 公开别名 → 上游真名: 必须在协议转换之前改, 否则各家 codec 已把 model
+    // 搬进自己的字段位置, 再改就得按协议分别处理。
+    let body = rewrite_upstream_model(&task.body, &task.candidate.upstream_model);
+    let body = match request_codec.as_ref() {
         Some(c) => c
-            .adapt_request(task.body.clone())
+            .adapt_request(body)
             .map_err(|e| protocol_bridge_error(e, 400, false))?,
-        None => capture_prompt_body(&task.body),
+        None => capture_prompt_body(&body),
     };
 
     let resp = egress
@@ -93,7 +99,7 @@ pub async fn forward_once(
     let content_type = resp.content_type().to_string();
 
     // 上游厂商协议 → 客户端协议 (protocol-bridge)。流式逐 chunk 转、非流式整 body 转。
-    let codec_arc = codec.clone();
+    let codec_arc = response_codec.clone();
     let adapt_stream =
         |stream: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>>| {
             let mapped: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
@@ -136,7 +142,7 @@ pub async fn forward_once(
                 });
             }
         };
-        match codec.as_ref() {
+        match response_codec.as_ref() {
             Some(c) => match c.adapt_response(bytes) {
                 Ok(chunks) => Box::pin(futures_util::stream::iter(chunks.into_iter().map(Ok)))
                     as std::pin::Pin<
@@ -223,4 +229,41 @@ impl Pipeline for ReqwestPipeline {
 /// TODO(#334): 与 metering::estimate_prompt_tokens 对接。
 pub fn capture_prompt_body(body: &bytes::Bytes) -> bytes::Bytes {
     body.clone()
+}
+
+/// 把请求体的 `model` 改写为上游真名。
+///
+/// 路由单元把公开别名 (`gpt-4`) 映射到上游真名 (`gpt-4-0613`); 客户端发的是
+/// 别名, 上游只认真名, 所以发送前必须改这一个字段。
+///
+/// 原样返回 (零拷贝 clone, 不重新序列化) 的情况:
+/// - `upstream_model` 为空 —— 没有目标真名;
+/// - 请求体非 JSON 或顶层不是对象 —— 没有可靠的改写位置;
+/// - 没有 `model` 字段 —— 不是聊天类请求;
+/// - `model` 已经等于真名 —— 无需改写, 且必须保持字节保真 (透传语义)。
+pub fn rewrite_upstream_model(body: &bytes::Bytes, upstream_model: &str) -> bytes::Bytes {
+    if upstream_model.is_empty() {
+        return body.clone();
+    }
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return body.clone();
+    };
+    let Some(obj) = json.as_object_mut() else {
+        return body.clone();
+    };
+    // 已经是真名 (含"公开名 == 真名"的常见情形) → 不动字节, 保住透传保真。
+    match obj.get("model").and_then(|v| v.as_str()) {
+        Some(current) if current == upstream_model => return body.clone(),
+        Some(_) => {}
+        // 无 model 字段 = 非聊天类请求, 不凭空插入。
+        None => return body.clone(),
+    }
+    obj.insert(
+        "model".to_string(),
+        serde_json::Value::String(upstream_model.to_string()),
+    );
+    match serde_json::to_vec(&json) {
+        Ok(v) => bytes::Bytes::from(v),
+        Err(_) => body.clone(),
+    }
 }

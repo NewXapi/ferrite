@@ -13,7 +13,10 @@ use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
 
-/// 构造 axum Router，把 Pipeline 接到 fallback
+/// 构造 axum Router：`/healthz` 独立成路由，其余全部落到 pipeline 的 fallback。
+///
+/// `/healthz` 必须绕开 pipeline：链首是 gate，任何没带合法 key 的请求都会被
+/// `AuthGate` 判 401，健康检查也不例外。它只报进程活着，不体现上游可用性。
 pub fn build_router(pipeline: Arc<Pipeline>) -> axum::Router {
     async fn dispatch(
         State(pipeline): State<Arc<Pipeline>>,
@@ -29,7 +32,14 @@ pub fn build_router(pipeline: Arc<Pipeline>) -> axum::Router {
         }
     }
 
-    axum::Router::new().fallback(dispatch).with_state(pipeline)
+    async fn healthz() -> Response {
+        axum::Json(json!({ "status": "ok" })).into_response()
+    }
+
+    axum::Router::new()
+        .route("/healthz", axum::routing::get(healthz))
+        .fallback(dispatch)
+        .with_state(pipeline)
 }
 
 /// 错误 → HTTP 响应（OpenAI 错误形状）

@@ -85,6 +85,28 @@ cargo test -p forward -p gateway-protocol-bridge
 cargo test -p metering
 ```
 
+## MVP：单机 standalone 组装
+
+`apps/gateway` 从 `config/config.toml` 直接构造数据面快照，不依赖 Postgres、
+`admin-sync` 与计费。渠道与本地 key 写在配置里，进程启动即可转发。
+
+- `[[channels]]` → `dispatch::Snapshot`（`ChannelRecord` + `RouteUnitRecord`）。
+- `[[keys]]` → `gateway_gate::snapshot::TokenSnapshot` / `UserSnapshot`。
+- `SelectedRoute` 就是 `dispatch::Candidate`（后者是前者的别名）：secret /
+  upstream_model / provider_type / settings 随选路一次解析完，`forward` 不查快照。
+- `stream` 取自请求体的 `stream` 字段，不按 URL 路径猜。
+- 公开别名经 `forward::pipeline::rewrite_upstream_model` 换成上游真名。
+- 请求与响应各查自己方向的 codec：`Codec` 有向，跨协议渠道两头都要转。
+- `QuotaGate` 只在 `[metering.prices]` 非空时挂上：额度快照为空时它会恒判 402。
+- `/healthz` 绕开 gate 链，否则健康检查也会被判 401。
+
+### 验收
+
+```sh
+cargo check -p gateway
+cargo test -p gateway --test config_wiring
+```
+
 ## 后续 crate
 
 - `proxy/`：渠道出口代理、SSRF、HTTP CONNECT、SOCKS5。

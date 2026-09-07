@@ -44,3 +44,4 @@ uuid = { workspace = true, features = ["v7"] }
 thiserror = { workspace = true }
 anyhow = "1"
 futures-util = { workspace = true }
+hex = { workspace = true }

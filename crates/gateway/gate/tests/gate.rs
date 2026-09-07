@@ -453,7 +453,8 @@ async fn graylist_blocks_after_streak_threshold() {
 async fn concurrency_blocks_when_slots_full() {
     let state = Arc::new(ConcurrencyState::default());
     let gate = ConcurrencyGate::new(state.clone());
-    let channel = 42i64;
+    // 槽位按 channel_key 索引（对齐 RouteUnitRecord.channel_key），不是数字 id。
+    let channel = "ch-42";
     gate.register_channel(channel, 1);
 
     let h1 = gate.try_hold(channel).expect("slot 1");

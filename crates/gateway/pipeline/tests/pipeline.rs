@@ -137,6 +137,35 @@ fn pipeline_stream_terminates_immediately() {
     assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
 }
 
+/// 流式响应必须带 `content-type`。
+///
+/// SSE 客户端（OpenAI / Anthropic SDK）靠 `text/event-stream` 判定要按事件流读；
+/// 缺了它客户端会把响应当普通 body 一次收完，流式体验退化成阻塞等待。
+/// 回归：`PipeStream::into_response` 曾用 `Response::new` 直接包 body，丢掉了头。
+#[test]
+fn pipe_stream_response_carries_content_type() {
+    let sse = PipeStream::new(axum::body::Body::from("data: {}\n\n"));
+    let resp = sse.into_response();
+    assert_eq!(
+        resp.headers().get(http::header::CONTENT_TYPE).unwrap(),
+        "text/event-stream",
+        "默认构造应给 SSE 类型"
+    );
+
+    // 上游的类型原样带回（非 SSE 的流式响应也要保真）。
+    let json = PipeStream::with_content_type(
+        axum::body::Body::from("{}"),
+        "application/json; charset=utf-8",
+    );
+    assert_eq!(
+        json.into_response()
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .unwrap(),
+        "application/json; charset=utf-8"
+    );
+}
+
 // ---------- 错误短路 ----------
 
 struct ErrStage;

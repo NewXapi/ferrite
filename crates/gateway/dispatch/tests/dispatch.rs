@@ -273,6 +273,8 @@ fn retry_loop_succeeds_after_one_failover() {
                 secret: "s".into(),
                 base_url: "https://u".into(),
                 upstream_model: "m".into(),
+                provider_type: "openai".into(),
+                settings: serde_json::Value::Null,
             })
         },
         |_: &dispatch::candidate::Candidate| {
@@ -312,6 +314,8 @@ fn retry_loop_exhausts_budget_with_retryable() {
                 secret: "s".into(),
                 base_url: "https://u".into(),
                 upstream_model: "m".into(),
+                provider_type: "openai".into(),
+                settings: serde_json::Value::Null,
             })
         },
         |_: &dispatch::candidate::Candidate| async {
@@ -340,6 +344,8 @@ fn retry_loop_fatal_stops_immediately() {
                 secret: "s".into(),
                 base_url: "https://u".into(),
                 upstream_model: "m".into(),
+                provider_type: "openai".into(),
+                settings: serde_json::Value::Null,
             })
         },
         |_: &dispatch::candidate::Candidate| {

@@ -117,3 +117,146 @@ fn build_app_accepts_config() {
     let cfg = load_toml("[dispatch]\ncooldown_threshold = 1\n");
     let _router = gateway::build_app(&cfg);
 }
+
+/// `[[channels]]` 必须真的变成可选中的路由：dispatch 用 `(group, model)` 查候选，
+/// 并且 `upstream_models` 的映射要生效——上游收到的是真名而非公开别名。
+#[test]
+fn channels_config_drives_selectable_routes() {
+    use dispatch::Dispatch;
+
+    let cfg = load_toml(
+        r#"
+[[channels]]
+name = "primary"
+base_url = "https://primary.example"
+api_key = "sk-primary"
+models = ["gpt-4o", "gpt-4"]
+upstream_models = { "gpt-4" = "gpt-4-0613" }
+
+[[channels]]
+name = "claude-ch"
+provider_type = "claude"
+base_url = "https://claude.example"
+api_key = "sk-claude"
+models = ["claude-sonnet"]
+"#,
+    );
+
+    let snapshot = gateway::load_snapshot(&cfg);
+    assert_eq!(
+        snapshot.units.len(),
+        3,
+        "两个渠道共 3 个公开模型 → 3 条路由单元"
+    );
+    assert_eq!(snapshot.channels.len(), 2);
+
+    let dispatcher = dispatch::Dispatcher::new(
+        Some(snapshot),
+        std::sync::Arc::new(dispatch::MemoryHealthTable::new()),
+    );
+
+    // 无映射的模型：上游真名等于公开名，凭据取自所属渠道。
+    let picked = dispatcher
+        .select("default", "gpt-4o", &[])
+        .expect("应选中 primary");
+    assert_eq!(picked.base_url, "https://primary.example");
+    assert_eq!(picked.secret, "sk-primary");
+    assert_eq!(picked.upstream_model, "gpt-4o");
+    assert_eq!(
+        picked.provider_type, "openai",
+        "未指定 provider_type 应缺省 openai"
+    );
+
+    // 有映射的模型：发往上游的是真名，客户端看到的仍是公开别名。
+    let mapped = dispatcher
+        .select("default", "gpt-4", &[])
+        .expect("应选中 primary");
+    assert_eq!(mapped.upstream_model, "gpt-4-0613");
+
+    // provider_type 随渠道走，决定 forward 的鉴权头与路径模板。
+    let claude = dispatcher
+        .select("default", "claude-sonnet", &[])
+        .expect("应选中 claude-ch");
+    assert_eq!(claude.provider_type, "claude");
+    assert_eq!(claude.secret, "sk-claude");
+
+    // 配置里没有的模型选不出候选。
+    assert!(dispatcher.select("default", "not-configured", &[]).is_err());
+}
+
+/// `[[keys]]` 必须能被 `AuthGate` 的 sha256 查表命中，且 `allowed_models`
+/// 为空时存 `None`（= 不限制），非空时原样保留供 `ModelGate` 比对。
+#[test]
+fn keys_config_drives_token_lookup() {
+    let cfg = load_toml(
+        r#"
+[[keys]]
+key = "sk-local-alpha"
+name = "alpha"
+
+[[keys]]
+key = "sk-local-beta"
+group = "vip"
+allowed_models = ["gpt-4*"]
+"#,
+    );
+
+    let (tokens, users) = gateway::config::build_token_snapshot(&cfg.keys);
+
+    // 查表口径就是 gate 用的 sha256(明文)。
+    let alpha = tokens
+        .lookup(&gateway_gate::sha256("sk-local-alpha"))
+        .expect("明文 key 的 sha256 应命中");
+    assert!(
+        alpha.allowed_models.is_none(),
+        "空 allowed_models 应为 None = 不限制"
+    );
+
+    let beta = tokens
+        .lookup(&gateway_gate::sha256("sk-local-beta"))
+        .expect("第二把 key 也应命中");
+    assert_eq!(
+        beta.allowed_models.as_deref(),
+        Some(["gpt-4*".to_string()].as_slice())
+    );
+    assert_eq!(beta.record.group.as_deref(), Some("vip"));
+
+    // 未配置的 key 查不到 → AuthGate 返回 401。
+    assert!(
+        tokens
+            .lookup(&gateway_gate::sha256("sk-not-configured"))
+            .is_none()
+    );
+
+    // StateGate 要用 token.user_key 查到启用的用户，否则恒 401 UserNotFound。
+    let user = users
+        .lookup(&alpha.record.user_key)
+        .expect("token 指向的用户必须存在");
+    assert_eq!(user.status, 1, "本地用户必须是启用状态");
+}
+
+/// 空配置不 panic，产出空快照：转发请求 404 no_route、鉴权 401，而不是崩溃。
+#[test]
+fn empty_channels_and_keys_yield_empty_snapshots() {
+    let cfg = load_toml("");
+    let snapshot = gateway::load_snapshot(&cfg);
+    assert!(snapshot.units.is_empty());
+    assert!(snapshot.channels.is_empty());
+
+    let (tokens, _users) = gateway::config::build_token_snapshot(&cfg.keys);
+    assert!(tokens.lookup(&gateway_gate::sha256("anything")).is_none());
+}
+
+/// 额度闸只在计费模式挂上。`QuotaSnapshot::remaining` 对未登记 token 返回 0，
+/// 单机不计费时若挂了 `QuotaGate`，每个请求都会被判 402。
+#[test]
+fn quota_gate_mounts_only_when_priced() {
+    let bare = load_toml("");
+    let priced =
+        load_toml("[metering.prices.\"gpt-4o\"]\ninput = 1.0\noutput = 2.0\ncache = 0.5\n");
+    assert_eq!(
+        gateway::build_gates(&priced).len(),
+        gateway::build_gates(&bare).len() + 1,
+        "计费模式应多挂一道额度闸"
+    );
+}
