@@ -171,7 +171,7 @@ pub fn SystemPage() -> Element {
     let mut contact_info = use_signal(|| "admin@ferrite.dev".to_string());
 
     // 开关状态存储 (HashMap)
-    let mut toggles = use_signal(|| {
+    let toggles = use_signal(|| {
         let mut m = std::collections::HashMap::<&'static str, bool>::new();
         m.insert("站点公告", true);
         m.insert("基础认证", true);
