@@ -17,6 +17,7 @@ rand           = { workspace = true }
 tokio          = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "net"] }
 async-trait    = "0.1"
 memchr         = "2"
+bytes          = { workspace = true }
 tracing        = { workspace = true }
 url            = "2"
 percent-encoding = "2"
@@ -31,3 +32,8 @@ parking_lot = "0.12"
 webpki-roots = "0.26"
 subtle = "2"
 futures = "0.3"
+# PR3: VMess/VLESS/WebSocket 协议栈（shoes 移植）
+sha2 = "0.10"
+shake = "0.1"
+uuid = { version = "1", features = ["serde", "v4"] }
+base64 = "0.21"
