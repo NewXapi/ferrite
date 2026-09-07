@@ -31,7 +31,7 @@ pub struct SignInPayload {
 
 #[component]
 pub fn SignInForm(submit: EventHandler<SignInPayload>) -> Element {
-    let mut error = use_context::<SubmitState>().error;
+    let error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut password = use_signal(String::new);
 

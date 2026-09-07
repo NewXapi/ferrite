@@ -80,8 +80,8 @@ pub fn AuthPage() -> Element {
         spawn(async move {
             let client = ApiClient::shared().clone();
             // 注册成功后自动登录拿 access_token（register 本身只回 SelfView）
-            if payload.register {
-                if let Err(e) = api::register_api(
+            if payload.register
+                && let Err(e) = api::register_api(
                     &client,
                     &contract_auth::RegisterRequest {
                         username: payload.username.clone(),
@@ -90,11 +90,10 @@ pub fn AuthPage() -> Element {
                     },
                 )
                 .await
-                {
-                    state.busy.set(false);
-                    state.error.set(Some(e.to_string()));
-                    return;
-                }
+            {
+                state.busy.set(false);
+                state.error.set(Some(e.to_string()));
+                return;
             }
             let result = api::login_api(
                 &client,
