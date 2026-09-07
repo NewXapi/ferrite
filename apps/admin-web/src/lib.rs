@@ -3,7 +3,7 @@ pub mod app;
 pub mod retro;
 pub use app::RootApp;
 
-use app::{current_hash, is_auth_hash};
+use app::current_hash;
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
