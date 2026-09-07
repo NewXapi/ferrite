@@ -122,10 +122,16 @@ impl ChannelConfig {
             return Err("ChannelConfig.name 不能为空".into());
         }
         if self.base_url.is_empty() {
-            return Err(format!("ChannelConfig \"{}\" 的 base_url 不能为空", self.name));
+            return Err(format!(
+                "ChannelConfig \"{}\" 的 base_url 不能为空",
+                self.name
+            ));
         }
         if self.api_key.is_empty() {
-            return Err(format!("ChannelConfig \"{}\" 的 api_key 不能为空", self.name));
+            return Err(format!(
+                "ChannelConfig \"{}\" 的 api_key 不能为空",
+                self.name
+            ));
         }
         if !["openai", "claude", "gemini", "passthrough"].contains(&self.provider_type.as_str()) {
             return Err(format!(
@@ -213,7 +219,10 @@ const LOCAL_USER_KEY: &str = "local";
 const CONFIG_ORIGIN: &str = "config";
 
 /// 构造 `SyncMeta`（带统一时间戳），确保快照内所有记录时间一致。
-fn config_meta_with_time(key: impl Into<String>, updated_at: chrono::DateTime<chrono::Utc>) -> SyncMeta {
+fn config_meta_with_time(
+    key: impl Into<String>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+) -> SyncMeta {
     SyncMeta {
         key: key.into(),
         schema_version: 1,
