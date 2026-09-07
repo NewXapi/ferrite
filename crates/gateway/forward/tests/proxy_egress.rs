@@ -87,11 +87,30 @@ fn make_ctx(route: Option<SelectedRoute>) -> gateway_pipeline::RequestCtx {
 }
 
 fn route_for(key: &str, base: &str) -> SelectedRoute {
-    SelectedRoute {
-        channel_id: 0,
+    let unit = contract::records::RouteUnitRecord {
+        meta: contract::records::SyncMeta {
+            key: format!("unit-{key}"),
+            schema_version: contract::SCHEMA_VERSION,
+            logical_version: 1,
+            origin: "test".into(),
+            updated_at: chrono::Utc::now(),
+        },
+        group: "default".into(),
+        public_model: "gpt-4o".into(),
         channel_key: key.into(),
-        api_type: 0,
+        key_index: 0,
+        upstream_model: "gpt-4o".into(),
+        priority: 10,
+        weight: 10,
+        status: 1,
+    };
+    SelectedRoute {
+        unit,
+        secret: "sk-test".into(),
         base_url: base.into(),
+        upstream_model: "gpt-4o".into(),
+        provider_type: "openai".into(),
+        settings: serde_json::Value::Null,
     }
 }
 
