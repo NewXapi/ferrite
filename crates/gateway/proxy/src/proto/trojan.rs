@@ -75,10 +75,6 @@ fn create_password_hash(password: &str) -> Box<[u8]> {
         hex_bytes.push(if hi < 10 { b'0' + hi } else { b'a' + hi - 10 });
         hex_bytes.push(if lo < 10 { b'0' + lo } else { b'a' + lo - 10 });
     }
-    debug_assert_eq!(
-        hex_bytes.len(),
-        56,
-        "SHA224 hex must be 56 ASCII chars"
-    );
+    debug_assert_eq!(hex_bytes.len(), 56, "SHA224 hex must be 56 ASCII chars");
     hex_bytes.into_boxed_slice()
 }
