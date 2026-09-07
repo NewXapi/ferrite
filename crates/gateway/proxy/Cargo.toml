@@ -17,6 +17,7 @@ rand           = { workspace = true }
 tokio          = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "net"] }
 async-trait    = "0.1"
 memchr         = "2"
+tracing        = { workspace = true }
 url            = "2"
 percent-encoding = "2"
 # PR2: SS/Trojan 协议栈（shoes 移植）

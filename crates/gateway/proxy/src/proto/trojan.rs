@@ -68,15 +68,17 @@ impl ProxyConnector for TrojanTcpClientHandler {
 fn create_password_hash(password: &str) -> Box<[u8]> {
     let digest = aws_lc_rs::digest::digest(&SHA224, password.as_bytes());
     let hash_bytes = digest.as_ref();
-    let mut hex_str = String::with_capacity(hash_bytes.len() * 2);
+    let mut hex_bytes = Vec::with_capacity(hash_bytes.len() * 2);
     for b in hash_bytes {
-        hex_str.push_str(&format!("{b:02x}"));
+        let hi = b >> 4;
+        let lo = b & 0x0f;
+        hex_bytes.push(if hi < 10 { b'0' + hi } else { b'a' + hi - 10 });
+        hex_bytes.push(if lo < 10 { b'0' + lo } else { b'a' + lo - 10 });
     }
-    let hex_bytes = hex_str.into_bytes().into_boxed_slice();
-    assert_eq!(
+    debug_assert_eq!(
         hex_bytes.len(),
         56,
-        "Invalid password hash length, expected 56"
+        "SHA224 hex must be 56 ASCII chars"
     );
-    hex_bytes
+    hex_bytes.into_boxed_slice()
 }
