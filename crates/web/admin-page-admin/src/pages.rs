@@ -2,7 +2,7 @@
 //! (手机 1 栏 / 平板 3 栏 / 桌面 5 栏)。交互对齐 new-api 对应功能区:
 //! 渠道的状态速览/编辑/调度/批量,别名的计费,订阅与兑换码的生成与审计。
 //!
-//! 数据全走 `state::EntityStore` 的初始 mock 值在 api.rs 中获取；接 API 时把初始值换成请求结果即可。
+//! 数据全走 `state::EntityStore`(mock);接 API 时把初始值换成请求结果即可。
 //!
 //! 布局约定(与项目 gate-checklist 一致):
 //! - 桌面端面板间用「分隔线 + 独占行」表达从属关系,不占标签页;
@@ -100,7 +100,7 @@ pub fn SubscriptionsPage() -> Element {
     let mut editing_idx = use_signal(|| None::<usize>);
 
     // 基本信息表单字段
-    let mut f_id = use_signal(|| 0i32);
+    let mut f_id = use_signal(|| 0u32);
     let mut f_title = use_signal(String::new);
     let mut f_subtitle = use_signal(String::new);
     let mut f_price = use_signal(|| "0".to_string());
@@ -202,7 +202,7 @@ pub fn SubscriptionsPage() -> Element {
             period_val: f_period_val
                 .peek()
                 .trim()
-                .parse::<i32>()
+                .parse::<u32>()
                 .unwrap_or(1)
                 .max(1),
             period_unit: f_period_unit(),
@@ -211,7 +211,7 @@ pub fn SubscriptionsPage() -> Element {
             enabled: f_enabled(),
             allow_redeem: f_allow_redeem(),
             allow_wallet: f_allow_wallet(),
-            max_per_user: f_limit.peek().trim().parse::<i32>().unwrap_or(0),
+            max_per_user: f_limit.peek().trim().parse::<u32>().unwrap_or(0),
             sort_order: f_sort.peek().trim().parse::<i32>().unwrap_or(0),
             stripe_price_id: f_stripe_id.peek().trim().to_string(),
             creem_product_id: f_creem_id.peek().trim().to_string(),

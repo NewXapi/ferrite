@@ -56,10 +56,10 @@ pub fn ChannelsPage() -> Element {
     let disabled_count = channel_list.iter().filter(|c| c.status != 1).count();
 
     // 计算有测试延迟的渠道平均值
-    let measured_latencies: Vec<i32> = channel_list.iter().filter_map(|c| c.latency_ms).collect();
+    let measured_latencies: Vec<u32> = channel_list.iter().filter_map(|c| c.latency_ms).collect();
     let avg_latency = if !measured_latencies.is_empty() {
-        let sum: i32 = measured_latencies.iter().sum();
-        format!("{}ms", sum / (measured_latencies.len() as i32))
+        let sum: u32 = measured_latencies.iter().sum();
+        format!("{}ms", sum / (measured_latencies.len() as u32))
     } else {
         "—".to_string()
     };
@@ -146,7 +146,7 @@ pub fn ChannelsPage() -> Element {
         spawn(async move {
             gloo_timers::future::TimeoutFuture::new(500).await;
             if idx < ch.read().len() {
-                ch.write()[idx].latency_ms = Some(ms.min(i32::MAX as u32) as i32);
+                ch.write()[idx].latency_ms = Some(ms);
             }
             testing_idx.set(None);
         });
@@ -160,7 +160,7 @@ pub fn ChannelsPage() -> Element {
         spawn(async move {
             for i in 0..count {
                 let ms = 110 + ((n.wrapping_add(i as u32)).wrapping_mul(73) % 420);
-                ch.write()[i].latency_ms = Some(ms.min(i32::MAX as u32) as i32);
+                ch.write()[i].latency_ms = Some(ms);
             }
         });
     };

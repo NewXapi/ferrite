@@ -15,24 +15,9 @@ pub fn OverviewPanel() -> Element {
     // ponytail: full UI overhaul to add breakdown cards for all timeframes in one go.
     let timeframe = use_signal(|| "今天"); // "今天", "本周", "本月", "今年"
 
-    // ponytail: live summary from /api/dashboard; fallback to timeframe mock on failure
-    let mut live_stats = use_signal(Vec::<(String, String)>::new);
-    use_hook(move || {
-        spawn(async move {
-            let client = client::ApiClient::new();
-            if let Ok(d) = api::get_dashboard_summary_api(&client).await {
-                live_stats.set(vec![
-                    (d.users.to_string(), "总用户数".to_string()),
-                    (d.tokens.to_string(), "总密钥数".to_string()),
-                    (d.channels.to_string(), "总渠道数".to_string()),
-                    (d.channels_enabled.to_string(), "启用渠道".to_string()),
-                    (d.requests_today.to_string(), "今日请求".to_string()),
-                ]);
-            }
-        });
-    });
-
+    // Get the stats for the currently selected timeframe
     let (stats, user_stats, model_stats) = api::overview::fetch_timeframe_stats(timeframe());
+
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
             // 用量趋势大面板(含时间窗切换)
@@ -43,14 +28,8 @@ pub fn OverviewPanel() -> Element {
 
             // Top-level stats
             section { class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5",
-                if live_stats.read().is_empty() {
-                    for &(value, label) in stats.iter() {
-                        StatCard { value: value.to_string(), label: label.to_string() }
-                    }
-                } else {
-                    for (value, label) in live_stats.read().clone() {
-                        StatCard { value, label }
-                    }
+                for &(value, label) in stats.iter() {
+                    StatCard { value, label }
                 }
             }
 
@@ -108,7 +87,7 @@ pub fn OverviewPanel() -> Element {
 
 /// Compact single-stat card occupying one grid column.
 #[component]
-fn StatCard(value: String, label: String) -> Element {
+fn StatCard(value: &'static str, label: &'static str) -> Element {
     rsx! {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/20 group cursor-default",
             p { class: "truncate text-base font-semibold text-zinc-100 transition-colors group-hover:text-white md:text-lg", "{value}" }

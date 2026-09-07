@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
 use crate::groups::{Badge, Modal, StatCard};
-use crate::state::{EntityStore, RedemptionRow as RedRow};
+use crate::state::{EntityStore, RedRow};
 
 /// 弹窗状态
 #[derive(Clone, PartialEq)]
@@ -140,8 +140,8 @@ pub fn RedemptionsPage() -> Element {
                 key: format!("{upper}-{code:04X}"),
                 quota: q,
                 status: 1,
-                created_at: "2026-09-01".into(),
-                expires_at: if days > 0 {
+                created: "2026-09-01".into(),
+                expired: if days > 0 {
                     format!("{days} 天后")
                 } else {
                     "永不过期".into()
@@ -312,7 +312,7 @@ fn RedemptionCard(
                 div { class: "flex flex-wrap gap-1.5",
                     Badge { text: status_text.to_string(), tone: status_tone }
                     Badge { text: format!("面值 ¥{:.2}", item.quota), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-200 font-mono" }
-                    Badge { text: item.expires_at.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-400" }
+                    Badge { text: item.expired.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-400" }
                 }
 
                 // 额度有效条
@@ -334,11 +334,11 @@ fn RedemptionCard(
                     }
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 text-zinc-400", "生成日期" }
-                        span { class: "font-mono text-zinc-400", "{item.created_at}" }
+                        span { class: "font-mono text-zinc-400", "{item.created}" }
                     }
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 text-zinc-400", "有效期" }
-                        span { class: "font-medium text-zinc-300", "{item.expires_at}" }
+                        span { class: "font-medium text-zinc-300", "{item.expired}" }
                     }
                 }
             }

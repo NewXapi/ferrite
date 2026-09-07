@@ -16,20 +16,10 @@ pub fn KeysPanel() -> Element {
     let new_group = use_signal(|| "default".to_string());
     let new_quota = use_signal(|| "5000000".to_string());
 
-    // ponytail: live token count from /api/token; fallback to mock on failure
-    let mut live_token_count = use_signal(|| None::<usize>);
-    use_hook(move || {
-        spawn(async move {
-            let client = client::ApiClient::new();
-            if let Ok(tokens) = api::list_tokens_api(&client).await {
-                live_token_count.set(Some(tokens.len()));
-            }
-        });
-    });
-
     let stats = api::fetch_key_stats();
     let profile = api::fetch_profile();
     let keys = api::fetch_keys();
+
     rsx! {
             div { class: "flex flex-col gap-6",
 
@@ -40,12 +30,8 @@ pub fn KeysPanel() -> Element {
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                         // 宽度约定:总栅格 = 手机 1 栏 / 平板 3 栏 / Web 5 栏,所有卡片各占 1 栏。
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for (i, &(value, label)) in stats.iter().enumerate() {
-                                if i == 0 && live_token_count.read().is_some() {
-                                    StatCard { value: live_token_count.read().unwrap().to_string(), label: label.to_string() }
-                                } else {
-                                    StatCard { value: value.to_string(), label: label.to_string() }
-                                }
+                            for &(value, label) in stats {
+                                StatCard { value, label }
                             }
                         }
                     }
@@ -130,7 +116,7 @@ pub fn KeysPanel() -> Element {
 }
 
 #[component]
-fn StatCard(value: String, label: String) -> Element {
+fn StatCard(value: &'static str, label: &'static str) -> Element {
     rsx! {
         div {
             class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
