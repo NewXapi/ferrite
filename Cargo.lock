@@ -4505,6 +4505,7 @@ dependencies = [
  "axum",
  "bytes",
  "futures-util",
+ "harness-prompt",
  "reqwest",
  "serde",
  "serde_json",
@@ -4512,6 +4513,7 @@ dependencies = [
  "tavern-storage",
  "thiserror 2.0.20",
  "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -4607,7 +4609,9 @@ name = "tavern-state"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "harness-prompt",
  "serde",
+ "serde_json",
  "tavern-client",
 ]
 

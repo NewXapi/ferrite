@@ -16,4 +16,8 @@ tokio      = { workspace = true }
 reqwest    = { workspace = true }
 bytes      = { workspace = true }
 futures-util = { workspace = true }
+harness-prompt = { path = "../../harness/prompt" }
 axum       = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }

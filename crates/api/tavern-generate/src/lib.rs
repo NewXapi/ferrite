@@ -64,6 +64,20 @@ async fn generate(
     headers: HeaderMap,
     body: BytesBody,
 ) -> Response {
+    let bytes = body.0;
+
+    // R3 后端校验：含 `_ferrite_agent_prompt_marker` 的 payload 必须已物化。
+    // 非 marker payload 一律不校验，行为不变。
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
+        && value.as_object().map_or(false, |obj| {
+            obj.contains_key("_ferrite_agent_prompt_marker")
+        })
+    {
+        if let Err(e) = harness_prompt::reject_unfinalized_snapshot(&value) {
+            return bad_request(&e.to_string());
+        }
+    }
+
     let key = match tavern_secrets::read(&st.dirs.secrets_file(), "api_key_openai") {
         Ok(k) => k,
         Err(SecretError::Storage(_) | SecretError::Json(_)) => {
@@ -77,7 +91,7 @@ async fn generate(
     let mut req = st
         .http
         .post(url)
-        .body(body.0)
+        .body(bytes)
         .header("content-type", "application/json");
     if let Some(k) = key {
         req = req.bearer_auth(k);
@@ -110,6 +124,11 @@ async fn generate(
         .map(|r| r.map_err(std::io::Error::other));
     out.body(Body::from_stream(stream))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// 400 + JSON body `{"error": "<msg>"}`，Content-Type application/json。
+fn bad_request(msg: &str) -> Response {
+    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
 }
 
 /// 把请求体当原始字节收下，不解析。转发必须保真。
