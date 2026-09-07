@@ -1,0 +1,202 @@
+[
+  {
+    "id": 1,
+    "model": "gpt-oss-20b",
+    "prompt": "模型能力概览",
+    "status": 200,
+    "elapsed_ms": 7733.007110073231,
+    "prompt_tokens": 119,
+    "completion_tokens": 581,
+    "error": null
+  },
+  {
+    "id": 2,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "代码审查",
+    "status": 200,
+    "elapsed_ms": 19733.778427937068,
+    "prompt_tokens": 75,
+    "completion_tokens": 908,
+    "error": null
+  },
+  {
+    "id": 3,
+    "model": "gpt-oss-20b",
+    "prompt": "问题排查",
+    "status": 200,
+    "elapsed_ms": 11829.283429076895,
+    "prompt_tokens": 105,
+    "completion_tokens": 1151,
+    "error": null
+  },
+  {
+    "id": 4,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "结构化摘要",
+    "status": 200,
+    "elapsed_ms": 30416.06668906752,
+    "prompt_tokens": 64,
+    "completion_tokens": 1379,
+    "error": null
+  },
+  {
+    "id": 5,
+    "model": "gpt-oss-20b",
+    "prompt": "中文问答",
+    "status": 200,
+    "elapsed_ms": 44000.36583794281,
+    "prompt_tokens": 99,
+    "completion_tokens": 1796,
+    "error": null
+  },
+  {
+    "id": 6,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "工单信息抽取",
+    "status": 200,
+    "elapsed_ms": 42267.405478982255,
+    "prompt_tokens": 98,
+    "completion_tokens": 1122,
+    "error": null
+  },
+  {
+    "id": 7,
+    "model": "gpt-oss-20b",
+    "prompt": "用户向改写",
+    "status": 200,
+    "elapsed_ms": 14291.484848945402,
+    "prompt_tokens": 131,
+    "completion_tokens": 749,
+    "error": null
+  },
+  {
+    "id": 8,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "指标计算",
+    "status": 200,
+    "elapsed_ms": 41488.875432056375,
+    "prompt_tokens": 90,
+    "completion_tokens": 1080,
+    "error": null
+  },
+  {
+    "id": 9,
+    "model": "gpt-oss-20b",
+    "prompt": "发布风险评估",
+    "status": 200,
+    "elapsed_ms": 15336.819087038748,
+    "prompt_tokens": 127,
+    "completion_tokens": 582,
+    "error": null
+  },
+  {
+    "id": 10,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "JSON结构化输出",
+    "status": 200,
+    "elapsed_ms": 18368.126073968597,
+    "prompt_tokens": 96,
+    "completion_tokens": 587,
+    "error": null
+  },
+  {
+    "id": 11,
+    "model": "gpt-oss-20b",
+    "prompt": "模型能力概览",
+    "status": 200,
+    "elapsed_ms": 33280.24457208812,
+    "prompt_tokens": 119,
+    "completion_tokens": 1224,
+    "error": null
+  },
+  {
+    "id": 12,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "代码审查",
+    "status": 200,
+    "elapsed_ms": 37481.271086027846,
+    "prompt_tokens": 75,
+    "completion_tokens": 1645,
+    "error": null
+  },
+  {
+    "id": 13,
+    "model": "gpt-oss-20b",
+    "prompt": "问题排查",
+    "status": 200,
+    "elapsed_ms": 18495.21779792849,
+    "prompt_tokens": 105,
+    "completion_tokens": 649,
+    "error": null
+  },
+  {
+    "id": 14,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "结构化摘要",
+    "status": 599,
+    "elapsed_ms": 45044.837870053016,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "error": "timed out"
+  },
+  {
+    "id": 15,
+    "model": "gpt-oss-20b",
+    "prompt": "中文问答",
+    "status": 200,
+    "elapsed_ms": 20114.750704960898,
+    "prompt_tokens": 99,
+    "completion_tokens": 1463,
+    "error": null
+  },
+  {
+    "id": 16,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "工单信息抽取",
+    "status": 200,
+    "elapsed_ms": 44506.90310099162,
+    "prompt_tokens": 98,
+    "completion_tokens": 1591,
+    "error": null
+  },
+  {
+    "id": 17,
+    "model": "gpt-oss-20b",
+    "prompt": "用户向改写",
+    "status": 200,
+    "elapsed_ms": 10766.515484079719,
+    "prompt_tokens": 131,
+    "completion_tokens": 366,
+    "error": null
+  },
+  {
+    "id": 18,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "指标计算",
+    "status": 200,
+    "elapsed_ms": 44152.21988491248,
+    "prompt_tokens": 90,
+    "completion_tokens": 2293,
+    "error": null
+  },
+  {
+    "id": 19,
+    "model": "gpt-oss-20b",
+    "prompt": "发布风险评估",
+    "status": 200,
+    "elapsed_ms": 20174.261857988313,
+    "prompt_tokens": 127,
+    "completion_tokens": 758,
+    "error": null
+  },
+  {
+    "id": 20,
+    "model": "nemotron-3.5-lightning-30b",
+    "prompt": "JSON结构化输出",
+    "status": 200,
+    "elapsed_ms": 8252.40642495919,
+    "prompt_tokens": 96,
+    "completion_tokens": 727,
+    "error": null
+  }
+]

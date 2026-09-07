@@ -144,8 +144,8 @@ models = ["claude-sonnet"]
     let snapshot = gateway::load_snapshot(&cfg);
 
     // 行为断言：不关心内部 unit/channel 精确数量，只关心关键模型可选且正确。
-    assert!(snapshot.units.len() > 0, "配置了渠道应产出路由单元");
-    assert!(snapshot.channels.len() > 0, "配置了渠道应产出渠道记录");
+    assert!(!snapshot.units.is_empty(), "配置了渠道应产出路由单元");
+    assert!(!snapshot.channels.is_empty(), "配置了渠道应产出渠道记录");
 
     let dispatcher = dispatch::Dispatcher::new(
         Some(snapshot),
