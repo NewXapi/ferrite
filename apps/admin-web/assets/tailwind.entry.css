@@ -2,15 +2,88 @@
 @import "tailwindcss";
 
 /* 显式把 .rs 源加入扫描(v4 CLI 默认仅扫 html/js/ts/jsx/tsx/vue/svelte/astro)。*/
-@source "./src/**/*.rs";
-@source "../../../crates/admin-web/**/*.rs";
+/* 从 assets/ 到根目录: assets/ (1) -> apps/admin-web (2) -> apps (3) -> 根目录 */
+@source "../src/**/*.rs";
+@source "../../../crates/web/**/*.rs";
+
+html {
+  color-scheme: dark;
+}
+
 @layer base {
+  *, ::before, ::after {
+    box-sizing: border-box;
+  }
+  
   body {
-    background: #09090b;
-    color: #e4e4e7;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Inter", sans-serif;
+    background-color: #09090b;
+    color: #f4f4f5;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* 彻底重置原生表单控件，防止默认白色控件污染暗色主题 */
+  button {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+  }
+
+  input, textarea, select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-color: #09090b;
+    color: #f4f4f5;
+    font: inherit;
+  }
+
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    display: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 全局自定义极简半透明质感滚动条 */
+/* ------------------------------------------------------------------ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.16);
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.32);
+}
+
+/* Tooltip hidden until hover */
+.spy-tooltip {
+    display: none;
+}
+.group:hover .spy-tooltip {
+    display: block;
+}
+
 /* Leaderboard poster card flip */
 .poster-flip { perspective: 1200px; }
 .poster-flip-inner {

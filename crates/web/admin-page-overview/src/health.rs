@@ -46,7 +46,7 @@ pub fn HealthStats() -> Element {
     ];
 
     rsx! {
-        section { class: "grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4",
+        section { class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6",
             for s in stats {
                 div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80",
                     p { class: "text-[11px] font-medium uppercase tracking-wider text-zinc-500", "{s.label}" }

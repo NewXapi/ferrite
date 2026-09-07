@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use ui::{ScrollSpyNav, SegmentedCapsule};
+use ui::SegmentedCapsule;
 
 use crate::api::current_month_prefix;
 use crate::api::{self, User};
@@ -113,24 +113,13 @@ pub fn UsersPanel() -> Element {
     };
 
     rsx! {
-        div { class: "pl-8",
-
-            ScrollSpyNav {
-                container: "panel-scroll",
-                items: vec![
-                    ({SEC_STATS}.to_string(), "users-sec-stats".to_string()),
-                    ("筛选".to_string(), "users-sec-filter".to_string()),
-                    ({SEC_LIST}.to_string(), "users-sec-list".to_string()),
-                ],
-            }
-
             div { class: "flex flex-col gap-6",
 
                 // 1. 统计区
                 section { id: "users-sec-stats", class: "scroll-mt-8 space-y-3",
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                     // 宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏,每卡各占 1 栏。
-                    div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                    div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                         for (value, label) in stats {
                             StatCard { value, label }
                         }
@@ -151,8 +140,8 @@ pub fn UsersPanel() -> Element {
                     }
 
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-zinc-500",
-                        r#type: "search",
+                        class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
+                        r#type: "text",
                         placeholder: "搜索用户名或邮箱",
                         value: "{search}",
                         oninput: move |e| search.set(e.value()),
@@ -193,7 +182,7 @@ pub fn UsersPanel() -> Element {
                             p { class: "text-zinc-400", "没有匹配的用户" }
                         }
                     } else {
-                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5",
+                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             for user in filtered {
                                 UserCard {
                                     key: "{user.id}",
@@ -235,7 +224,6 @@ pub fn UsersPanel() -> Element {
                     }
                 }
             }
-        }
     }
 }
 
@@ -373,17 +361,17 @@ fn UserCard(
             // 操作区
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
                     onclick: move |_| on_edit.call(user.id),
                     "编辑"
                 }
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-emerald-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300",
                     onclick: move |_| on_topup.call(user.id),
                     "充值"
                 }
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700 py-1 text-[11px] text-amber-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
                     if user.status == 1 { {STATUS_DISABLED} } else { {STATUS_ENABLED} }
                 }
             }
