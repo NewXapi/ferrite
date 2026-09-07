@@ -9,6 +9,9 @@
 //! ponytail: 健康表只活在进程内；affinity / DB 持久化等需要时再加。
 use super::node::{ProxyNode, ProxyScheme};
 use super::pool::{ProxyPool, ProxySnapshot};
+use crate::proto::address::NetLocation;
+use crate::proto::proxy_connector::ProxyConnector;
+use crate::proto::shadowsocks::ShadowsocksCipher;
 use rand::seq::SliceRandom;
 use reqwest::redirect::Policy as RedirectPolicy;
 use std::collections::HashMap;
@@ -19,8 +22,25 @@ use std::time::{Duration, Instant};
 fn is_supported_scheme(scheme: ProxyScheme) -> bool {
     matches!(
         scheme,
-        ProxyScheme::Direct | ProxyScheme::Http | ProxyScheme::Socks5
+        ProxyScheme::Direct
+            | ProxyScheme::Http
+            | ProxyScheme::Socks5
+            | ProxyScheme::Shadowsocks
+            | ProxyScheme::Trojan
     )
+}
+
+/// 出口形态：reqwest 原生（direct/http/socks5）或协议连接器（ss/trojan）。
+///
+/// forward 层当前只消费 [`ProxyClient::Reqwest`]；Connector 变体供后续
+/// egress 桥接（握手建流 → hyper connector），本 PR 先保证类型正确与
+/// reqwest 路径零回归。
+#[derive(Clone)]
+pub enum ProxyClient {
+    /// reqwest 原生路径（Direct/Http/Socks5）。
+    Reqwest(Arc<reqwest::Client>),
+    /// 协议连接器路径（Shadowsocks/Trojan），拨号时由连接器完成握手。
+    Connector(Arc<dyn ProxyConnector>),
 }
 
 /// 一次上游尝试占用的出口 Client。
@@ -29,9 +49,22 @@ fn is_supported_scheme(scheme: ProxyScheme) -> bool {
 pub struct Lease {
     /// 选中的节点 id；`0` = 直连（无代理节点或全部冷却）。
     pub node_id: i64,
-    /// 已配置好代理（或直连）的 reqwest Client。
-    pub client: Arc<reqwest::Client>,
+    /// 出口形态。
+    pub client: Arc<ProxyClient>,
     release: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+impl Lease {
+    /// 返回 reqwest Client（仅 [`ProxyClient::Reqwest`] 变体）。
+    ///
+    /// Connector 变体返回 `None`——协议握手不走 reqwest，forward 层接入
+    /// connector 拨号属下一链路 PR。
+    pub fn reqwest_client(&self) -> Option<Arc<reqwest::Client>> {
+        match self.client.as_ref() {
+            ProxyClient::Reqwest(c) => Some(Arc::clone(c)),
+            ProxyClient::Connector(_) => None,
+        }
+    }
 }
 
 impl Drop for Lease {
@@ -52,6 +85,8 @@ struct NodeHealth {
 pub struct ProxyManager {
     pool: ProxyPool,
     direct_client: Arc<reqwest::Client>,
+    #[allow(clippy::type_complexity)]
+    connector_cache: Mutex<HashMap<(i64, u64), Arc<dyn ProxyConnector>>>,
     inflight: Arc<Mutex<HashMap<i64, u32>>>,
     client_cache: Mutex<HashMap<(i64, u64), Arc<reqwest::Client>>>,
     health: Mutex<HashMap<i64, NodeHealth>>,
@@ -71,6 +106,7 @@ impl ProxyManager {
             direct_client: Arc::new(build_client(None)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
             client_cache: Mutex::new(HashMap::new()),
+            connector_cache: Mutex::new(HashMap::new()),
             health: Mutex::new(HashMap::new()),
         }
     }
@@ -177,27 +213,83 @@ impl ProxyManager {
     fn direct_lease(&self) -> Lease {
         Lease {
             node_id: 0,
-            client: Arc::clone(&self.direct_client),
+            client: Arc::new(ProxyClient::Reqwest(Arc::clone(&self.direct_client))),
             release: None,
         }
     }
 
-    fn client_for(&self, node: &ProxyNode) -> Arc<reqwest::Client> {
-        if node.scheme == ProxyScheme::Direct {
-            return Arc::clone(&self.direct_client);
-        }
-        let fingerprint = fingerprint_of(node);
-        {
-            let cache = self.client_cache.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(client) = cache.get(&(node.id, fingerprint)) {
-                return Arc::clone(client);
+    fn client_for(&self, node: &ProxyNode) -> Arc<ProxyClient> {
+        match node.scheme {
+            // reqwest 原生路径
+            ProxyScheme::Direct | ProxyScheme::Http | ProxyScheme::Socks5 => {
+                if node.scheme == ProxyScheme::Direct {
+                    return Arc::new(ProxyClient::Reqwest(Arc::clone(&self.direct_client)));
+                }
+                let fingerprint = fingerprint_of(node);
+                {
+                    let cache = self.client_cache.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(client) = cache.get(&(node.id, fingerprint)) {
+                        return Arc::new(ProxyClient::Reqwest(Arc::clone(client)));
+                    }
+                }
+                let proxy = node.to_reqwest_proxy().ok().flatten();
+                let client = Arc::new(build_client(proxy));
+                let mut cache = self.client_cache.lock().unwrap_or_else(|e| e.into_inner());
+                cache.insert((node.id, fingerprint), Arc::clone(&client));
+                Arc::new(ProxyClient::Reqwest(client))
+            }
+            // 协议连接器路径（SS/Trojan）：构造并缓存连接器实例
+            ProxyScheme::Shadowsocks | ProxyScheme::Trojan => {
+                let fingerprint = fingerprint_of(node);
+                {
+                    let cache = self
+                        .connector_cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if let Some(conn) = cache.get(&(node.id, fingerprint)) {
+                        return Arc::new(ProxyClient::Connector(Arc::clone(conn)));
+                    }
+                }
+                let conn: Arc<dyn ProxyConnector> = match node.scheme {
+                    ProxyScheme::Shadowsocks => {
+                        let auth = node.auth.as_ref().map(|a| a.pass.as_str()).unwrap_or("");
+                        let cipher = if auth.is_empty() { "aes-128-gcm" } else { auth };
+                        // 密码放 auth.pass（节点配置约定：ss://cipher:pass@host 或 auth=pass）
+                        let password = node.auth.as_ref().map(|a| a.user.as_str()).unwrap_or("");
+                        let location = NetLocation::new(
+                            crate::proto::Address::Hostname(node.host.clone()),
+                            node.port,
+                        );
+                        Arc::new(crate::proto::ShadowsocksProxyConnector::new_client(
+                            location,
+                            ShadowsocksCipher::try_from(cipher)
+                                .unwrap_or(ShadowsocksCipher::try_from("aes-128-gcm").unwrap()),
+                            password,
+                            false,
+                        ))
+                    }
+                    ProxyScheme::Trojan => {
+                        let password = node.auth.as_ref().map(|a| a.pass.as_str()).unwrap_or("");
+                        let location = NetLocation::new(
+                            crate::proto::Address::Hostname(node.host.clone()),
+                            node.port,
+                        );
+                        Arc::new(crate::proto::TrojanProxyConnector::new(location, password))
+                    }
+                    _ => unreachable!("guarded by match above"),
+                };
+                let mut cache = self
+                    .connector_cache
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                cache.insert((node.id, fingerprint), Arc::clone(&conn));
+                Arc::new(ProxyClient::Connector(conn))
+            }
+            // 未实现协议（Vless/Vmess）：is_supported_scheme 已挡住，防御性直连
+            ProxyScheme::Vless | ProxyScheme::Vmess => {
+                Arc::new(ProxyClient::Reqwest(Arc::clone(&self.direct_client)))
             }
         }
-        let proxy = node.to_reqwest_proxy().ok().flatten();
-        let client = Arc::new(build_client(proxy));
-        let mut cache = self.client_cache.lock().unwrap_or_else(|e| e.into_inner());
-        cache.insert((node.id, fingerprint), Arc::clone(&client));
-        client
     }
 }
 

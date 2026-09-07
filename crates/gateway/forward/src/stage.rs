@@ -59,8 +59,20 @@ impl ForwardStage {
 
         let lease = proxies.acquire(&task.candidate.unit.channel_key);
         let node_id = lease.node_id;
-        let client = (*lease.client).clone();
-        let egress = ReqwestEgress::with_client(client, Duration::from_secs(5));
+        let egress = lease
+            .reqwest_client()
+            .map(|client| ReqwestEgress::with_client((*client).clone(), Duration::from_secs(5)));
+        // Connector 变体（SS/Trojan 等）暂未接入 forward 直连管道，
+        // 返回 502 让 retry 层换候选。PR3 打通 connector→forward 桥。
+        let Some(egress) = egress else {
+            proxies.feedback(node_id, 502, false);
+            return Err(contract::error::NormalizedError {
+                code: contract::error::code::UPSTREAM_ERROR,
+                status: 502,
+                retryable: true,
+                message: "proxy connector not yet bridged to forward".into(),
+            });
+        };
         let result =
             crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await;
         match &result {

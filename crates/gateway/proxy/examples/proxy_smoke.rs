@@ -37,7 +37,13 @@ async fn main() {
         let lease = manager.acquire("missing");
         assert_eq!(lease.node_id, 0);
         close_all_connections().await;
-        fetch_ip(&lease.client).await;
+        fetch_ip(
+            lease
+                .reqwest_client()
+                .as_ref()
+                .expect("smoke only uses Reqwest path"),
+        )
+        .await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         assert!(
             !singbox_has_host(TARGET_HOST).await,
@@ -62,7 +68,13 @@ async fn main() {
         let lease = manager.acquire("ch");
         assert_eq!(lease.node_id, 1, "should pick the proxy node");
         close_all_connections().await;
-        let ip = fetch_ip(&lease.client).await;
+        let ip = fetch_ip(
+            lease
+                .reqwest_client()
+                .as_ref()
+                .expect("smoke only uses Reqwest path"),
+        )
+        .await;
         println!("  httpbin 返回 origin: {ip}");
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         assert!(

@@ -106,8 +106,8 @@ impl ProxyNode {
     ///
     /// - Direct -> None
     /// - Http/Socks5 -> reqwest::Proxy::all(...) + basic_auth(若有)
-    /// - Vless/Vmess/Shadowsocks/Trojan -> `Err(ProxyConvertError)`：这些协议不走
-    ///   reqwest::Proxy（PR2/3 用 proto::ProxyConnector 自定义握手）
+    /// - Vless/Vmess -> `Err(ProxyConvertError)` (PR3)
+    /// - Shadowsocks/Trojan -> `Err(ProxyConvertError)` (已走 proto::ProxyConnector, PR2/4 移植自 shoes MIT)
     /// - 认证走 .basic_auth() 而非拼在 URL 里，避免特殊字符转义问题
     pub fn to_reqwest_proxy(&self) -> Result<Option<reqwest::Proxy>, ProxyConvertError> {
         match self.scheme {
