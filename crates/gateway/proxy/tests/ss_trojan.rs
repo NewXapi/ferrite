@@ -4,8 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use gateway_proxy::proto::ProxyConnector as _;
-    use gateway_proxy::proto::proxy_connector::ProxyConnector;
+    use gateway_proxy::proto::ProxyConnector;
     use gateway_proxy::proto::shadowsocks::ShadowsocksCipher;
     use gateway_proxy::proto::shadowsocks::shadowsocks_tcp_handler::ShadowsocksTcpHandler;
     use gateway_proxy::proto::trojan::TrojanTcpClientHandler;
