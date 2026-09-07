@@ -51,9 +51,12 @@ fn parse_url_maps_schemes_and_defaults() {
     let node = ProxyNode::parse_url("http://user%40domain:p%2Fss@proxy.example.com").unwrap();
     assert_eq!(node.auth.as_ref().unwrap().user, "user@domain");
     assert_eq!(node.auth.as_ref().unwrap().pass, "p/ss");
-    // 非法 scheme
+    // 非法 scheme → unsupported proxy scheme（新协议变体是合法 scheme，另有专门测试）
     let err = ProxyNode::parse_url("ftp://proxy.example.com").unwrap_err();
-    assert!(err.to_string().contains("unsupported proxy scheme"));
+    assert!(
+        err.to_string().contains("unsupported proxy scheme"),
+        "got: {err}"
+    );
     // 缺失 host：url crate 在解析层就拒绝空 host，只断言报错不钉措辞。
     assert!(ProxyNode::parse_url("http://:3128").is_err());
     assert!(ProxyNode::parse_url("not-a-url").is_err());
@@ -415,4 +418,90 @@ fn transport_error_cools_node_then_falls_back() {
     manager.feedback(second.node_id, 502, true);
     drop(second);
     assert_eq!(manager.acquire("ch").node_id, 0);
+}
+/// `parse_url`：新协议 scheme 映射 + 默认端口 + ss 无显式端口报错
+#[test]
+fn parse_url_new_schemes_mapping_and_defaults() {
+    // vless -> Vless, 默认 443
+    let node = ProxyNode::parse_url("vless://proxy.example.com").unwrap();
+    assert_eq!(node.scheme, ProxyScheme::Vless);
+    assert_eq!(node.host, "proxy.example.com");
+    assert_eq!(node.port, 443);
+    assert!(node.auth.is_none());
+
+    // vmess -> Vmess, 默认 443（vmess:// 是 base64 JSON payload，本 PR 只认 scheme 标记，payload 解析 PR3 做）
+    let node = ProxyNode::parse_url("vmess://proxy.example.com").unwrap();
+    assert_eq!(node.scheme, ProxyScheme::Vmess);
+    assert_eq!(node.port, 443);
+
+    // trojan -> Trojan, 默认 443
+    let node = ProxyNode::parse_url("trojan://proxy.example.com").unwrap();
+    assert_eq!(node.scheme, ProxyScheme::Trojan);
+    assert_eq!(node.port, 443);
+
+    // ss -> Shadowsocks, 无标准默认端口，缺失端口报错
+    let err = ProxyNode::parse_url("ss://proxy.example.com").unwrap_err();
+    assert!(err.to_string().contains("ss scheme requires explicit port"));
+
+    // ss 显式端口
+    let node = ProxyNode::parse_url("ss://proxy.example.com:8388").unwrap();
+    assert_eq!(node.scheme, ProxyScheme::Shadowsocks);
+    assert_eq!(node.port, 8388);
+
+    // 新协议也支持认证提取（percent-decoded）
+    let node = ProxyNode::parse_url("vless://user:pass@proxy.example.com:443").unwrap();
+    assert_eq!(node.auth.as_ref().unwrap().user, "user");
+    assert_eq!(node.auth.as_ref().unwrap().pass, "pass");
+
+    // 显式端口优于默认
+    let node = ProxyNode::parse_url("vless://proxy.example.com:8443").unwrap();
+    assert_eq!(node.port, 8443);
+}
+
+/// `to_reqwest_proxy`：新协议变体返回错误（这些协议不走 reqwest::Proxy，PR2/3 用 proto::ProxyConnector）
+#[test]
+fn to_reqwest_proxy_new_schemes_return_error() {
+    let schemes = [
+        ProxyScheme::Vless,
+        ProxyScheme::Vmess,
+        ProxyScheme::Shadowsocks,
+        ProxyScheme::Trojan,
+    ];
+    for scheme in schemes {
+        let node = ProxyNode {
+            id: 1,
+            scheme,
+            host: "proxy.example.com".into(),
+            port: 443,
+            auth: None,
+            channel_keys: vec![],
+            priority: 0,
+        };
+        let result = node.to_reqwest_proxy();
+        assert!(result.is_err(), "scheme {:?} should return error", scheme);
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("不走 reqwest"), "got: {err}");
+    }
+}
+
+/// `manager::acquire`：装一个 vless 节点 + 一个 http 节点同 channel，acquire 永远选 http（跳过未支持协议）
+#[test]
+fn acquire_skips_unsupported_scheme_nodes() {
+    let manager = ProxyManager::new();
+    manager.install(ProxySnapshot {
+        nodes: vec![
+            // vless 节点：高优先级但协议未实现，应被跳过
+            test_node(1, ProxyScheme::Vless, "vless.example", 443, "ch", 10),
+            // http 节点：较低优先级但协议支持，应被选中
+            test_node(2, ProxyScheme::Http, "http.example", 8080, "ch", 5),
+        ],
+    });
+    // 多次 acquire 都应命中 http 节点，因为 vless 被 is_supported_scheme 过滤
+    for _ in 0..20 {
+        let lease = manager.acquire("ch");
+        assert_eq!(
+            lease.node_id, 2,
+            "unsupported Vless node should be skipped, fallback to Http"
+        );
+    }
 }

@@ -4,8 +4,9 @@
 //! HTTP CONNECT / SOCKS5 握手仍交给 reqwest（`socks` feature），本模块不实现
 //! vless/vmess/ss/trojan。无节点或全部冷却时退回直连 Client（`node_id = 0`）。
 //!
+//! 协议实现落地前，`acquire` 会跳过 Vless/Vmess/Shadowsocks/Trojan 节点（视同冷却），
+//! 回落直连。PR2/3 填入 proto::ProxyConnector 实现后自动生效。
 //! ponytail: 健康表只活在进程内；affinity / DB 持久化等需要时再加。
-
 use super::node::{ProxyNode, ProxyScheme};
 use super::pool::{ProxyPool, ProxySnapshot};
 use rand::seq::SliceRandom;
@@ -14,6 +15,13 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+fn is_supported_scheme(scheme: ProxyScheme) -> bool {
+    matches!(
+        scheme,
+        ProxyScheme::Direct | ProxyScheme::Http | ProxyScheme::Socks5
+    )
+}
 
 /// 一次上游尝试占用的出口 Client。
 ///
@@ -75,7 +83,9 @@ impl ProxyManager {
     /// 为 `channel_key` 租一个出口。
     ///
     /// 无节点或全部冷却 → `node_id = 0` 的直连 Client。
-    /// 否则：跳过冷却 → 最高 priority 层 → 层内 least-inflight → 并列随机。
+    /// 否则：跳过冷却 → 跳过不支持的协议 (Vless/Vmess/Shadowsocks/Trojan) → 最高 priority 层 → 层内 least-inflight → 并列随机。
+    ///
+    /// 协议实现落地前的临时闸门（PR2/3 移除）：未实现的协议节点视同冷却，强制回落直连。
     pub fn acquire(&self, channel_key: &str) -> Lease {
         let now = Instant::now();
         let candidates = self.pool.candidates(channel_key);
@@ -85,15 +95,17 @@ impl ProxyManager {
         let mut eligible: Vec<Arc<ProxyNode>> = candidates
             .into_iter()
             .filter(|node| {
-                health
-                    .get(&node.id)
-                    .and_then(|h| h.cooldown_until)
-                    .is_none_or(|until| until <= now)
+                is_supported_scheme(node.scheme)
+                    && health
+                        .get(&node.id)
+                        .and_then(|h| h.cooldown_until)
+                        .is_none_or(|until| until <= now)
             })
             .collect();
         drop(health);
 
         if eligible.is_empty() {
+            // 无节点 / 全冷却 / 全是未实现协议 → 直连。
             return self.direct_lease();
         }
 
