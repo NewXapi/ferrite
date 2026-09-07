@@ -45,8 +45,10 @@ dependencies = [
  "contract",
  "dioxus",
  "serde",
+ "serde_json",
  "tokio",
  "ui-components",
+ "web-sys",
 ]
 
 [[package]]

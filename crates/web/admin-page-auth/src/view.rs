@@ -1,14 +1,51 @@
 //! Auth page rendering and component composition.
 //! Top-anchored layout: logo top-left; tab + title embedded in card.
 
-use crate::form::{SignInForm, SignUpForm};
+use crate::api;
+use crate::api::contract_auth;
+use crate::form::{SignInForm, SignInPayload, SignUpForm, SignUpPayload};
 use crate::state::{AuthTab, auth_tab};
+use client::ApiClient;
 use dioxus::prelude::*;
+
+impl From<SignInPayload> for SubmitPayload {
+    fn from(p: SignInPayload) -> Self {
+        Self {
+            register: false,
+            username: p.username,
+            email: String::new(),
+            password: p.password,
+        }
+    }
+}
+
+impl From<SignUpPayload> for SubmitPayload {
+    fn from(p: SignUpPayload) -> Self {
+        Self {
+            register: true,
+            username: p.username,
+            email: p.email,
+            password: p.password,
+        }
+    }
+}
+
+use crate::form::SubmitState;
+
+/// 统一提交载荷：register 标志 + 表单字段。
+struct SubmitPayload {
+    register: bool,
+    username: String,
+    email: String,
+    password: String,
+}
 
 #[component]
 pub fn AuthPage() -> Element {
     let active = auth_tab();
     let is_sign_in = active == AuthTab::SignIn;
+
+    let mut state = use_context::<SubmitState>();
 
     let indicator_transform = if is_sign_in {
         "translate-x-0"
@@ -36,6 +73,55 @@ pub fn AuthPage() -> Element {
         "Get started with Ferrite in seconds"
     };
 
+    // 提交处理：登录或注册（wasm 真调用），成功 → set_token + 回 console。
+    let mut handle_submit = move |payload: SubmitPayload| {
+        state.busy.set(true);
+        state.error.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            // 注册成功后自动登录拿 access_token（register 本身只回 SelfView）
+            if payload.register {
+                if let Err(e) = api::register_api(
+                    &client,
+                    &contract_auth::RegisterRequest {
+                        username: payload.username.clone(),
+                        password: payload.password.clone(),
+                        email: (!payload.email.is_empty()).then(|| payload.email.clone()),
+                    },
+                )
+                .await
+                {
+                    state.busy.set(false);
+                    state.error.set(Some(e.to_string()));
+                    return;
+                }
+            }
+            let result = api::login_api(
+                &client,
+                &contract_auth::LoginRequest {
+                    username: payload.username.clone(),
+                    password: payload.password.clone(),
+                },
+            )
+            .await
+            .map(|resp| resp.access_token);
+            match result {
+                Ok(access_token) => {
+                    client.set_token(Some(access_token));
+                    state.busy.set(false);
+                    // 回控制台：auth hash 清掉，HomePage 重新挂载
+                    if let Some(w) = web_sys::window() {
+                        let _ = w.location().set_hash("");
+                    }
+                }
+                Err(e) => {
+                    state.busy.set(false);
+                    state.error.set(Some(e.to_string()));
+                }
+            }
+        });
+    };
+
     rsx! {
         div {
             class: "relative min-h-screen overflow-x-hidden bg-zinc-950 text-zinc-100",
@@ -59,109 +145,53 @@ pub fn AuthPage() -> Element {
                         }
                     }
                 }
-                rect {
-                    width: "100%",
-                    height: "100%",
-                    fill: "url(#grid)",
-                }
+                rect { width: "100%", height: "100%", fill: "url(#grid)" }
             }
 
-            // Subtle top-left glow
+            // Logo
             div {
-                class: "absolute -top-32 -left-32 h-96 w-96 rounded-full bg-gradient-to-br from-zinc-800/15 via-zinc-900/25 to-transparent blur-3xl pointer-events-none",
+                class: "absolute top-6 left-8 flex items-center gap-2",
+                span { class: "text-lg font-semibold tracking-tight text-zinc-100", "Ferrite" }
+                span { class: "text-[10px] font-medium uppercase tracking-widest text-zinc-500", "ADMIN" }
             }
 
-            // Header: logo left, return to console right
-            header {
-                class: "sticky top-0 z-20 flex items-center justify-between px-6 py-5 sm:px-12",
-                a {
-                    href: "#",
-                    class: "flex items-center gap-3 transition-opacity hover:opacity-80 cursor-pointer",
-                    div {
-                        class: "flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800/60 bg-zinc-900/80",
-                        svg {
-                            class: "h-4 w-4 text-zinc-200",
-                            xmlns: "http://www.w3.org/2000/svg",
-                            view_box: "0 0 24 24",
-                            fill: "none",
-                            stroke: "currentColor",
-                            stroke_width: "2",
-                            stroke_linecap: "round",
-                            stroke_linejoin: "round",
-                            path { d: "M12 2L2 7l10 5 10-5-10-5z" }
-                        }
-                    }
-                    span {
-                        class: "text-lg font-semibold tracking-tight text-zinc-100",
-                        "Ferrite"
-                    }
-                }
-                a {
-                    href: "#",
-                    class: "rounded-full border border-zinc-800 bg-zinc-900/80 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:text-white hover:bg-zinc-800 shadow-sm flex items-center gap-1.5",
-                    "返回控制台 →"
-                }
-            }
-
-            // Main: top-anchored card with embedded title + tab
-            main {
-                class: "relative z-10 w-full max-w-md mx-auto px-4 sm:px-6 pt-6 sm:pt-12 pb-20",
-                // Card: title + tab + form
+            // Card
+            div {
+                class: "flex min-h-screen items-center justify-center px-4",
                 div {
-                    class: "rounded-xl border border-zinc-800/70 bg-zinc-900/40 backdrop-blur-sm p-5 sm:p-8 transition-all duration-300",
+                    class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 shadow-2xl shadow-black/40 backdrop-blur",
 
-                    // Card header: title left, tab right
+                    // Tab switcher
                     div {
-                        class: "flex items-start justify-between gap-4 mb-8",
-
-                        // Title block
+                        class: "relative mb-6 flex rounded-full border border-zinc-800 bg-zinc-900 p-1",
                         div {
-                            class: "min-w-0 flex-1",
-                            h1 {
-                                class: "text-lg sm:text-xl font-semibold tracking-tight text-zinc-50 leading-tight",
-                                "{title_text}"
-                            }
-                            p {
-                                class: "mt-1.5 text-xs sm:text-sm text-zinc-500",
-                                "{subtitle_text}"
-                            }
+                            class: "absolute inset-y-0 w-1/2 rounded-full bg-zinc-100 transition-transform duration-200 {indicator_transform}",
                         }
-
-                        // Compact segmented tab (right side of card header)
-                        div {
-                            class: "relative flex shrink-0 rounded-full border border-zinc-800/80 bg-zinc-950/60 p-0.5",
-                            role: "tablist",
-                            "aria-label": "Auth mode switcher",
-
-                            // Sliding indicator pill
-                            div {
-                                class: "absolute top-0.5 bottom-0.5 left-0.5 w-[calc(50%-2px)] rounded-full bg-zinc-100 transition-transform duration-300 ease-out {indicator_transform}",
-                                "aria-hidden": "true",
-                            }
-
-                            button {
-                                class: "relative z-10 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 {sign_in_class}",
-                                r#type: "button",
-                                role: "tab",
-                                aria_selected: "{is_sign_in}",
-                                onclick: move |_| crate::state::set_auth_tab(AuthTab::SignIn),
-                                "Sign in"
-                            }
-                            button {
-                                class: "relative z-10 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 {register_class}",
-                                r#type: "button",
-                                role: "tab",
-                                aria_selected: "{!is_sign_in}",
-                                onclick: move |_| crate::state::set_auth_tab(AuthTab::SignUp),
-                                "Register"
-                            }
+                        button {
+                            class: "relative z-10 flex-1 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 {sign_in_class}",
+                            r#type: "button",
+                            role: "tab",
+                            aria_selected: "{is_sign_in}",
+                            onclick: move |_| crate::state::set_auth_tab(AuthTab::SignIn),
+                            "Sign in"
+                        }
+                        button {
+                            class: "relative z-10 flex-1 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 {register_class}",
+                            r#type: "button",
+                            role: "tab",
+                            aria_selected: "{!is_sign_in}",
+                            onclick: move |_| crate::state::set_auth_tab(AuthTab::SignUp),
+                            "Register"
                         }
                     }
+
+                    h1 { class: "text-xl font-semibold text-zinc-100", "{title_text}" }
+                    p { class: "mb-6 text-sm text-zinc-500", "{subtitle_text}" }
 
                     // Form content
                     match active {
-                        AuthTab::SignIn => rsx! { SignInForm {} },
-                        AuthTab::SignUp => rsx! { SignUpForm {} },
+                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()) } },
+                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()) } },
                     }
                 }
 

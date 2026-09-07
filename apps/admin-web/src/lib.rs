@@ -3,6 +3,7 @@ pub mod app;
 pub mod retro;
 pub use app::RootApp;
 
+use app::{current_hash, is_auth_hash};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -192,6 +193,14 @@ pub fn HomePage() -> Element {
 
     use_hook(move || {
         let cb = Closure::<dyn FnMut()>::new(move || {
+            // 只在 console 路由时写 signal：#auth/#signup/#login/#retro 会卸载
+            // HomePage，此时 section/dash_tab 的 owner 已 drop，set 会 panic
+            // (ValueDroppedError)。守卫让 auth/retro hash 直接跳过。
+            let h = current_hash();
+            let is_console = h != "#auth" && h != "#signup" && h != "#login" && h != "#retro";
+            if !is_console {
+                return;
+            }
             let (s, t) = get_initial_route();
             section.set(s);
             dash_tab.set(t);
