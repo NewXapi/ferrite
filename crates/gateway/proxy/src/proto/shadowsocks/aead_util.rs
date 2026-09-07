@@ -7,7 +7,7 @@ pub const TAG_LEN: usize = 16;
 /// 调用方保证随后会写入全部元素（性能敏感的热路径）。
 #[inline]
 #[allow(clippy::uninit_vec)]
-pub fn allocate_vec<T>(len: usize) -> Vec<T> {
+pub fn allocate_vec<T: Copy>(len: usize) -> Vec<T> {
     let mut ret = Vec::with_capacity(len);
     unsafe {
         ret.set_len(len);

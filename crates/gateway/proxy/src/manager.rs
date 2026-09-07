@@ -19,6 +19,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use tracing::warn as tracing_warn;
+
 fn is_supported_scheme(scheme: ProxyScheme) -> bool {
     matches!(
         scheme,
@@ -250,26 +252,35 @@ impl ProxyManager {
                         return Arc::new(ProxyClient::Connector(Arc::clone(conn)));
                     }
                 }
+                // ss:// URL 语义：auth.user = cipher 方法名，auth.pass = 密码
+                // （parse_url 从 ss://method:password@host 提取）。缺省 aes-128-gcm + 空密码
+                // 只在节点配置不完整时发生，交由握手期报错而非此处 panic。
                 let conn: Arc<dyn ProxyConnector> = match node.scheme {
                     ProxyScheme::Shadowsocks => {
-                        let auth = node.auth.as_ref().map(|a| a.pass.as_str()).unwrap_or("");
-                        let cipher = if auth.is_empty() { "aes-128-gcm" } else { auth };
-                        // 密码放 auth.pass（节点配置约定：ss://cipher:pass@host 或 auth=pass）
-                        let password = node.auth.as_ref().map(|a| a.user.as_str()).unwrap_or("");
+                        let (cipher_str, password) = match node.auth.as_ref() {
+                            Some(a) if !a.user.is_empty() => (a.user.as_str(), a.pass.as_str()),
+                            _ => ("aes-128-gcm", ""),
+                        };
+                        let cipher = ShadowsocksCipher::try_from(cipher_str).unwrap_or_else(|_| {
+                            // 非法 cipher 名回落 AES-128-GCM（panic 不该出现在节点配置错误路径）
+                            tracing_warn!(cipher = %cipher_str, "非法 SS cipher，回落 aes-128-gcm");
+                            ShadowsocksCipher::try_from("aes-128-gcm")
+                                .expect("aes-128-gcm is a valid cipher")
+                        });
                         let location = NetLocation::new(
                             crate::proto::Address::Hostname(node.host.clone()),
                             node.port,
                         );
                         Arc::new(crate::proto::ShadowsocksProxyConnector::new_client(
-                            location,
-                            ShadowsocksCipher::try_from(cipher)
-                                .unwrap_or(ShadowsocksCipher::try_from("aes-128-gcm").unwrap()),
-                            password,
-                            false,
+                            location, cipher, password, false,
                         ))
                     }
                     ProxyScheme::Trojan => {
-                        let password = node.auth.as_ref().map(|a| a.pass.as_str()).unwrap_or("");
+                        let password = node
+                            .auth
+                            .as_ref()
+                            .map(|a| a.pass.as_str())
+                            .unwrap_or_default();
                         let location = NetLocation::new(
                             crate::proto::Address::Hostname(node.host.clone()),
                             node.port,
