@@ -377,7 +377,7 @@ pub fn router(state: ModelAppState) -> axum::Router {
         .route("/api/models", get(list).post(create))
         .route("/api/models/search", get(search))
         .route("/api/models/missing", get(missing))
-        .route("/api/models/:key", get(get_one).put(update).delete(remove))
+        .route("/api/models/{key}", get(get_one).put(update).delete(remove))
         .with_state(state)
 }
 

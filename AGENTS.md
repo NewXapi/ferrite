@@ -11,7 +11,11 @@
 ## 开发方式
 
 - `.wt/<name>/` 是开发工作目录：每个开发会话用 `git worktree add .wt/<name> -b <branch>` 挂独立分支，worktree 目录名与分支名尾段一致（`.wt/admin-api` ↔ `feat/admin-api`）；仓库根目录只读（除根 `Cargo.toml` 的 workspace member 变更）。
-- 提交前用 `cargo check` 验证编译（本地环境没有 LSP，check 就是类型错误的兜底）；CPU-heavy 套 cpulimit（见下）。
+- **创建 worktree 的硬规则（防嵌套递归）**：
+  1. **必须先 `cd /home/hathaway/projects/ferrite`（仓库根）再执行** `git worktree add .wt/<name> -b <branch>`。`git worktree add` 的相对路径是相对**当前 cwd** 解析的——若 cwd 在某个 worktree 内部，`.wt/<name>` 会落进 worktree 里形成嵌套（历史事故：13 层嵌套 + 321G 重复编译产物）。
+  2. 执行后**必须自检**：`git worktree list` 中新条目的路径必须是 `/home/hathaway/projects/ferrite/.wt/<name>`。路径含第二个 `.wt/` 即嵌套，立即 `git worktree remove` 撤销重来。
+  3. gate 有 `checklist_no_nested_worktree` 护栏（pre-commit/pre-push/merge 扫描 `.wt` 下 mindepth≥2 的 `.wt` 目录与深层 `.git` stub），命中即 FAIL。
+  4. 子代理一律用维护者在 prompt 里给的**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`），禁止相对路径推导。
 
 ## `.wt/` 工作目录保护（硬约束）
 

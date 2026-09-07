@@ -116,9 +116,17 @@ impl Stage for GateChain {
             ctx.requested_model = Some(model);
         }
         if let Some(token) = gate_ctx.token {
+            // 分组用 StateGate 算出的生效值（token.group 优先，空则回落 user.group）；
+            // 直接用 token.group 会让「未显式设组的 token」带空组进 dispatch，
+            // 与 route_unit 的 group 匹配不上 → 恒 404。
+            let effective_group = gate_ctx
+                .group
+                .clone()
+                .filter(|g| !g.is_empty())
+                .unwrap_or_else(|| token.group.clone());
             ctx.token = Some(gateway_pipeline::TokenInfo {
                 id: token.id,
-                group: token.group.clone(),
+                group: effective_group,
                 enabled: token.enabled,
                 allowed_models: token.allowed_models.clone(),
                 auth_version: token.auth_version,
