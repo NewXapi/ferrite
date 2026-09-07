@@ -65,7 +65,7 @@ impl ConcurrencyGate {
     }
 
     /// 当前可用槽数（`Semaphore::available_permits`）。
-    pub fn in_flight(&self, channel_key: &str) -> usize {
+    pub fn available_permits(&self, channel_key: &str) -> usize {
         self.state
             .semaphores
             .get(channel_key)

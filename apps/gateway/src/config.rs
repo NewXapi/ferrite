@@ -5,16 +5,16 @@
 //!
 //! 单机模式的数据面来源也在此：`[[channels]]` 与 `[[keys]]` 经
 //! [`build_route_snapshot`] / [`build_token_snapshot`] 变成运行期快照，
-//! 不需要 Postgres 与 admin-sync。
+use gateway_gate::snapshot::{TokenEntry, TokenSnapshot, UserSnapshot};
 
 use contract::records::{
     ChannelKey, ChannelRecord, RouteUnitRecord, SyncMeta, TokenRecord, UserRecord,
 };
 use dispatch::Snapshot;
-use gateway_gate::snapshot::{TokenEntry, TokenSnapshot, UserSnapshot};
+
 use metering::pricing::ModelPrice;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// 调度健康参数；字段名对齐 `dispatch::health::HealthSetting`。
 #[derive(Debug, Deserialize, Clone)]
@@ -115,6 +115,28 @@ pub struct ChannelConfig {
     pub max_concurrency: u32,
 }
 
+impl ChannelConfig {
+    /// 校验必填字段，避免非法配置到运行时才爆炸。
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("ChannelConfig.name 不能为空".into());
+        }
+        if self.base_url.is_empty() {
+            return Err(format!("ChannelConfig \"{}\" 的 base_url 不能为空", self.name));
+        }
+        if self.api_key.is_empty() {
+            return Err(format!("ChannelConfig \"{}\" 的 api_key 不能为空", self.name));
+        }
+        if !["openai", "claude", "gemini", "passthrough"].contains(&self.provider_type.as_str()) {
+            return Err(format!(
+                "ChannelConfig \"{}\" 的 provider_type 必须是 openai/claude/gemini/passthrough，当前值: {}",
+                self.name, self.provider_type
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn default_provider_type() -> String {
     "openai".to_string()
 }
@@ -190,14 +212,14 @@ const LOCAL_USER_KEY: &str = "local";
 /// 记录来源标记，写进 `SyncMeta.origin`，与 admin-sync 推送的记录区分。
 const CONFIG_ORIGIN: &str = "config";
 
-/// 构造 `SyncMeta`：单机模式的记录没有同步历史，版本恒为 1。
-fn config_meta(key: impl Into<String>) -> SyncMeta {
+/// 构造 `SyncMeta`（带统一时间戳），确保快照内所有记录时间一致。
+fn config_meta_with_time(key: impl Into<String>, updated_at: chrono::DateTime<chrono::Utc>) -> SyncMeta {
     SyncMeta {
         key: key.into(),
         schema_version: 1,
         logical_version: 1,
         origin: CONFIG_ORIGIN.to_string(),
-        updated_at: chrono::Utc::now(),
+        updated_at,
     }
 }
 
@@ -215,11 +237,30 @@ pub fn build_route_snapshot(channels: &[ChannelConfig]) -> Snapshot {
     let mut units = Vec::new();
     let mut channel_map = HashMap::with_capacity(channels.len());
 
+    // 校验渠道配置
+    for cfg in channels {
+        if let Err(e) = cfg.validate() {
+            tracing::warn!(error = %e, "渠道配置校验失败，跳过该渠道");
+            continue;
+        }
+    }
+
+    // 校验渠道名唯一性
+    let mut seen_names = HashSet::new();
+    for cfg in channels {
+        if !seen_names.insert(&cfg.name) {
+            tracing::warn!(name = %cfg.name, "渠道名重复，后续同名渠道会被覆盖");
+        }
+    }
+
+    // 统一时间戳，确保快照内所有记录时间一致
+    let now = chrono::Utc::now();
+
     for cfg in channels {
         channel_map.insert(
             cfg.name.clone(),
             ChannelRecord {
-                meta: config_meta(&cfg.name),
+                meta: config_meta_with_time(&cfg.name, now),
                 name: cfg.name.clone(),
                 provider_type: cfg.provider_type.clone(),
                 base_url: cfg.base_url.clone(),
@@ -242,7 +283,7 @@ pub fn build_route_snapshot(channels: &[ChannelConfig]) -> Snapshot {
                 .cloned()
                 .unwrap_or_else(|| public_model.clone());
             units.push(RouteUnitRecord {
-                meta: config_meta(format!("{}:{}", cfg.name, public_model)),
+                meta: config_meta_with_time(format!("{}:{}", cfg.name, public_model), now),
                 group: LOCAL_GROUP.to_string(),
                 public_model: public_model.clone(),
                 channel_key: cfg.name.clone(),
@@ -277,8 +318,11 @@ pub fn build_token_snapshot(keys: &[KeyConfig]) -> (TokenSnapshot, UserSnapshot)
     let tokens = TokenSnapshot::default();
     let users = UserSnapshot::default();
 
+    // 统一时间戳
+    let now = chrono::Utc::now();
+
     users.upsert(UserRecord {
-        meta: config_meta(LOCAL_USER_KEY),
+        meta: config_meta_with_time(LOCAL_USER_KEY, now),
         username: LOCAL_USER_KEY.to_string(),
         display_name: "local".to_string(),
         email: String::new(),
@@ -288,13 +332,13 @@ pub fn build_token_snapshot(keys: &[KeyConfig]) -> (TokenSnapshot, UserSnapshot)
         group: LOCAL_GROUP.to_string(),
         status: 1,
         role: 100,
-        created_at: chrono::Utc::now(),
+        created_at: now,
     });
 
     for (idx, cfg) in keys.iter().enumerate() {
         let hash = gateway_gate::sha256(&cfg.key);
         let record = TokenRecord {
-            meta: config_meta((idx + 1).to_string()),
+            meta: config_meta_with_time((idx + 1).to_string(), now),
             user_key: LOCAL_USER_KEY.to_string(),
             name: cfg.name.clone(),
             key_hash: hex::encode(hash),
