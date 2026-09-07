@@ -12,6 +12,10 @@ pub enum ProxyScheme {
     Direct,
     Http,
     Socks5,
+    Vless,
+    Vmess,
+    Shadowsocks,
+    Trojan,
 }
 
 /// HTTP/SOCKS 代理基础认证
@@ -34,11 +38,11 @@ pub struct ProxyNode {
 }
 
 impl ProxyNode {
-    /// 解析原始代理 URL 字符串（接受 `http://user:pass@host:port` / `socks5://...` / `socks5h://...`）
+    /// 解析原始代理 URL 字符串（接受 `http://user:pass@host:port` / `socks5://...` / `socks5h://...` / `vless://...` / `vmess://...` / `ss://...` / `trojan://...`）
     ///
-    /// - scheme 映射：http/https -> Http，socks5/socks5h -> Socks5
+    /// - scheme 映射：http/https -> Http，socks5/socks5h -> Socks5，vless:// -> Vless，vmess:// -> Vmess，ss:// -> Shadowsocks，trojan:// -> Trojan
     /// - host 必填，缺失报错
-    /// - port：URL 显式给出用显式值；否则 Http 默认 8080，Socks5 默认 1080
+    /// - port：vless/vmess/trojan 默认 443，ss 无标准默认（要求显式端口，缺失报错）
     /// - 认证：username()/password() 非空时填入 auth；只有 user 无 pass 时 pass 用空串
     /// - 返回的 id=0、channel_keys=[]、priority=0，调用方后续填充
     pub fn parse_url(url: &str) -> Result<Self, ParseError> {
@@ -48,6 +52,10 @@ impl ProxyNode {
         let scheme = match scheme_str {
             "http" | "https" => ProxyScheme::Http,
             "socks5" | "socks5h" => ProxyScheme::Socks5,
+            "vless" => ProxyScheme::Vless,
+            "vmess" => ProxyScheme::Vmess,
+            "ss" => ProxyScheme::Shadowsocks,
+            "trojan" => ProxyScheme::Trojan,
             _ => {
                 return Err(ParseError::Invalid(format!(
                     "unsupported proxy scheme: {}",
@@ -58,12 +66,22 @@ impl ProxyNode {
         let host = url_obj
             .host_str()
             .ok_or_else(|| ParseError::Invalid("missing host".to_string()))?;
-        // scheme 匹配只产出 Http / Socks5，Direct 不经 URL 解析。
-        let default_port = match scheme {
-            ProxyScheme::Socks5 => 1080,
-            _ => 8080,
+        // port 逻辑：
+        // - vless/vmess/trojan 默认 443
+        // - socks5 默认 1080
+        // - http 默认 8080 (兼容)
+        // - ss 必须显式端口，无默认
+        let port = match scheme {
+            ProxyScheme::Shadowsocks => url_obj.port().ok_or_else(|| {
+                ParseError::Invalid("ss scheme requires explicit port".to_string())
+            })?,
+            ProxyScheme::Socks5 => url_obj.port().unwrap_or(1080),
+            ProxyScheme::Vless | ProxyScheme::Vmess | ProxyScheme::Trojan => {
+                url_obj.port().unwrap_or(443)
+            }
+            _ => url_obj.port().unwrap_or(8080), // Http or Direct (though Direct never reaches here)
         };
-        let port = url_obj.port().unwrap_or(default_port);
+
         // `Url::username()` / `password()` 返回 percent-encoded 原文，必须解码：
         // 用户名含 `@` 时会是 `user%40domain`，直接用会让代理认证失败。
         let auth = match url_obj.username() {
@@ -88,13 +106,16 @@ impl ProxyNode {
     ///
     /// - Direct -> None
     /// - Http/Socks5 -> reqwest::Proxy::all(...) + basic_auth(若有)
-    /// - 注意：认证走 .basic_auth() 而非拼在 URL 里，避免特殊字符转义问题
-    pub fn to_reqwest_proxy(&self) -> Result<Option<reqwest::Proxy>, reqwest::Error> {
+    /// - Vless/Vmess/Shadowsocks/Trojan -> `Err(ProxyConvertError)`：这些协议不走
+    ///   reqwest::Proxy（PR2/3 用 proto::ProxyConnector 自定义握手）
+    /// - 认证走 .basic_auth() 而非拼在 URL 里，避免特殊字符转义问题
+    pub fn to_reqwest_proxy(&self) -> Result<Option<reqwest::Proxy>, ProxyConvertError> {
         match self.scheme {
             ProxyScheme::Direct => Ok(None),
             ProxyScheme::Http => {
                 let url = format!("http://{}:{}", self.host, self.port);
-                let mut proxy = reqwest::Proxy::all(url)?;
+                let mut proxy =
+                    reqwest::Proxy::all(url).map_err(|e| ProxyConvertError(e.to_string()))?;
                 if let Some(auth) = &self.auth {
                     proxy = proxy.basic_auth(&auth.user, &auth.pass);
                 }
@@ -102,15 +123,28 @@ impl ProxyNode {
             }
             ProxyScheme::Socks5 => {
                 let url = format!("socks5://{}:{}", self.host, self.port);
-                let mut proxy = reqwest::Proxy::all(url)?;
+                let mut proxy =
+                    reqwest::Proxy::all(url).map_err(|e| ProxyConvertError(e.to_string()))?;
                 if let Some(auth) = &self.auth {
                     proxy = proxy.basic_auth(&auth.user, &auth.pass);
                 }
                 Ok(Some(proxy))
             }
+            ProxyScheme::Vless
+            | ProxyScheme::Vmess
+            | ProxyScheme::Shadowsocks
+            | ProxyScheme::Trojan => Err(ProxyConvertError(format!(
+                "scheme {:?} 不走 reqwest（用 proto::ProxyConnector 自定义握手）",
+                self.scheme
+            ))),
         }
     }
 }
+
+/// reqwest::Proxy 转换失败（reqwest::Error 无公开构造器，故自定义轻量错误）。
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct ProxyConvertError(pub String);
 
 /// percent-decode 一段 URL 组件，非法 UTF-8 序列按 lossy 处理。
 fn percent_decode(s: &str) -> String {

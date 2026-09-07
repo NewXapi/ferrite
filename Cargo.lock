@@ -1936,9 +1936,12 @@ name = "gateway-proxy"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "async-trait",
+ "memchr",
  "percent-encoding",
  "rand 0.8.8",
  "reqwest",
+ "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
