@@ -35,7 +35,7 @@ pub fn RootApp() -> Element {
     }
 }
 
-fn is_auth_hash(h: &str) -> bool {
+pub(crate) fn is_auth_hash(h: &str) -> bool {
     h == "#auth" || h == "#signup" || h == "#login"
 }
 
@@ -43,6 +43,6 @@ fn window() -> web_sys::Window {
     web_sys::window().expect("browser window")
 }
 
-fn current_hash() -> String {
+pub(crate) fn current_hash() -> String {
     window().location().hash().unwrap_or_default()
 }

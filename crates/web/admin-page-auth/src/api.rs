@@ -4,7 +4,7 @@
 //! with mock fallback when standalone.
 
 use client::{ApiClient, ApiResult};
-use contract::api::auth as contract_auth;
+pub use contract::api::auth as contract_auth;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -35,7 +35,7 @@ pub async fn login_api(
 pub async fn register_api(
     client: &ApiClient,
     req: &contract_auth::RegisterRequest,
-) -> ApiResult<contract_auth::LoginResponse> {
+) -> ApiResult<serde_json::Value> {
     client.post("/api/user/register", req).await
 }
 
@@ -67,23 +67,14 @@ pub async fn login(_req: LoginRequest) -> ApiResult<LoginResponse> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn register(username: String, password: String) -> ApiResult<LoginResponse> {
-    let client = ApiClient::new();
+pub async fn register(username: String, password: String) -> ApiResult<()> {
+    let client = ApiClient::shared().clone();
     let contract_req = contract_auth::RegisterRequest {
-        username,
+        username: username.clone(),
         password,
         email: None,
     };
-    match register_api(&client, &contract_req).await {
-        Ok(resp) => Ok(LoginResponse {
-            token: resp.access_token,
-            refresh_token: resp.refresh_token,
-        }),
-        Err(_) => Ok(LoginResponse {
-            token: "mock-token".into(),
-            refresh_token: "mock-refresh".into(),
-        }),
-    }
+    register_api(&client, &contract_req).await.map(|_| ())
 }
 
 #[cfg(not(target_arch = "wasm32"))]

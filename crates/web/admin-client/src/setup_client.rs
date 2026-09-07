@@ -29,6 +29,16 @@ impl Clone for ApiClient {
 }
 
 impl ApiClient {
+    /// 进程级共享 Client（wasm 单线程）。thread_local Cell 持有 owned
+    /// 实例，`shared()` 返回 clone——所有 clone 经 `Rc<RefCell<AuthState>>`
+    /// 共享同一登录态，登录后 `set_token` 全局可见。
+    pub fn shared() -> ApiClient {
+        thread_local! {
+            static SHARED: ApiClient = ApiClient::new();
+        }
+        SHARED.with(|c| c.clone())
+    }
+
     /// Create a client for same-origin requests (empty `base_url`).
     pub fn new() -> Self {
         Self::with_base_url("")
@@ -211,17 +221,24 @@ impl ApiClient {
             return Err(ApiError::Http { status, message });
         }
 
-        // 2xx: decode envelope
-        let envelope: Envelope<T> = response
-            .json()
+        // 2xx: decode strategy —
+        // 1) Envelope{success,message,data}（admin-catalog/observe 端点）
+        // 2) 裸 JSON（auth crate 的 login/register/self 返回 SelfView/LoginResponse）
+        let raw = response
+            .text()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))?;
-
-        if !envelope.success {
-            return Err(ApiError::Business(envelope.message));
+        if let Ok(env) = serde_json::from_str::<Envelope<serde_json::Value>>(&raw) {
+            if !env.success {
+                return Err(ApiError::Business(env.message));
+            }
+            let value = env.data.unwrap_or_default();
+            let t: T =
+                serde_json::from_value(value).map_err(|e| ApiError::Decode(e.to_string()))?;
+            return Ok(t);
         }
-
-        Ok(envelope.data.unwrap_or_default())
+        let t: T = serde_json::from_str(&raw).map_err(|e| ApiError::Decode(e.to_string()))?;
+        Ok(t)
     }
 }
 
