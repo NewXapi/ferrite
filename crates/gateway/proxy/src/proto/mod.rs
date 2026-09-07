@@ -18,3 +18,12 @@ pub use address::{Address, NetLocation, ResolvedLocation};
 pub use async_stream::{AsyncPing, AsyncStream};
 pub use proxy_connector::ProxyConnector;
 pub use stream_reader::StreamReader;
+
+// ---- PR2: Shadowsocks / Trojan 客户端握手（shoes MIT 移植）----
+pub mod shadowsocks;
+pub mod socks_addr;
+pub mod tls;
+pub mod trojan;
+
+pub use shadowsocks::ShadowsocksProxyConnector;
+pub use trojan::TrojanProxyConnector;
