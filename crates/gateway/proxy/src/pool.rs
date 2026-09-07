@@ -1,6 +1,6 @@
-//! `pool` —— 代理节点池（ArcSwap 单源，channel 索引）
+//! `pool` —— 代理节点池（ArcSwap 单源，channel_key 索引）
 //!
-//! 单一状态 `ArcSwap<HashMap<channel_id, Vec<Arc<ProxyNode>>>>`：install 一次性
+//! 单一状态 `ArcSwap<HashMap<channel_key, Vec<Arc<ProxyNode>>>>`：install 一次性
 //! 建好索引整体换掉，读走 `load()` 无锁。
 //!
 //! 一致性是**最终一致**：`install` 原子换指针，但已经拿到旧 `Arc` 的读者会继续
@@ -8,7 +8,7 @@
 //! 是这一个请求走了旧出口），换来读路径零锁。需要强一致就得加读写锁，代价是
 //! 每请求争锁——不值得。
 
-use super::node::ProxyNode;
+pub use super::node::ProxyNode;
 use arc_swap::ArcSwap;
 use rand::Rng;
 use std::collections::HashMap;
@@ -22,8 +22,8 @@ pub struct ProxySnapshot {
 
 /// 代理节点池
 pub struct ProxyPool {
-    // 单一状态：channel_id -> 按 priority 降序的 ProxyNode 列表
-    by_channel: ArcSwap<HashMap<i64, Vec<Arc<ProxyNode>>>>,
+    // 单一状态：channel_key -> 按 priority 降序的 ProxyNode 列表
+    by_channel: ArcSwap<HashMap<String, Vec<Arc<ProxyNode>>>>,
 }
 
 impl ProxyPool {
@@ -35,12 +35,12 @@ impl ProxyPool {
 
     /// 全量替换快照：重建 channel 索引
     pub fn install(&self, snap: ProxySnapshot) {
-        let mut channel_map: HashMap<i64, Vec<Arc<ProxyNode>>> = HashMap::new();
+        let mut channel_map: HashMap<String, Vec<Arc<ProxyNode>>> = HashMap::new();
         for node in snap.nodes {
             let node_arc = Arc::new(node);
-            for &channel_id in &node_arc.channel_ids {
+            for channel_key in &node_arc.channel_keys {
                 channel_map
-                    .entry(channel_id)
+                    .entry(channel_key.clone())
                     .or_default()
                     .push(node_arc.clone());
             }
@@ -58,9 +58,9 @@ impl ProxyPool {
     /// 同一约定（不依赖全局随机源）。
     ///
     /// 返回 `None`：该 channel 无代理节点（调用方按直连处理）。
-    pub fn pick(&self, channel_id: i64, rng: &mut dyn rand::RngCore) -> Option<Arc<ProxyNode>> {
+    pub fn pick(&self, channel_key: &str, rng: &mut dyn rand::RngCore) -> Option<Arc<ProxyNode>> {
         let channel_map = self.by_channel.load();
-        let nodes = channel_map.get(&channel_id)?;
+        let nodes = channel_map.get(channel_key)?;
         // 列表已按 priority 降序：最高层是前缀，取其长度即层大小。
         let max_priority = nodes.first()?.priority;
         let tier_len = nodes
@@ -69,6 +69,15 @@ impl ProxyPool {
             .count();
         let idx = rng.gen_range(0..tier_len);
         Some(nodes[idx].clone())
+    }
+
+    /// 该 channel 下全部节点（已按 priority 降序）。无节点时返回空 Vec。
+    pub fn candidates(&self, channel_key: &str) -> Vec<Arc<ProxyNode>> {
+        self.by_channel
+            .load()
+            .get(channel_key)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 

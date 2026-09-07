@@ -4,13 +4,14 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# 出口代理节点：配置解析 + 按 channel 选节点 + SSRF 校验。
-# 拨号不在此 crate —— 见 lib.rs 模块文档。
+# 出口代理节点：解析 + 按 channel_key 选节点 + 租约 Client。HTTP/SOCKS 握手交给 reqwest。
 
 [dependencies]
 reqwest   = { workspace = true }
-url       = "2"
-percent-encoding = "2"
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 arc-swap  = { workspace = true }
 rand      = { workspace = true }
+tokio     = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+url       = "2"
+percent-encoding = "2"

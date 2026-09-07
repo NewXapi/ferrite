@@ -70,6 +70,9 @@ pub struct RequestMeta {
 /// 为什么定义在 `pipeline` 而不是 `dispatch`：`pipeline` 是全部 stage crate 的
 /// 公共基座，反向不依赖任何具体 stage（见 crate 文档）。路由产物要经 `RequestCtx`
 /// 跨 stage 传递，只能落在基座里；`dispatch::Candidate` 是本类型的别名。
+///
+/// `channel_key`（`unit.channel_key`）= `ChannelRecord.meta.key`，是渠道出口代理
+/// 的租约键。ProxyManager::acquire(channel_key) 据此选节点。
 #[derive(Debug, Clone)]
 pub struct SelectedRoute {
     /// 命中的路由单元（原始记录，供计量/日志引用）。

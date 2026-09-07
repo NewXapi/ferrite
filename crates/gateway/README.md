@@ -6,7 +6,7 @@
 - `gate/` — API Key、状态、配额、频率、模型和并发准入。
 - `dispatch/` — 候选渠道、健康状态、权重选择和失败重试。
 - `forward/` — 上游 URL、头、请求体、响应体和 SSE 流。
-- `proxy/` — 直连、HTTP CONNECT、SOCKS5 和 SSRF 校验。
+- `proxy/` — 出口节点解析、按 channel_key 租 HTTP/SOCKS5 Client、SSRF；vless/vmess 未实现。
 - `protocol/` — OpenAI、Claude、Claude、Gemini 请求、响应、错误和 SSE 编解码。
 - `protocol-bridge/` — 将 pipeline 上下文转换为 protocol codec 输入输出。
 - `metering/` — 预扣额度、token 获取与估算、价格和结算。
@@ -107,7 +107,21 @@ cargo check -p gateway
 cargo test -p gateway --test config_wiring
 ```
 
-## 后续 crate
+## MVP：proxy
 
-- `proxy/`：渠道出口代理、SSRF、HTTP CONNECT、SOCKS5。
-- `security/`：敏感词、跨 chunk 扫描和审核。
+`ProxyManager::acquire(channel_key)`（`channel_key` = `RouteUnitRecord.channel_key`）
+返回已注入 `reqwest::Proxy` 的 Client；无节点直连。
+`ForwardStage::with_proxies` 把租约接到模型请求。快照注入留给 admin-sync。
+
+### 验收
+
+```sh
+cargo check -p gateway-proxy -p forward
+```
+
+### 验收
+
+```sh
+cargo check -p gateway-proxy -p forward
+```
+

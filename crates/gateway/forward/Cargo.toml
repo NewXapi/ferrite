@@ -11,6 +11,7 @@ publish.workspace = true
 gateway-pipeline = { path = "../pipeline" }
 dispatch = { path = "../dispatch" }
 gateway-protocol-bridge = { path = "../protocol-bridge" }
+gateway-proxy = { path = "../proxy" }
 contract = { path = "../../contract" }
 serde    = { workspace = true }
 serde_json = { workspace = true }
@@ -31,3 +32,5 @@ chrono   = { workspace = true }
 tokio = { workspace = true }
 futures-util = { workspace = true }
 parking_lot = "0.12"
+http = { workspace = true }
+uuid = { workspace = true }

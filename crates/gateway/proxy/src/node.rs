@@ -7,7 +7,7 @@
 use url::Url;
 
 /// 代理协议
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProxyScheme {
     Direct,
     Http,
@@ -29,7 +29,7 @@ pub struct ProxyNode {
     pub host: String,
     pub port: u16,
     pub auth: Option<BasicAuth>,
-    pub channel_ids: Vec<i64>,
+    pub channel_keys: Vec<String>,
     pub priority: i32,
 }
 
@@ -40,7 +40,7 @@ impl ProxyNode {
     /// - host 必填，缺失报错
     /// - port：URL 显式给出用显式值；否则 Http 默认 8080，Socks5 默认 1080
     /// - 认证：username()/password() 非空时填入 auth；只有 user 无 pass 时 pass 用空串
-    /// - 返回的 id=0、channel_ids=[]、priority=0，调用方后续填充
+    /// - 返回的 id=0、channel_keys=[]、priority=0，调用方后续填充
     pub fn parse_url(url: &str) -> Result<Self, ParseError> {
         let url_obj =
             Url::parse(url).map_err(|e| ParseError::Invalid(format!("url parse failed: {}", e)))?;
@@ -79,7 +79,7 @@ impl ProxyNode {
             host: host.to_string(),
             port,
             auth,
-            channel_ids: vec![],
+            channel_keys: vec![],
             priority: 0,
         })
     }
