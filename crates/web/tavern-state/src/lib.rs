@@ -173,6 +173,22 @@ pub async fn open_chat(chat_name: String) {
     }
 }
 
+/// 回收消息尾部空的 assistant 占位消息。
+///
+/// 供 send 的 abort/生成失败分支共用：占位是生成前 push 的空 assistant 消息，
+/// 流没产出内容时必须回收，否则 UI 出现空气泡、下轮 prompt 带空 content。
+/// 返回是否发生了回收。
+pub fn recycle_empty_assistant(messages: &mut Vec<Message>) -> bool {
+    if let Some(last) = messages.last()
+        && !last.is_user
+        && last.mes.is_empty()
+    {
+        messages.pop();
+        return true;
+    }
+    false
+}
+
 /// 中止当前生成。
 ///
 /// 置位后 [`append_delta`] 变 no-op；send 结束后若已中止则不保存，并重置标志。
@@ -247,13 +263,28 @@ pub async fn send(text: String) {
         s.last_error = None;
     });
 
-    let body = build_generate_body(
+    let body = match build_generate_body(
         &card,
         &character_name,
         &user_name,
         &STATE.read().messages,
         &model,
-    );
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            // 构建失败(当前唯一成因:无 system 且无消息):回滚本回合状态。
+            STATE.with_mut(|s| {
+                s.generating = false;
+                s.last_error = Some(format!("prompt 构建失败: {e}"));
+                if let Some(last) = s.messages.last()
+                    && last.is_user
+                {
+                    s.messages.pop();
+                }
+            });
+            return;
+        }
+    };
 
     let assistant_name = card.name.clone();
     STATE.with_mut(|s| {
@@ -278,12 +309,7 @@ pub async fn send(text: String) {
         STATE.with_mut(|s| {
             s.last_error = Some(format!("生成失败: {e}"));
             // 失败同样回收空 assistant 占位,避免下一轮 prompt 携带空 content
-            if let Some(last) = s.messages.last()
-                && !last.is_user
-                && last.mes.is_empty()
-            {
-                s.messages.pop();
-            }
+            recycle_empty_assistant(&mut s.messages);
         });
         return;
     }
@@ -295,12 +321,7 @@ pub async fn send(text: String) {
             // abort 前 push 了一条空 assistant 占位用于流式填充；abort 后
             // 必须回收，否则 UI 出现空气泡，且下轮 send 会把空 content 带进
             // prompt（部分上游 reject 空 content）。
-            if let Some(last) = s.messages.last()
-                && !last.is_user
-                && last.mes.is_empty()
-            {
-                s.messages.pop();
-            }
+            recycle_empty_assistant(&mut s.messages);
         });
         return;
     }
@@ -340,7 +361,7 @@ pub fn build_generate_body(
     user_name: &str,
     messages: &[Message],
     model: &str,
-) -> Value {
+) -> Result<Value, harness_prompt::RenderError> {
     let system = build_system_prompt(character);
 
     let mut prompt = harness_prompt::PromptInput::new().with_system(system);
@@ -357,13 +378,9 @@ pub fn build_generate_body(
         prompt = prompt.push_message(harness_prompt::AgentModelMessage::text(role, text));
     }
 
-    let request =
-        harness_prompt::render(&prompt).unwrap_or_else(|_| harness_prompt::AgentModelRequest {
-            system: None,
-            messages: Vec::new(),
-            tools: Vec::new(),
-            metadata: None,
-        });
+    // 渲染失败(当前唯一成因:无 system 且无消息)直接上报给调用方,
+    // 绝不静默回退为空请求体——空 body 会被上游 400,且丢掉错误上下文。
+    let request = harness_prompt::render(&prompt)?;
 
     // ponytail: len/4 粗估 token，真 tokenizer 后续接 harness-tokenizer
     let truncated = harness_prompt::truncate_history(&request.messages, 4096, |m| {
@@ -371,7 +388,7 @@ pub fn build_generate_body(
     });
 
     let mut out_messages: Vec<Value> = Vec::new();
-    if let Some(ref sys) = request.system {
+    if let Some(sys) = &request.system {
         out_messages.push(json!({"role": "system", "content": sys}));
     }
     for msg in &truncated {
@@ -384,12 +401,12 @@ pub fn build_generate_body(
         out_messages.push(json!({"role": role_str, "content": msg.text_payload()}));
     }
 
-    json!({
+    Ok(json!({
         "model": model,
         "messages": out_messages,
         "stream": true,
         "_ferrite_agent_prompt_marker": ""
-    })
+    }))
 }
 
 /// 构建 system prompt。

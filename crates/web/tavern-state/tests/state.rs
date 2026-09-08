@@ -26,7 +26,8 @@ fn test_build_generate_body_expands_variables_and_marker() {
         extra: Default::default(),
     }];
 
-    let body = build_generate_body(&character, "Alice", "Bob", &messages, "gpt-4");
+    let body = build_generate_body(&character, "Alice", "Bob", &messages, "gpt-4")
+        .expect("prompt 构建应成功");
 
     // 带 marker
     assert_eq!(
@@ -79,14 +80,20 @@ fn test_truncate_preserves_system_and_trims_history() {
         });
     }
 
-    let body = build_generate_body(&character, "Alice", "Bob", &messages, "gpt-4");
+    let body = build_generate_body(&character, "Alice", "Bob", &messages, "gpt-4")
+        .expect("prompt 构建应成功");
     let msgs = body.get("messages").unwrap().as_array().unwrap();
 
     // 首条是 system
     assert_eq!(msgs[0].get("role").unwrap().as_str().unwrap(), "system");
 
-    // 总消息数应远小于 101（1 system + 100 history）
-    assert!(msgs.len() < 50, "应被截断，实际: {}", msgs.len());
+    // 总消息数应远低于 101（1 system + 100 history）。收紧到实际期望区间
+    // 以避免断言过松掩盖上游裁剪语义变化（ocr review 捕获）。
+    assert!(
+        msgs.len() >= 31 && msgs.len() <= 35,
+        "应被截断到 31-35 条，实际: {}",
+        msgs.len()
+    );
 }
 
 /// swipe_id 选中正确 swipe，越界回退 mes。
@@ -241,13 +248,8 @@ fn test_abort_pops_empty_assistant_placeholder() {
             extra: Default::default(),
         },
     ];
-    // 模拟 abort 分支的 pop 逻辑
-    if let Some(last) = msgs.last()
-        && !last.is_user
-        && last.mes.is_empty()
-    {
-        msgs.pop();
-    }
+    // 直接调用生产函数,不复制模拟逻辑
+    assert!(tavern_state::recycle_empty_assistant(&mut msgs));
     assert_eq!(msgs.len(), 1, "空助手占位应被回收");
     assert_eq!(msgs[0].mes, "Hello");
     assert!(msgs[0].is_user);
@@ -276,12 +278,7 @@ fn test_abort_keeps_non_empty_assistant() {
             extra: Default::default(),
         },
     ];
-    if let Some(last) = msgs.last()
-        && !last.is_user
-        && last.mes.is_empty()
-    {
-        msgs.pop();
-    }
+    assert!(!tavern_state::recycle_empty_assistant(&mut msgs));
     assert_eq!(msgs.len(), 2, "有内容的 assistant 不应被回收");
     assert_eq!(msgs[1].mes, "Hi there!");
 }
