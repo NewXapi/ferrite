@@ -6,8 +6,9 @@
 //! - 提供地址解析与网络位置表示（Address、NetLocation、ResolvedLocation）
 //! - 实现流读取器（StreamReader）
 //! - 定义代理连接器 trait（ProxyConnector）
+//! - 各协议客户端握手：Shadowsocks / Trojan / VMess / VLESS（+ WebSocket 传输）
 //!
-//! 本 crate 不实现具体协议握手，仅提供接口供上层使用。
+//! 具体协议握手由各子模块实现；`ProxyManager` 按节点 scheme 分派。
 pub mod address;
 pub mod async_stream;
 pub mod proxy_connector;
@@ -27,3 +28,12 @@ pub mod trojan;
 
 pub use shadowsocks::ShadowsocksProxyConnector;
 pub use trojan::TrojanProxyConnector;
+
+/// ---- PR3: VMess / VLESS + WebSocket 客户端握手（shoes MIT 移植）----
+pub mod vless;
+pub mod vmess;
+pub mod websocket;
+
+pub use vless::VlessProxyConnector;
+pub use vmess::{DataCipher, VmessProxyConnector, new_vmess_connector};
+pub use websocket::WebsocketTcpClientHandler;

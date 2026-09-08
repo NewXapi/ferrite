@@ -19,15 +19,11 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-fn is_supported_scheme(scheme: ProxyScheme) -> bool {
-    matches!(
-        scheme,
-        ProxyScheme::Direct
-            | ProxyScheme::Http
-            | ProxyScheme::Socks5
-            | ProxyScheme::Shadowsocks
-            | ProxyScheme::Trojan
-    )
+use tracing::warn as tracing_warn;
+
+fn is_supported_scheme(_scheme: ProxyScheme) -> bool {
+    // 所有协议已实现（PR3/4 落地 VLESS/VMess + WS 客户端链），临时闸门移除
+    true
 }
 
 /// 出口形态：reqwest 原生（direct/http/socks5）或协议连接器（ss/trojan）。
@@ -132,6 +128,7 @@ impl ProxyManager {
             .into_iter()
             .filter(|node| {
                 is_supported_scheme(node.scheme)
+                    && true
                     && health
                         .get(&node.id)
                         .and_then(|h| h.cooldown_until)
@@ -250,26 +247,35 @@ impl ProxyManager {
                         return Arc::new(ProxyClient::Connector(Arc::clone(conn)));
                     }
                 }
+                // ss:// URL 语义：auth.user = cipher 方法名，auth.pass = 密码
+                // （parse_url 从 ss://method:password@host 提取）。缺省 aes-128-gcm + 空密码
+                // 只在节点配置不完整时发生，交由握手期报错而非此处 panic。
                 let conn: Arc<dyn ProxyConnector> = match node.scheme {
                     ProxyScheme::Shadowsocks => {
-                        let auth = node.auth.as_ref().map(|a| a.pass.as_str()).unwrap_or("");
-                        let cipher = if auth.is_empty() { "aes-128-gcm" } else { auth };
-                        // 密码放 auth.pass（节点配置约定：ss://cipher:pass@host 或 auth=pass）
-                        let password = node.auth.as_ref().map(|a| a.user.as_str()).unwrap_or("");
+                        let (cipher_str, password) = match node.auth.as_ref() {
+                            Some(a) if !a.user.is_empty() => (a.user.as_str(), a.pass.as_str()),
+                            _ => ("aes-128-gcm", ""),
+                        };
+                        let cipher = ShadowsocksCipher::try_from(cipher_str).unwrap_or_else(|_| {
+                            // 非法 cipher 名回落 AES-128-GCM（panic 不该出现在节点配置错误路径）
+                            tracing_warn!(cipher = %cipher_str, "非法 SS cipher，回落 aes-128-gcm");
+                            ShadowsocksCipher::try_from("aes-128-gcm")
+                                .expect("aes-128-gcm is a valid cipher")
+                        });
                         let location = NetLocation::new(
                             crate::proto::Address::Hostname(node.host.clone()),
                             node.port,
                         );
                         Arc::new(crate::proto::ShadowsocksProxyConnector::new_client(
-                            location,
-                            ShadowsocksCipher::try_from(cipher)
-                                .unwrap_or(ShadowsocksCipher::try_from("aes-128-gcm").unwrap()),
-                            password,
-                            false,
+                            location, cipher, password, false,
                         ))
                     }
                     ProxyScheme::Trojan => {
-                        let password = node.auth.as_ref().map(|a| a.pass.as_str()).unwrap_or("");
+                        let password = node
+                            .auth
+                            .as_ref()
+                            .map(|a| a.pass.as_str())
+                            .unwrap_or_default();
                         let location = NetLocation::new(
                             crate::proto::Address::Hostname(node.host.clone()),
                             node.port,
@@ -285,9 +291,70 @@ impl ProxyManager {
                 cache.insert((node.id, fingerprint), Arc::clone(&conn));
                 Arc::new(ProxyClient::Connector(conn))
             }
-            // 未实现协议（Vless/Vmess）：is_supported_scheme 已挡住，防御性直连
+            // 协议连接器路径（Vless/Vmess）：构造并缓存连接器实例
             ProxyScheme::Vless | ProxyScheme::Vmess => {
-                Arc::new(ProxyClient::Reqwest(Arc::clone(&self.direct_client)))
+                let fingerprint = fingerprint_of(node);
+                {
+                    let cache = self
+                        .connector_cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if let Some(conn) = cache.get(&(node.id, fingerprint)) {
+                        return Arc::new(ProxyClient::Connector(Arc::clone(conn)));
+                    }
+                }
+                let location = NetLocation::new(
+                    crate::proto::Address::Hostname(node.host.clone()),
+                    node.port,
+                );
+                let conn: Arc<dyn ProxyConnector> = match node.scheme {
+                    ProxyScheme::Vless => {
+                        // auth.user = UUID，auth.pass 备用
+                        let uuid = node
+                            .auth
+                            .as_ref()
+                            .map(|a| a.user.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        Arc::new(crate::proto::VlessProxyConnector::new(
+                            location, &uuid, None,
+                        ))
+                    }
+                    ProxyScheme::Vmess => {
+                        // auth.user = UUID，auth.pass = security（"aes-128-gcm"/"chacha20-poly1305"/"auto"）
+                        let uuid = node
+                            .auth
+                            .as_ref()
+                            .map(|a| a.user.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let security = node
+                            .auth
+                            .as_ref()
+                            .map(|a| a.pass.as_str())
+                            .unwrap_or("auto")
+                            .to_string();
+                        let uuid_parsed = uuid::Uuid::parse_str(&uuid).unwrap_or_else(|e| {
+                            tracing::warn!(uuid = %uuid, error = %e, "非法 VMess UUID，回落全零 UUID（该节点将握手失败并冷却）");
+                            uuid::Uuid::nil()
+                        });
+                        let sec = match security.as_str() {
+                            "aes-128-gcm" => crate::proto::DataCipher::Aes128Gcm,
+                            "chacha20-poly1305" => crate::proto::DataCipher::Chacha20Poly1305,
+                            // 未知 security 回落 auto/none 语义（shoes DataCipher 无 auto 变体时按 aes 处理）
+                            _ => crate::proto::DataCipher::Aes128Gcm,
+                        };
+                        let _ = location; // vmess connector 自持地址（shoes 语义：地址由握手目标决定）
+                        crate::proto::new_vmess_connector(uuid_parsed, sec, 0).into()
+                    }
+                    _ => unreachable!("guarded by match above"),
+                };
+                let mut cache = self
+                    .connector_cache
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                cache.insert((node.id, fingerprint), Arc::clone(&conn));
+                Arc::new(ProxyClient::Connector(conn))
             }
         }
     }

@@ -6,7 +6,7 @@ asset_dir = "assets"
 title = "Ferrite Admin"
 
 [[web.proxy]]
-backend = "http://localhost:3000/api"
+backend = "http://127.0.0.1:3211/api"
 
 [[web.proxy]]
 backend = "http://localhost:3000/mj"

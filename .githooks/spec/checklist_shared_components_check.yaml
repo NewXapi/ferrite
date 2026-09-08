@@ -3,6 +3,7 @@
 # 检测: find crates/admin-web/page-*/src/ui.rs 应无结果
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: FAIL
 match:
   paths_include: ["**/*.rs"]

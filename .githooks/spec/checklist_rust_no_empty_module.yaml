@@ -4,6 +4,7 @@
 # grep 模式, 零 LLM
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: WARN
 match:
   paths_include: ["**/*.rs"]
@@ -16,7 +17,9 @@ harness:
     - |
       ROOT=$(git rev-parse --show-toplevel)
       # 找出小于 100 字节的 rs 文件, 看去注释后是不是空/碎文件
-      matches=$(find "$ROOT"/crates/*/src "$ROOT"/bin/*/src -name '*.rs' -size -100c 2>/dev/null | while read f; do
+      matches=$(find "$ROOT" -name '*.rs' -size -100c \
+        -not -path "*/target/*" -not -path "*/.wt/*" -not -path "*/.git/*" \
+        2>/dev/null | while read f; do
         lines=$(grep -v '^//' "$f" | grep -v '^\s*$' | wc -l)
         if [ "$lines" -le 2 ]; then
           if ! grep -qE 'fn |struct |impl |trait |enum |macro_rules!' "$f"; then

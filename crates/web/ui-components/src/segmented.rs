@@ -17,6 +17,9 @@ pub fn SegmentedCapsule(
     active: usize,
     /// 选择回调
     on_select: EventHandler<usize>,
+    /// 测试 ID 前缀 (给 agent 验证用)
+    #[props(default)]
+    testid_prefix: String,
 ) -> Element {
     let n = items.len();
     rsx! {
@@ -40,6 +43,9 @@ pub fn SegmentedCapsule(
             for (i, item) in items.iter().enumerate() {
                 button {
                     key: "{item}",
+                    "data-testid": "{testid_prefix}-{i}",
+                    role: "tab",
+                    aria_selected: "{i == active}",
                     class: if i == active {
                         "min-w-[30%] flex-1 truncate border-r border-zinc-800 bg-zinc-100 px-3 py-1.5 text-center text-xs font-medium text-zinc-900 last:border-r-0 sm:min-w-0 sm:flex-none"
                     } else {

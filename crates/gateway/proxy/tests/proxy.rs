@@ -486,22 +486,25 @@ fn to_reqwest_proxy_new_schemes_return_error() {
 
 /// `manager::acquire`：装一个 vless 节点 + 一个 http 节点同 channel，acquire 永远选 http（跳过未支持协议）
 #[test]
-fn acquire_skips_unsupported_scheme_nodes() {
+fn acquire_prefers_implemented_high_priority_nodes() {
     let manager = ProxyManager::new();
+    let mut vless_node = test_node(1, ProxyScheme::Vless, "vless.example", 443, "ch", 10);
+    vless_node.auth = Some(BasicAuth {
+        user: "b831381d-6324-4d53-ad4f-8cda48b30811".into(),
+        pass: String::new(),
+    });
     manager.install(ProxySnapshot {
         nodes: vec![
-            // vless 节点：高优先级但协议未实现，应被跳过
-            test_node(1, ProxyScheme::Vless, "vless.example", 443, "ch", 10),
-            // http 节点：较低优先级但协议支持，应被选中
+            vless_node,
+            // http 节点：较低优先级
             test_node(2, ProxyScheme::Http, "http.example", 8080, "ch", 5),
         ],
     });
-    // 多次 acquire 都应命中 http 节点，因为 vless 被 is_supported_scheme 过滤
     for _ in 0..20 {
         let lease = manager.acquire("ch");
         assert_eq!(
-            lease.node_id, 2,
-            "unsupported Vless node should be skipped, fallback to Http"
+            lease.node_id, 1,
+            "implemented Vless at higher priority should be picked"
         );
     }
 }

@@ -3,6 +3,7 @@ pub mod app;
 pub mod retro;
 pub use app::RootApp;
 
+use app::current_hash;
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -188,10 +189,28 @@ pub fn HomePage() -> Element {
     let mut dash_tab = use_signal(move || init_tab);
     let mut theme = use_signal(|| Theme::Dark);
     use_context_provider(EntityStore::seed);
+
+    // 启动恢复：localStorage 里有 token → 注入 shared client，顶部显示用户名
+    let logged_user = use_signal(|| {
+        ui::get_storage_item("ferrite_username").filter(|_| ui::get_cached_token().is_some())
+    });
+    use_hook(move || {
+        if let Some(token) = ui::get_cached_token() {
+            client::ApiClient::shared().clone().set_token(Some(token));
+        }
+    });
     let is_light = theme() == Theme::Light;
 
     use_hook(move || {
         let cb = Closure::<dyn FnMut()>::new(move || {
+            // 只在 console 路由时写 signal：#auth/#signup/#login/#retro 会卸载
+            // HomePage，此时 section/dash_tab 的 owner 已 drop，set 会 panic
+            // (ValueDroppedError)。守卫让 auth/retro hash 直接跳过。
+            let h = current_hash();
+            let is_console = h != "#auth" && h != "#signup" && h != "#login" && h != "#retro";
+            if !is_console {
+                return;
+            }
             let (s, t) = get_initial_route();
             section.set(s);
             dash_tab.set(t);
@@ -265,20 +284,36 @@ pub fn HomePage() -> Element {
                         onclick: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         if is_light { "Dark" } else { "Light" }
                     }
-                    a {
-                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
-                        href: "#signup",
-                        "登录"
+                    if let Some(name) = logged_user() {
+                        a {
+                            class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
+                            href: "#account",
+                            "{name}"
+                        }
+                    } else {
+                        a {
+                            class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
+                            href: "#signup",
+                            "登录"
+                        }
                     }
                 }
             }
             main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "Ferrite · 控制台" }
-                    a {
-                        class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
-                        href: "#signup",
-                        "登录"
+                    if let Some(name) = logged_user() {
+                        a {
+                            class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
+                            href: "#account",
+                            "{name}"
+                        }
+                    } else {
+                        a {
+                            class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
+                            href: "#signup",
+                            "登录"
+                        }
                     }
                 }
                 ConsolePanel {

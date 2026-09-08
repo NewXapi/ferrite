@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+web-sys = { version = "0.3", features = ["Window", "Location"] }
+serde_json = "1"
 dioxus    = { workspace = true }
 ui       = { package = "ui-components", path = "../ui-components" }
 client   = { path = "../admin-client" }

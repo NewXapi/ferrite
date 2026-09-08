@@ -4,6 +4,7 @@
 # 检测: 1) 找 src/*_test.rs 2) 找缺 api_shapes.rs 的 page crate
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: WARN
 match:
   paths_include: ["**/*.rs"]

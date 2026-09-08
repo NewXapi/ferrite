@@ -5,6 +5,7 @@
 # harness: 用 llm-checklist-harness.sh 调任意 LLM, dry-run 模式可测
 enabled: true
 hooks: [pre-push, merge]   # 慢检查不在 pre-commit
+sla: l1
 fail_severity: WARN         # 磨合期先 WARN
 match:
   paths_include: ["**/*.rs"]

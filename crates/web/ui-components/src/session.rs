@@ -21,15 +21,27 @@ pub fn get_storage_item(key: &str) -> Option<String> {
 }
 
 pub fn set_storage_item(key: &str, val: &str) {
+    set_storage_scoped(key, val, true);
+}
+
+/// 按持久化级别存储：persistent=true → localStorage；false → sessionStorage。
+pub fn set_storage_scoped(key: &str, val: &str, persistent: bool) {
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let storage = web_sys::window().and_then(|w| {
+            if persistent {
+                w.local_storage().ok().flatten()
+            } else {
+                w.session_storage().ok().flatten()
+            }
+        });
+        if let Some(s) = storage {
             let _ = s.set_item(key, val);
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (key, val);
+        let _ = (key, val, persistent);
     }
 }
 
