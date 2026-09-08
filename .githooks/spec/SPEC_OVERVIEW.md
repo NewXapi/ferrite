@@ -1,48 +1,58 @@
-# ferrite 前端开发规范 (纯检测项)
+# ferrite gate 检查规则总览
 
-规则只在各 `frontend_*.yaml` 中, 本文件为复刻清单.
+规则只在 `.githooks/spec/checklist_*.yaml` 里，本文件是对照清单。**新增或修改规则后必须更新本文件。**
 
-```
-.githooks/frontend/
-├── SPEC_OVERVIEW.md                  # 本文件
-├── dispatch.yaml                     # 钩子调度 (gate 接入时启用)
-├── frontend_structure.yaml           # FR-01 crate 分层与数据边界
-├── frontend_shared_components.yaml   # FR-02 共享组件归属
-├── frontend_copy_constants.yaml      # FR-03 文案常量 (反硬编码)
-├── frontend_tests.yaml               # FR-04 测试代码划分
-└── frontend_no_nested_items.yaml     # FR-05 禁止 fn 内嵌套类型
-```
+手动跑：`gate check [names...] --sla {l1|l2|l3} [--json]`。不带名字则列出当前 SLA 层级下的全部检查项。
 
-## 5 条硬检查规则
+## SLA 分层
 
-### FR-01 crate 分层与数据边界
-- `crates/page-<name>/` (页面) + `crates/{client,session,mock}/` (共享) + `crates/ui/` (组件)
-- **FAIL**: 面板直接 `use mock::` (必须经本页 `api.rs` 薄壳)
-- **FAIL**: 旧嵌套路径 `crates/page/<n>` 或 `crates/shared/<n>` 存在
-- **PASS**: 7 个 page 都有 `src/api.rs` (admin 走 state.rs 除外)
+- **l1 结构层**：确定性检查（grep / clippy / cargo-machete），零或低 token。FAIL 是硬门槛。
+- **l2 语义层**：轻量语义（重复代码、跨 crate 影响面），秒级。FAIL 是硬门槛。
+- **l3 LLM 层**：按需调用，输出 `score` 与 `confidence` 供开发 agent 自行判断，**不阻断合并**。
 
-### FR-02 共享组件归属
-- ≥2 个 page 用的组件放 `crates/ui/src/<name>.rs`, lib.rs re-export
-- **FAIL**: page 内存在 `src/ui.rs`
+`gate check` 默认只跑 l1。重规则（clippy / dep_hygiene / duplication / crg_impact）设 `hooks: [merge]`，不拖慢日常提交。
 
-### FR-03 文案常量 (反硬编码)
-- 同一中文字面量复用 **2+ 次** 必须抽 const (组件内或 mod 级)
-- **FAIL**: rsx 内出现中文字面量 (api.rs / state.rs / mock 豁免)
-- **FAIL**: mock 数据写在面板内 (必须在 crates/mock/)
+## 规则清单
 
-### FR-04 测试代码划分
-- 单元测试放 `src/<file>.rs` 内 `#[cfg(test)] mod tests`
-- 集成测试放 `crates/<name>/tests/<topic>.rs`
-- **PASS**: 7 个 page 都有 `tests/api_shapes.rs`
-- **WARN**: `src/` 内存在独立 `*_test.rs` 或 `test_*.rs`
+| 名字 | SLA | 触发 | 严重度 | 检测内容 |
+|---|---|---|---|---|
+| `structure_check` | l1 | pre-commit, pre-push, merge | FAIL | crate 分层与数据边界（面板禁直接 `use mock::`，禁旧嵌套路径） |
+| `shared_components_check` | l1 | pre-commit, pre-push, merge | FAIL | ≥2 个 page 共用的组件必须放共享 crate，page 内禁 `src/ui.rs` |
+| `no_nested_types` | l1 | pre-commit, pre-push, merge | FAIL | 禁止在 `fn` 体内定义 `struct` / `enum` |
+| `no_nested_worktree` | l1 | pre-commit, pre-push, merge | FAIL | 禁止 `.wt/` 下嵌套 worktree（历史事故：13 层嵌套 + 321G 产物） |
+| `rust_no_process_cmd` | l1 | pre-commit, pre-push, merge | FAIL | HTTP 调用走 reqwest，不要 subprocess 拉 curl / wget |
+| `rust_tests_in_tests_dir` | l1 | pre-commit, pre-push, merge | FAIL | 测试放同层 `tests/`，禁止在 `src/` 留 `#[cfg(test)]` |
+| `copy_constants_check` | l1 | pre-commit, pre-push, merge | WARN | 文案常量：同一中文字面量复用 2+ 次要抽 const |
+| `tests_check` | l1 | pre-commit, pre-push, merge | WARN | 测试代码划分与命名 |
+| `rust_no_dead_code_allow` | l1 | pre-commit, pre-push, merge | WARN | 合并前清理 `#[allow(dead_code)]`（同行带 `//` 理由则放行） |
+| `rust_no_empty_module` | l1 | pre-commit, pre-push, merge | WARN | 微型空文件（≤2 行且无实现），考虑合并到上层 mod |
+| `rust_no_cfg_test_in_tests_dir` | l1 | pre-commit, pre-push, merge | WARN | `tests/` 目录里不需要 `#[cfg(test)]` |
+| `rust_test_no_assert` | l1 | pre-commit, pre-push, merge | WARN | 测试函数必须含断言 |
+| `rust_todo_needs_issue` | l1 | pre-commit, pre-push, merge | WARN | TODO / FIXME 必须挂 issue 号（`// TODO(#123):` 或 `todo!("TODO(#123): ...")`） |
+| `hardcoded_secret` | l1 | pre-commit, pre-push, merge | WARN | 硬编码密钥 / 密码 / Token（PCRE，5 语言） |
+| `stale_api` | l1 | pre-commit, pre-push, merge | WARN | 废弃 Rust API（`uninitialized` / `try!` / `ONCE_INIT`） |
+| `slop_comment` | l1 | pre-commit, pre-push, merge | WARN | AI 风格注释（`Step 1:` / `This function` / `该函数`…） |
+| `clippy` | l1 | merge | FAIL / WARN | rustc 编译错误与 `unused_*` / `dead_code` 判 FAIL；`collapsible_if` 等风格判 WARN |
+| `dep_hygiene` | l1 | merge | WARN | `cargo-machete` 未使用依赖 |
+| `duplication` | l2 | merge | WARN | 跨文件 4+ 连续行重复块 |
+| `crg_impact` | l2 | merge | WARN | diff 跨 3+ crate 改动，提示耦合 |
 
-### FR-05 禁止函数体内定义类型
-- **FAIL**: `fn` 体内出现 `struct` 或 `enum` 定义 (必须提到 mod 级或文件顶部)
+## 路径无关性（重要）
 
----
+harness 一律扫仓库根加 `--exclude-dir`，**不假设 crate 嵌套深度**。
 
-## 明确不做的 (不写规范, 不检查)
-- class: 不抽文件、不抽 const、直接写 rsx (改动频繁, 就近维护)
-- i18n: 单语言阶段不上 fluent/rust-i18n (中期再考虑)
-- rsx 语法: 编译器通过即可, 不做额外检查
-- constants crate: 不建独立 crate, 文案按共享范围就近 const
+ferrite 是两层布局（`crates/<domain>/<crate>/src`），而规则原先写死一层的 `crates/*/src/`，导致 45 个 crate 里只有 1 个被扫到——其余 44 个的代码从未被检查，gate 却报 `ALL PASS`。静默失效比直接报错更危险，所以新增规则不得再写死目录层级。
+
+## 明确不做的（不写规范，不检查）
+
+- class：不抽文件、不抽 const，直接写 rsx（改动频繁，就近维护）
+- i18n：单语言阶段不上 fluent / rust-i18n
+- rsx 语法：编译器通过即可
+- constants crate：不建独立 crate，文案按共享范围就近 const
+
+## 外部工具依赖
+
+- `code-review-graph`（CRG）：结构分析与变更影响检测
+- `ocr`（OpenCodeReview CLI）：LLM 代码审查，按模块分批跑
+- `cargo-machete`：未使用依赖检测
+- 缺失的工具按 yaml 的 `optional` 处理（默认 WARN 跳过）

@@ -1,13 +1,13 @@
-# 泛用: TODO / FIXME 必须挂 issue 号
-# 为什么: 没挂 issue 的 TODO 永远不会做
-# 检测: 查找 TODO/FIXME 但紧跟着没有关联 #N 票号 (如 TODO(#123): ...)
-# grep 模式, 零 LLM
+# TODO / FIXME 必须挂 issue 号. 例: // TODO(#123): ... 或 todo!("TODO(#123): ...")
+# 只扫注释与 todo!/unimplemented! 宏, 避开字符串字面量里的关键字表
+# 扫仓库根, 不假设 crate 嵌套深度 (ferrite 是 crates/<domain>/<crate>/src)
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: WARN
 match:
   paths_include: ["**/*.rs"]
-  paths_exclude: ["target/", ".wt/"]
+  paths_exclude: ["target/", ".wt/", "**/tests/**", "**/*_test.rs"]
 mode: grep
 harness:
   command: "sh"
@@ -15,17 +15,21 @@ harness:
     - "-c"
     - |
       ROOT=$(git rev-parse --show-toplevel)
-      # 匹配 TODO 或 FIXME, 但不匹配 TODO(#xxx) 的情况
-      matches=$(grep -rEn 'TODO[^#]|FIXME[^#]' "$ROOT"/crates/ "$ROOT"/bin/ --include='*.rs' 2>/dev/null | head -20)
+      matches=$(grep -rEn '(//.*\b(TODO|FIXME)\b|(todo|unimplemented)!\()' "$ROOT" \
+        --include='*.rs' \
+        --exclude-dir=target --exclude-dir=.wt --exclude-dir=.git \
+        --exclude-dir=tests 2>/dev/null \
+        | grep -vE '(TODO|FIXME)\(#[0-9]+' \
+        | grep -vE 'FORBIDDEN_KEYWORDS|stale_marker' \
+        | head -20)
       if [ -z "$matches" ]; then
         echo '[]'
       else
         printf '%s' "$matches" | jq -R -s '
-          split("\n")
-          | map(select(length > 0))
+          split("\n") | map(select(length > 0))
           | map(capture("^(?<path>.+):(?<line>[0-9]+):(?<rest>.*)$"))
-          | map({id: "TODO-NEEDS-ISSUE", severity: "WARN", path: .path, line: (.line|tonumber), message: ("TODO/FIXME 必须关联 issue 号 (例 TODO(#123):): " + .rest)})
-        '
+          | map({id:"TODO-NEEDS-ISSUE", severity:"WARN", path:.path, line:(.line|tonumber),
+                 message:("TODO/FIXME 必须关联 issue 号 (例 // TODO(#123): 或 todo!(\"TODO(#123): ...\")): " + .rest)})'
       fi
 optional: true
 timeout: 10

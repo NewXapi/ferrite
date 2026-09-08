@@ -3,6 +3,7 @@
 # grep 模式, 零 LLM
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: WARN
 match:
   paths_include: ["**/tests/**/*.rs"]
@@ -14,7 +15,9 @@ harness:
     - "-c"
     - |
       ROOT=$(git rev-parse --show-toplevel)
-      matches=$(grep -rEn '#\[cfg\(test\)\]' "$ROOT"/crates/*/tests/ "$ROOT"/bin/*/tests/ --include='*.rs' 2>/dev/null | head -20)
+      matches=$(grep -rEn '#\[cfg\(test\)\]' "$ROOT" --include='*.rs' \
+        --exclude-dir=target --exclude-dir=.wt --exclude-dir=.git 2>/dev/null \
+        | grep '/tests/' | head -20)
       if [ -z "$matches" ]; then
         echo '[]'
       else
