@@ -3,6 +3,7 @@
 # 检测: grep 匹配缩进的 struct/enum 声明
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: FAIL
 match:
   paths_include: ["**/*.rs"]

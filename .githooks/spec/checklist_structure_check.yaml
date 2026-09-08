@@ -4,6 +4,7 @@
 # 检测: grep -rEn 'use mock::|mock::' crates/admin-web/page-*/src/ 排除 api.rs 应无结果
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: FAIL
 match:
   paths_include: ["**/*.rs"]

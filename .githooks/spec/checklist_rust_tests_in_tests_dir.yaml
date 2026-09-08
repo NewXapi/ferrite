@@ -11,6 +11,7 @@
 # 3) 真要修 baseline 那批需要单独 PR
 enabled: true
 hooks: [pre-commit, pre-push, merge]
+sla: l1
 fail_severity: FAIL
 match:
   paths_include: ["**/*.rs"]
