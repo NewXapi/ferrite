@@ -26,10 +26,11 @@ pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
 pub use dialog::Dialog;
 pub use feedback::{Avatar, EmptyState, IconButton, Loading};
-pub use form::{CodeField, Field, FormField, SliderField, SubmitButton};
+pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};
 pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
 pub use session::{
     api_login, api_register, clear_cached_session, get_cached_token, get_cached_user,
-    set_cached_session,
+    get_storage_item, remove_storage_item, set_cached_session, set_storage_item,
+    set_storage_scoped,
 };

@@ -15,6 +15,7 @@ impl From<SignInPayload> for SubmitPayload {
             username: p.username,
             email: String::new(),
             password: p.password,
+            remember: p.remember,
         }
     }
 }
@@ -26,6 +27,7 @@ impl From<SignUpPayload> for SubmitPayload {
             username: p.username,
             email: p.email,
             password: p.password,
+            remember: false,
         }
     }
 }
@@ -38,6 +40,7 @@ struct SubmitPayload {
     username: String,
     email: String,
     password: String,
+    remember: bool,
 }
 
 #[component]
@@ -45,6 +48,7 @@ pub fn AuthPage() -> Element {
     let active = auth_tab();
     let is_sign_in = active == AuthTab::SignIn;
 
+    let remember_signal = use_signal(|| false);
     let mut state = use_context::<SubmitState>();
 
     let indicator_transform = if is_sign_in {
@@ -103,10 +107,20 @@ pub fn AuthPage() -> Element {
                 },
             )
             .await
-            .map(|resp| resp.access_token);
+            .map(|resp| (resp.access_token, resp.refresh_token));
             match result {
-                Ok(access_token) => {
-                    client.set_token(Some(access_token));
+                Ok((access_token, refresh_token)) => {
+                    client.set_token(Some(access_token.clone()));
+                    // Remember me：token 持久化到 localStorage（30 天长效，配 refresh 静默续期）；
+                    // 未勾选：sessionStorage（关浏览器即失效）。
+                    // ponytail: refresh 流程接入时统一走 admin-session
+                    ui::set_storage_scoped("ferrite_access_token", &access_token, payload.remember);
+                    ui::set_storage_scoped(
+                        "ferrite_refresh_token",
+                        &refresh_token,
+                        payload.remember,
+                    );
+                    ui::set_storage_scoped("ferrite_username", &payload.username, payload.remember);
                     state.busy.set(false);
                     // 回控制台：auth hash 清掉，HomePage 重新挂载
                     if let Some(w) = web_sys::window() {
@@ -189,7 +203,7 @@ pub fn AuthPage() -> Element {
 
                     // Form content
                     match active {
-                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()) } },
+                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
                         AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()) } },
                     }
                 }
