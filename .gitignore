@@ -9,7 +9,6 @@ todo/
 node_modules/
 .wt
 config/config.toml
-config/shoes.yaml
 .env
 .env.*
 *.pem

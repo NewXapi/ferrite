@@ -2,7 +2,6 @@
 
 pub mod config;
 pub mod observability;
-pub mod sidecar;
 
 use crate::config::GatewayConfig;
 use crate::config::{build_proxy_snapshot, build_route_snapshot, build_token_snapshot};
@@ -30,8 +29,7 @@ use std::sync::Arc;
 /// `cfg.channels` 变成 dispatch 的路由快照，`cfg.keys` 变成 gate 的 token 快照；
 /// `cfg.proxy_nodes` 注入 `ProxyManager`（仅 HTTP/SOCKS5）；`cfg.dispatch` 决定健康表
 /// 的冷却参数；`cfg.metering.prices` 非空时装配价格表并挂上额度闸（空 = 本地单机
-/// 不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。shoes sidecar 由 `main`
-/// 按 `cfg.egress` 拉起，不在本函数里 spawn。
+/// 不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。
 pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let health = Arc::new(MemoryHealthTable::with_config(HealthSetting {
         cooldown_threshold: cfg.dispatch.cooldown_threshold,

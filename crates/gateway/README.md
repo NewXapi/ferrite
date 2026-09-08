@@ -120,20 +120,19 @@ cargo test -p gateway --test config_wiring
 cargo check -p gateway-proxy -p forward
 ```
 
-## MVP：shoes sidecar 出口
+## MVP：meow 适配器出口
 
-复杂协议出口（vless/vmess/ss/trojan/reality/h2mux）不在 ferrite 内实现，
-交给独立 shoes 进程（MIT）。`apps/gateway` 启动时按 `[egress]` spawn 它、
-等 mixed 入站端口就绪；SIGHUP 重启、SIGTERM/ctrl-c 一起回收。
-
-- `[egress].binary` 为空 = 不起进程（单机默认直连）。
-- `[egress].listen` 必须与 `config/shoes.yaml` 的 `address` 一致。
-- 复杂协议写 `shoes.yaml` 的 `rules[].client_chain`；ferrite 侧只写
-  `socks5://<listen>` 当普通节点，出口协议对网关透明。
-- 模板见 `config/shoes.yaml.example`（实际副本 `config/shoes.yaml` 已 gitignore）。
+复杂协议出口（SS/Trojan/VLESS/VMess）由 [`meow-proxy`](https://crates.io/crates/meow-proxy)
+（MIT）提供：`[[proxy_nodes]]` 经 `gateway_proxy::adapter::adapter_for` 映射成
+`ProxyAdapter`，`dial_tcp` 内完成协议握手；`forward::adapter_egress` 把拨出的流
+桥成 hyper connector（HTTPS 由 rustls 叠加），`ForwardStage` 不再对协议节点 502。
+Reality 由 `meow-transport` 的 `reality` feature 提供（待节点配置扩展接入）。
 
 ### 验收
 
+```sh
+cargo test -p gateway --test egress_wiring
+cargo run --release --example adapter_dial_smoke -p forward
 ```sh
 cargo test -p gateway --test egress_wiring
 ```

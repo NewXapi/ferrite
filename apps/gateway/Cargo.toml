@@ -20,7 +20,7 @@ metering = { path = "../../crates/gateway/metering" }
 contract = { path = "../../crates/contract" }
 
 # 运行时 / HTTP
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "process", "time", "net"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 axum = { workspace = true }
 http = { workspace = true }
 tower-http = { workspace = true, features = ["cors", "trace", "limit"] }

@@ -32,9 +32,6 @@ fn empty_config_uses_defaults() {
     assert_eq!(cfg.dispatch.cooldown_max_seconds, 60);
     assert_eq!(cfg.retry.max_attempts, 3);
     assert!(cfg.metering.prices.is_empty());
-    assert!(cfg.egress.binary.is_empty(), "默认不起 sidecar");
-    assert_eq!(cfg.egress.config, "config/shoes.yaml");
-    assert_eq!(cfg.egress.listen, "127.0.0.1:7890");
     assert!(cfg.proxy_nodes.is_empty());
 }
 

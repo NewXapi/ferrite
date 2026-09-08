@@ -27,6 +27,14 @@ axum = { workspace = true }
 bytes    = { workspace = true }
 tracing  = { workspace = true }
 chrono   = { workspace = true }
+hyper = { version = "1", features = ["client", "http1"] }
+http     = { workspace = true }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "tokio"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
+webpki-roots = "0.26"
 
 [dev-dependencies]
 tokio = { workspace = true }

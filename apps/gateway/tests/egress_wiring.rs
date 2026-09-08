@@ -4,8 +4,7 @@
 //! vless 之类的 scheme 混进快照会走 `ProxyClient::Connector`，forward 层直接 502。
 //! 这两种失败都不会在解析阶段报错，只能靠行为断言抓。
 
-use gateway::config::{EgressConfig, GatewayConfig, build_proxy_snapshot};
-use gateway::sidecar::ShoesSidecar;
+use gateway::config::{GatewayConfig, build_proxy_snapshot};
 use gateway_proxy::{ProxyManager, ProxyScheme};
 use std::io::Write;
 
@@ -110,70 +109,4 @@ priority = 5
     manager.install(snap);
     let lease = manager.acquire("openai");
     assert_eq!(lease.node_id, 2, "高 priority 节点优先");
-}
-
-/// `binary` 为空 = 不起进程。这是单机默认路径，不能被 sidecar 卡住启动。
-#[tokio::test]
-async fn sidecar_empty_binary_does_not_spawn() {
-    let cfg = EgressConfig::default();
-    assert!(cfg.binary.is_empty(), "默认不配 shoes");
-    let spawned = ShoesSidecar::spawn(&cfg)
-        .await
-        .expect("binary 为空应是 Ok(None)");
-    assert!(spawned.is_none());
-}
-
-/// `binary` 有值但 YAML 不存在必须报错。静默直连会让用户以为流量在走代理。
-#[tokio::test]
-async fn sidecar_missing_config_is_error() {
-    let cfg = EgressConfig {
-        binary: "/bin/true".into(),
-        config: "/nonexistent/shoes.yaml".into(),
-        listen: "127.0.0.1:1".into(),
-    };
-    let err = ShoesSidecar::spawn(&cfg)
-        .await
-        .expect_err("缺配置文件必须失败");
-    assert!(
-        err.to_string().contains("shoes config not found"),
-        "错误应指明缺配置文件，实际: {err}"
-    );
-}
-
-/// 子进程提前退出必须立刻报错，而不是干等满超时窗口再说"入站没起来"。
-/// `/bin/true` 立即退出，正好复现 shoes 配置错误自己 exit 的场景。
-#[tokio::test]
-async fn sidecar_detects_early_exit() {
-    let dir = std::env::temp_dir().join(format!("ferrite-sidecar-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("mkdir");
-    let yaml = dir.join("shoes.yaml");
-    std::fs::write(&yaml, "- address: \"127.0.0.1:0\"\n").expect("write yaml");
-
-    // 端口必须真空闲：让内核分配再立刻释放。写死端口号会撞上机器上已有的
-    // 监听者（本机 17890 就被别的进程占着），connect 成功后测试会假过。
-    let free_port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
-        l.local_addr().expect("local_addr").port()
-    };
-
-    let cfg = EgressConfig {
-        binary: "/bin/true".into(),
-        config: yaml.to_string_lossy().into_owned(),
-        listen: format!("127.0.0.1:{free_port}"),
-    };
-    let started = std::time::Instant::now();
-    let err = ShoesSidecar::spawn(&cfg)
-        .await
-        .expect_err("子进程退出必须失败而不是假装就绪");
-    assert!(
-        err.to_string().contains("exited before inbound ready"),
-        "错误应指明子进程提前退出，实际: {err}"
-    );
-    // 不能靠 10s 超时兜底：那样配置写错要等十秒才知道。
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(5),
-        "应快速失败，实际耗时 {:?}",
-        started.elapsed()
-    );
-    let _ = std::fs::remove_dir_all(&dir);
 }

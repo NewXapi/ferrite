@@ -62,15 +62,8 @@ group = "default"
 # 允许的模型列表；空列表表示无限制
 allowed_models = []
 
-# shoes sidecar。binary 为空 = 不起进程（默认直连）。
-# 复杂协议（vless/vmess/ss/trojan/reality）写在 shoes.yaml 的 client_chain，
-# ferrite 只连 mixed 入站（HTTP CONNECT / SOCKS5）。
-# [egress]
-# binary = "/usr/local/bin/shoes"
-# config = "config/shoes.yaml"
-# listen = "127.0.0.1:7890"
-
-# 出口节点。url 只接受 http:// / socks5://；channel_keys 必须是上面某个 [[channels]].name。
+# 出口节点。url 支持 http(s):// socks5(h):// ss:// trojan:// vless:// vmess://；
+# channel_keys 必须是上面某个 [[channels]].name。
 # [[proxy_nodes]]
 # url = "socks5://127.0.0.1:7890"
 # channel_keys = ["openai"]

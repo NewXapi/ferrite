@@ -17,20 +17,17 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 无节点或全部冷却 → `node_id = 0` 直连。
 `ForwardStage::with_proxies` 在每次模型请求上租约、转发、按状态反馈。
 
-节点由 `apps/gateway` 的 `[[proxy_nodes]]` 经 `build_proxy_snapshot` 注入；
-只接受 `http://` / `socks5://`。
+节点由 `apps/gateway` 的 `[[proxy_nodes]]` 经 `build_proxy_snapshot` 注入。
 
-## vless / vmess / ss / trojan / reality 走哪
+## vless / vmess / ss / trojan 走哪
 
-**走 shoes sidecar，不在本 crate 握手。** `apps/gateway` 按 `[egress]` 拉起独立
-shoes 进程（MIT，https://github.com/cfal/shoes），它开 mixed HTTP+SOCKS5 入站，
-复杂协议写在它自己的 `config/shoes.yaml` 的 `client_chain` 里。ferrite 只把
-`socks5://127.0.0.1:7890` 当普通节点用——出口协议对网关透明。
+**meow 适配器（[`adapter`]），在拨号时完成协议握手。**
+`adapter_for(&ProxyNode)` 把节点映射成 `Arc<dyn meow_common::ProxyAdapter>`；
+`ProxyManager` 缓存它（`ProxyClient::Adapter`），`forward::adapter_egress`
+把 `dial_tcp` 产出的流桥成 hyper connector——HTTPS 由 rustls 在流上叠加。
 
-`src/proto/` 下有 PR1-3 从 shoes 移植的 SS/Trojan/VMess/VLESS/WS 客户端链，
-产出 `ProxyClient::Connector`。**该路径尚未接进 forward**（`forward::stage`
-遇到 Connector 直接 502 让 retry 换候选），所以生产出口一律走 sidecar。
-把 vless 之类的 URL 写进 `[[proxy_nodes]]` 会被 `build_proxy_snapshot` 跳过并 warn。
+旧 `src/proto/`（shoes 手抄客户端链，PR1-3）已删除：那条 `ProxyConnector`
+路径从未接进 forward（恒 502），由 meow 实现整体替代。
 
 ## SSRF
 
