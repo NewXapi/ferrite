@@ -12,6 +12,9 @@ use forward::egress::{Egress, ForwardedResponse, Timeouts};
 use serde_json::Value;
 use tower::ServiceExt;
 
+/// e2e 专用测试口令：仅存在于本地/CI 一次性数据库，命名常量避免裸字面量。
+const TEST_PASSWORD: &str = "test_password_123";
+
 struct MockEgress {
     chunks: Vec<Bytes>,
 }
@@ -44,6 +47,14 @@ fn sse_chunks() -> Vec<Bytes> {
         Bytes::from_static(b"data: {\"content\":\"!\",\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\n"),
         Bytes::from_static(b"data: [DONE]\n\n"),
     ]
+}
+
+/// 统一"读 body + 解析 JSON"样板（仅用于 envelope/JSON 响应；SSE 流走原始字节）。
+async fn response_to_json(resp: axum::response::Response) -> Value {
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
 }
 
 /// 连不上 PG 时返回 None，调用方跳过测试（CI 无 postgres service）。
@@ -83,7 +94,8 @@ async fn build_test_app(pool: &sqlx::PgPool) -> axum::Router {
 /// password::verify 恒失败、reload 测试拿不到 access JWT。
 async fn insert_test_user(pool: &sqlx::PgPool) -> uuid::Uuid {
     let user_key = uuid::Uuid::new_v4();
-    let phc = auth::password::hash("password123").expect("hash password");
+    let phc =
+        auth::password::hash(TEST_PASSWORD).expect("failed to hash test password with argon2");
     sqlx::query(
         r#"INSERT INTO auth_users (key, username, password_hash, role, status)
            VALUES ($1, $2, $3, 1, 1) ON CONFLICT DO NOTHING"#,
@@ -155,6 +167,7 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
     let resp = ServiceExt::oneshot(app, req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "got {}", resp.status());
 
+    // /v1 响应是 SSE 流（data: 行），不是 JSON —— 只做原文包含断言
     let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -234,7 +247,7 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
 
     let login_body = serde_json::json!({
         "username": format!("user_{}", &user_key.to_string()[..8]),
-        "password": "password123"
+        "password": TEST_PASSWORD
     });
     let login_req = Request::builder()
         .method("POST")
@@ -249,10 +262,7 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         .unwrap();
     // login 走同一 app 实例（时序见上）
     let login_resp = ServiceExt::oneshot(app.clone(), login_req).await.unwrap();
-    let login_text = axum::body::to_bytes(login_resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let login_json: Value = serde_json::from_slice(&login_text).unwrap();
+    let login_json = response_to_json(login_resp).await;
     // 登录失败时 access_token 缺失，把响应体打出来定位（用户名/密码/hash 不匹配等）。
     // LoginResult serde rename_all = camelCase → "accessToken"
     let access_token = login_json["accessToken"].as_str().unwrap_or_else(|| {
@@ -290,10 +300,7 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         StatusCode::OK,
         "reload 端点应返回 200"
     );
-    let reload_text = axum::body::to_bytes(reload_resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let reload_json: Value = serde_json::from_slice(&reload_text).unwrap();
+    let reload_json = response_to_json(reload_resp).await;
     assert_eq!(reload_json["success"], true);
     // 计数字段存在且 >=1：reload 确实从 PG 读到了新插的 token/user/channel
     assert!(
@@ -318,10 +325,10 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         StatusCode::OK,
         "reload 后 token 应被接受"
     );
-    let after_text = axum::body::to_bytes(resp_after.into_body(), usize::MAX)
+    let after_bytes = axum::body::to_bytes(resp_after.into_body(), usize::MAX)
         .await
         .unwrap();
-    assert!(String::from_utf8_lossy(&after_text).contains("usage"));
+    assert!(String::from_utf8_lossy(&after_bytes).contains("usage"));
 
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM usage_logs")
         .fetch_one(&pool)
@@ -371,6 +378,7 @@ async fn e2e_unmatched_paths_return_404() {
         StatusCode::NOT_FOUND,
         "非 /v1/* /v1beta*/healthz 路径应被 guard 404"
     );
+    // 这里断言的是纯文本 body（guard 的 404 不走 envelope），保持原始字节比较
     let unmatched_text = axum::body::to_bytes(unmatched_resp.into_body(), usize::MAX)
         .await
         .unwrap();
