@@ -1,0 +1,35 @@
+# UI Spec: Auth 登录页
+# agent 用 tab.ariaSnapshot() + data-testid 逐项验证
+# 参考 OMP skill `ui-validate` 了解完整流程
+
+page: "/auth/login"
+name: "用户登录"
+
+elements:
+  - role: heading
+    name: "登录"
+    required: true
+    testid: "heading-login"
+
+  - role: textbox
+    name: "用户名"
+    testid: "username"
+    required: true
+
+  - role: textbox
+    name: "密码"
+    testid: "password"
+    type: "password"
+    required: true
+
+  - role: button
+    name: "登录"
+    testid: "btn-submit"
+    action: click
+    expect_navigate: "/admin"
+
+  - role: link
+    name: "注册"
+    testid: "link-register"
+    action: click
+    expect_navigate: "/auth/register"
