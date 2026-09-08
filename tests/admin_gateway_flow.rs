@@ -5,14 +5,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::http::{HeaderMap, Request, StatusCode};
+use axum::http::{Request, StatusCode};
 use bytes::Bytes;
 use contract::error::NormalizedError;
 use forward::egress::{Egress, ForwardedResponse, Timeouts};
 use serde_json::Value;
-use sqlx::PgPool;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 struct MockEgress {
     chunks: Vec<Bytes>,
@@ -28,7 +26,8 @@ impl Egress for MockEgress {
     ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
         let chunks = self.chunks.clone();
         Box::pin(async move {
-            let stream = futures_util::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
+            let stream =
+                futures_util::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
             Ok(ForwardedResponse::from_stream(
                 200,
                 "text/event-stream",
@@ -80,14 +79,18 @@ async fn build_test_app(pool: &sqlx::PgPool) -> axum::Router {
         .expect("build_app_with_egress")
 }
 
+/// 插入可登录用户：password_hash 必须是真实 argon2 PHC，否则 login 走
+/// password::verify 恒失败、reload 测试拿不到 access JWT。
 async fn insert_test_user(pool: &sqlx::PgPool) -> uuid::Uuid {
     let user_key = uuid::Uuid::new_v4();
+    let phc = auth::password::hash("password123").expect("hash password");
     sqlx::query(
         r#"INSERT INTO auth_users (key, username, password_hash, role, status)
-           VALUES ($1, $2, 'hash', 1, 1) ON CONFLICT DO NOTHING"#,
+           VALUES ($1, $2, $3, 1, 1) ON CONFLICT DO NOTHING"#,
     )
     .bind(user_key)
     .bind(format!("user_{}", &user_key.to_string()[..8]))
+    .bind(&phc)
     .execute(pool)
     .await
     .unwrap();
@@ -218,7 +221,9 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         return;
     };
 
-    let _app = build_test_app(&pool).await;
+    // 时序关键：app 必须在插 token 之前构建（快照不含新 token），此后全程用
+    // 同一实例 —— 401 → 插库 → reload → 200 才真正验证热更，而非重建快照。
+    let app = build_test_app(&pool).await;
 
     let user_key = insert_test_user(&pool).await;
     sqlx::query("UPDATE auth_users SET role = 10 WHERE key = $1")
@@ -234,17 +239,28 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
     let login_req = Request::builder()
         .method("POST")
         .uri("/api/user/login")
+        // login handler 用 ConnectInfo 提取 client ip；oneshot 裸 Router 不自带，
+        // 必须手动塞 extension，否则提取拒绝 → 500 空 body。
+        .extension(axum::extract::ConnectInfo(
+            "127.0.0.1:4242".parse::<std::net::SocketAddr>().unwrap(),
+        ))
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&login_body).unwrap()))
         .unwrap();
-    let login_resp = ServiceExt::oneshot(build_test_app(&pool).await, login_req).await.unwrap();
-    let login_text = axum::body::to_bytes(login_resp.into_body(), usize::MAX).await.unwrap();
+    // login 走同一 app 实例（时序见上）
+    let login_resp = ServiceExt::oneshot(app.clone(), login_req).await.unwrap();
+    let login_text = axum::body::to_bytes(login_resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let login_json: Value = serde_json::from_slice(&login_text).unwrap();
-    let access_token = login_json["access_token"].as_str().unwrap();
+    // 登录失败时 access_token 缺失，把响应体打出来定位（用户名/密码/hash 不匹配等）。
+    // LoginResult serde rename_all = camelCase → "accessToken"
+    let access_token = login_json["accessToken"].as_str().unwrap_or_else(|| {
+        panic!("login response missing accessToken: {login_json}");
+    });
 
     let (_token_key, plaintext) = insert_token(&pool, user_key).await;
-
-    let app = build_test_app(&pool).await;
+    // 注意：这里不再重建 app —— 重建会重载快照使 reload 测试失去意义
 
     let body = serde_json::json!({"model":"gpt-4o","stream":true,"messages":[]});
     let req_before = Request::builder()
@@ -255,7 +271,11 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
     let resp_before = ServiceExt::oneshot(app.clone(), req_before).await.unwrap();
-    assert_eq!(resp_before.status(), StatusCode::UNAUTHORIZED, "reload 前 token 应被拒绝");
+    assert_eq!(
+        resp_before.status(),
+        StatusCode::UNAUTHORIZED,
+        "reload 前 token 应被拒绝"
+    );
 
     let reload_req = Request::builder()
         .method("POST")
@@ -265,13 +285,25 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         .body(Body::empty())
         .unwrap();
     let reload_resp = ServiceExt::oneshot(app.clone(), reload_req).await.unwrap();
-    assert_eq!(reload_resp.status(), StatusCode::OK, "reload 端点应返回 200");
-    let reload_text = axum::body::to_bytes(reload_resp.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        reload_resp.status(),
+        StatusCode::OK,
+        "reload 端点应返回 200"
+    );
+    let reload_text = axum::body::to_bytes(reload_resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let reload_json: Value = serde_json::from_slice(&reload_text).unwrap();
     assert_eq!(reload_json["success"], true);
-    let tokens_count = reload_json["data"]["tokens"].as_u64().unwrap();
-    let users_count = reload_json["data"]["users"].as_u64().unwrap();
-    let channels_count = reload_json["data"]["channels"].as_u64().unwrap();
+    // 计数字段存在且 >=1：reload 确实从 PG 读到了新插的 token/user/channel
+    assert!(
+        reload_json["data"]["route_units"].as_u64().unwrap() >= 1,
+        "route_units 计数应 >= 1"
+    );
+    assert!(
+        reload_json["data"]["channels"].as_u64().unwrap() >= 1,
+        "channels 计数应 >= 1"
+    );
 
     let req_after = Request::builder()
         .method("POST")
@@ -281,8 +313,14 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
     let resp_after = ServiceExt::oneshot(app, req_after).await.unwrap();
-    assert_eq!(resp_after.status(), StatusCode::OK, "reload 后 token 应被接受");
-    let after_text = axum::body::to_bytes(resp_after.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        resp_after.status(),
+        StatusCode::OK,
+        "reload 后 token 应被接受"
+    );
+    let after_text = axum::body::to_bytes(resp_after.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert!(String::from_utf8_lossy(&after_text).contains("usage"));
 
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM usage_logs")
@@ -314,15 +352,27 @@ async fn e2e_unmatched_paths_return_404() {
         .body(Body::empty())
         .unwrap();
     let v1beta_resp = ServiceExt::oneshot(app.clone(), v1beta_req).await.unwrap();
-    assert_eq!(v1beta_resp.status(), StatusCode::UNAUTHORIZED, "/v1beta 应进入 pipeline");
+    assert_eq!(
+        v1beta_resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "/v1beta 应进入 pipeline"
+    );
 
     let unmatched_req = Request::builder()
         .method("GET")
         .uri("/api/does-not-exist")
         .body(Body::empty())
         .unwrap();
-    let unmatched_resp = ServiceExt::oneshot(app.clone(), unmatched_req).await.unwrap();
-    assert_eq!(unmatched_resp.status(), StatusCode::NOT_FOUND, "非 /v1/* /v1beta*/healthz 路径应被 guard 404");
-    let unmatched_text = axum::body::to_bytes(unmatched_resp.into_body(), usize::MAX).await.unwrap();
+    let unmatched_resp = ServiceExt::oneshot(app.clone(), unmatched_req)
+        .await
+        .unwrap();
+    assert_eq!(
+        unmatched_resp.status(),
+        StatusCode::NOT_FOUND,
+        "非 /v1/* /v1beta*/healthz 路径应被 guard 404"
+    );
+    let unmatched_text = axum::body::to_bytes(unmatched_resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert_eq!(String::from_utf8_lossy(&unmatched_text), "not found");
 }

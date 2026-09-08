@@ -146,6 +146,7 @@ dependencies = [
  "admin-router",
  "anyhow",
  "arc-swap",
+ "auth",
  "axum",
  "bytes",
  "chrono",

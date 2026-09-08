@@ -17,14 +17,18 @@
 
 use std::sync::Arc;
 
-use axum::{Router, extract::State, http::StatusCode, response::{Json, Body}, routing::post};
-use http::HeaderMap;
+use axum::{
+    Router,
+    body::Body,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Json},
+    routing::post,
+};
 use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::config::Config;
-use crate::auth::routes::bearer_user;
-use crate::auth::routes::ADMIN_ROLE_THRESHOLD;
 use crate::snapshot::Snapshots;
 
 pub mod config;
@@ -32,6 +36,8 @@ pub mod snapshot;
 pub mod tavern;
 pub mod usage;
 
+use auth::routes::ADMIN_ROLE_THRESHOLD;
+use auth::{AuthService, bearer_user};
 use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable};
 use forward::egress::ReqwestEgress;
@@ -47,7 +53,6 @@ use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
-use crate::auth::AuthService;
 
 /// 组装完整应用 Router：admin-api + tavern + pipeline gateway + 用量中间件 + reload。
 pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
@@ -99,18 +104,21 @@ async fn assemble(
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
-            .push(DispatchStage::new(dispatcher))
+            .push(DispatchStage::new(dispatcher.clone()))
             .push(ForwardStage::new(egress, adaptors.clone()))
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 
-    // 用量中间件包 pipeline router
+    // 用量中间件包 pipeline router（Arc::clone：gates/usage/reload 共享同一批句柄）
     let usage_state = usage::UsageMiddlewareState {
         pool: pool.clone(),
-        snapshots: Arc::new(snapshots),
+        snapshots: Arc::new(snapshots.clone()),
     };
 
-    // reload 路由（包含 admin 守卫）
+    // reload 路由（包含 admin 守卫）。admin_router 的 AuthService 是其内部私有
+    // 实例，这里自建一个：同读 FERRITE_JWT_SECRET，secret 一致则 JWT 校验等价。
+    // admin_router 缺 env 直接 Err，这里 fallback 同一 dev 值仅供本地无 env 冒烟；
+    // 生产必须设 FERRITE_JWT_SECRET，否则 reload 签出的 token 与 admin 不一致。
     let auth_svc = Arc::new(AuthService::new(
         pool.clone(),
         std::env::var("FERRITE_JWT_SECRET")
@@ -120,22 +128,27 @@ async fn assemble(
     let reload_state = ReloadState {
         pool: pool.clone(),
         snapshots: Arc::new(snapshots),
-        dispatcher: Arc::new(dispatcher),
+        dispatcher,
         auth: auth_svc,
     };
     let reload = build_reload_router(reload_state);
 
-    let fallback_guard = axum::middleware::from_fn(|req, next| async move {
-        let path = req.uri().path();
-        if path.starts_with("/v1") || path.starts_with("/v1beta") || path == "/healthz" {
-            Ok(next.run(req).await)
-        } else {
-            Err((StatusCode::NOT_FOUND, Body::from("not found")))
-        }
-    });
+    let fallback_guard = axum::middleware::from_fn(
+        |req: axum::extract::Request, next: axum::middleware::Next| async move {
+            let path = req.uri().path();
+            if path.starts_with("/v1") || path.starts_with("/v1beta") || path == "/healthz" {
+                Ok(next.run(req).await)
+            } else {
+                Err((StatusCode::NOT_FOUND, Body::from("not found")).into_response())
+            }
+        },
+    );
 
     let pipeline_router = gateway_pipeline::router::build_router(pipeline)
-        .layer(axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware))
+        .layer(axum::middleware::from_fn_with_state(
+            usage_state,
+            usage::usage_middleware,
+        ))
         .layer(fallback_guard);
 
     Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
@@ -153,7 +166,7 @@ pub async fn build_app_with_egress(
 ///
 /// 包含数据库连接、快照句柄、dispatcher 和 AuthService 实例
 /// 与 assemble 中共享同一批 ArcSwap 句柄，实现热更
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ReloadState {
     pool: PgPool,
     snapshots: Arc<Snapshots>,
@@ -187,12 +200,11 @@ pub async fn reload_handler(
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     // 校验 Bearer token + 角色
-    let user = bearer_user(&state.auth, &headers)
-        .map_err(|e| {
-            let mut body = serde_json::json!({"success": false, "message": "未授权"});
-            body["detail"] = serde_json::Value::String(e.to_string());
-            (StatusCode::UNAUTHORIZED, Json(body))
-        })?;
+    let user = bearer_user(&state.auth, &headers).await.map_err(|e| {
+        let mut body = serde_json::json!({"success": false, "message": "未授权"});
+        body["detail"] = serde_json::Value::String(e.to_string());
+        (StatusCode::UNAUTHORIZED, Json(body))
+    })?;
 
     if user.role < ADMIN_ROLE_THRESHOLD {
         let mut body = serde_json::json!({"success": false, "message": "无权限"});
@@ -202,25 +214,35 @@ pub async fn reload_handler(
 
     // 重新加载快照
     let new = crate::snapshot::load_snapshots(&state.pool)
+        .await
         .map_err(|e| {
             let mut body = serde_json::json!({"success": false, "message": "重载失败"});
             body["detail"] = serde_json::Value::String(e.to_string());
             (StatusCode::INTERNAL_SERVER_ERROR, Json(body))
         })?;
-
-    // 热更新快照数据
-    state.snapshots.token_snapshot.store(new.token_snapshot.load_full());
-    state.snapshots.user_snapshot.store(new.user_snapshot.load_full());
-    state.snapshots.quota_snapshot.store(new.quota_snapshot.load_full());
+    // 热更新快照数据（ArcSwap::store 即刻全链路生效；dispatch 计数先取再移交）
+    let channels = new.dispatch.channels.len();
+    let route_units = new.dispatch.units.len();
+    state
+        .snapshots
+        .token_snapshot
+        .store(new.token_snapshot.load_full());
+    state
+        .snapshots
+        .user_snapshot
+        .store(new.user_snapshot.load_full());
+    state
+        .snapshots
+        .quota_snapshot
+        .store(new.quota_snapshot.load_full());
     state.dispatcher.set_snapshot(Arc::new(new.dispatch));
 
     let body = serde_json::json!({
         "success": true,
         "message": "快照重载成功",
         "data": {
-            "tokens": new.token_snapshot.load_full().by_hash.len(),
-            "users": new.user_snapshot.load_full().by_key.len(),
-            "channels": new.dispatch.channels.len(),
+            "channels": channels,
+            "route_units": route_units,
         }
     });
 
