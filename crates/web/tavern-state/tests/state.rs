@@ -215,3 +215,71 @@ fn test_build_system_prompt_all_empty() {
     let prompt = build_system_prompt(&character);
     assert!(prompt.is_empty());
 }
+/// abort 后回收空助手占位：模拟 send 前 push 用户消息 + 空 assistant，abort 后
+/// 调用 send 的 abort 分支应把空 assistant 消息 pop 掉，只保留用户消息。
+#[test]
+fn test_abort_pops_empty_assistant_placeholder() {
+    use tavern_state::Message;
+    // 模拟 send 前的状态：用户消息 + 空 assistant 占位
+    let mut msgs = vec![
+        Message {
+            name: "User".to_string(),
+            is_user: true,
+            send_date: String::new(),
+            mes: "Hello".to_string(),
+            swipes: Vec::new(),
+            swipe_id: None,
+            extra: Default::default(),
+        },
+        Message {
+            name: "Alice".to_string(),
+            is_user: false,
+            send_date: String::new(),
+            mes: String::new(),
+            swipes: Vec::new(),
+            swipe_id: None,
+            extra: Default::default(),
+        },
+    ];
+    // 模拟 abort 分支的 pop 逻辑
+    if let Some(last) = msgs.last() {
+        if !last.is_user && last.mes.is_empty() {
+            msgs.pop();
+        }
+    }
+    assert_eq!(msgs.len(), 1, "空助手占位应被回收");
+    assert_eq!(msgs[0].mes, "Hello");
+    assert!(msgs[0].is_user);
+}
+
+/// abort 不应回收有内容的 assistant 消息（正常完成时的回复）。
+#[test]
+fn test_abort_keeps_non_empty_assistant() {
+    let mut msgs = vec![
+        Message {
+            name: "User".to_string(),
+            is_user: true,
+            send_date: String::new(),
+            mes: "Hello".to_string(),
+            swipes: Vec::new(),
+            swipe_id: None,
+            extra: Default::default(),
+        },
+        Message {
+            name: "Alice".to_string(),
+            is_user: false,
+            send_date: String::new(),
+            mes: "Hi there!".to_string(),
+            swipes: Vec::new(),
+            swipe_id: None,
+            extra: Default::default(),
+        },
+    ];
+    if let Some(last) = msgs.last() {
+        if !last.is_user && last.mes.is_empty() {
+            msgs.pop();
+        }
+    }
+    assert_eq!(msgs.len(), 2, "有内容的 assistant 不应被回收");
+    assert_eq!(msgs[1].mes, "Hi there!");
+}

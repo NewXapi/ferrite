@@ -278,6 +278,14 @@ pub async fn send(text: String) {
     if was_aborted {
         STATE.with_mut(|s| {
             s.aborted = false;
+            // abort 前 push 了一条空 assistant 占位用于流式填充；abort 后
+            // 必须回收，否则 UI 出现空气泡，且下轮 send 会把空 content 带进
+            // prompt（部分上游 reject 空 content）。
+            if let Some(last) = s.messages.last() {
+                if !last.is_user && last.mes.is_empty() {
+                    s.messages.pop();
+                }
+            }
         });
         return;
     }
