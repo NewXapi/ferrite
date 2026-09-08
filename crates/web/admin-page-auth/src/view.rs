@@ -111,25 +111,16 @@ pub fn AuthPage() -> Element {
             match result {
                 Ok((access_token, refresh_token)) => {
                     client.set_token(Some(access_token.clone()));
-                    // Remember me：access+refresh token 持久化到 localStorage；
-                    // 未勾选：sessionStorage（关浏览器即失效）
-                    type StoreFn = Box<dyn Fn(&str, &str)>;
-                    let store: StoreFn = if payload.remember {
-                        Box::new(|k, v| {
-                            if let Some(w) = web_sys::window() {
-                                let _ = w.local_storage().unwrap().map(|s| s.set_item(k, v));
-                            }
-                        })
-                    } else {
-                        Box::new(|k, v| {
-                            if let Some(w) = web_sys::window() {
-                                let _ = w.session_storage().unwrap().map(|s| s.set_item(k, v));
-                            }
-                        })
-                    };
-                    store("ferrite_access_token", &access_token);
-                    store("ferrite_refresh_token", &refresh_token);
-                    store("ferrite_username", &payload.username);
+                    // Remember me：token 持久化到 localStorage（30 天长效，配 refresh 静默续期）；
+                    // 未勾选：sessionStorage（关浏览器即失效）。
+                    // ponytail: refresh 流程接入时统一走 admin-session
+                    ui::set_storage_scoped("ferrite_access_token", &access_token, payload.remember);
+                    ui::set_storage_scoped(
+                        "ferrite_refresh_token",
+                        &refresh_token,
+                        payload.remember,
+                    );
+                    ui::set_storage_scoped("ferrite_username", &payload.username, payload.remember);
                     state.busy.set(false);
                     // 回控制台：auth hash 清掉，HomePage 重新挂载
                     if let Some(w) = web_sys::window() {

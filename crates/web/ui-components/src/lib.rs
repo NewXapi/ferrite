@@ -32,4 +32,5 @@ pub use segmented::SegmentedCapsule;
 pub use session::{
     api_login, api_register, clear_cached_session, get_cached_token, get_cached_user,
     get_storage_item, remove_storage_item, set_cached_session, set_storage_item,
+    set_storage_scoped,
 };
