@@ -2,9 +2,10 @@
 
 pub mod config;
 pub mod observability;
+pub mod sidecar;
 
 use crate::config::GatewayConfig;
-use crate::config::{build_route_snapshot, build_token_snapshot};
+use crate::config::{build_proxy_snapshot, build_route_snapshot, build_token_snapshot};
 use dispatch::health::HealthSetting;
 use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable, Snapshot};
@@ -27,8 +28,10 @@ use std::sync::Arc;
 /// 按配置组装 axum router。
 ///
 /// `cfg.channels` 变成 dispatch 的路由快照，`cfg.keys` 变成 gate 的 token 快照；
-/// `cfg.dispatch` 决定健康表的冷却参数；`cfg.metering.prices` 非空时装配价格表
-/// 并挂上额度闸（空 = 本地单机不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。
+/// `cfg.proxy_nodes` 注入 `ProxyManager`（仅 HTTP/SOCKS5）；`cfg.dispatch` 决定健康表
+/// 的冷却参数；`cfg.metering.prices` 非空时装配价格表并挂上额度闸（空 = 本地单机
+/// 不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。shoes sidecar 由 `main`
+/// 按 `cfg.egress` 拉起，不在本函数里 spawn。
 pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let health = Arc::new(MemoryHealthTable::with_config(HealthSetting {
         cooldown_threshold: cfg.dispatch.cooldown_threshold,
@@ -39,6 +42,7 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());
     let proxies = Arc::new(ProxyManager::new());
+    proxies.install(build_proxy_snapshot(&cfg.proxy_nodes));
     let snapshot: Arc<Snapshot> = load_snapshot(cfg);
     let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health.clone()));
     let gates = build_gates(cfg);

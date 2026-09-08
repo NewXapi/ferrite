@@ -1,6 +1,7 @@
 use gateway::build_app;
 use gateway::config::GatewayConfig;
 use gateway::observability::init_tracing;
+use gateway::sidecar::ShoesSidecar;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -12,6 +13,14 @@ async fn main() -> ExitCode {
             std::process::exit(1);
         });
     init_tracing(&config.log_level);
+
+    let mut sidecar = match ShoesSidecar::spawn(&config.egress).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "shoes sidecar failed to start");
+            return ExitCode::FAILURE;
+        }
+    };
 
     // 每个 serve 任务配一个独立停止通道：复用同一通道时旧任务的 true 会让
     // 新任务一启动就退出。
@@ -35,6 +44,16 @@ async fn main() -> ExitCode {
                         init_tracing(&config.log_level);
                         // 必须等旧任务真正退出：它还占着监听端口，新任务会 bind 失败。
                         stop_server(server.take()).await;
+                        if let Some(old) = sidecar.take() {
+                            old.stop().await;
+                        }
+                        sidecar = match ShoesSidecar::spawn(&config.egress).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                tracing::error!(error = %e, "shoes sidecar failed on reload; gateway continues without it");
+                                None
+                            }
+                        };
                         server = Some(spawn_server(&config));
                         tracing::info!(
                             listen = %config.listen,
@@ -50,11 +69,17 @@ async fn main() -> ExitCode {
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("ctrl-c received, shutting down");
                 stop_server(server.take()).await;
+                if let Some(s) = sidecar.take() {
+                    s.stop().await;
+                }
                 return ExitCode::SUCCESS;
             }
             _ = term.recv() => {
                 tracing::info!("SIGTERM received, shutting down");
                 stop_server(server.take()).await;
+                if let Some(s) = sidecar.take() {
+                    s.stop().await;
+                }
                 return ExitCode::SUCCESS;
             }
         }

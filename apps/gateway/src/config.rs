@@ -4,7 +4,9 @@
 //! `ConfigRetryLoop`）由 `lib.rs` 的 `build_app` 组装，配置结构不反向依赖它们的语义。
 //!
 //! 单机模式的数据面来源也在此：`[[channels]]` 与 `[[keys]]` 经
-//! [`build_route_snapshot`] / [`build_token_snapshot`] 变成运行期快照，
+//! [`build_route_snapshot`] / [`build_token_snapshot`] 变成运行期快照；
+//! `[[proxy_nodes]]` 经 [`build_proxy_snapshot`] 注入 `ProxyManager`（只接受
+//! HTTP/SOCKS5，复杂协议交给 shoes sidecar，见 [`EgressConfig`]）。
 use gateway_gate::snapshot::{TokenEntry, TokenSnapshot, UserSnapshot};
 
 use contract::records::{
@@ -173,6 +175,60 @@ fn default_group() -> String {
     "default".to_string()
 }
 
+/// shoes sidecar：独立进程，mixed HTTP+SOCKS5 入站，复杂协议出口写在它自己的 YAML 里。
+///
+/// 整段省略或 `binary` 为空 = 不起 sidecar，模型请求按 `[[proxy_nodes]]` 直连/HTTP/SOCKS5；
+/// 节点也为空则 `acquire` 回落 `node_id = 0` 直连。
+#[derive(Debug, Deserialize, Clone)]
+pub struct EgressConfig {
+    /// shoes 可执行文件。空 = 不起进程。
+    #[serde(default)]
+    pub binary: String,
+    /// shoes YAML 配置路径（相对网关 cwd）。
+    #[serde(default = "default_shoes_config")]
+    pub config: String,
+    /// mixed 入站地址，必须与 shoes.yaml 的 `address` 一致；启动后轮询此端口确认就绪。
+    #[serde(default = "default_shoes_listen")]
+    pub listen: String,
+}
+
+impl Default for EgressConfig {
+    fn default() -> Self {
+        Self {
+            binary: String::new(),
+            config: default_shoes_config(),
+            listen: default_shoes_listen(),
+        }
+    }
+}
+
+fn default_shoes_config() -> String {
+    "config/shoes.yaml".to_string()
+}
+
+fn default_shoes_listen() -> String {
+    "127.0.0.1:7890".to_string()
+}
+
+/// 一条出口节点。`url` 只接受 `http://` / `https://` / `socks5://` / `socks5h://`。
+///
+/// vless/vmess/ss/trojan/reality 写在 shoes.yaml 的 `client_chain`，不要放进这里——
+/// 那些 scheme 走 `ProxyClient::Connector`，forward 尚未桥接，会 502。
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProxyNodeConfig {
+    /// 节点 id；0 表示由 [`build_proxy_snapshot`] 按配置顺序从 1 起编号。
+    #[serde(default)]
+    pub id: i64,
+    /// 代理 URL，例如 `socks5://127.0.0.1:7890`（shoes mixed 入站）。
+    pub url: String,
+    /// 绑定的渠道 `name` 列表；空则该节点不会被任何 `acquire` 选中。
+    #[serde(default)]
+    pub channel_keys: Vec<String>,
+    /// 优先级，数字越大越优先。
+    #[serde(default)]
+    pub priority: i32,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct GatewayConfig {
     #[serde(default = "default_listen")]
@@ -191,6 +247,12 @@ pub struct GatewayConfig {
     /// 本地 API key；空 = 所有请求 401。
     #[serde(default)]
     pub keys: Vec<KeyConfig>,
+    /// shoes sidecar。`binary` 为空则不起进程。
+    #[serde(default)]
+    pub egress: EgressConfig,
+    /// 出口节点（HTTP/SOCKS5）。空 = 模型请求直连。
+    #[serde(default)]
+    pub proxy_nodes: Vec<ProxyNodeConfig>,
 }
 
 fn default_listen() -> String {
@@ -379,4 +441,44 @@ fn key_preview(key: &str) -> String {
     let head: String = key.chars().take(4).collect();
     let tail: String = key.chars().skip(n - 4).collect();
     format!("{head}****{tail}")
+}
+
+/// `[[proxy_nodes]]` → `ProxySnapshot`。非法 URL / 非 HTTP/SOCKS5 / 空 `channel_keys` 跳过并打 warn。
+pub fn build_proxy_snapshot(nodes: &[ProxyNodeConfig]) -> gateway_proxy::ProxySnapshot {
+    use gateway_proxy::{ProxyNode, ProxyScheme, ProxySnapshot};
+
+    let mut out = Vec::new();
+    for (idx, cfg) in nodes.iter().enumerate() {
+        if cfg.channel_keys.is_empty() {
+            tracing::warn!(url = %cfg.url, "proxy_nodes 缺少 channel_keys，跳过");
+            continue;
+        }
+        let mut node = match ProxyNode::parse_url(&cfg.url) {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(url = %cfg.url, error = %e, "proxy_nodes URL 解析失败，跳过");
+                continue;
+            }
+        };
+        match node.scheme {
+            ProxyScheme::Http | ProxyScheme::Socks5 => {}
+            other => {
+                tracing::warn!(
+                    url = %cfg.url,
+                    scheme = ?other,
+                    "proxy_nodes 只接受 http/socks5；vless/vmess/ss/trojan 写在 shoes.yaml"
+                );
+                continue;
+            }
+        }
+        node.id = if cfg.id == 0 {
+            (idx as i64).saturating_add(1)
+        } else {
+            cfg.id
+        };
+        node.channel_keys = cfg.channel_keys.clone();
+        node.priority = cfg.priority;
+        out.push(node);
+    }
+    ProxySnapshot { nodes: out }
 }

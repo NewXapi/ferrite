@@ -4,8 +4,8 @@
 //! [`ProxyManager::acquire`] 按 `channel_key` 选出节点，返回已注入
 //! [`ProxyNode::to_reqwest_proxy`] 的 `reqwest::Client`。
 //!
-//! reqwest 覆盖不了的协议（vless/vmess/ss/trojan）由 [`proto`] 模块提供
-//! 客户端协议链（shoes MIT 移植）；`ProxyManager` 在协议实现落地前跳过这类节点。
+//! reqwest 覆盖不了的协议（vless/vmess/ss/trojan）由 shoes sidecar 的 mixed 入站消化；
+//! ferrite 只把 HTTP/SOCKS5 节点注入 [`ProxyManager`]。
 //!
 //! ## 文件分工
 //!
@@ -23,7 +23,7 @@ pub mod ssrf;
 
 pub use manager::{Lease, ProxyManager};
 pub use node::{BasicAuth, ProxyNode, ProxyScheme};
-pub use pool::ProxyPool;
+pub use pool::{ProxyPool, ProxySnapshot};
 pub use ssrf::validate_url;
 
 pub use proto::{

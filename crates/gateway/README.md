@@ -111,7 +111,8 @@ cargo test -p gateway --test config_wiring
 
 `ProxyManager::acquire(channel_key)`（`channel_key` = `RouteUnitRecord.channel_key`）
 返回已注入 `reqwest::Proxy` 的 Client；无节点直连。
-`ForwardStage::with_proxies` 把租约接到模型请求。快照注入留给 admin-sync。
+`ForwardStage::with_proxies` 把租约接到模型请求。
+节点来自 `config.toml` 的 `[[proxy_nodes]]`（`build_proxy_snapshot` → `ProxyManager::install`）。
 
 ### 验收
 
@@ -119,9 +120,21 @@ cargo test -p gateway --test config_wiring
 cargo check -p gateway-proxy -p forward
 ```
 
+## MVP：shoes sidecar 出口
+
+复杂协议出口（vless/vmess/ss/trojan/reality/h2mux）不在 ferrite 内实现，
+交给独立 shoes 进程（MIT）。`apps/gateway` 启动时按 `[egress]` spawn 它、
+等 mixed 入站端口就绪；SIGHUP 重启、SIGTERM/ctrl-c 一起回收。
+
+- `[egress].binary` 为空 = 不起进程（单机默认直连）。
+- `[egress].listen` 必须与 `config/shoes.yaml` 的 `address` 一致。
+- 复杂协议写 `shoes.yaml` 的 `rules[].client_chain`；ferrite 侧只写
+  `socks5://<listen>` 当普通节点，出口协议对网关透明。
+- 模板见 `config/shoes.yaml.example`（实际副本 `config/shoes.yaml` 已 gitignore）。
+
 ### 验收
 
 ```sh
-cargo check -p gateway-proxy -p forward
+cargo test -p gateway --test egress_wiring
 ```
 
