@@ -7,6 +7,8 @@ publish.workspace = true
 
 [dependencies]
 tavern-client = { path = "../tavern-client" }
+harness-prompt = { path = "../../harness/prompt" }
 
 dioxus = { workspace = true }
-serde  = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }

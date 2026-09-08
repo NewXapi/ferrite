@@ -18,7 +18,9 @@ impl Default for TavernConfig {
     fn default() -> Self {
         Self {
             data_root: "data".into(),
-            upstream: "http://127.0.0.1:3000".into(),
+            // 上游可用 FERRITE_TAVERN_UPSTREAM 覆盖,默认本机 new-api 约定端口
+            upstream: std::env::var("FERRITE_TAVERN_UPSTREAM")
+                .unwrap_or_else(|_| "http://127.0.0.1:3000".into()),
         }
     }
 }

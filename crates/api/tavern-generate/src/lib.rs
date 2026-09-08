@@ -64,6 +64,26 @@ async fn generate(
     headers: HeaderMap,
     body: BytesBody,
 ) -> Response {
+    // R3 后端校验：含 `_ferrite_agent_prompt_marker` 的 payload 必须已物化。
+    // 非 marker payload 一律不校验，行为不变。
+    let mut bytes = body.0;
+    if let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes)
+        && value.as_object().is_some_and(|obj| {
+            obj.contains_key("_ferrite_agent_prompt_marker")
+                || obj.contains_key("_tauritavern_agent_prompt_marker")
+        })
+    {
+        if let Err(e) = harness_prompt::reject_unfinalized_snapshot(&value) {
+            return bad_request(&e.to_string());
+        }
+        // marker 纯内部协议字段，必须摘除再转发，
+        // 否则上游(OpenAI-compatible)会因未知参数 400。
+        strip_prompt_marker(&mut value);
+        if let Ok(rest) = serde_json::to_vec(&value) {
+            bytes = bytes::Bytes::from(rest);
+        }
+    }
+
     let key = match tavern_secrets::read(&st.dirs.secrets_file(), "api_key_openai") {
         Ok(k) => k,
         Err(SecretError::Storage(_) | SecretError::Json(_)) => {
@@ -77,7 +97,7 @@ async fn generate(
     let mut req = st
         .http
         .post(url)
-        .body(body.0)
+        .body(bytes)
         .header("content-type", "application/json");
     if let Some(k) = key {
         req = req.bearer_auth(k);
@@ -110,6 +130,22 @@ async fn generate(
         .map(|r| r.map_err(std::io::Error::other));
     out.body(Body::from_stream(stream))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// 摘除 prompt marker 字段（新旧两个别名），防止其泄漏到上游请求。
+///
+/// marker 是 Ferrite業内协议字段：前端置 `_ferrite_agent_prompt_marker: ""` 表示已物化。
+/// 转发前移除，避免 OpenAI-compatible 上游因未知参数拒收。
+pub fn strip_prompt_marker(value: &mut serde_json::Value) {
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("_ferrite_agent_prompt_marker");
+        obj.remove("_tauritavern_agent_prompt_marker");
+    }
+}
+
+/// 400 + JSON body `{"error": "<msg>"}`，Content-Type application/json。
+fn bad_request(msg: &str) -> Response {
+    (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response()
 }
 
 /// 把请求体当原始字节收下，不解析。转发必须保真。
