@@ -134,3 +134,29 @@ async fn no_marker_with_unmaterialized_content_not_rejected() {
         "body should not mention unfinalized: {body_str}"
     );
 }
+
+/// marker 必须在转发前被摘除：校验通过 + 转发 body 不含 marker 字段。
+#[test]
+fn strip_prompt_marker_removes_both_aliases() {
+    let mut v = serde_json::json!({
+        "model": "m1",
+        "messages": [{"role": "user", "content": "hi"}],
+        "_ferrite_agent_prompt_marker": "",
+        "_tauritavern_agent_prompt_marker": ""
+    });
+    tavern_generate::strip_prompt_marker(&mut v);
+    let obj = v.as_object().expect("top-level stays object");
+    assert!(
+        !obj.contains_key("_ferrite_agent_prompt_marker"),
+        "primary marker must be stripped before forwarding upstream"
+    );
+    assert!(
+        !obj.contains_key("_tauritavern_agent_prompt_marker"),
+        "legacy marker must be stripped too"
+    );
+    assert_eq!(
+        obj.get("model").and_then(|m| m.as_str()),
+        Some("m1"),
+        "unrelated fields must survive"
+    );
+}

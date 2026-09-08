@@ -66,7 +66,7 @@ pub fn ChatPage(
                         sessions.set(
                             chats
                                 .into_iter()
-                                .map(|c| SessionItem { title: c.name })
+                                .map(|c| SessionItem { title: c.file_name })
                                 .collect(),
                         );
                     }

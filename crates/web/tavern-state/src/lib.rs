@@ -149,14 +149,12 @@ pub fn seed_messages(card: &Character) -> Vec<Message> {
 
 /// 打开指定聊天，加载历史消息。
 pub async fn open_chat(chat_name: String) {
-    let character_file = match &STATE.read().character {
-        Some((file_name, _)) => file_name.clone(),
-        None => {
-            STATE.with_mut(|s| {
-                s.last_error = Some("未选择角色".to_string());
-            });
-            return;
-        }
+    let character_file = STATE.with(|s| s.character.as_ref().map(|(f, _)| f.clone()));
+    let Some(character_file) = character_file else {
+        STATE.with_mut(|s| {
+            s.last_error = Some("未选择角色".to_string());
+        });
+        return;
     };
 
     match tavern_client::load_chat(character_file, chat_name.clone()).await {
@@ -201,29 +199,38 @@ pub fn append_delta(delta: &str) {
 }
 
 /// 发送用户消息并触发生成。
+///
+/// 单飞语义：生成中再次调用直接忽略（UI 的停止/发送互斥已挡一层，
+/// 这里防脚本/回车抖动造成的并发 send 争抢同一条 assistant 占位）。
 pub async fn send(text: String) {
-    let (character, character_name, user_name, model) = {
+    // 读取并克隆所需上下文，读守卫在此作用域结束时立即析构，
+    // 后续 with_mut 不会与活跃 read 重叠（否则 panic）。
+    let (character_entry, user_name, model, already_generating) = {
         let s = STATE.read();
-        let (character_name, card) = match &s.character {
-            Some((name, card)) => (name.clone(), card.clone()),
-            None => {
-                STATE.with_mut(|st| {
-                    st.last_error = Some("请先选择角色".to_string());
-                });
-                return;
-            }
-        };
-        let model = match &s.model {
-            Some(m) => m.clone(),
-            None => {
-                STATE.with_mut(|st| {
-                    st.last_error = Some("未设置模型".to_string());
-                });
-                return;
-            }
-        };
-        (card, character_name, s.user_name.clone(), model)
+        (
+            s.character.clone(),
+            s.user_name.clone(),
+            s.model.clone(),
+            s.generating,
+        )
     };
+
+    if already_generating {
+        return;
+    }
+    let Some((character_file, card)) = character_entry else {
+        STATE.with_mut(|st| {
+            st.last_error = Some("请先选择角色".to_string());
+        });
+        return;
+    };
+    let Some(model) = model else {
+        STATE.with_mut(|st| {
+            st.last_error = Some("未设置模型".to_string());
+        });
+        return;
+    };
+    let character_name = character_file;
 
     STATE.with_mut(|s| {
         s.messages.push(Message {
@@ -241,14 +248,14 @@ pub async fn send(text: String) {
     });
 
     let body = build_generate_body(
-        &character,
+        &card,
         &character_name,
         &user_name,
         &STATE.read().messages,
         &model,
     );
 
-    let assistant_name = character.name.clone();
+    let assistant_name = card.name.clone();
     STATE.with_mut(|s| {
         s.messages.push(Message {
             name: assistant_name,
@@ -270,6 +277,13 @@ pub async fn send(text: String) {
     if let Err(e) = result {
         STATE.with_mut(|s| {
             s.last_error = Some(format!("生成失败: {e}"));
+            // 失败同样回收空 assistant 占位,避免下一轮 prompt 携带空 content
+            if let Some(last) = s.messages.last()
+                && !last.is_user
+                && last.mes.is_empty()
+            {
+                s.messages.pop();
+            }
         });
         return;
     }
