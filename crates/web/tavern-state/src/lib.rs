@@ -218,7 +218,7 @@ pub async fn send(text: String) {
     if already_generating {
         return;
     }
-    let Some((character_file, card)) = character_entry else {
+    let Some((_character_file, card)) = character_entry else {
         STATE.with_mut(|st| {
             st.last_error = Some("请先选择角色".to_string());
         });
@@ -230,7 +230,7 @@ pub async fn send(text: String) {
         });
         return;
     };
-    let character_name = character_file;
+    let character_name = card.name.clone();
 
     STATE.with_mut(|s| {
         s.messages.push(Message {
