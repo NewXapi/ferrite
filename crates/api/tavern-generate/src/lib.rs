@@ -69,13 +69,12 @@ async fn generate(
     // R3 后端校验：含 `_ferrite_agent_prompt_marker` 的 payload 必须已物化。
     // 非 marker payload 一律不校验，行为不变。
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
-        && value.as_object().map_or(false, |obj| {
-            obj.contains_key("_ferrite_agent_prompt_marker")
-        })
+        && value
+            .as_object()
+            .is_some_and(|obj| obj.contains_key("_ferrite_agent_prompt_marker"))
+        && let Err(e) = harness_prompt::reject_unfinalized_snapshot(&value)
     {
-        if let Err(e) = harness_prompt::reject_unfinalized_snapshot(&value) {
-            return bad_request(&e.to_string());
-        }
+        return bad_request(&e.to_string());
     }
 
     let key = match tavern_secrets::read(&st.dirs.secrets_file(), "api_key_openai") {

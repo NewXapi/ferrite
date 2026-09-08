@@ -192,10 +192,10 @@ pub fn append_delta(delta: &str) {
         if s.aborted {
             return;
         }
-        if let Some(last) = s.messages.last_mut() {
-            if !last.is_user {
-                last.mes.push_str(delta);
-            }
+        if let Some(last) = s.messages.last_mut()
+            && !last.is_user
+        {
+            last.mes.push_str(delta);
         }
     });
 }
@@ -281,10 +281,11 @@ pub async fn send(text: String) {
             // abort 前 push 了一条空 assistant 占位用于流式填充；abort 后
             // 必须回收，否则 UI 出现空气泡，且下轮 send 会把空 content 带进
             // prompt（部分上游 reject 空 content）。
-            if let Some(last) = s.messages.last() {
-                if !last.is_user && last.mes.is_empty() {
-                    s.messages.pop();
-                }
+            if let Some(last) = s.messages.last()
+                && !last.is_user
+                && last.mes.is_empty()
+            {
+                s.messages.pop();
             }
         });
         return;
