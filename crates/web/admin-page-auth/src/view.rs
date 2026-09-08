@@ -15,6 +15,7 @@ impl From<SignInPayload> for SubmitPayload {
             username: p.username,
             email: String::new(),
             password: p.password,
+            remember: p.remember,
         }
     }
 }
@@ -26,6 +27,7 @@ impl From<SignUpPayload> for SubmitPayload {
             username: p.username,
             email: p.email,
             password: p.password,
+            remember: false,
         }
     }
 }
@@ -38,6 +40,7 @@ struct SubmitPayload {
     username: String,
     email: String,
     password: String,
+    remember: bool,
 }
 
 #[component]
@@ -45,6 +48,7 @@ pub fn AuthPage() -> Element {
     let active = auth_tab();
     let is_sign_in = active == AuthTab::SignIn;
 
+    let remember_signal = use_signal(|| false);
     let mut state = use_context::<SubmitState>();
 
     let indicator_transform = if is_sign_in {
@@ -103,10 +107,29 @@ pub fn AuthPage() -> Element {
                 },
             )
             .await
-            .map(|resp| resp.access_token);
+            .map(|resp| (resp.access_token, resp.refresh_token));
             match result {
-                Ok(access_token) => {
-                    client.set_token(Some(access_token));
+                Ok((access_token, refresh_token)) => {
+                    client.set_token(Some(access_token.clone()));
+                    // Remember me：access+refresh token 持久化到 localStorage；
+                    // 未勾选：sessionStorage（关浏览器即失效）
+                    type StoreFn = Box<dyn Fn(&str, &str)>;
+                    let store: StoreFn = if payload.remember {
+                        Box::new(|k, v| {
+                            if let Some(w) = web_sys::window() {
+                                let _ = w.local_storage().unwrap().map(|s| s.set_item(k, v));
+                            }
+                        })
+                    } else {
+                        Box::new(|k, v| {
+                            if let Some(w) = web_sys::window() {
+                                let _ = w.session_storage().unwrap().map(|s| s.set_item(k, v));
+                            }
+                        })
+                    };
+                    store("ferrite_access_token", &access_token);
+                    store("ferrite_refresh_token", &refresh_token);
+                    store("ferrite_username", &payload.username);
                     state.busy.set(false);
                     // 回控制台：auth hash 清掉，HomePage 重新挂载
                     if let Some(w) = web_sys::window() {
@@ -189,7 +212,7 @@ pub fn AuthPage() -> Element {
 
                     // Form content
                     match active {
-                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()) } },
+                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
                         AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()) } },
                     }
                 }

@@ -1,7 +1,7 @@
 //! Auth page private form components: field styles + real submit wiring.
 
 use dioxus::prelude::*;
-use ui::{CodeField, FormField as Field, SubmitButton};
+use ui::{CodeField, FormField as Field, PasswordField, SubmitButton};
 
 /// 提交共享状态：错误信息 + busy（按钮禁用）。
 #[derive(Clone, Default)]
@@ -27,10 +27,11 @@ fn SubmitStateBanner(error: Signal<Option<String>>) -> Element {
 pub struct SignInPayload {
     pub username: String,
     pub password: String,
+    pub remember: bool,
 }
 
 #[component]
-pub fn SignInForm(submit: EventHandler<SignInPayload>) -> Element {
+pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -> Element {
     let error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut password = use_signal(String::new);
@@ -43,6 +44,7 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>) -> Element {
                 submit.call(SignInPayload {
                     username: username.read().clone(),
                     password: password.read().clone(),
+                    remember: remember(),
                 });
             },
             Field {
@@ -52,10 +54,9 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>) -> Element {
                 value: username(),
                 oninput: move |ev: dioxus::prelude::FormEvent| username.set(ev.value()),
             }
-            Field {
+            PasswordField {
                 label: "Password",
                 name: "password",
-                r#type: "password",
                 placeholder: "••••••••",
                 value: password(),
                 oninput: move |ev: dioxus::prelude::FormEvent| password.set(ev.value()),
@@ -66,7 +67,9 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>) -> Element {
                     class: "flex items-center gap-2 cursor-pointer group",
                     input {
                         class: "size-4 rounded border-zinc-700 bg-zinc-800/60 text-zinc-100 transition-colors focus:ring-1 focus:ring-zinc-500 group-hover:border-zinc-600",
-                        r#type: "checkbox"
+                        r#type: "checkbox",
+                        checked: "{remember()}",
+                        oninput: move |ev| remember.set(ev.checked()),
                     }
                     span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
                 }
@@ -139,18 +142,16 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
                 oninput: move |ev: dioxus::prelude::FormEvent| code.set(ev.value()),
                 on_send: move |_| {},
             }
-            Field {
+            PasswordField {
                 label: "Password",
                 name: "password",
-                r#type: "password",
                 placeholder: "8-20 characters",
                 value: password(),
                 oninput: move |ev: dioxus::prelude::FormEvent| password.set(ev.value()),
             }
-            Field {
+            PasswordField {
                 label: "Confirm password",
                 name: "confirm_password",
-                r#type: "password",
                 placeholder: "Repeat password",
                 value: confirm(),
                 oninput: move |ev: dioxus::prelude::FormEvent| confirm.set(ev.value()),
