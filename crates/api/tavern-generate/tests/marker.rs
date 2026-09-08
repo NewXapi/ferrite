@@ -46,9 +46,17 @@ async fn marker_with_unmaterialized_content_rejected() {
         .await
         .unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
+    // 错误响应是结构化 JSON {"error": "..."},且错误来自 prompt_snapshot 校验器,
+    // 不用模糊子串匹配,避免上游 400 也混入通过。
+    let body_json: serde_json::Value = serde_json::from_str(&body_str)
+        .unwrap_or_else(|_| panic!("400 body must be structured JSON: {body_str}"));
+    let error_msg = body_json
+        .get("error")
+        .and_then(|e| e.as_str())
+        .unwrap_or("");
     assert!(
-        body_str.contains("unfinalized") || body_str.contains("{{"),
-        "body should mention unfinalized: {body_str}"
+        error_msg.contains("prompt_snapshot.unfinalized"),
+        "expected prompt_snapshot.unfinalized error, got: {error_msg}"
     );
 }
 
