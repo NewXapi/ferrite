@@ -552,7 +552,7 @@ pub fn ChatPage(
                                 button {
                                     class: "ml-2 text-zinc-500 hover:text-white",
                                     onclick: move |_| {
-                                        let _ = abort();
+                                        abort();
                                     },
                                     "✕"
                                 }

@@ -242,10 +242,11 @@ fn test_abort_pops_empty_assistant_placeholder() {
         },
     ];
     // 模拟 abort 分支的 pop 逻辑
-    if let Some(last) = msgs.last() {
-        if !last.is_user && last.mes.is_empty() {
-            msgs.pop();
-        }
+    if let Some(last) = msgs.last()
+        && !last.is_user
+        && last.mes.is_empty()
+    {
+        msgs.pop();
     }
     assert_eq!(msgs.len(), 1, "空助手占位应被回收");
     assert_eq!(msgs[0].mes, "Hello");
@@ -275,10 +276,11 @@ fn test_abort_keeps_non_empty_assistant() {
             extra: Default::default(),
         },
     ];
-    if let Some(last) = msgs.last() {
-        if !last.is_user && last.mes.is_empty() {
-            msgs.pop();
-        }
+    if let Some(last) = msgs.last()
+        && !last.is_user
+        && last.mes.is_empty()
+    {
+        msgs.pop();
     }
     assert_eq!(msgs.len(), 2, "有内容的 assistant 不应被回收");
     assert_eq!(msgs[1].mes, "Hi there!");
