@@ -21,6 +21,7 @@ pub fn SegmentedCapsule(
     #[props(default)] testid_prefix: String,
 ) -> Element {
     let n = items.len();
+    rsx! {
         div {
             class: "flex w-full flex-wrap overflow-hidden rounded-full border border-zinc-700 bg-zinc-950 text-xs sm:w-fit",
             onwheel: move |e: WheelEvent| {
