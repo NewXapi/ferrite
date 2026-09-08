@@ -17,10 +17,15 @@
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{Router, extract::State, http::StatusCode, response::{Json, Body}, routing::post};
+use http::HeaderMap;
+use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::config::Config;
+use crate::auth::routes::bearer_user;
+use crate::auth::routes::ADMIN_ROLE_THRESHOLD;
+use crate::snapshot::Snapshots;
 
 pub mod config;
 pub mod snapshot;
@@ -42,6 +47,7 @@ use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
+use crate::auth::AuthService;
 
 /// 组装完整应用 Router：admin-api + tavern + pipeline gateway + 用量中间件 + reload。
 pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
@@ -103,14 +109,35 @@ async fn assemble(
         pool: pool.clone(),
         snapshots: Arc::new(snapshots),
     };
-    let pipeline_router = gateway_pipeline::router::build_router(pipeline).layer(
-        axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware),
-    );
 
-    // reload 端点（501 占位；真实实现需 admin 守卫 + 热更快照）
-    let reload = Router::new().route("/api/gateway/reload", axum::routing::post(reload_handler));
+    // reload 路由（包含 admin 守卫）
+    let auth_svc = Arc::new(AuthService::new(
+        pool.clone(),
+        std::env::var("FERRITE_JWT_SECRET")
+            .unwrap_or_else(|_| "dev_ferrite_jwt_secret_key_32bytes_len!".into())
+            .into_bytes(),
+    )?);
+    let reload_state = ReloadState {
+        pool: pool.clone(),
+        snapshots: Arc::new(snapshots),
+        dispatcher: Arc::new(dispatcher),
+        auth: auth_svc,
+    };
+    let reload = build_reload_router(reload_state);
 
-    // 合并：具体路由优先，pipeline 作为 fallback 兜底 /v1/*
+    let fallback_guard = axum::middleware::from_fn(|req, next| async move {
+        let path = req.uri().path();
+        if path.starts_with("/v1") || path.starts_with("/v1beta") || path == "/healthz" {
+            Ok(next.run(req).await)
+        } else {
+            Err((StatusCode::NOT_FOUND, Body::from("not found")))
+        }
+    });
+
+    let pipeline_router = gateway_pipeline::router::build_router(pipeline)
+        .layer(axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware))
+        .layer(fallback_guard);
+
     Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
 }
 
@@ -122,14 +149,80 @@ pub async fn build_app_with_egress(
     assemble(pool, egress).await
 }
 
-async fn reload_handler() -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
-    // ponytail: 热重载快照；真实实现需要 admin 守卫 + 重建 gates/Dispatcher 后 store。
-    // 本 PR 先用重启替代，返回 501 占位。
-    (
-        axum::http::StatusCode::NOT_IMPLEMENTED,
-        axum::Json(serde_json::json!({
-            "code": 501,
-            "message": "reload not implemented; restart process to refresh snapshots"
-        })),
-    )
+/// 快照热重载状态
+///
+/// 包含数据库连接、快照句柄、dispatcher 和 AuthService 实例
+/// 与 assemble 中共享同一批 ArcSwap 句柄，实现热更
+#[derive(Debug, Clone)]
+pub struct ReloadState {
+    pool: PgPool,
+    snapshots: Arc<Snapshots>,
+    dispatcher: Arc<Dispatcher>,
+    auth: Arc<AuthService>,
+}
+
+/// 构建 reload 路由（含 admin 守卫）
+pub fn build_reload_router(state: ReloadState) -> Router {
+    Router::new()
+        .route("/api/gateway/reload", post(reload_handler))
+        .with_state(state)
+}
+
+/// 快照热重载端点（替换 501 占位）
+///
+/// # 语义
+/// - 使用与 assemble 中共享的 `Snapshots` ArcSwap 句柄，实现热更，无需重建 gates。
+/// - 使用与 admin_router 相同的 AuthService 实例（通过环境变量 `FERRITE_JWT_SECRET` 注入），确保一致的鉴权逻辑。
+/// - 仅允许角色 >= 10 的管理员调用（`ADMIN_ROLE_THRESHOLD`）。
+///
+/// # 错误处理
+/// - 401：未提供有效 Bearer token 或 token 无效
+/// - 403：角色不足
+/// - 500：快照加载失败或其他内部错误
+///
+/// # 响应
+/// 返回成功状态及数据统计（tokens、users、channels 计数），方便观察热更效果。
+pub async fn reload_handler(
+    State(state): State<ReloadState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // 校验 Bearer token + 角色
+    let user = bearer_user(&state.auth, &headers)
+        .map_err(|e| {
+            let mut body = serde_json::json!({"success": false, "message": "未授权"});
+            body["detail"] = serde_json::Value::String(e.to_string());
+            (StatusCode::UNAUTHORIZED, Json(body))
+        })?;
+
+    if user.role < ADMIN_ROLE_THRESHOLD {
+        let mut body = serde_json::json!({"success": false, "message": "无权限"});
+        body["detail"] = serde_json::Value::String("需要管理员及以上权限".to_string());
+        return Err((StatusCode::FORBIDDEN, Json(body)));
+    }
+
+    // 重新加载快照
+    let new = crate::snapshot::load_snapshots(&state.pool)
+        .map_err(|e| {
+            let mut body = serde_json::json!({"success": false, "message": "重载失败"});
+            body["detail"] = serde_json::Value::String(e.to_string());
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(body))
+        })?;
+
+    // 热更新快照数据
+    state.snapshots.token_snapshot.store(new.token_snapshot.load_full());
+    state.snapshots.user_snapshot.store(new.user_snapshot.load_full());
+    state.snapshots.quota_snapshot.store(new.quota_snapshot.load_full());
+    state.dispatcher.set_snapshot(Arc::new(new.dispatch));
+
+    let body = serde_json::json!({
+        "success": true,
+        "message": "快照重载成功",
+        "data": {
+            "tokens": new.token_snapshot.load_full().by_hash.len(),
+            "users": new.user_snapshot.load_full().by_key.len(),
+            "channels": new.dispatch.channels.len(),
+        }
+    });
+
+    Ok(Json(body))
 }
