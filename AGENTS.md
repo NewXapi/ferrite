@@ -136,7 +136,7 @@ bash scripts/ci-affected.sh --base newxapi/main --dry-run
 
 ### UI 验证约定（Dioxus web）
 
-agent 验证 UI 时**不依赖截图**，用 OMP `ui-validate` skill 的结构化断言。详见 `docs/ui-validation.md`：
+详见项目级 skill `.agent/skills/ui-validation/SKILL.md`（共享 OMP `ui-validate` skill）：
 
 - 交互元素加 `data-testid`（用 `name` 属性值）；容器加 `role` + `aria-label`
 - 每页一个 `specs/ui/<page>.yaml` 契约，列出 role/name/testid/action
@@ -144,6 +144,7 @@ agent 验证 UI 时**不依赖截图**，用 OMP `ui-validate` skill 的结构�
 - 截图仅作辅助（视觉风格/品牌），失败时附带
 
 禁区：只用截图肉眼判断、用 class 选择器、不写 ui-spec.yaml 直接 PR。
+
 ### Rust 编码风格
 
 - 函数命名讲究动宾结构，见名知目的：`parse_channel_config` 而不是 `do_config`；类型/结构体名说清角色。
