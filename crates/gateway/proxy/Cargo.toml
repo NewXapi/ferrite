@@ -21,10 +21,10 @@ tracing        = { workspace = true }
 url            = "2"
 percent-encoding = "2"
 uuid = "1"
-
-# 出口协议适配（meow-rs, MIT）：vless/vmess/ss/trojan 等由 ProxyAdapter 提供
 meow-common = "0.21"
-meow-proxy = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vless-vision", "vmess"] }
+
+# 出口协议适配（meow-rs, MIT）：vless/vmess/ss/trojan/hysteria2/anytls/snell 等由 ProxyAdapter 提供
+meow-proxy = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vless-vision", "vmess", "hysteria2", "anytls", "snell"] }
 meow-transport = { version = "0.21", default-features = false, features = ["tls", "ws", "reality"] }
 smol_str = "0.3"
 hex            = { workspace = true }

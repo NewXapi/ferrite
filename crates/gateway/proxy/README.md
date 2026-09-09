@@ -4,12 +4,10 @@
 
 ## 文件
 
-- `src/lib.rs` — 导出 `ProxyNode` / `ProxyPool` / `ProxyManager` / `Lease` / `validate_url`。
-- `src/node.rs` — 解析 `http://` / `socks5://` / `ss://` / `trojan://` / `vless://` / `vmess://`（含 percent-encoded 认证与 VLESS query），HTTP/SOCKS5 转 `reqwest::Proxy`。
-- `src/adapter.rs` — 节点 → meow `ProxyAdapter`：协议握手在 `dial_tcp` 内完成，含 VLESS Vision flow 与 REALITY 参数解码。
-- `src/pool.rs` — 按 `channel_key`（`ChannelRecord.meta.key`）索引，priority 分层。
-- `src/manager.rs` — `acquire` / `feedback` / per-node Client 缓存 / 冷却。
-- `src/ssrf.rs` — IP 字面量与 DNS 解析结果双重校验。
+- `src/node.rs` — 解析 `http://` / `socks5://` / `ss://` / `trojan://` / `vless://` / `vmess://` / `hysteria2://` / `anytls://` / `snell://`（含 percent-encoded 认证与 query），HTTP/SOCKS5 转 `reqwest::Proxy`。
+- `src/adapter.rs` — 节点 → meow `ProxyAdapter`：协议握手在 `dial_tcp` 内完成，含 VLESS Vision flow 与 REALITY 参数解码，以及 Hysteria2/AnyTLS/Snell (fallback for now, Hy2 dial_tcp is TCP-capable via QUIC stream).
+- `tests/extra_schemes.rs` — parse + adapter_for tests for new schemes (no network).
+ - `src/manager.rs` — is_supported_scheme always true, to_reqwest_proxy error branch updated.
 
 ## 出口怎么走
 

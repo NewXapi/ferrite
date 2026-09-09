@@ -14,7 +14,8 @@ use std::sync::Arc;
 use meow_common::{ConnType, DnsMode, Metadata, Network, ProxyAdapter};
 use meow_proxy::vmess::header::Security as VmessSecurity;
 use meow_proxy::{
-    HttpAdapter, ShadowsocksAdapter, Socks5Adapter, TransportChain, TrojanAdapter, VlessAdapter,
+    AnytlsAdapter, HttpAdapter, Hy2Adapter, Hy2Options, ShadowsocksAdapter, SnellAdapter,
+    SnellObfs, SnellVersion, Socks5Adapter, TransportChain, TrojanAdapter, VlessAdapter,
     VmessAdapter,
 };
 use smol_str::SmolStr;
@@ -190,10 +191,90 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                 TransportChain::empty(),
             )))
         }
+        ProxyScheme::Hysteria2 => {
+            let auth = require_auth(node)?;
+            let opts = node.vless.as_ref();
+            // Hy2 是 QUIC/UDP 承载：meow 在 dial_tcp 内自管 UDP socket，TCP 出口路径可用
+            let hy2 = Hy2Options {
+                name: name.clone(),
+                server: node.host.clone(),
+                port: node.port,
+                password: auth.pass.clone(),
+                sni: opts.and_then(|o| o.sni.clone()),
+                skip_cert_verify: opts.is_some_and(|o| o.insecure),
+                udp: false,
+                up_bps: 0,
+                down_bps: 0,
+                obfs: None,
+                obfs_password: None,
+                ports: None,
+                hop_interval: None,
+                fingerprint: None,
+                fast_open: false,
+            };
+            match Hy2Adapter::new(hy2) {
+                Ok(a) => Some(Arc::new(a)),
+                Err(e) => {
+                    tracing::warn!(host = %node.host, port = node.port, error = %e, "Hysteria2 参数非法，节点回落直连");
+                    None
+                }
+            }
+        }
+        ProxyScheme::AnyTls => {
+            let auth = require_auth(node)?;
+            let opts = node.vless.as_ref();
+            let sni = opts.and_then(|o| o.sni.clone());
+            match AnytlsAdapter::new(
+                &name,
+                &node.host,
+                node.port,
+                &auth.pass,
+                sni.as_deref(),
+                opts.is_some_and(|o| o.insecure),
+                false,
+            ) {
+                Ok(a) => Some(Arc::new(a)),
+                Err(e) => {
+                    tracing::warn!(host = %node.host, port = node.port, error = %e, "AnyTLS 参数非法，节点回落直连");
+                    None
+                }
+            }
+        }
+        ProxyScheme::Snell => {
+            let auth = require_auth(node)?;
+            let opts = node.vless.as_ref();
+            let version = match opts.and_then(|o| o.version.as_deref()) {
+                Some("v3") => SnellVersion::V3,
+                Some("v4") => SnellVersion::V4,
+                // 缺省 v5（当前主流），未知值 warn 后同样按 v5
+                other => {
+                    if let Some(v) = other {
+                        tracing::warn!(version = v, "未知 Snell version，按 v5 处理");
+                    }
+                    SnellVersion::V5
+                }
+            };
+            let obfs = match opts.and_then(|o| o.obfs.as_deref()) {
+                Some("http") => SnellObfs::Http {
+                    host: opts.and_then(|o| o.obfs_uri.clone()).unwrap_or_default(),
+                },
+                Some("tls") => SnellObfs::Tls {
+                    server: opts.and_then(|o| o.obfs_uri.clone()).unwrap_or_default(),
+                },
+                _ => SnellObfs::None,
+            };
+            match SnellAdapter::new(
+                &name, &node.host, node.port, &auth.pass, obfs, version, false, false,
+            ) {
+                Ok(a) => Some(Arc::new(a)),
+                Err(e) => {
+                    tracing::warn!(host = %node.host, port = node.port, error = %e, "Snell 参数非法，节点回落直连");
+                    None
+                }
+            }
+        }
     }
 }
-
-/// 取节点认证；缺失时 warn 并返回 `None`（`?` 提前退出整个映射）。
 fn require_auth(node: &ProxyNode) -> Option<&crate::node::BasicAuth> {
     // SS 的 user= 密码方法、pass= 密码，两个都必须有；VLESS/VMess 的
     // user=UUID 是唯一必填项（pass 是备注/security，允许为空）。
