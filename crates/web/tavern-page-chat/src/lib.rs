@@ -1,7 +1,7 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
 //! 深度优化满足需求:
-//! 1. 左右侧边栏全面重构为抽屉 (Drawer) 模式，悬浮占位微标展开，互斥排他打开逻辑 (绝对不同时打开)
+//! 1. 左侧改为常驻可收缩侧边栏 (Sidebar):展开显示角色/会话全信息,收缩为图标轨,会话以单字符号呈现;右侧时间线大纲仍为浮层抽屉 (Drawer),互斥排他。
 //! 2. 会话多聊天室真正独立隔离 (每个分支会话维护各自的消息历史，切换时完整重载不同内容)
 //! 3. 消息气泡交互升级: 点击气泡浮出专属操作菜单 (复制/编辑/分支切换/删除)
 //! 4. 侧栏「剧本详情」和「赞赏作品」以景深模糊弹窗 (Modal) 呈现
@@ -34,6 +34,16 @@ fn msg_display(msg: &tavern_state::Message) -> (String, bool, usize, Vec<String>
         msg.swipe_id.unwrap_or(0),
         msg.swipes.clone(),
     )
+}
+
+/// 收缩态会话符号:chat-N -> 取序号 N(如 chat-4 -> "4"),其余取标题前 2 字。
+/// 用作左侧侧栏图标轨上的单字徽标。
+fn session_symbol(title: &str) -> String {
+    if let Some(rest) = title.strip_prefix("chat-") {
+        rest.chars().take(4).collect()
+    } else {
+        title.chars().take(2).collect()
+    }
 }
 
 #[component]
@@ -81,7 +91,8 @@ pub fn ChatPage(
     });
 
     // 页面UI状态
-    let mut active_drawer = use_signal(|| None::<&'static str>);
+    let mut active_drawer = use_signal(|| None::<&'static str>); // 仅右侧时间线大纲用浮层抽屉
+    let mut sidebar_collapsed = use_signal(|| false); // 左侧常驻侧边栏:收缩/展开
     let mut active_bubble_menu_id = use_signal(|| None::<usize>);
     let mut detail_modal_open = use_signal(|| false);
     let mut donate_modal_open = use_signal(|| false);
@@ -137,6 +148,17 @@ pub fn ChatPage(
         })
     });
 
+    // 角色单字徽标(收缩态头像用):取角色名首字
+    let char_monogram = use_memo(move || {
+        STATE.with(|s| {
+            s.character
+                .as_ref()
+                .and_then(|(_, c)| c.name.chars().next())
+                .map(|ch| ch.to_string())
+                .unwrap_or_else(|| "?".to_string())
+        })
+    });
+
     rsx! {
         div {
             class: "relative flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100 select-none",
@@ -145,100 +167,165 @@ pub fn ChatPage(
                 active_bubble_menu_id.set(None);
             },
 
-            // 抽屉遮罩背景
-            if active_drawer().is_some() {
+            // 抽屉遮罩背景(仅右侧时间线大纲用浮层)
+            if active_drawer() == Some("right") {
                 div {
                     class: "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300",
                     onclick: move |_| active_drawer.set(None),
                 }
             }
 
-            // 左侧会话抽屉
+            // 左侧常驻侧边栏(可收缩:展开显全信息,收缩显图标轨与会话符号)
             div {
-                class: if active_drawer() == Some("left") {
-                    "fixed inset-y-0 left-0 z-50 flex h-full w-80 flex-col border-r border-zinc-800/80 bg-zinc-900/95 backdrop-blur-2xl shadow-2xl transition-all duration-300 translate-x-0"
+                class: if sidebar_collapsed() {
+                    "flex h-full w-16 shrink-0 flex-col items-center gap-3 border-r border-zinc-800/60 bg-zinc-900/95 backdrop-blur-xl py-3 transition-all duration-300"
                 } else {
-                    "fixed inset-y-0 left-0 z-50 flex h-full w-80 flex-col border-r border-zinc-800/80 bg-zinc-900/95 backdrop-blur-2xl shadow-2xl transition-all duration-300 -translate-x-full pointer-events-none"
+                    "flex h-full w-72 shrink-0 flex-col border-r border-zinc-800/60 bg-zinc-900/95 backdrop-blur-xl transition-all duration-300"
                 },
-                div { class: "flex h-full w-full flex-col gap-4 p-5 select-none",
-                    div { class: "flex items-start justify-between gap-2 border-b border-zinc-800/80 pb-3",
-                        div { class: "flex flex-col gap-1",
-                            span { class: "line-clamp-2 text-xs font-bold leading-5 tracking-tight text-zinc-100",
-                                { character_info() }
-                            }
-                            span { class: "text-[10px] text-zinc-500", "当代全球演艺资本衍生规则" }
+                "data-testid": "sidebar-characters",
+                aria_label: "剧本与会话侧栏",
+
+                // 顶栏:折叠/展开开关
+                div { class: if sidebar_collapsed() {
+                        "flex flex-col items-center"
+                    } else {
+                        "flex items-center justify-between gap-2 border-b border-zinc-800/80 px-3 pb-3 pt-3"
+                    },
+                    button {
+                        class: "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
+                        title: if sidebar_collapsed() { "展开侧栏" } else { "收起侧栏" },
+                        name: "btn-sidebar-toggle",
+                        aria_label: if sidebar_collapsed() { "展开侧栏" } else { "收起侧栏" },
+                        onclick: move |_| sidebar_collapsed.set(!sidebar_collapsed()),
+                        if sidebar_collapsed() { "»" } else { "«" }
+                    }
+                    if !sidebar_collapsed() {
+                        span { class: "truncate text-xs font-bold text-zinc-100", { character_info() } }
+                    }
+                }
+
+                // 角色标识:收缩态显示单字徽标,展开态显示标签+简介
+                if sidebar_collapsed() {
+                    div { class: "flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 text-sm font-bold text-white shadow-md",
+                        aria_label: "当前角色",
+                        { char_monogram() }
+                    }
+                } else {
+                    div { class: "flex flex-col gap-1 px-3 pt-2",
+                        span { class: "text-[10px] text-zinc-500", "当代全球演艺资本衍生规则" }
+                        div { class: "rounded-xl border border-zinc-800/60 bg-zinc-950/50 p-3 text-[11px] leading-5 text-zinc-400",
+                            "【细腻UI和美化】【真实数据库与衍生规则】一比一复刻当代娱乐产业生态。这里有冰冷的资本运作与残酷的名利场。"
+                        }
+                    }
+                }
+
+                // 快捷按钮:剧本详情/赞赏(收缩态图标,展开态文字)
+                if sidebar_collapsed() {
+                    div { class: "flex flex-col items-center gap-2",
+                        button {
+                            class: "flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-800/70 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors",
+                            title: "剧本详情",
+                            name: "btn-detail",
+                            onclick: move |_| detail_modal_open.set(true),
+                            "📖"
                         }
                         button {
-                            class: "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
-                            title: "收起抽屉",
-                            onclick: move |_| active_drawer.set(None),
-                            "«"
+                            class: "flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-300 hover:bg-amber-500/20 transition-colors",
+                            title: "赞赏作品",
+                            name: "btn-donate",
+                            onclick: move |_| donate_modal_open.set(true),
+                            "☕"
                         }
                     }
-
-                    div { class: "rounded-xl border border-zinc-800/60 bg-zinc-950/50 p-3 text-[11px] leading-5 text-zinc-400",
-                        "【细腻UI和美化】【真实数据库与衍生规则】一比一复刻当代娱乐产业生态。这里有冰冷的资本运作与残酷的名利场。"
-                    }
-
-                    div { class: "grid grid-cols-2 gap-2.5",
+                } else {
+                    div { class: "grid grid-cols-2 gap-2.5 px-3 pt-2",
                         button {
                             class: "flex items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-800/70 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 active:scale-95",
+                            name: "btn-detail",
                             onclick: move |_| detail_modal_open.set(true),
                             span { "📖" }
                             span { "剧本详情" }
                         }
                         button {
                             class: "flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 active:scale-95",
+                            name: "btn-donate",
                             onclick: move |_| donate_modal_open.set(true),
                             span { "☕" }
                             span { "赞赏作品" }
                         }
                     }
+                }
 
-                    div { class: "flex min-h-0 flex-1 flex-col gap-2 pt-2",
-                        div { class: "flex items-center justify-between px-1",
+                // 会话区
+                div { class: if sidebar_collapsed() {
+                        "flex min-h-0 flex-1 flex-col items-center gap-2 py-2 no-scrollbar"
+                    } else {
+                        "flex min-h-0 flex-1 flex-col gap-2 px-3 pt-2"
+                    },
+                    div { class: if sidebar_collapsed() {
+                            "flex flex-col items-center gap-2"
+                        } else {
+                            "flex items-center justify-between px-1"
+                        },
+                        if !sidebar_collapsed() {
                             span { class: "text-xs font-bold text-zinc-400", "会话时间线" }
-                            button {
-                                class: "flex items-center gap-1 rounded-lg bg-purple-600/80 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-600 transition-colors",
-                                onclick: move |_| {
-                                    let file_name = STATE
-                                        .with(|state| state.character.as_ref().map(|(f, _)| f.clone()));
-                                    if let Some(file_name) = file_name {
-                                        spawn(async move {
-                                            select_character(file_name).await;
-                                        });
-                                    }
-                                    active_drawer.set(None);
-                                },
-                                "+ 新对话"
-                            }
                         }
-                        div { class: "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 no-scrollbar",
-                            for s in sessions() {
-                                {
-                                    let is_active = STATE.with(|st| st.chat.as_deref() == Some(s.title.as_str()));
-                                    let title = s.title.clone();
-                                    rsx! {
-                                        button {
-                                            key: "{s.title}",
-                                            class: if is_active {
-                                                "group flex w-full flex-col gap-1 rounded-xl border border-purple-500/50 bg-purple-950/30 p-3 text-left shadow-sm ring-1 ring-purple-500/30"
-                                            } else {
-                                                "group flex w-full flex-col gap-1 rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3 text-left text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60"
-                                            },
-                                            onclick: move |_| {
-                                                let chat_name = title.clone();
-                                                spawn(async move {
-                                                    open_chat(chat_name).await;
-                                                });
-                                                active_drawer.set(None);
-                                            },
-                                            div { class: "flex items-center justify-between",
-                                                span { class: "truncate text-xs font-semibold text-zinc-100 group-hover:text-purple-300 transition-colors",
-                                                    "{s.title}"
-                                                }
-                                            }
-                                        }
+                        button {
+                            class: if sidebar_collapsed() {
+                                "flex h-9 w-9 items-center justify-center rounded-xl bg-purple-600/80 text-sm font-semibold text-white hover:bg-purple-600 transition-colors"
+                            } else {
+                                "flex items-center gap-1 rounded-lg bg-purple-600/80 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-600 transition-colors"
+                            },
+                            title: "新对话",
+                            name: "btn-new-chat",
+                            onclick: move |_| {
+                                let file_name = STATE
+                                    .with(|state| state.character.as_ref().map(|(f, _)| f.clone()));
+                                if let Some(file_name) = file_name {
+                                    spawn(async move {
+                                        select_character(file_name).await;
+                                    });
+                                }
+                            },
+                            if sidebar_collapsed() { "+" } else { "+ 新对话" }
+                        }
+                    }
+                    div { class: if sidebar_collapsed() {
+                            "flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto py-1 no-scrollbar"
+                        } else {
+                            "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 no-scrollbar"
+                        },
+                        for s in sessions() {
+                            {
+                                let is_active = STATE.with(|st| st.chat.as_deref() == Some(s.title.as_str()));
+                                let title = s.title.clone();
+                                let symbol = session_symbol(&s.title);
+                                let btn_class = if sidebar_collapsed() {
+                                    if is_active {
+                                        "group flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/60 bg-purple-950/40 text-xs font-bold text-purple-100 ring-1 ring-purple-500/40 transition-colors"
+                                    } else {
+                                        "group flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-950/40 text-xs font-semibold text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60 transition-colors"
+                                    }
+                                } else if is_active {
+                                    "group flex w-full flex-col gap-1 rounded-xl border border-purple-500/50 bg-purple-950/30 p-3 text-left shadow-sm ring-1 ring-purple-500/30"
+                                } else {
+                                    "group flex w-full flex-col gap-1 rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3 text-left text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60"
+                                };
+                                let display = if sidebar_collapsed() { symbol } else { s.title.clone() };
+                                rsx! {
+                                    button {
+                                        key: "{s.title}",
+                                        class: btn_class,
+                                        title: "{s.title}",
+                                        name: "session-{title}",
+                                        aria_label: "会话 {title}",
+                                        onclick: move |_| {
+                                            let chat_name = title.clone();
+                                            spawn(async move {
+                                                open_chat(chat_name).await;
+                                            });
+                                        },
+                                        "{display}"
                                     }
                                 }
                             }
@@ -320,14 +407,11 @@ pub fn ChatPage(
                     div { class: "flex items-center gap-2",
                         button {
                             class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
-                            title: "展开剧本与会话侧栏",
+                            title: if sidebar_collapsed() { "展开剧本与会话侧栏" } else { "收起剧本与会话侧栏" },
+                            name: "btn-sidebar-toggle-top",
                             onclick: move |e| {
                                 e.stop_propagation();
-                                if active_drawer() == Some("left") {
-                                    active_drawer.set(None);
-                                } else {
-                                    active_drawer.set(Some("left"));
-                                }
+                                sidebar_collapsed.set(!sidebar_collapsed());
                             },
                             span { "📚" }
                             span { class: "font-semibold", "剧本会话" }
