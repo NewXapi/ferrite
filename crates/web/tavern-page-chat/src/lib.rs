@@ -501,7 +501,7 @@ pub fn ChatPage(
 
                 div {
                     id: "chat-scroll-viewport",
-                    class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto scroll-smooth p-4 sm:p-6 lg:px-24 xl:px-44 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                    class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 lg:px-24 xl:px-44 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
                     onscroll: on_scroll,
                     for (idx, msg) in STATE.read().messages.iter().enumerate() {
                         {
@@ -562,7 +562,7 @@ pub fn ChatPage(
                         }
                     }
                     // 悬停输入框:浮于聊天区底部; 输入区上下带快捷按钮, 模型置于右下(悬停展开面板)
-                    div { class: "sticky bottom-0 z-20 flex w-full flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
+                    div { class: "sticky bottom-0 z-20 flex w-[80%] self-center flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
                         onclick: move |e| e.stop_propagation(),
                         // 上方快捷按钮
                         div { class: "flex flex-wrap items-center gap-1.5",
