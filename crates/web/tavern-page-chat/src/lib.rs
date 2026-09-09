@@ -561,8 +561,32 @@ pub fn ChatPage(
                                 }
                             }
                         }
+                        }
                     }
-                }
+                    // 悬停输入框:浮于聊天区底部,替代原底部输入条(仅是位置改变)
+                    div { class: "sticky bottom-0 z-20 mt-2 flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2.5 shadow-inner backdrop-blur-xl",
+                        textarea {
+                            class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
+                            placeholder: "点击上方行动选项，或输入自定义决策 (电脑端 Shift+回车换行)",
+                            value: "{draft()}",
+                            oninput: move |e| draft.set(e.value()),
+                            onkeydown: move |e| {
+                                if e.key() == Key::Enter && !e.modifiers().shift() {
+                                    e.prevent_default();
+                                    handle_send();
+                                }
+                            },
+                        }
+                        div { class: "flex shrink-0 items-center gap-2 select-none",
+                            span { class: "text-[10px] text-zinc-600 tabular-nums", "{draft().len()}" }
+                            button {
+                                class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
+                                disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
+                                onclick: move |_| handle_send(),
+                                if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
+                            }
+                        }
+                    }
 
                 div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/90 p-3 backdrop-blur-2xl z-10 select-none",
                     onclick: move |e| e.stop_propagation(),
@@ -606,14 +630,6 @@ pub fn ChatPage(
                         }
 
                         div { class: "flex flex-wrap items-center gap-1.5",
-                            button {
-                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
-                                onclick: move |_| {
-                                    draft.set("【敏锐洞察】仔细打量四周环境与对方微妙的肢体反应。".into());
-                                    handle_send();
-                                },
-                                "🔍 观察现场"
-                            }
                             button {
                                 class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
                                 onclick: move |_| {
@@ -685,29 +701,6 @@ pub fn ChatPage(
                         }
                     }
 
-                    div { class: "flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2.5 shadow-inner",
-                        textarea {
-                            class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
-                            placeholder: "点击上方行动选项，或输入自定义决策 (电脑端 Shift+回车换行)",
-                            value: "{draft()}",
-                            oninput: move |e| draft.set(e.value()),
-                            onkeydown: move |e| {
-                                if e.key() == Key::Enter && !e.modifiers().shift() {
-                                    e.prevent_default();
-                                    handle_send();
-                                }
-                            },
-                        }
-                        div { class: "flex shrink-0 items-center gap-2 select-none",
-                            span { class: "text-[10px] text-zinc-600 tabular-nums", "{draft().len()}" }
-                            button {
-                                class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
-                                disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
-                                onclick: move |_| handle_send(),
-                                if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
-                            }
-                        }
-                    }
                 }
 
                 Dialog {
