@@ -238,11 +238,14 @@ impl ProxyManager {
                 cache.insert((node.id, fingerprint), Arc::clone(&client));
                 Arc::new(ProxyClient::Reqwest(client))
             }
-            // 协议适配器路径（SS/Trojan/VLESS/VMess）：meow 适配器 + 缓存
+            // 协议适配器路径（SS/Trojan/VLESS/VMess/Hysteria2/AnyTLS/Snell）：meow 适配器 + 缓存
             ProxyScheme::Shadowsocks
             | ProxyScheme::Trojan
             | ProxyScheme::Vless
-            | ProxyScheme::Vmess => {
+            | ProxyScheme::Vmess
+            | ProxyScheme::Hysteria2
+            | ProxyScheme::AnyTls
+            | ProxyScheme::Snell => {
                 let fingerprint = fingerprint_of(node);
                 {
                     let cache = self

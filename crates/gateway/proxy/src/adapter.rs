@@ -10,17 +10,17 @@
 //! - VLESS / VMess：`auth.user` = UUID，`auth.pass` = 备注（Vmess 的 security）
 
 use std::sync::Arc;
+use tracing;
+use uuid::Uuid;
 
 use meow_common::{ConnType, DnsMode, Metadata, Network, ProxyAdapter};
 use meow_proxy::vmess::header::Security as VmessSecurity;
 use meow_proxy::{
-    HttpAdapter, ShadowsocksAdapter, Socks5Adapter, TransportChain, TrojanAdapter, VlessAdapter,
+    AnytlsAdapter, HttpAdapter, Hy2Adapter, Hy2Options, ShadowsocksAdapter, Socks5Adapter,
+    SnellAdapter, SnellObfs, SnellVersion, TransportChain, TrojanAdapter, VlessAdapter,
     VmessAdapter,
 };
 use smol_str::SmolStr;
-use uuid::Uuid;
-
-use crate::node::{ProxyNode, ProxyScheme};
 
 /// 构造指向 `host:port` 的 TCP 出口 [`Metadata`]。
 ///
@@ -189,11 +189,19 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                 false,
                 TransportChain::empty(),
             )))
+        },
+        ProxyScheme::Hysteria2 | ProxyScheme::AnyTls | ProxyScheme::Snell => {
+            // TODO: implement adapter_for for new schemes (Hysteria2, AnyTLS, Snell)
+            // For now, fallback to direct with warn (per contract "配置错误 warn+None")
+            tracing::warn!(
+                scheme = ?node.scheme,
+                host = %node.host,
+                "new scheme not yet implemented in adapter_for, falling back to direct"
+            );
+            None
         }
     }
 }
-
-/// 取节点认证；缺失时 warn 并返回 `None`（`?` 提前退出整个映射）。
 fn require_auth(node: &ProxyNode) -> Option<&crate::node::BasicAuth> {
     // SS 的 user= 密码方法、pass= 密码，两个都必须有；VLESS/VMess 的
     // user=UUID 是唯一必填项（pass 是备注/security，允许为空）。
