@@ -84,6 +84,8 @@ pub struct AdminUserDto {
     pub email: String,
     pub quota: i64,
     pub used_quota: i64,
+    /// 后端 UserView 暂无此列,缺省 0 (2026-09-09 curl 实测)。
+    #[serde(default)]
     pub request_count: u64,
     pub group: String,
     pub status: u8,

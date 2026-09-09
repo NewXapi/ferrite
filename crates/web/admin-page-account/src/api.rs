@@ -60,7 +60,7 @@ pub fn fetch_invite_link() -> &'static str {
 }
 
 use client::{ApiClient, ApiResult};
-use contract::api::token::{CreateTokenRequest, TokenDto, UpdateTokenRequest};
+use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
 use contract::api::usage::{UsageLogPage, UsageStatDto};
 
 /// 真实调用: GET /api/token
@@ -68,8 +68,11 @@ pub async fn list_tokens_api(client: &ApiClient) -> ApiResult<Vec<TokenDto>> {
     client.get("/api/token").await
 }
 
-/// 真实调用: POST /api/token
-pub async fn create_token_api(client: &ApiClient, req: &CreateTokenRequest) -> ApiResult<TokenDto> {
+/// 真实调用: POST /api/token — 响应是 `{plaintext, token}`,明文只出现一次
+pub async fn create_token_api(
+    client: &ApiClient,
+    req: &CreateTokenRequest,
+) -> ApiResult<CreateTokenResult> {
     client.post("/api/token", req).await
 }
 

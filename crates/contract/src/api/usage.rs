@@ -1,5 +1,6 @@
 //! 用量查询端点 DTO。
-//! 参考: mock::account::UsageLog 形状 (前端已按此渲染) + new-api /api/log/self。
+//! 日志行对齐后端 `admin-observe::logs::LogView` (camelCase,2026-09-09 curl
+//! 实测);统计与 Dashboard 对齐 `/api/log/stat` 与 `/api/dashboard`。
 
 use crate::records::UsageEventRecord;
 use serde::{Deserialize, Serialize};
@@ -25,40 +26,50 @@ pub struct UsageLogPage {
     pub total: u64,
 }
 
-/// 前端日志行 — 与 mock::account::UsageLog 字段一一对齐。
+/// 日志行 — 对齐后端 LogView。
+/// `success` / `cost` / `cachedTokens` / `firstTokenMs` 后端暂无对应列,
+/// 由前端从 `quota` / `logType` 派生或显示占位 (见 account 页)。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageLogDto {
-    pub id: String,
-    pub model: String,
-    pub success: bool,
-    /// Unix 秒。
-    pub timestamp: i64,
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub cached_tokens: u32,
-    pub first_token_ms: u32,
-    pub duration_ms: u32,
-    /// 前端展示用金额 (美元, 保留 4 位)。
-    pub cost: f64,
-    pub error: Option<String>,
+    pub id: i64,
+    /// logType 1=充值 2=消费 (后端 UsageEvent::consume 置 2)。
+    pub log_type: i16,
+    pub user_key: String,
+    pub username: String,
+    pub token_name: String,
+    pub channel_name: String,
+    pub model_name: String,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    /// 内部计费单位 (500_000 = ¥1),后端未换算。
+    pub quota: i64,
+    pub use_time_ms: i32,
+    pub is_stream: bool,
+    pub ip: String,
+    pub request_id: String,
+    /// RFC3339 (后端 chrono DateTime<Utc> 序列化)。
+    pub created_at: String,
 }
 
 impl From<&UsageEventRecord> for UsageLogDto {
     fn from(e: &UsageEventRecord) -> Self {
         Self {
-            id: e.meta.key.clone(),
-            model: e.public_model.clone(),
-            success: (200..400).contains(&e.status_code),
-            timestamp: e.meta.updated_at.timestamp(),
-            prompt_tokens: e.prompt_tokens as u32,
-            completion_tokens: e.completion_tokens as u32,
-            cached_tokens: e.cached_tokens as u32,
-            first_token_ms: e.first_token_ms,
-            duration_ms: e.duration_ms,
-            // 内部计费单位 → 美元: 500_000 = $1
-            cost: e.cost as f64 / 500_000.0,
-            error: e.error.clone(),
+            id: 0,
+            log_type: 2,
+            user_key: e.user_key.clone(),
+            username: String::new(),
+            token_name: String::new(),
+            channel_name: e.channel_key.clone(),
+            model_name: e.public_model.clone(),
+            prompt_tokens: e.prompt_tokens as i32,
+            completion_tokens: e.completion_tokens as i32,
+            quota: e.cost,
+            use_time_ms: e.duration_ms as i32,
+            is_stream: false,
+            ip: String::new(),
+            request_id: String::new(),
+            created_at: e.meta.updated_at.to_rfc3339(),
         }
     }
 }

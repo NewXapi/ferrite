@@ -5,7 +5,7 @@
 
 use client::{ApiClient, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
-use contract::api::token::{CreateTokenRequest, TokenDto, UpdateTokenRequest};
+use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
 
 // ---------------------------------------------------------------------------
 // Tokens (API Keys)
@@ -16,8 +16,11 @@ pub async fn list_tokens_api(client: &ApiClient) -> ApiResult<Vec<TokenDto>> {
     client.get("/api/token").await
 }
 
-/// 真实调用: POST /api/token (创建)
-pub async fn create_token_api(client: &ApiClient, req: &CreateTokenRequest) -> ApiResult<TokenDto> {
+/// 真实调用: POST /api/token (创建) — 响应为 `{plaintext, token}`
+pub async fn create_token_api(
+    client: &ApiClient,
+    req: &CreateTokenRequest,
+) -> ApiResult<CreateTokenResult> {
     client.post("/api/token", req).await
 }
 

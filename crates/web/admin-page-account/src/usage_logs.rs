@@ -12,19 +12,20 @@ const STATUS_SUCCESS: &str = "成功";
 const STATUS_FAIL: &str = "失败";
 
 /// 面板内的日志视图模型:拥有所有权,可放进 signal 做详情弹窗。
+///
+/// 后端 LogView 没有 success / cost / cached / firstToken 列
+/// (usage 只记 2xx 消费事件,见 apps/api usage.rs),status 恒真、
+/// cost 由 quota 换算,缺位列显示占位。
 #[derive(Clone, PartialEq)]
 struct LogEntry {
-    id: String,
+    id: i64,
     model: String,
-    status: bool, // true = success, false = failure
+    status: bool, // true = success (logType=2 消费),后端暂无失败日志
     timestamp: DateTime<Utc>,
-    prompt_tokens: u32,
-    completion_tokens: u32,
-    cached_tokens: u32,
-    first_token_ms: u32,
-    duration_ms: u32,
-    cost: f64,
-    error: Option<String>,
+    prompt_tokens: i32,
+    completion_tokens: i32,
+    duration_ms: i32,
+    cost: f64, // quota / 500_000
 }
 
 #[component]
@@ -99,34 +100,31 @@ pub fn UsageLogsPanel() -> Element {
         let mut out: Vec<LogEntry> = logs()
             .iter()
             .filter(|entry| {
-                let log_time = DateTime::from_timestamp(entry.timestamp, 0).unwrap_or_default();
+                let log_time = parse_created_at(entry);
                 if log_time < cutoff {
                     return false;
                 }
                 if let Some(want_status) = status_filter
-                    && entry.success != want_status
+                    && (entry.log_type == 2) != want_status
                 {
                     return false;
                 }
                 if let Some(want_model) = &model_filter
-                    && &entry.model != want_model
+                    && &entry.model_name != want_model
                 {
                     return false;
                 }
                 true
             })
             .map(|entry| LogEntry {
-                id: entry.id.clone(),
-                model: entry.model.clone(),
-                status: entry.success,
-                timestamp: DateTime::from_timestamp(entry.timestamp, 0).unwrap_or_default(),
+                id: entry.id,
+                model: entry.model_name.clone(),
+                status: entry.log_type == 2,
+                timestamp: parse_created_at(entry),
                 prompt_tokens: entry.prompt_tokens,
                 completion_tokens: entry.completion_tokens,
-                cached_tokens: entry.cached_tokens,
-                first_token_ms: entry.first_token_ms,
-                duration_ms: entry.duration_ms,
-                cost: entry.cost,
-                error: entry.error.clone(),
+                duration_ms: entry.use_time_ms,
+                cost: entry.quota as f64 / 500_000.0,
             })
             .collect();
 
@@ -267,7 +265,7 @@ fn StatCard(value: &'static str, label: &'static str) -> Element {
 }
 
 /// 千分位格式化
-fn fmt_num(n: u32) -> String {
+fn fmt_num(n: i64) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
@@ -279,8 +277,15 @@ fn fmt_num(n: u32) -> String {
     out
 }
 
-fn fmt_sec(ms: u32) -> String {
+fn fmt_sec(ms: i32) -> String {
     format!("{:.1}s", ms as f64 / 1000.0)
+}
+
+/// 后端 created_at 是 RFC3339;解析失败退到 epoch(过滤会被 cutoff 排除)。
+fn parse_created_at(entry: &UsageLogDto) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(&entry.created_at)
+        .map(|t| t.with_timezone(&Utc))
+        .unwrap_or_default()
 }
 
 /// 日志卡片:放在 5/3/1 网格里的紧凑摘要卡,点击打开详情弹窗。
@@ -314,19 +319,16 @@ fn LogCard(log: LogEntry, on_open: EventHandler<LogEntry>) -> Element {
     } else {
         "—".to_string()
     };
+    // 后端暂无首字延迟列,只展示总耗时
     let timing_str = if log.status {
-        format!(
-            "{} / {}",
-            fmt_sec(log.first_token_ms),
-            fmt_sec(log.duration_ms)
-        )
+        fmt_sec(log.duration_ms)
     } else {
         "不适用".to_string()
     };
     let tokens_pair = format!(
         "{} / {}",
-        fmt_num(log.prompt_tokens),
-        fmt_num(log.completion_tokens)
+        fmt_num(log.prompt_tokens as i64),
+        fmt_num(log.completion_tokens as i64)
     );
 
     rsx! {
@@ -391,21 +393,17 @@ fn LogDetailModal(log: LogEntry, on_close: EventHandler<()>) -> Element {
     } else {
         "—".to_string()
     };
+    // 后端暂无首字延迟列,只展示总耗时
     let timing_str = if log.status {
-        format!(
-            "{} / {}",
-            fmt_sec(log.first_token_ms),
-            fmt_sec(log.duration_ms)
-        )
+        fmt_sec(log.duration_ms)
     } else {
         "不适用".to_string()
     };
     let tokens_pair = format!(
         "{} / {}",
-        fmt_num(log.prompt_tokens),
-        fmt_num(log.completion_tokens)
+        fmt_num(log.prompt_tokens as i64),
+        fmt_num(log.completion_tokens as i64)
     );
-    let cached_str = fmt_num(log.cached_tokens);
 
     rsx! {
         div {
@@ -451,11 +449,7 @@ fn LogDetailModal(log: LogEntry, on_close: EventHandler<()>) -> Element {
                         span { class: "whitespace-nowrap tabular-nums text-zinc-200", "{tokens_pair}" }
                     }
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-500", "缓存命中" }
-                        span { class: "whitespace-nowrap tabular-nums text-zinc-200", "{cached_str}" }
-                    }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-500", "首字 / 耗时" }
+                        span { class: "shrink-0 text-zinc-500", "耗时" }
                         span { class: "whitespace-nowrap tabular-nums text-zinc-200", "{timing_str}" }
                     }
                     div { class: "flex justify-between gap-2",
@@ -468,11 +462,7 @@ fn LogDetailModal(log: LogEntry, on_close: EventHandler<()>) -> Element {
                     }
                 }
 
-                if let Some(err) = &log.error {
-                    div { class: "mt-4 rounded-xl bg-red-950/40 p-3 font-mono text-xs text-red-400",
-                        "{err}"
-                    }
-                }
+                // 后端 LogView 暂无 error / 缓存命中列,详情只到耗时与费用
             }
         }
     }

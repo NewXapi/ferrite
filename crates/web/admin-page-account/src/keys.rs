@@ -74,8 +74,12 @@ pub fn KeysPanel() -> Element {
                     expires_at: None,
                 };
                 match create_token_api(&client, &req).await {
-                    Ok(t) => {
-                        n.set(Some(format!("密钥创建成功:{}", t.name)));
+                    // 明文 key 只在创建响应出现一次,提示里带回给用户复制
+                    Ok(res) => {
+                        n.set(Some(format!(
+                            "密钥创建成功:{} 明文:{}",
+                            res.token.name, res.plaintext
+                        )));
                         r.set(r() + 1);
                     }
                     Err(e) => n.set(Some(format!("创建失败:{e}"))),
@@ -109,7 +113,7 @@ pub fn KeysPanel() -> Element {
 
     let make_toggle = || {
         let captured = (busy, notice, reload);
-        move |key: String, status: u8| {
+        move |key: String, status: i16| {
             let (mut b, mut n, mut r) = captured;
             spawn(async move {
                 b.set(true);
@@ -246,7 +250,7 @@ pub fn KeysPanel() -> Element {
                                         key: "{entry.key}",
                                         entry: entry.clone(),
                                         on_delete: move |k: String| delete(k),
-                                        on_toggle: move |(k, s): (String, u8)| toggle(k, s),
+                                        on_toggle: move |(k, s): (String, i16)| toggle(k, s),
                                     }
                                 }
                             }
@@ -296,7 +300,7 @@ fn ProfileRow(label: &'static str, value: &'static str) -> Element {
 fn KeyCard(
     entry: TokenDto,
     on_delete: EventHandler<String>,
-    on_toggle: EventHandler<(String, u8)>,
+    on_toggle: EventHandler<(String, i16)>,
 ) -> Element {
     let enabled = entry.status == 1;
 
@@ -316,7 +320,8 @@ fn KeyCard(
     // 三个回调各自持有 key 的副本(EventHandler 是 move 捕获,String 不可 Copy)。
     let del_key = entry.key.clone();
     let toggle_key = entry.key.clone();
-    let toggle_to = if enabled { 0u8 } else { 1u8 };
+    // 后端 status 语义: 1=启用 2=停用 (tokens.rs update 校验 [1,2])
+    let toggle_to: i16 = if enabled { 2 } else { 1 };
 
     rsx! {
         div {
@@ -328,8 +333,7 @@ fn KeyCard(
             div { class: "mb-3 flex items-start justify-between gap-2",
                 div { class: "min-w-0",
                     h3 { class: "text-sm font-medium text-zinc-100", "{entry.name}" }
-                    p { class: "mt-0.5 truncate font-mono text-[11px] text-zinc-500", "{entry.masked_key}" }
-                }
+                    p { class: "mt-0.5 truncate font-mono text-[11px] text-zinc-500", "{entry.masked_key}" }                }
                 span {
                     class: "rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
                     if enabled { "启用" } else { "停用" }

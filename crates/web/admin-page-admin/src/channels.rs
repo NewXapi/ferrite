@@ -279,7 +279,8 @@ pub fn ChannelsPage() -> Element {
                                     let edit_key = c.key.clone();
                                     let toggle_key = c.key.clone();
                                     let delete_key = c.key.clone();
-                                    let target = if c.status == 1 { 0 } else { 1 };
+                                    // 后端 status 语义: 1=启用 2=停用 (channels status 校验 [1,2])
+                                    let target = if c.status == 1 { 2 } else { 1 };
                                     rsx! {
                                         ChannelCard {
                                             key: "{c.key}",
