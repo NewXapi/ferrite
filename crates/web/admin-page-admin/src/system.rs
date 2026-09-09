@@ -7,9 +7,58 @@ use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
 const SEC_STATS: &str = "系统概览";
-const SEC_FILTER: &str = "功能模块与开关";
 const SEC_BASE: &str = "站点信息与策略";
+const SEC_FILTER: &str = "功能模块与开关";
+const SEC_PROXY: &str = "出口代理节点";
 
+/// 一条出口代理节点（对应网关 `[[proxy_nodes]]` 的 UI 编辑态）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ProxyNodeRow {
+    /// 节点 URL，支持 http(s)/socks5(h)/ss/trojan/vless/vmess
+    pub url: String,
+    /// 绑定的渠道名（逗号分隔的输入态）
+    pub channels: String,
+    /// 优先级，数字越大越优先
+    pub priority: String,
+}
+
+/// scheme 白名单：与网关 `ProxyNode::parse_url` 一致；非法 scheme 在输入侧直接红字提示。
+const PROXY_SCHEMES: &[&str] = &[
+    "http", "https", "socks5", "socks5h", "ss", "trojan", "vless", "vmess",
+];
+
+/// 校验单条节点 URL：scheme 必须在白名单内；vless 的 pbk/sid 有形状约束。
+/// 返回 None 表示合法；Some(原因) 会在输入框下方红字提示。
+pub(crate) fn validate_proxy_url(url: &str) -> Option<&'static str> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None; // 空行允许（还没填）
+    }
+    let (scheme, _) = trimmed.split_once("://")?;
+    if !PROXY_SCHEMES.contains(&scheme) {
+        return Some("不支持的协议（可用: http/https/socks5/socks5h/ss/trojan/vless/vmess）");
+    }
+    if scheme == "vless" {
+        for (k, bad) in [
+            ("pbk=", "REALITY 公钥 pbk 需 64 个 hex 字符"),
+            ("sid=", "REALITY short id sid 最多 16 个 hex 字符"),
+        ] {
+            if let Some(v) = trimmed.split(k).nth(1).and_then(|s| s.split('&').next()) {
+                if hex::decode(v).is_err()
+                    || (k == "pbk=" && v.len() != 64)
+                    || (k == "sid=" && v.len() > 16)
+                {
+                    return Some(bad);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn proxy_row_id(idx: usize) -> String {
+    format!("proxy-node-{idx}")
+}
 /// 单个开关项
 #[derive(Clone, PartialEq)]
 struct SwitchItem {
@@ -169,6 +218,27 @@ pub fn SystemPage() -> Element {
     let mut def_group = use_signal(|| "default".to_string());
     let mut topup_rate = use_signal(|| "1.0".to_string());
     let mut contact_info = use_signal(|| "admin@ferrite.dev".to_string());
+
+    // 出口代理节点（[[proxy_nodes]] 的 UI 编辑态；API 落地前先在本页保存态）
+    let mut proxy_nodes = use_signal(|| {
+        vec![ProxyNodeRow {
+            url: "socks5://127.0.0.1:7890".to_string(),
+            channels: "default".to_string(),
+            priority: "10".to_string(),
+        }]
+    });
+    let add_proxy_node = move |_| {
+        proxy_nodes.write().push(ProxyNodeRow {
+            url: String::new(),
+            channels: String::new(),
+            priority: "0".to_string(),
+        });
+    };
+    let mut remove_proxy_node = move |idx: usize| {
+        if proxy_nodes.read().len() > 1 {
+            proxy_nodes.write().remove(idx);
+        }
+    };
 
     // 开关状态存储 (HashMap)
     let toggles = use_signal(|| {
@@ -333,7 +403,103 @@ pub fn SystemPage() -> Element {
                     }
                 }
 
-                // 3. 模块开关筛选与卡片区
+                // 3. 出口代理节点面板（[[proxy_nodes]]）
+                section {
+                    id: "system-sec-proxy",
+                    class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
+                    div { class: "flex items-center justify-between",
+                        div {
+                            h2 { class: "text-sm font-medium text-zinc-200", "data-testid": "heading-proxy-nodes", "{SEC_PROXY}" }
+                            p { class: "text-xs text-zinc-500", "每行一个节点；渠道绑定用逗号分隔；vless 支持 ?flow=&sni=&pbk=&sid=（REALITY）。" }
+                        }
+                        button {
+                            name: "btn-add-proxy-node",
+                            class: "rounded-xl border border-zinc-600 px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-zinc-400 hover:text-white",
+                            onclick: add_proxy_node,
+                            "＋ 添加节点"
+                        }
+                    }
+
+                    div { class: "space-y-2",
+                        for (idx, row) in proxy_nodes.read().iter().enumerate() {
+                            {
+                                let err = validate_proxy_url(&row.url);
+                                let idx_capture = idx;
+                                let row_url = row.url.clone();
+                                let row_channels = row.channels.clone();
+                                let row_priority = row.priority.clone();
+                                rsx! {
+                                    div {
+                                        key: "{proxy_row_id(idx)}",
+                                        class: "rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 space-y-2",
+                                        div { class: "grid grid-cols-1 gap-2 md:grid-cols-[1fr_180px_90px_auto]",
+                                            div {
+                                                label { class: "mb-1 block text-[11px] text-zinc-500", "节点 URL" }
+                                                input {
+                                                    name: "proxy-node-url-{idx}",
+                                                    "data-testid": "proxy-node-url",
+                                                    class: if err.is_some() {
+                                                        "w-full rounded-lg border border-red-600/70 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 font-mono focus:outline-none"
+                                                    } else {
+                                                        "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none"
+                                                    },
+                                                    placeholder: "vless://uuid@host:443?flow=xtls-rprx-vision&pbk=…&sni=…",
+                                                    value: "{row_url}",
+                                                    oninput: move |e| {
+                                                        let mut rows = proxy_nodes.write();
+                                                        rows[idx_capture].url = e.value();
+                                                    },
+                                                }
+                                                if let Some(msg) = err {
+                                                    p { class: "mt-1 text-[11px] text-red-400", "{msg}" }
+                                                }
+                                            }
+                                            div {
+                                                label { class: "mb-1 block text-[11px] text-zinc-500", "绑定渠道 (逗号分隔)" }
+                                                input {
+                                                    name: "proxy-node-channels-{idx}",
+                                                    "data-testid": "proxy-node-channels",
+                                                    class: "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 focus:border-zinc-500 focus:outline-none",
+                                                    placeholder: "openai, claude",
+                                                    value: "{row_channels}",
+                                                    oninput: move |e| {
+                                                        let mut rows = proxy_nodes.write();
+                                                        rows[idx_capture].channels = e.value();
+                                                    },
+                                                }
+                                            }
+                                            div {
+                                                label { class: "mb-1 block text-[11px] text-zinc-500", "优先级" }
+                                                input {
+                                                    name: "proxy-node-priority-{idx}",
+                                                    "data-testid": "proxy-node-priority",
+                                                    r#type: "number",
+                                                    class: "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                                                    value: "{row_priority}",
+                                                    oninput: move |e| {
+                                                        let mut rows = proxy_nodes.write();
+                                                        rows[idx_capture].priority = e.value();
+                                                    },
+                                                }
+                                            }
+                                            div { class: "flex items-end",
+                                                button {
+                                                    name: "btn-remove-proxy-node-{idx}",
+                                                    "data-testid": "btn-remove-proxy-node",
+                                                    class: "rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors hover:border-red-500 hover:text-red-400",
+                                                    onclick: move |_| remove_proxy_node(idx_capture),
+                                                    "删除"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. 模块开关筛选与卡片区
                 section {
                     id: "system-sec-filter",
                     class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
