@@ -135,7 +135,8 @@ impl ProxyNode {
                     "pbk" => opts.pbk = Some(v.into_owned()),
                     "sid" => opts.sid = Some(v.into_owned()),
                     "insecure" => {
-                        opts.insecure = v.parse().unwrap_or(false);
+                        // 分享链接惯例是 insecure=1 / allowInsecure=1，不是 Rust bool 字面量
+                        opts.insecure = v == "1" || v.eq_ignore_ascii_case("true");
                     }
                     "version" => opts.version = Some(v.into_owned()),
                     "obfs" => opts.obfs = Some(v.into_owned()),

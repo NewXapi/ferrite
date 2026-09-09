@@ -56,23 +56,33 @@ fn test_default_ports() {
     }
 }
 
+/// Hysteria2 happy path：合法 auth + 默认 opts 必须构造出适配器。
+/// Hy2 走 QUIC，meow 在 dial_tcp 内自管 UDP socket，TCP 出口路径可用。
 #[test]
-fn test_adapter_for_happy_path() {
-    // Happy path for new schemes (requires valid auth)
+fn test_adapter_for_hysteria2_happy_path() {
     let node_h2 = ProxyNode {
         id: 10,
         scheme: ProxyScheme::Hysteria2,
         host: "example.com".to_string(),
         port: 443,
         auth: Some(gateway_proxy::node::BasicAuth {
-            user: "".to_string(),
+            user: "unused".to_string(),
             pass: "validpass".to_string(),
         }),
         vless: Some(VlessOpts::default()),
         channel_keys: vec!["test".to_string()],
         priority: 0,
     };
-    assert!(adapter_for(&node_h2).is_none(), "Hy2 currently falls back (per current impl); update when full adapter added");
+    let adapter = adapter_for(&node_h2);
+    assert!(
+        adapter.is_some(),
+        "合法 Hy2 节点必须构造出适配器（dial 级由 meow 保证）"
+    );
+
+    assert_eq!(
+        adapter.unwrap().adapter_type(),
+        meow_common::AdapterType::Hysteria2
+    );
 }
 
 #[test]
@@ -87,7 +97,10 @@ fn test_adapter_for_bad_params() {
         channel_keys: vec!["test".to_string()],
         priority: 0,
     };
-    assert!(adapter_for(&node_bad).is_none(), "missing auth must fallback with warn");
+    assert!(
+        adapter_for(&node_bad).is_none(),
+        "missing auth must fallback with warn"
+    );
 }
 
 #[test]
