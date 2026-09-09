@@ -113,8 +113,6 @@ pub fn ChatPage(
     // 当前模型显示(来源:设置里的 model;切换入口后续在设置页做)
     let current_model =
         use_memo(move || STATE.with(|s| s.model.clone().unwrap_or_else(|| "未设置".to_string())));
-    // 是否有已配置模型:无模型时不显示模型菜单(Task A)
-    let has_model = use_memo(move || STATE.with(|s| s.model.is_some()));
     // 下拉列表:内置可选项(agnes-2.5-flash) + 当前已配置模型。后续接入后端 /v1/models 动态目录。
     let models = use_memo(move || {
         let mut v = vec!["agnes-2.5-flash".to_string()];
@@ -563,90 +561,11 @@ pub fn ChatPage(
                         }
                         }
                     }
-                    // 悬停输入框:浮于聊天区底部,替代原底部输入条(仅是位置改变)
-                    div { class: "sticky bottom-0 z-20 mt-2 flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2.5 shadow-inner backdrop-blur-xl",
-                        textarea {
-                            class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
-                            placeholder: "点击上方行动选项，或输入自定义决策 (电脑端 Shift+回车换行)",
-                            value: "{draft()}",
-                            oninput: move |e| draft.set(e.value()),
-                            onkeydown: move |e| {
-                                if e.key() == Key::Enter && !e.modifiers().shift() {
-                                    e.prevent_default();
-                                    handle_send();
-                                }
-                            },
-                        }
-                        div { class: "flex shrink-0 items-center gap-2 select-none",
-                            span { class: "text-[10px] text-zinc-600 tabular-nums", "{draft().len()}" }
-                            button {
-                                class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
-                                disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
-                                onclick: move |_| handle_send(),
-                                if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
-                            }
-                        }
-                    }
-
-                div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/90 p-3 backdrop-blur-2xl z-10 select-none",
-                    onclick: move |e| e.stop_propagation(),
-
-                    div { class: "flex flex-wrap items-center justify-between gap-2 px-1 text-xs select-none",
-                        if has_model() {
-                            div { class: "relative",
-                                button {
-                                class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
-                                onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
-                                span { "⚡" }
-                                span { "{current_model()}" }
-                                span { class: "text-[10px] text-zinc-400", "⌵" }
-                            }
-                            if model_dropdown_open() {
-                                div { class: "absolute bottom-full left-0 z-50 mb-2 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-2xl backdrop-blur-2xl",
-                                    for m in models() {
-                                        {
-                                            let model_name = m.to_string();
-                                            rsx! {
-                                                button {
-                                                    key: "{m}",
-                                                    class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
-                                                    onclick: move |_| {
-                                                        STATE.with_mut(|s| {
-                                                            s.model = Some(model_name.clone());
-                                                        });
-                                                        model_dropdown_open.set(false);
-                                                    },
-                                                    span { "{m}" }
-                                                    if current_model() == m {
-                                                        span { class: "text-[10px] text-emerald-400", "✓" }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        }
-
+                    // 悬停输入框:浮于聊天区底部; 输入区上下带快捷按钮, 模型置于右下(悬停展开面板)
+                    div { class: "sticky bottom-0 z-20 mt-2 mx-auto flex w-full max-w-2xl flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
+                        onclick: move |e| e.stop_propagation(),
+                        // 上方快捷按钮
                         div { class: "flex flex-wrap items-center gap-1.5",
-                            button {
-                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
-                                onclick: move |_| {
-                                    draft.set("【深入追问】\"你刚才的话，似乎并没有说完。\"".into());
-                                    handle_send();
-                                },
-                                "🗣️ 深入追问"
-                            }
-                            button {
-                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
-                                onclick: move |_| {
-                                    draft.set("【推进剧情】沉默数秒后，直接切入核心条款。".into());
-                                    handle_send();
-                                },
-                                "⏩ 推进剧情"
-                            }
-
                             button {
                                 class: if mod_active() {
                                     "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
@@ -683,24 +602,99 @@ pub fn ChatPage(
                                 "跑路！！！"
                             }
                         }
-
-                        if STATE.with(|s| s.generating) {
-                            div { class: "ml-auto flex items-center gap-2 text-[10px] text-cyan-400",
-                                span { "⚡ 生成中..." }
+                        // 输入框
+                        div { class: "flex items-end gap-2",
+                            textarea {
+                                class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
+                                placeholder: "输入你的决策或行动 (电脑端 Shift+回车换行)",
+                                value: "{draft()}",
+                                oninput: move |e| draft.set(e.value()),
+                                onkeydown: move |e| {
+                                    if e.key() == Key::Enter && !e.modifiers().shift() {
+                                        e.prevent_default();
+                                        handle_send();
+                                    }
+                                },
+                            }
+                        }
+                        // 下方:左=状态, 右=模型选择 + 发送
+                        div { class: "flex items-center justify-between gap-2",
+                            div { class: "flex min-w-0 items-center gap-2 text-[10px]",
+                                if STATE.with(|s| s.generating) {
+                                    span { class: "flex items-center gap-1 text-cyan-400",
+                                        "⚡ 生成中..."
+                                        button {
+                                            class: "text-zinc-500 hover:text-white",
+                                            onclick: move |_| abort(),
+                                            "✕"
+                                        }
+                                    }
+                                }
+                                if let Some(err) = STATE.with(|s| s.last_error.clone()) {
+                                    span { class: "truncate text-rose-400", "{err}" }
+                                }
+                            }
+                            div { class: "flex shrink-0 items-center gap-2",
+                                // 模型选择器(右下, 悬停展开)
+                                div { class: "relative",
+                                    onmouseenter: move |_| model_dropdown_open.set(true),
+                                    onmouseleave: move |_| model_dropdown_open.set(false),
+                                    button {
+                                        class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
+                                        span { "⚡" }
+                                        span { "{current_model()}" }
+                                        span { class: "text-[10px] text-zinc-400", "⌵" }
+                                    }
+                                    if model_dropdown_open() {
+                                        div { class: "absolute bottom-full right-0 z-50 mb-2 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-2xl backdrop-blur-2xl",
+                                            for m in models() {
+                                                {
+                                                    let model_name = m.to_string();
+                                                    rsx! {
+                                                        button {
+                                                            key: "{m}",
+                                                            class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
+                                                            onclick: move |_| {
+                                                                STATE.with_mut(|s| {
+                                                                    s.model = Some(model_name.clone());
+                                                                });
+                                                                model_dropdown_open.set(false);
+                                                            },
+                                                            span { "{m}" }
+                                                            if current_model() == m {
+                                                                span { class: "text-[10px] text-emerald-400", "✓" }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 button {
-                                    class: "ml-2 text-zinc-500 hover:text-white",
-                                    onclick: move |_| {
-                                        abort();
-                                    },
-                                    "✕"
+                                    class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
+                                    disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
+                                    onclick: move |_| handle_send(),
+                                    if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
                                 }
                             }
                         }
-                        if let Some(err) = STATE.with(|s| s.last_error.clone()) {
-                            div { class: "ml-auto text-[10px] text-rose-400", "{err}" }
-                        }
                     }
 
+                div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800/60 bg-zinc-900/90 px-3 py-1.5 backdrop-blur-2xl z-10 select-none",
+                    if STATE.with(|s| s.generating) {
+                        div { class: "flex items-center gap-2 text-[10px] text-cyan-400",
+                            span { "⚡ 生成中..." }
+                            button {
+                                class: "text-zinc-500 hover:text-white",
+                                onclick: move |_| abort(),
+                                "✕"
+                            }
+                        }
+                    }
+                    if let Some(err) = STATE.with(|s| s.last_error.clone()) {
+                        div { class: "ml-auto text-[10px] text-rose-400", "{err}" }
+                    }
                 }
 
                 Dialog {
