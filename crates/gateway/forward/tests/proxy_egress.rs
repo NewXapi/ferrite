@@ -160,6 +160,7 @@ async fn proxies_with_node_uses_leased_client() {
             port: 1,
             auth: None,
             channel_keys: vec!["ch".into()],
+            vless: None,
             priority: 10,
         }],
     });

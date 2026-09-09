@@ -27,3 +27,4 @@ meow-common = "0.21"
 meow-proxy = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vless-vision", "vmess"] }
 meow-transport = { version = "0.21", default-features = false, features = ["tls", "ws", "reality"] }
 smol_str = "0.3"
+hex            = { workspace = true }

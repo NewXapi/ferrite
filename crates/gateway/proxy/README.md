@@ -5,7 +5,8 @@
 ## 文件
 
 - `src/lib.rs` — 导出 `ProxyNode` / `ProxyPool` / `ProxyManager` / `Lease` / `validate_url`。
-- `src/node.rs` — 解析 `http://` / `socks5://`（含 percent-encoded 认证），转 `reqwest::Proxy`。
+- `src/node.rs` — 解析 `http://` / `socks5://` / `ss://` / `trojan://` / `vless://` / `vmess://`（含 percent-encoded 认证与 VLESS query），HTTP/SOCKS5 转 `reqwest::Proxy`。
+- `src/adapter.rs` — 节点 → meow `ProxyAdapter`：协议握手在 `dial_tcp` 内完成，含 VLESS Vision flow 与 REALITY 参数解码。
 - `src/pool.rs` — 按 `channel_key`（`ChannelRecord.meta.key`）索引，priority 分层。
 - `src/manager.rs` — `acquire` / `feedback` / per-node Client 缓存 / 冷却。
 - `src/ssrf.rs` — IP 字面量与 DNS 解析结果双重校验。
@@ -29,6 +30,20 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 旧 `src/proto/`（shoes 手抄客户端链，PR1-3）已删除：那条 `ProxyConnector`
 路径从未接进 forward（恒 502），由 meow 实现整体替代。
 
+### VLESS 的 query 参数
+
+`vless://<uuid>@host:port?flow=&sni=&pbk=&sid=` —— 与常见分享链接同名：
+
+|参数|含义|缺省|
+|---|---|---|
+|`flow`|`xtls-rprx-vision` 开 Vision；其他值 warn 后按非 Vision|无|
+|`sni`|TLS / REALITY 的 SNI|回落节点 host|
+|`pbk`|REALITY 服务端 X25519 公钥（64 hex）；**出现即走 REALITY**|无（明文 TCP）|
+|`sid`|REALITY short id（0–16 hex，前对齐补零到 8 字节）|全 0|
+
+`sni` 或 `pbk` 任一存在才挂 TLS 层；参数非法（pbk 长度不对、sid 超 8 字节）
+→ warn + 回落直连，不 panic。Hysteria2 / AnyTLS / Snell 尚未接节点配置。
+
 ## SSRF
 
 `validate_url` 只校验 IP 字面量。域名必须由调用方 DNS 解析后再调 `validate_resolved`。
@@ -37,4 +52,7 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 
 ```bash
 cargo check -p gateway-proxy
+cargo test -p gateway-proxy --test vless_opts
+# 真实节点（可选）：本机起 sing-box 后
+FERRITE_PROXY_SOCKS5=127.0.0.1:7890 cargo test -p forward --test real_node
 ```

@@ -24,6 +24,7 @@ fn test_adapter_for_socks5() {
             pass: "pass".to_string(),
         }),
         channel_keys: vec!["test-channel".to_string()],
+        vless: None,
         priority: 0,
     };
     let adapter_opt = adapter_for(&node);
@@ -44,6 +45,7 @@ fn test_adapter_for_vless_invalid_uuid() {
             pass: "".to_string(),
         }),
         channel_keys: vec!["test-channel".to_string()],
+        vless: None,
         priority: 0,
     };
     let adapter_opt = adapter_for(&node);
@@ -59,6 +61,7 @@ fn test_adapter_for_direct() {
         port: 0,
         auth: None,
         channel_keys: vec!["test-channel".to_string()],
+        vless: None,
         priority: 0,
     };
     let adapter_opt = adapter_for(&node);

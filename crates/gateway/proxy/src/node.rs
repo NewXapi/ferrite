@@ -25,6 +25,25 @@ pub struct BasicAuth {
     pub pass: String,
 }
 
+/// VLESS 传输层选项（从 `vless://` URL 的 query 解析；其他协议恒为 `None`）
+///
+/// query 键与常见 vless 分享链接约定一致：
+/// - `flow=xtls-rprx-vision` — XTLS-Vision 内层流模式
+/// - `sni=<域名>` — TLS / REALITY 握手的 SNI
+/// - `pbk=<64hex>` — REALITY 服务端 X25519 公钥（出现即视为 REALITY 节点）
+/// - `sid=<0-16hex>` — REALITY short id（缺省全 0）
+#[derive(Debug, Clone, Default)]
+pub struct VlessOpts {
+    /// XTLS flow，目前只识别 `xtls-rprx-vision`
+    pub flow: Option<String>,
+    /// TLS / REALITY SNI
+    pub sni: Option<String>,
+    /// REALITY 公钥（hex 64 字符），与 `short_id` 成对
+    pub pbk: Option<String>,
+    /// REALITY short id（hex，0-16 字符）
+    pub sid: Option<String>,
+}
+
 /// 代理节点
 #[derive(Debug, Clone)]
 pub struct ProxyNode {
@@ -33,6 +52,8 @@ pub struct ProxyNode {
     pub host: String,
     pub port: u16,
     pub auth: Option<BasicAuth>,
+    /// VLESS 传输层选项；非 VLESS 节点为 `None`
+    pub vless: Option<VlessOpts>,
     pub channel_keys: Vec<String>,
     pub priority: i32,
 }
@@ -91,12 +112,26 @@ impl ProxyNode {
                 pass: percent_decode(url_obj.password().unwrap_or("")),
             }),
         };
+        let vless = (scheme == ProxyScheme::Vless).then(|| {
+            let mut opts = VlessOpts::default();
+            for (k, v) in url_obj.query_pairs() {
+                match k.to_string().as_str() {
+                    "flow" => opts.flow = Some(v.into_owned()),
+                    "sni" => opts.sni = Some(v.into_owned()),
+                    "pbk" => opts.pbk = Some(v.into_owned()),
+                    "sid" => opts.sid = Some(v.into_owned()),
+                    _ => {}
+                }
+            }
+            opts
+        });
         Ok(Self {
             id: 0,
             scheme,
             host: host.to_string(),
             port,
             auth,
+            vless,
             channel_keys: vec![],
             priority: 0,
         })

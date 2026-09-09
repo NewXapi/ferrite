@@ -112,14 +112,42 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
         }
         ProxyScheme::Vless => {
             let uuid = require_uuid(node)?;
+            let flow = match node.vless.as_ref().and_then(|o| o.flow.as_deref()) {
+                Some("xtls-rprx-vision") => Some(meow_proxy::VlessFlow::XtlsRprxVision),
+                Some(other) => {
+                    tracing::warn!(flow = other, "未知 VLESS flow，按非 Vision 处理");
+                    None
+                }
+                None => None,
+            };
+            // 传输层：配置了 sni 或 pbk 才挂 TLS 层；pbk 存在即 REALITY 握手
+            let vless = node.vless.as_ref();
+            let need_tls = vless.is_some_and(|o| o.sni.is_some() || o.pbk.is_some());
+            let mut chain = TransportChain::empty();
+            if need_tls {
+                let sni = vless
+                    .and_then(|o| o.sni.clone())
+                    .unwrap_or_else(|| node.host.clone());
+                let mut cfg = meow_transport::tls::TlsConfig::new(sni);
+                if let Some(pbk) = vless.and_then(|o| o.pbk.clone()) {
+                    match decode_reality(&pbk, vless.and_then(|o| o.sid.clone())) {
+                        Ok(r) => cfg.reality = Some(r),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "REALITY 参数非法，节点回落直连");
+                            return None;
+                        }
+                    }
+                }
+                match meow_transport::tls::TlsLayer::new(&cfg) {
+                    Ok(layer) => chain.push(Box::new(layer)),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "TLS 层构造失败，节点回落直连");
+                        return None;
+                    }
+                }
+            }
             Some(Arc::new(VlessAdapter::new(
-                &name,
-                &node.host,
-                node.port,
-                uuid,
-                None, // flow：XTLS-Vision 待节点配置扩展
-                false,
-                TransportChain::empty(),
+                &name, &node.host, node.port, uuid, flow, false, chain,
             )))
         }
         ProxyScheme::Vmess => {
@@ -189,4 +217,37 @@ fn require_uuid(node: &ProxyNode) -> Option<[u8; 16]> {
             None
         }
     }
+}
+
+/// 把节点配置里的 REALITY 参数解码成 meow 的 [`RealityConfig`]。
+///
+/// - `pbk`：X25519 公钥，hex 64 字符（32 字节），非法直接报错
+/// - `sid`：short id，hex 0-16 字符（0-8 字节），解码后**前对齐**补零到
+///   8 字节（与 xray 的 SNI 拼接约定一致）；缺省全 0
+fn decode_reality(
+    pbk: &str,
+    sid: Option<String>,
+) -> std::result::Result<meow_transport::tls::RealityConfig, String> {
+    let public_key = hex::decode(pbk)
+        .ok()
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| format!("pbk 必须是 64 个 hex 字符，实际 {pbk:?}"))?;
+    let mut short_id = [0u8; 8];
+    if let Some(sid) = sid.filter(|s| !s.is_empty()) {
+        let bytes = hex::decode(sid.as_str())
+            .ok()
+            .ok_or_else(|| "sid 含非法 hex 字符".to_string())?;
+        if bytes.len() > 8 {
+            return Err(format!(
+                "sid 最多 8 字节（16 个 hex 字符），实际 {} 字节",
+                bytes.len()
+            ));
+        }
+        short_id[..bytes.len()].copy_from_slice(&bytes);
+    }
+    Ok(meow_transport::tls::RealityConfig {
+        public_key,
+        short_id,
+        support_x25519_mlkem768: false,
+    })
 }

@@ -57,10 +57,10 @@ priority = 10
     assert_eq!(miss.node_id, 0, "未绑定渠道回落直连");
 }
 
-/// 三类坏节点都必须被跳过：vless（走 Connector，forward 尚未桥接）、
-/// 缺 `channel_keys`（永远选不中，只会污染快照）、非法 URL。
+/// 协议节点（vless）现在必须进池并落 adapter 路径；只有「缺 `channel_keys`」
+/// 与「非法 URL」两类坏节点该被跳过。
 #[test]
-fn proxy_nodes_skip_unsupported_and_invalid() {
+fn proxy_nodes_keep_protocol_and_skip_invalid() {
     let cfg = load_toml(
         r#"
 [[proxy_nodes]]
@@ -76,11 +76,22 @@ channel_keys = ["openai"]
 "#,
     );
     let snap = build_proxy_snapshot(&cfg.proxy_nodes);
-    assert!(
-        snap.nodes.is_empty(),
-        "vless / 空 channel_keys / 非法 URL 都应跳过，实际留下 {} 条",
-        snap.nodes.len()
+    assert_eq!(
+        snap.nodes.len(),
+        1,
+        "只有 vless 该留下，实际 {:?}",
+        snap.nodes.iter().map(|n| n.scheme).collect::<Vec<_>>()
     );
+    assert_eq!(snap.nodes[0].scheme, ProxyScheme::Vless);
+
+    // vless 必须走 adapter 路径：拿到 adapter 而不是 reqwest client，
+    // 否则 forward 会当直连发出去，等于绕过了代理。
+    let manager = ProxyManager::new();
+    manager.install(snap);
+    let lease = manager.acquire("openai");
+    assert_eq!(lease.node_id, 1);
+    assert!(lease.adapter().is_some(), "vless 必须落 adapter 路径");
+    assert!(lease.reqwest_client().is_none(), "vless 不该走 reqwest");
 }
 
 /// 显式 `id` 覆盖顺序编号；多节点各自保留自己的 id 与优先级。

@@ -53,6 +53,7 @@ fn node(scheme: ProxyScheme, port: u16) -> ProxyNode {
         port,
         auth: None,
         channel_keys: vec!["sim".to_string()],
+        vless: None,
         priority: 0,
     }
 }

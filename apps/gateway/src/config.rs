@@ -403,9 +403,13 @@ fn key_preview(key: &str) -> String {
     format!("{head}****{tail}")
 }
 
-/// `[[proxy_nodes]]` → `ProxySnapshot`。非法 URL / 非 HTTP/SOCKS5 / 空 `channel_keys` 跳过并打 warn。
+/// `[[proxy_nodes]]` → `ProxySnapshot`。非法 URL / 空 `channel_keys` 跳过并打 warn。
+///
+/// scheme 不再过滤：http/socks5 走 reqwest，ss/trojan/vless/vmess 走
+/// `gateway_proxy::adapter_for` 的 meow 适配器（配置有误时 `adapter_for`
+/// 自己 warn 并回落直连，不需要在这里预筛）。
 pub fn build_proxy_snapshot(nodes: &[ProxyNodeConfig]) -> gateway_proxy::ProxySnapshot {
-    use gateway_proxy::{ProxyNode, ProxyScheme, ProxySnapshot};
+    use gateway_proxy::{ProxyNode, ProxySnapshot};
 
     let mut out = Vec::new();
     for (idx, cfg) in nodes.iter().enumerate() {
@@ -420,17 +424,6 @@ pub fn build_proxy_snapshot(nodes: &[ProxyNodeConfig]) -> gateway_proxy::ProxySn
                 continue;
             }
         };
-        match node.scheme {
-            ProxyScheme::Http | ProxyScheme::Socks5 => {}
-            other => {
-                tracing::warn!(
-                    url = %cfg.url,
-                    scheme = ?other,
-                    "proxy_nodes 含不支持的 scheme（reality 等待节点配置扩展），跳过"
-                );
-                continue;
-            }
-        }
         node.id = if cfg.id == 0 {
             (idx as i64).saturating_add(1)
         } else {
