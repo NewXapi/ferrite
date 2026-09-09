@@ -104,9 +104,11 @@ async fn egress_over_real_socks5_node() {
         );
         return;
     };
-    let proxy: SocketAddr = proxy
-        .parse()
-        .expect("FERRITE_PROXY_SOCKS5 必须是 host:port");
+    // 设了但格式错：给出可操作的报错，而不是隐晦的 parse panic。
+    let proxy: SocketAddr = match proxy.parse() {
+        Ok(a) => a,
+        Err(e) => panic!("FERRITE_PROXY_SOCKS5 格式错误（应为 host:port，如 127.0.0.1:7890）: {e}"),
+    };
 
     let (http_addr, hits) = spawn_local_http();
     let node = ProxyNode {

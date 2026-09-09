@@ -258,7 +258,9 @@ fn decode_reality(
     // 区分「非 hex 字符」与「长度不对」：REALITY 公钥抄错一位是最常见的
     // 配置事故，报错精确到错误类别才好排障。
     let public_key: [u8; 32] = match hex::decode(pbk) {
-        Ok(b) if b.len() == 32 => b.try_into().expect("已判 len==32，转换必成功"),
+        Ok(b) if b.len() == 32 => b
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("上一分支已判 len == 32，[u8; 32] 转换必然成功")),
         Ok(b) => {
             return Err(format!(
                 "pbk 必须是 32 字节（64 个 hex 字符），实际 {} 字节",

@@ -403,6 +403,33 @@ fn key_preview(key: &str) -> String {
     format!("{head}****{tail}")
 }
 
+/// 代理 URL 掩码 —— userinfo 与 query（pbk/sid/密码）都含凭据，日志只保留
+/// `scheme://***@host:port` 骨架，能定位节点但不泄密。
+fn url_preview(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(u) => {
+            let auth = if u.username().is_empty() && u.password().is_none() {
+                String::new()
+            } else {
+                "***@".to_string()
+            };
+            let port = u.port().map(|p| format!(":{p}")).unwrap_or_default();
+            format!(
+                "{}://{}{}{}{}",
+                u.scheme(),
+                auth,
+                u.host_str().unwrap_or("?"),
+                port,
+                {
+                    // REALITY 的 pbk/sid 也算凭据，一并抹掉
+                    if u.query().is_some() { "?***" } else { "" }
+                }
+            )
+        }
+        Err(_) => "***（URL 无法解析）***".to_string(),
+    }
+}
+
 /// `[[proxy_nodes]]` → `ProxySnapshot`。非法 URL / 空 `channel_keys` 跳过并打 warn。
 ///
 /// scheme 不再过滤：http/socks5 走 reqwest，ss/trojan/vless/vmess 走
@@ -413,14 +440,16 @@ pub fn build_proxy_snapshot(nodes: &[ProxyNodeConfig]) -> gateway_proxy::ProxySn
 
     let mut out = Vec::new();
     for (idx, cfg) in nodes.iter().enumerate() {
+        // URL 里的 userinfo / ss-vless query 都带凭据，日志只留骨架。
+        let preview = url_preview(&cfg.url);
         if cfg.channel_keys.is_empty() {
-            tracing::warn!(url = %cfg.url, "proxy_nodes 缺少 channel_keys，跳过");
+            tracing::warn!(url = %preview, "proxy_nodes 缺少 channel_keys，跳过");
             continue;
         }
         let mut node = match ProxyNode::parse_url(&cfg.url) {
             Ok(n) => n,
             Err(e) => {
-                tracing::warn!(url = %cfg.url, error = %e, "proxy_nodes URL 解析失败，跳过");
+                tracing::warn!(url = %preview, error = %e, "proxy_nodes URL 解析失败，跳过");
                 continue;
             }
         };
