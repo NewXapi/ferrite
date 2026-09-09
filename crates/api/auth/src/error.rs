@@ -53,13 +53,16 @@ impl AuthError {
     pub fn status(&self) -> StatusCode {
         match self {
             Self::InvalidCredentials | Self::InvalidToken => StatusCode::UNAUTHORIZED,
+            // JWT 解析/校验失败（过期、签名不符、格式坏）= 凭证无效 → 401，
+            // 让前端 401-refresh 链路接管；此前归 500，过期 token 直接打死页面。
+            Self::Jwt(_) => StatusCode::UNAUTHORIZED,
             Self::UserDisabled => StatusCode::FORBIDDEN,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::UsernameTaken | Self::EmailTaken | Self::Conflict(_) => StatusCode::CONFLICT,
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::MissingSecret => StatusCode::INTERNAL_SERVER_ERROR,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Db(_) | Self::Crypto(_) | Self::Jwt(_) | Self::Internal(_) => {
+            Self::Db(_) | Self::Crypto(_) | Self::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             Self::NotFound(_) => StatusCode::NOT_FOUND,

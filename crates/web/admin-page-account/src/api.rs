@@ -90,7 +90,7 @@ pub async fn delete_token_api(client: &ApiClient, key: &str) -> ApiResult<serde_
     client.delete(&format!("/api/token/{key}")).await
 }
 
-/// 真实调用: GET /api/log/self?start=&end=&model=&p=&page_size=
+/// 真实调用: GET /api/log/self?start=&end=&model=&page=&size=
 pub async fn list_self_logs_api(
     client: &ApiClient,
     model: Option<&str>,
@@ -104,10 +104,10 @@ pub async fn list_self_logs_api(
         query.push(format!("model={m}"));
     }
     if let Some(p) = page {
-        query.push(format!("p={p}"));
+        query.push(format!("page={p}"));
     }
     if let Some(ps) = page_size {
-        query.push(format!("page_size={ps}"));
+        query.push(format!("size={ps}"));
     }
     let path = if query.is_empty() {
         "/api/log/self".to_string()

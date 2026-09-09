@@ -334,6 +334,117 @@ impl LogService {
             "tpm": stat.tpm,
         }))
     }
+
+    /// 消耗排行聚合（总览 Top10）：按用户或模型 GROUP BY 汇总 tokens/quota/调用数。
+    /// `by` = "user" → 按 username 分组；"model" → 按 model_name 分组。
+    pub async fn top_usage(
+        &self,
+        by: &str,
+        start: Option<DateTime<Utc>>,
+        end: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<UsageTopRow>, AuthError> {
+        let group_col = match by {
+            "model" => "model_name",
+            _ => "username",
+        };
+        let limit = limit.clamp(1, 50);
+        let sql = format!(
+            r#"SELECT {group_col} AS name,
+                      sum(prompt_tokens + completion_tokens)::bigint AS tokens,
+                      sum(quota)::bigint AS quota,
+                      count(*)::bigint AS calls
+               FROM usage_logs
+               WHERE log_type = 2
+                 AND ({group_col} <> '')
+                 AND ($1::timestamptz IS NULL OR created_at >= $1)
+                 AND ($2::timestamptz IS NULL OR created_at < $2)
+               GROUP BY {group_col}
+               ORDER BY tokens DESC
+               LIMIT $3"#
+        );
+        let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(&sql)
+            .bind(start)
+            .bind(end)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, tokens, quota, calls)| UsageTopRow {
+                name,
+                tokens,
+                quota,
+                calls,
+            })
+            .collect())
+    }
+
+    /// 用量趋势聚合：把窗口内消费按时间桶 × 模型 GROUP BY（date_trunc），
+    /// 前端据 pivot 出堆叠序列。`granularity` = hour | day | month（枚举内联,无注入面）。
+    pub async fn trend(
+        &self,
+        granularity: &str,
+        start: Option<DateTime<Utc>>,
+        end: Option<DateTime<Utc>>,
+    ) -> Result<Vec<UsageTrendRow>, AuthError> {
+        let unit = match granularity {
+            "day" => "day",
+            "month" => "month",
+            _ => "hour",
+        };
+        let sql = format!(
+            r#"SELECT date_trunc('{unit}', created_at)::timestamptz AS bucket,
+                      model_name,
+                      sum(prompt_tokens + completion_tokens)::bigint AS tokens,
+                      sum(quota)::bigint AS quota,
+                      count(*)::bigint AS calls
+               FROM usage_logs
+               WHERE log_type = 2
+                 AND model_name <> ''
+                 AND ($1::timestamptz IS NULL OR created_at >= $1)
+                 AND ($2::timestamptz IS NULL OR created_at < $2)
+               GROUP BY bucket, model_name
+               ORDER BY bucket"#
+        );
+        let rows: Vec<(DateTime<Utc>, String, i64, i64, i64)> = sqlx::query_as(&sql)
+            .bind(start)
+            .bind(end)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(bucket, model_name, tokens, quota, calls)| UsageTrendRow {
+                bucket,
+                model_name,
+                tokens,
+                quota,
+                calls,
+            })
+            .collect())
+    }
+}
+
+/// Top 榜单行（按用户或模型聚合）。
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTopRow {
+    pub name: String,
+    pub tokens: i64,
+    pub quota: i64,
+    pub calls: i64,
+}
+
+/// 趋势行（时间桶 × 模型）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTrendRow {
+    /// 桶起始时间 (RFC3339)。
+    pub bucket: DateTime<Utc>,
+    pub model_name: String,
+    pub tokens: i64,
+    pub quota: i64,
+    pub calls: i64,
 }
 
 // ---------- axum 路由 ----------
@@ -349,6 +460,8 @@ pub fn router(state: LogAppState) -> axum::Router {
     axum::Router::new()
         .route("/api/log", get(list))
         .route("/api/log/stat", get(stat))
+        .route("/api/log/top", get(top))
+        .route("/api/log/trend", get(trend))
         .route("/api/log/self", get(list_self))
         .route("/api/log/self/stat", get(self_stat))
         .route("/api/dashboard", get(dashboard))
@@ -478,6 +591,72 @@ async fn dashboard(
     }
     match state.svc.dashboard().await {
         Ok(d) => Ok(axum::Json(d)),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TopQuery {
+    /// "user" | "model"，默认 user。
+    by: Option<String>,
+    start: Option<DateTime<Utc>>,
+    end: Option<DateTime<Utc>>,
+    limit: Option<i64>,
+}
+
+/// GET /api/log/top?by=user|model&start=&end=&limit= — 消耗 Top 榜（总览 Top10 数据源）。
+async fn top(
+    axum::extract::State(state): axum::extract::State<LogAppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<TopQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
+    if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
+        return Err(err_json(AuthError::Forbidden));
+    }
+    match state
+        .svc
+        .top_usage(
+            q.by.as_deref().unwrap_or("user"),
+            q.start,
+            q.end,
+            q.limit.unwrap_or(10),
+        )
+        .await
+    {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrendQuery {
+    /// "hour" | "day" | "month"，默认 hour。
+    granularity: Option<String>,
+    start: Option<DateTime<Utc>>,
+    end: Option<DateTime<Utc>>,
+}
+
+/// GET /api/log/trend?granularity=hour|day|month&start=&end= — 用量趋势桶。
+async fn trend(
+    axum::extract::State(state): axum::extract::State<LogAppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<TrendQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
+    if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
+        return Err(err_json(AuthError::Forbidden));
+    }
+    match state
+        .svc
+        .trend(q.granularity.as_deref().unwrap_or("hour"), q.start, q.end)
+        .await
+    {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
         Err(e) => Err(err_json(e)),
     }
 }
