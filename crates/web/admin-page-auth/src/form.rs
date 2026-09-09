@@ -66,7 +66,7 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                 label {
                     class: "flex items-center gap-2 cursor-pointer group",
                     input {
-                        class: "size-4 rounded border-zinc-700 bg-zinc-800/60 text-zinc-100 transition-colors focus:ring-1 focus:ring-zinc-500 group-hover:border-zinc-600",
+                        class: "size-4 cursor-pointer rounded border-zinc-700 bg-zinc-800/60 accent-zinc-300 transition-colors focus:ring-1 focus:ring-zinc-500 group-hover:border-zinc-600",
                         r#type: "checkbox",
                         checked: remember(),
                         oninput: move |ev| remember.set(ev.checked()),
