@@ -400,7 +400,8 @@ pub fn ChatPage(
                         let active_msg = active_prompt();
                         let active_prompt_idx = prompts.iter().rposition(|(mi, _, _)| *mi <= active_msg).unwrap_or(0);
                         rsx! {
-                            div { class: "absolute left-2 top-1/2 z-30 flex max-h-[75vh] -translate-y-1/2 flex-col items-center gap-1.5 overflow-y-auto rounded-xl border border-zinc-800/50 bg-zinc-950/70 px-2 py-2 backdrop-blur-xl",
+                            if !prompts.is_empty() {
+                                div { class: "absolute left-2 top-1/2 z-30 flex max-h-[75vh] -translate-y-1/2 flex-col items-center gap-1.5 overflow-y-auto rounded-xl border border-zinc-800/50 bg-zinc-950/70 px-2 py-2 backdrop-blur-xl",
                                 for (pi, (midx, name, content)) in prompts.iter().enumerate() {
                                     {
                                         let is_active = active_prompt_idx == pi;
@@ -429,6 +430,7 @@ pub fn ChatPage(
                                         }
                                     }
                                 }
+                            }
                             }
                             if let Some(pi) = hovered_prompt() {
                                 if let Some((_, name, content)) = prompts.get(pi) {
