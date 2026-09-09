@@ -1,18 +1,29 @@
 //! 分组管理页:卡片式设计,对齐用户管理面板 (UsersPanel) 视觉规范。
-//! 包含:顶部概览指标、快捷筛选与新建、卡片网格与底部操作区、新建/编辑与快捷调倍率弹窗。
+//! 数据来自真实后端:挂载时 `use_effect` 拉 `list_groups_api`,写入本地
+//! `groups` signal;删除走 `delete_group_api`,新建/编辑走
+//! `create_group_api` / `update_group_api`。
 
 use dioxus::prelude::*;
+use serde_json::json;
 use ui::SegmentedCapsule;
 
-use crate::state::{EntityStore, GroupRow};
+use client::ApiClient;
+use contract::api::admin::{GroupDto, GroupUpsertRequest};
+
+use crate::api::{create_group_api, delete_group_api, list_groups_api, update_group_api};
 
 /// 弹窗状态
 #[derive(Clone, PartialEq)]
 enum ModalState {
     Closed,
     New,
-    Edit(usize),
-    QuickMult(usize),
+    Edit(String),
+}
+
+/// 写操作种类(目前仅删除;工厂保留扩展位)
+#[derive(Clone, Copy)]
+enum WriteOp {
+    Delete,
 }
 
 const SEC_STATS: &str = "分组概览";
@@ -21,8 +32,15 @@ const SEC_LIST: &str = "分组列表";
 
 #[component]
 pub fn GroupsPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let groups = store.groups;
+    // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
+    let mut groups = use_signal(Vec::<GroupDto>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    // 写操作进行中 / 成功提示
+    let busy = use_signal(|| false);
+    let notice = use_signal(|| None::<String>);
+    // reload 计数:触发一次即重拉列表(写操作后刷新)
+    let mut reload = use_signal(|| 0u32);
 
     let mut search = use_signal(String::new);
     let mut filter_tier = use_signal(|| 0usize);
@@ -30,161 +48,137 @@ pub fn GroupsPage() -> Element {
 
     // 表单状态
     let mut f_name = use_signal(String::new);
-    let mut f_display = use_signal(String::new);
-    let mut f_mult = use_signal(|| "1.0".to_string());
+    let mut f_ratio = use_signal(|| "1.0".to_string());
+    let mut f_remark = use_signal(String::new);
 
-    // 快捷调倍率状态
-    let mut q_mult = use_signal(|| "1.0".to_string());
+    // 挂载即拉取真实列表;reload 变化时重拉
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match list_groups_api(&client).await {
+                Ok(list) => {
+                    groups.set(list);
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
 
-    let group_list = groups.read().clone();
-    let total = group_list.len();
-    let base_count = group_list
-        .iter()
-        .filter(|g| (g.multiplier - 1.0).abs() < 0.001)
-        .count();
-    let discount_count = group_list.iter().filter(|g| g.multiplier < 0.999).count();
-    let premium_count = group_list.iter().filter(|g| g.multiplier > 1.001).count();
-    let avg_mult = if total > 0 {
-        group_list.iter().map(|g| g.multiplier).sum::<f64>() / (total as f64)
+    let list = groups();
+    let total = list.len();
+    let enabled_count = list.iter().filter(|g| g.status == 1).count();
+    let disabled_count = list.iter().filter(|g| g.status != 1).count();
+    let avg_ratio = if total > 0 {
+        list.iter().map(|g| g.ratio).sum::<f64>() / (total as f64)
     } else {
         1.0
     };
+    let custom_count = list
+        .iter()
+        .filter(|g| (g.ratio - 1.0).abs() > 0.001)
+        .count();
 
     let stats: [(String, &str); 5] = [
         (total.to_string(), "总分组数"),
-        (base_count.to_string(), "基准倍率 (1.0×)"),
-        (discount_count.to_string(), "优惠分组 (<1.0×)"),
-        (premium_count.to_string(), "溢价分组 (>1.0×)"),
-        (format!("{:.2}×", avg_mult), "平均倍率"),
+        (enabled_count.to_string(), "启用中"),
+        (disabled_count.to_string(), "已停用"),
+        (format!("{:.2}×", avg_ratio), "平均倍率"),
+        (custom_count.to_string(), "非基准倍率"),
     ];
 
     let filter_options = vec![
         format!("全部 ({total})"),
-        format!("基准 1.0× ({base_count})"),
-        format!("优惠折扣 ({discount_count})"),
-        format!("溢价加成 ({premium_count})"),
+        format!("启用中 ({enabled_count})"),
+        format!("已停用 ({disabled_count})"),
     ];
 
     // 过滤列表
-    let filtered_indices: Vec<usize> = {
+    let filtered: Vec<GroupDto> = {
         let q = search().trim().to_lowercase();
         let tier = filter_tier();
-        group_list
-            .iter()
-            .enumerate()
-            .filter(|(_, g)| {
-                // 文本匹配
+        list.into_iter()
+            .filter(|g| {
                 if !q.is_empty()
                     && !g.name.to_lowercase().contains(&q)
-                    && !g.display.to_lowercase().contains(&q)
+                    && !g.remark.to_lowercase().contains(&q)
                 {
                     return false;
                 }
-                // 分类匹配
                 match tier {
-                    1 => (g.multiplier - 1.0).abs() < 0.001,
-                    2 => g.multiplier < 0.999,
-                    3 => g.multiplier > 1.001,
+                    1 => g.status == 1,
+                    2 => g.status != 1,
                     _ => true,
                 }
             })
-            .map(|(i, _)| i)
             .collect()
     };
 
     let open_new = move |_| {
         f_name.set(String::new());
-        f_display.set(String::new());
-        f_mult.set("1.0".to_string());
+        f_ratio.set("1.0".to_string());
+        f_remark.set(String::new());
         modal_state.set(ModalState::New);
     };
 
-    let open_edit = move |idx: usize| {
-        if let Some(g) = groups.read().get(idx) {
+    let mut open_edit = move |key: String| {
+        if let Some(g) = groups().iter().find(|g| g.key == key) {
             f_name.set(g.name.clone());
-            f_display.set(g.display.clone());
-            f_mult.set(format!("{}", g.multiplier));
-            modal_state.set(ModalState::Edit(idx));
+            f_ratio.set(format!("{}", g.ratio));
+            f_remark.set(g.remark.clone());
+            modal_state.set(ModalState::Edit(key));
         }
     };
 
-    let open_quick_mult = move |idx: usize| {
-        if let Some(g) = groups.read().get(idx) {
-            q_mult.set(format!("{}", g.multiplier));
-            modal_state.set(ModalState::QuickMult(idx));
-        }
-    };
-
-    let on_delete = move |idx: usize| {
-        if let Some(g) = groups.read().get(idx) {
-            // 禁止删除 default 默认分组
-            if g.name == "default" {
-                return;
-            }
-        }
-        let mut g = groups;
-        g.write().remove(idx);
-    };
-
-    let commit_form = move |_| {
-        let n = f_name.peek().trim().to_string();
-        if n.is_empty() {
-            return;
-        }
-        let d = f_display.peek().trim().to_string();
-        let m = f_mult.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
-
-        let mut g = groups;
-        match *modal_state.peek() {
-            ModalState::New => {
-                // 如果已存在同名，覆盖更新，否则追加
-                let mut w = g.write();
-                if let Some(pos) = w.iter().position(|item| item.name == n) {
-                    w[pos] = GroupRow {
-                        name: n,
-                        display: d,
-                        multiplier: m,
-                    };
-                } else {
-                    w.push(GroupRow {
-                        name: n,
-                        display: d,
-                        multiplier: m,
-                    });
+    // 写操作助手工厂:返回独立闭包,交给卡片(删除)。
+    let make_write = || {
+        let busy_sig = busy;
+        let notice_sig = notice;
+        let reload_sig = reload;
+        move |key: String, op: WriteOp| {
+            let (mut b, mut n, mut r) = (busy_sig, notice_sig, reload_sig);
+            spawn(async move {
+                b.set(true);
+                n.set(None);
+                let client = ApiClient::shared().clone();
+                let res = match op {
+                    WriteOp::Delete => delete_group_api(&client, &key).await,
+                };
+                match res {
+                    Ok(_) => {
+                        n.set(Some("操作成功".to_string()));
+                        r.set(r() + 1);
+                    }
+                    Err(e) => n.set(Some(format!("操作失败:{e}"))),
                 }
-            }
-            ModalState::Edit(idx) => {
-                let mut w = g.write();
-                if idx < w.len() {
-                    w[idx] = GroupRow {
-                        name: n,
-                        display: d,
-                        multiplier: m,
-                    };
-                }
-            }
-            _ => {}
+                b.set(false);
+            });
         }
-        modal_state.set(ModalState::Closed);
     };
+    let write_delete = make_write();
 
-    let mut quick_mult_target_idx = 0usize;
-    if let ModalState::QuickMult(idx) = modal_state() {
-        quick_mult_target_idx = idx;
-    }
-
-    let commit_quick_mult = move |_| {
-        let idx = quick_mult_target_idx;
-        let m = q_mult.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
-        let mut g = groups;
-        if idx < g.read().len() {
-            g.write()[idx].multiplier = m;
-        }
+    // 弹窗关闭并触发重拉
+    let close_and_reload = move |_| {
         modal_state.set(ModalState::Closed);
+        reload.set(reload() + 1);
     };
 
     rsx! {
-            div { class: "flex flex-col gap-6",
+        div { class: "flex flex-col gap-6",
+                // 通知条(成功/错误/进行中)
+                if let Some(msg) = notice() {
+                    div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                        "{msg}"
+                        if busy() { " ···" }
+                    }
+                }
+
                 // 1. 概览统计区
                 section { id: "groups-sec-stats", class: "scroll-mt-8 space-y-3",
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
@@ -204,17 +198,25 @@ pub fn GroupsPage() -> Element {
                             h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
                             span { class: "text-xs text-zinc-500", "按倍率分级或关键词筛选" }
                         }
-                        button {
-                            class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
-                            onclick: open_new,
-                            "✚ 新建分组"
+                        div { class: "flex items-center gap-2",
+                            button {
+                                class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
+                                "data-testid": "refresh-groups",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "刷新"
+                            }
+                            button {
+                                class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                                onclick: open_new,
+                                "✚ 新建分组"
+                            }
                         }
                     }
 
                     input {
                         class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                         r#type: "text",
-                        placeholder: "搜索分组标识或展示名 (如 vip, default, claude)...",
+                        placeholder: "搜索分组标识或备注...",
                         value: "{search}",
                         oninput: move |e| search.set(e.value()),
                     }
@@ -234,27 +236,43 @@ pub fn GroupsPage() -> Element {
                     div { class: "flex items-center justify-between",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
                         span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                            "{filtered_indices.len()} 组"
+                            if loading() { "加载中…" } else { "{filtered.len()} 组" }
                         }
                     }
 
-                    if filtered_indices.is_empty() {
+                    if let Some(e) = err() {
+                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
+                            p { class: "text-sm text-red-300", "加载分组失败" }
+                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                            button {
+                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "重试"
+                            }
+                        }
+                    } else if loading() {
+                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                            p { class: "text-zinc-400", "正在加载分组…" }
+                        }
+                    } else if filtered.is_empty() {
                         div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
                             p { class: "text-zinc-400", "没有匹配的分组" }
                         }
                     } else {
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for idx in filtered_indices {
+                            "data-testid": "groups-list",
+                            for g in filtered {
                                 {
-                                    let g = groups.read()[idx].clone();
+                                    let edit_key = g.key.clone();
+                                    let delete_key = g.key.clone();
+                                    let is_default = g.name == "default";
                                     rsx! {
                                         GroupCard {
-                                            key: "{g.name}",
+                                            key: "{g.key}",
                                             group: g,
-                                            index: idx,
-                                            on_edit: open_edit,
-                                            on_quick_mult: open_quick_mult,
-                                            on_delete: on_delete,
+                                            is_default,
+                                            on_edit: move |_| open_edit(edit_key.clone()),
+                                            on_delete: move |_| write_delete(delete_key.clone(), WriteOp::Delete),
                                         }
                                     }
                                 }
@@ -268,23 +286,15 @@ pub fn GroupsPage() -> Element {
             if matches!(modal_state(), ModalState::New | ModalState::Edit(_)) {
                 GroupFormModal {
                     editing: matches!(modal_state(), ModalState::Edit(_)),
+                    group_key: match modal_state() {
+                        ModalState::Edit(k) => Some(k),
+                        _ => None,
+                    },
                     name: f_name,
-                    display: f_display,
-                    multiplier: f_mult,
+                    ratio: f_ratio,
+                    remark: f_remark,
                     on_cancel: move |_| modal_state.set(ModalState::Closed),
-                    on_submit: commit_form,
-                }
-            }
-
-            // 快捷调倍率弹窗
-            if let ModalState::QuickMult(idx) = modal_state() {
-                if let Some(g) = groups.read().get(idx).cloned() {
-                    QuickMultModal {
-                        group: g,
-                        multiplier: q_mult,
-                        on_cancel: move |_| modal_state.set(ModalState::Closed),
-                        on_submit: commit_quick_mult,
-                    }
+                    on_submit: close_and_reload,
                 }
             }
     }
@@ -314,11 +324,10 @@ pub(crate) fn Badge(text: String, tone: &'static str) -> Element {
 /// 单个分组卡片 (对齐 UserCard 风格)
 #[component]
 fn GroupCard(
-    group: GroupRow,
-    index: usize,
-    on_edit: EventHandler<usize>,
-    on_quick_mult: EventHandler<usize>,
-    on_delete: EventHandler<usize>,
+    group: GroupDto,
+    is_default: bool,
+    on_edit: EventHandler<()>,
+    on_delete: EventHandler<()>,
 ) -> Element {
     let initial = group
         .name
@@ -328,8 +337,7 @@ fn GroupCard(
         .to_uppercase()
         .to_string();
 
-    let m = group.multiplier;
-    let is_default = group.name == "default";
+    let m = group.ratio;
 
     // 倍率状态与徽标
     let (mult_badge_text, mult_badge_tone, bar_tone, bar_width_pct) = if (m - 1.0).abs() < 0.001 {
@@ -357,10 +365,15 @@ fn GroupCard(
         )
     };
 
-    let display_title = if group.display.is_empty() {
-        group.name.clone()
+    let status_text = if group.status == 1 {
+        "启用中"
     } else {
-        group.display.clone()
+        "已停用"
+    };
+    let status_tone = if group.status == 1 {
+        "border-emerald-500/30 bg-emerald-500/20 text-emerald-400"
+    } else {
+        "border-zinc-700 bg-zinc-800/80 text-zinc-400"
     };
 
     let example_cost = (100.0 * m).round() as i64;
@@ -374,9 +387,10 @@ fn GroupCard(
 
     rsx! {
         div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            "data-testid": "group-card",
 
             div { class: "space-y-3",
-                // 头部:标识字母圈 + 分组名 + 序号/默认标签
+                // 头部:标识字母圈 + 分组名 + 默认标签
                 div { class: "flex items-start gap-3",
                     div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
                         "{initial}"
@@ -390,11 +404,11 @@ fn GroupCard(
                                 }
                             } else {
                                 span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                                    "#{index + 1}"
+                                    "#{group.key}"
                                 }
                             }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{display_title}" }
+                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{group.remark}" }
                     }
                 }
 
@@ -406,10 +420,10 @@ fn GroupCard(
                     } else {
                         Badge { text: "自定义分组".to_string(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-400" }
                     }
-                    Badge { text: "group_ratio".to_string(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-500" }
+                    Badge { text: status_text.to_string(), tone: status_tone }
                 }
 
-                // 倍率进度条 (参考额度进度条)
+                // 倍率进度条
                 div { class: "space-y-1.5",
                     div { class: "flex justify-between gap-2 text-[11px]",
                         span { class: "text-zinc-400", "计费倍率" }
@@ -420,7 +434,7 @@ fn GroupCard(
                     }
                 }
 
-                // 详情指标行 (参考用户卡片的数据行)
+                // 详情指标行
                 div { class: "space-y-1.5 text-xs pt-1",
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 text-zinc-400", "费率模式" }
@@ -434,24 +448,15 @@ fn GroupCard(
                         span { class: "shrink-0 text-zinc-400", "调度作用域" }
                         span { class: "font-medium text-zinc-200", "全模型匹配" }
                     }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "别名覆盖" }
-                        span { class: "font-medium text-zinc-200", "支持" }
-                    }
                 }
             }
 
-            // 底部操作按钮区 (严格对齐图 1: [编辑] [调倍率] [删除/内置])
+            // 底部操作按钮区 (严格对齐图 1: [编辑] [删除/内置])
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    onclick: move |_| on_edit.call(index),
+                    onclick: move |_| on_edit.call(()),
                     "编辑"
-                }
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300",
-                    onclick: move |_| on_quick_mult.call(index),
-                    "调倍率"
                 }
                 if is_default {
                     button {
@@ -463,7 +468,7 @@ fn GroupCard(
                 } else {
                     button {
                         class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
-                        onclick: move |_| on_delete.call(index),
+                        onclick: move |_| on_delete.call(()),
                         "删除"
                     }
                 }
@@ -511,9 +516,10 @@ const MODAL_INPUT: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-950 
 #[component]
 fn GroupFormModal(
     editing: bool,
+    group_key: Option<String>,
     name: Signal<String>,
-    display: Signal<String>,
-    multiplier: Signal<String>,
+    ratio: Signal<String>,
+    remark: Signal<String>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -528,9 +534,43 @@ fn GroupFormModal(
         "创建分组"
     };
 
-    let parsed_mult = multiplier().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
+    let parsed_ratio = ratio().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
 
-    let preset_mults = [
+    let submitting = use_signal(|| false);
+
+    // 工厂式复制,避免把原 signal 移动出闭包(供 rsx 中 submitting() 继续读取)
+    let submitting2 = submitting;
+    let on_submit2 = on_submit;
+    let group_key2 = group_key.clone();
+    let do_submit = move |_| {
+        let key = group_key2.clone();
+        let n = name.peek().trim().to_string();
+        if n.is_empty() {
+            return;
+        }
+        let r = ratio.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
+        let rm = remark.peek().clone();
+        let (mut sub, cb) = (submitting2, on_submit2);
+        spawn(async move {
+            sub.set(true);
+            let client = ApiClient::shared().clone();
+            let req = GroupUpsertRequest {
+                name: n,
+                ratio: r,
+                model_whitelist: json!([]),
+                remark: rm,
+            };
+            let res = match key {
+                Some(kk) => update_group_api(&client, &kk, &req).await,
+                None => create_group_api(&client, &req).await,
+            };
+            let _ = res;
+            sub.set(false);
+            cb.call(());
+        });
+    };
+
+    let preset_ratios = [
         ("0.5× 半价", "0.5"),
         ("0.8× 优惠", "0.8"),
         ("1.0× 基准", "1.0"),
@@ -557,23 +597,23 @@ fn GroupFormModal(
                 }
 
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "展示名称 (可选)" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "展示备注 (可选)" }
                     input {
                         class: MODAL_INPUT,
                         placeholder: "例如: VIP会员专线、高峰备用组",
-                        value: "{display}",
-                        oninput: move |e| display.set(e.value()),
+                        value: "{remark}",
+                        oninput: move |e| remark.set(e.value()),
                     }
                 }
 
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (multiplier ≥ 0)" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (ratio ≥ 0)" }
                     input {
                         class: "{MODAL_INPUT} font-mono",
                         r#type: "text",
                         placeholder: "1.0",
-                        value: "{multiplier}",
-                        oninput: move |e| multiplier.set(e.value()),
+                        value: "{ratio}",
+                        oninput: move |e| ratio.set(e.value()),
                     }
                 }
 
@@ -581,9 +621,9 @@ fn GroupFormModal(
                 div { class: "space-y-1.5",
                     p { class: "text-[11px] text-zinc-500", "快捷倍率预设" }
                     div { class: "flex flex-wrap gap-1.5",
-                        for (lbl, val) in preset_mults {
+                        for (lbl, val) in preset_ratios {
                             {
-                                let is_active = (parsed_mult - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
+                                let is_active = (parsed_ratio - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
                                 let btn_tone = if is_active {
                                     "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
                                 } else {
@@ -592,7 +632,7 @@ fn GroupFormModal(
                                 rsx! {
                                     button {
                                         class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
-                                        onclick: move |_| multiplier.set(val.to_string()),
+                                        onclick: move |_| ratio.set(val.to_string()),
                                         "{lbl}"
                                     }
                                 }
@@ -609,8 +649,8 @@ fn GroupFormModal(
                     }
                     div { class: "flex justify-between font-medium",
                         span { class: "text-zinc-300", "该分组实际扣费" }
-                        span { class: if parsed_mult < 1.0 { "text-emerald-400" } else if parsed_mult > 1.0 { "text-amber-400" } else { "text-zinc-200" },
-                            "{(100.0 * parsed_mult).round() as i64} 点额度"
+                        span { class: if parsed_ratio < 1.0 { "text-emerald-400" } else if parsed_ratio > 1.0 { "text-amber-400" } else { "text-zinc-200" },
+                            "{(100.0 * parsed_ratio).round() as i64} 点额度"
                         }
                     }
                 }
@@ -623,97 +663,10 @@ fn GroupFormModal(
                     "取消"
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                    onclick: move |_| on_submit.call(()),
+                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    disabled: submitting(),
+                    onclick: do_submit,
                     "{submit_label}"
-                }
-            }
-        }
-    }
-}
-
-/// 快捷调倍率弹窗
-#[component]
-fn QuickMultModal(
-    group: GroupRow,
-    multiplier: Signal<String>,
-    on_cancel: EventHandler<()>,
-    on_submit: EventHandler<()>,
-) -> Element {
-    let parsed_mult = multiplier().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
-
-    let preset_mults = [
-        ("0.5×", "0.5"),
-        ("0.8×", "0.8"),
-        ("1.0×", "1.0"),
-        ("1.2×", "1.2"),
-        ("1.5×", "1.5"),
-        ("2.0×", "2.0"),
-    ];
-
-    rsx! {
-        Modal { title: format!("调整倍率 - {}", group.name), on_close: move |_| on_cancel.call(()),
-            div { class: "space-y-4",
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1",
-                    div { class: "flex justify-between",
-                        span { class: "text-zinc-400", "目标分组" }
-                        span { class: "font-medium text-zinc-200", "{group.name}" }
-                    }
-                    div { class: "flex justify-between",
-                        span { class: "text-zinc-400", "当前倍率" }
-                        span { class: "font-medium text-zinc-200 font-mono", "×{group.multiplier:.2}" }
-                    }
-                }
-
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "新倍率系数" }
-                    input {
-                        class: "{MODAL_INPUT} font-mono",
-                        r#type: "text",
-                        value: "{multiplier}",
-                        oninput: move |e| multiplier.set(e.value()),
-                    }
-                }
-
-                div { class: "flex flex-wrap gap-2",
-                    for (lbl, val) in preset_mults {
-                        {
-                            let is_active = (parsed_mult - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
-                            let btn_tone = if is_active {
-                                "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
-                            } else {
-                                "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
-                            };
-                            rsx! {
-                                button {
-                                    class: "flex-1 min-w-[28%] rounded-lg border py-2 text-xs transition-colors {btn_tone}",
-                                    onclick: move |_| multiplier.set(val.to_string()),
-                                    "{lbl}"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                div { class: "flex justify-between items-center rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
-                    span { class: "text-zinc-400", "100 额度消耗测算" }
-                    span { class: "font-medium font-mono text-sm",
-                        class: if parsed_mult < 1.0 { "text-emerald-400" } else if parsed_mult > 1.0 { "text-amber-400" } else { "text-zinc-200" },
-                        "{(100.0 * parsed_mult).round() as i64} 点"
-                    }
-                }
-            }
-
-            div { class: "mt-6 flex gap-3",
-                button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
-                    onclick: move |_| on_cancel.call(()),
-                    "取消"
-                }
-                button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                    onclick: move |_| on_submit.call(()),
-                    "确认调整"
                 }
             }
         }

@@ -2,7 +2,10 @@ use chrono::{DateTime, Duration, Local, Utc};
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
-use crate::api;
+use client::ApiClient;
+use contract::api::usage::UsageLogDto;
+
+use crate::api::list_self_logs_api;
 
 // —— 跨组件共享文案 (UsageLogsPanel / LogCard / LogDetailModal 同用) ——
 const STATUS_SUCCESS: &str = "成功";
@@ -11,7 +14,7 @@ const STATUS_FAIL: &str = "失败";
 /// 面板内的日志视图模型:拥有所有权,可放进 signal 做详情弹窗。
 #[derive(Clone, PartialEq)]
 struct LogEntry {
-    id: usize,
+    id: String,
     model: String,
     status: bool, // true = success, false = failure
     timestamp: DateTime<Utc>,
@@ -44,10 +47,35 @@ pub fn UsageLogsPanel() -> Element {
     let mut detail = use_signal(|| None::<LogEntry>);
     let mut visible_count = use_signal(|| 8usize);
 
-    let stats = api::fetch_usage_stats();
-    let models = api::fetch_log_models();
+    // 真实数据 + 加载/错误态
+    let mut logs = use_signal(Vec::<UsageLogDto>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    let mut reload = use_signal(|| 0u32);
 
-    // Build filtered logs with real filtering logic
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match list_self_logs_api(&client, None, None, None).await {
+                Ok(page) => {
+                    logs.set(page.items);
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
+
+    let stats = crate::api::fetch_usage_stats();
+    let models = crate::api::fetch_log_models();
+
+    // Build filtered logs with real filtering logic (live 数据 + 前端过滤)
     let filtered_logs = use_memo(move || {
         let now = Utc::now();
         let cutoff = match selected_range().as_str() {
@@ -68,7 +96,7 @@ pub fn UsageLogsPanel() -> Element {
             Some(selected_model().clone())
         };
 
-        let mut logs: Vec<LogEntry> = api::fetch_logs()
+        let mut out: Vec<LogEntry> = logs()
             .iter()
             .filter(|entry| {
                 let log_time = DateTime::from_timestamp(entry.timestamp, 0).unwrap_or_default();
@@ -81,16 +109,15 @@ pub fn UsageLogsPanel() -> Element {
                     return false;
                 }
                 if let Some(want_model) = &model_filter
-                    && entry.model != want_model
+                    && &entry.model != want_model
                 {
                     return false;
                 }
                 true
             })
-            .enumerate()
-            .map(|(i, entry)| LogEntry {
-                id: i,
-                model: entry.model.to_string(),
+            .map(|entry| LogEntry {
+                id: entry.id.clone(),
+                model: entry.model.clone(),
                 status: entry.success,
                 timestamp: DateTime::from_timestamp(entry.timestamp, 0).unwrap_or_default(),
                 prompt_tokens: entry.prompt_tokens,
@@ -99,12 +126,12 @@ pub fn UsageLogsPanel() -> Element {
                 first_token_ms: entry.first_token_ms,
                 duration_ms: entry.duration_ms,
                 cost: entry.cost,
-                error: entry.error.map(|s| s.to_string()),
+                error: entry.error.clone(),
             })
             .collect();
 
-        logs.sort_by_key(|log| std::cmp::Reverse(log.timestamp));
-        logs
+        out.sort_by_key(|log| std::cmp::Reverse(log.timestamp));
+        out
     });
 
     let displayed_logs = filtered_logs
@@ -117,7 +144,7 @@ pub fn UsageLogsPanel() -> Element {
     let total_len = filtered_logs.read().len();
 
     rsx! {
-                div { class: "flex flex-col gap-6",
+                div { class: "flex flex-col gap-6", "data-testid": "usage-panel",
             // 统计卡 - 1/3/5 grid
             section { id: "usage-sec-stats", class: "scroll-mt-8 space-y-3",
                 h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
@@ -131,11 +158,13 @@ pub fn UsageLogsPanel() -> Element {
 
             // 过滤器
             section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
-                div { class: "flex items-center justify-between",
+                div { class: "flex items-center justify-between gap-3",
                     h2 { class: "text-sm font-medium text-zinc-300", "用量日志" }
                     button {
-                        class: "text-xs px-4 py-2 rounded-xl border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
-                        "导出 CSV"
+                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                        "data-testid": "refresh-logs",
+                        onclick: move |_| reload.set(reload() + 1),
+                        "刷新"
                     }
                 }
 
@@ -161,19 +190,45 @@ pub fn UsageLogsPanel() -> Element {
 
             // 日志卡片网格(宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏)
             section { id: "usage-sec-logs", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LOGS}" }
-                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                    for log in displayed_logs {
-                        LogCard {
-                            key: "{log.id}",
-                            log: log.clone(),
-                            on_open: move |entry| detail.set(Some(entry)),
+                div { class: "flex items-center justify-between",
+                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LOGS}" }
+                    span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
+                        if loading() { "加载中…" } else { "{total_len} 条" }
+                    }
+                }
+
+                if let Some(e) = err() {
+                    div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
+                        p { class: "text-sm text-red-300", "加载日志失败" }
+                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                        button {
+                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                            onclick: move |_| reload.set(reload() + 1),
+                            "重试"
+                        }
+                    }
+                } else if loading() {
+                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                        p { class: "text-zinc-400", "正在加载日志…" }
+                    }
+                } else if shown_len == 0 {
+                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                        p { class: "text-zinc-400", "没有找到匹配的日志记录" }
+                    }
+                } else {
+                    div { class: "mt-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5", "data-testid": "logs-list",
+                        for log in displayed_logs {
+                            LogCard {
+                                key: "{log.id}",
+                                log: log.clone(),
+                                on_open: move |entry| detail.set(Some(entry)),
+                            }
                         }
                     }
                 }
             }
 
-            if shown_len < total_len {
+            if !loading() && shown_len < total_len {
                 div { class: "flex justify-center pt-4",
                     button {
                         class: "px-8 py-3 rounded-2xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-sm text-zinc-400 hover:text-zinc-200 transition-all active:scale-95",
@@ -184,13 +239,9 @@ pub fn UsageLogsPanel() -> Element {
                         "加载更多"
                     }
                 }
-            } else if shown_len > 0 {
+            } else if !loading() && shown_len > 0 {
                 div { class: "text-center text-xs text-zinc-500 py-6",
                     "已显示全部日志"
-                }
-            } else {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "没有找到匹配的日志记录" }
                 }
             }
 
@@ -281,6 +332,9 @@ fn LogCard(log: LogEntry, on_open: EventHandler<LogEntry>) -> Element {
     rsx! {
         button {
             class: "w-full cursor-pointer rounded-2xl border p-4 text-left transition-colors {card_class}",
+            role: "listitem",
+            "aria-label": "日志 {log.model}",
+            "data-testid": "log-card",
             onclick: move |_| on_open.call(log.clone()),
 
             // 头部:模型 + 状态 + 费用

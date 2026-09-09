@@ -1,21 +1,36 @@
 //! 渠道管理页:卡片式网格,对齐 GroupsPage / UsersPanel 规范。
-//! 包含:顶部渠道概览、综合筛选与批量操作、卡片网格、编辑与模型调度抽屉/弹窗、快速导入弹窗。
+//! 数据来自真实后端:挂载时 `use_effect` 拉 `list_channels_api`,写入本地
+//! `channels` signal;启用/停用走 `set_channel_status_api`,删除走
+//! `delete_channel_api`,新建/编辑走 `create_channel_api` / `update_channel_api`。
+//! 拓扑测速、批量分组、快速导入是 mock 期的纯前端特性,已移除(后端暂无对应接口)。
 
 use dioxus::prelude::*;
+use serde_json::json;
 use ui::SegmentedCapsule;
 
+use client::ApiClient;
+use contract::api::admin::{ChannelDto, ChannelUpsertRequest};
+
+use crate::api::{
+    create_channel_api, delete_channel_api, list_channels_api, set_channel_status_api,
+    update_channel_api,
+};
 use crate::groups::{Badge, Modal, StatCard};
-use crate::pages::parse_url_key;
-use crate::state::{CHANNEL_TYPES, ChannelRow, EntityStore};
+use crate::state::CHANNEL_TYPES;
 
 /// 弹窗状态
 #[derive(Clone, PartialEq)]
 enum ChannelModalState {
     Closed,
     New,
-    Edit(usize),
-    Import,
-    BatchGroup,
+    Edit(String),
+}
+
+/// 写操作种类:在写回工厂里区分启停与删除
+#[derive(Clone, Copy)]
+enum WriteOp {
+    Toggle(i16),
+    Delete,
 }
 
 const SEC_STATS: &str = "渠道概览";
@@ -24,15 +39,19 @@ const SEC_LIST: &str = "渠道列表";
 
 #[component]
 pub fn ChannelsPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let channels = store.channels;
-    let groups = store.groups;
+    // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
+    let mut channels = use_signal(Vec::<ChannelDto>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    // 写操作进行中 / 成功提示
+    let busy = use_signal(|| false);
+    let notice = use_signal(|| None::<String>);
+    // reload 计数:触发一次即重拉列表(写操作后刷新)
+    let mut reload = use_signal(|| 0u32);
 
     let mut search = use_signal(String::new);
     let mut filter_tier = use_signal(|| 0usize);
     let mut modal_state = use_signal(|| ChannelModalState::Closed);
-    let mut testing_idx = use_signal(|| None::<usize>);
-    let mut test_counter = use_signal(|| 0u32);
 
     // 编辑/新建表单状态
     let mut f_name = use_signal(String::new);
@@ -40,72 +59,69 @@ pub fn ChannelsPage() -> Element {
     let mut f_url = use_signal(String::new);
     let mut f_keys = use_signal(String::new);
     let mut f_group = use_signal(|| "default".to_string());
+    let mut f_remark = use_signal(String::new);
 
-    // 批量改分组目标
-    let mut batch_group_target = use_signal(|| "default".to_string());
+    // 挂载即拉取真实列表;reload 变化时重拉
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match list_channels_api(&client).await {
+                Ok(list) => {
+                    channels.set(list);
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
 
-    // 导入表单状态
-    let mut import_raw = use_signal(String::new);
-    let mut import_url = use_signal(String::new);
-    let mut import_key = use_signal(String::new);
-    let mut import_name = use_signal(String::new);
-
-    let channel_list = channels.read().clone();
-    let total = channel_list.len();
-    let enabled_count = channel_list.iter().filter(|c| c.status == 1).count();
-    let disabled_count = channel_list.iter().filter(|c| c.status != 1).count();
-
-    // 计算有测试延迟的渠道平均值
-    let measured_latencies: Vec<u32> = channel_list.iter().filter_map(|c| c.latency_ms).collect();
-    let avg_latency = if !measured_latencies.is_empty() {
-        let sum: u32 = measured_latencies.iter().sum();
-        format!("{}ms", sum / (measured_latencies.len() as u32))
-    } else {
-        "—".to_string()
-    };
-
-    let total_dispatched_models: usize = channel_list.iter().map(|c| c.dispatch.len()).sum();
+    let list = channels();
+    let total = list.len();
+    let enabled_count = list.iter().filter(|c| c.status == 1).count();
+    let disabled_count = list.iter().filter(|c| c.status != 1).count();
+    let total_keys: i64 = list.iter().map(|c| c.key_count).sum();
+    let group_set: std::collections::BTreeSet<String> =
+        list.iter().map(|c| c.group_name.clone()).collect();
 
     let stats: [(String, &str); 5] = [
         (total.to_string(), "总渠道数"),
         (enabled_count.to_string(), "正常启用"),
         (disabled_count.to_string(), "停用/异常"),
-        (avg_latency, "平均响应延迟"),
-        (total_dispatched_models.to_string(), "总调度模型数"),
+        (total_keys.to_string(), "密钥总数"),
+        (group_set.len().to_string(), "绑定分组数"),
     ];
 
     let filter_options = vec![
         format!("全部 ({total})"),
         format!("启用中 ({enabled_count})"),
         format!("已停用 ({disabled_count})"),
-        "OpenAI 兼容".to_string(),
-        "Claude / 其他".to_string(),
     ];
 
-    let filtered_indices: Vec<usize> = {
+    let filtered: Vec<ChannelDto> = {
         let q = search().trim().to_lowercase();
         let tier = filter_tier();
-        channel_list
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| {
+        list.into_iter()
+            .filter(|c| {
                 if !q.is_empty()
                     && !c.name.to_lowercase().contains(&q)
-                    && !c.ctype.to_lowercase().contains(&q)
-                    && !c.url.to_lowercase().contains(&q)
-                    && !c.group.to_lowercase().contains(&q)
+                    && !c.channel_type.to_lowercase().contains(&q)
+                    && !c.base_url.to_lowercase().contains(&q)
+                    && !c.group_name.to_lowercase().contains(&q)
                 {
                     return false;
                 }
                 match tier {
                     1 => c.status == 1,
                     2 => c.status != 1,
-                    3 => c.ctype.contains("openai"),
-                    4 => !c.ctype.contains("openai"),
                     _ => true,
                 }
             })
-            .map(|(i, _)| i)
             .collect()
     };
 
@@ -115,147 +131,69 @@ pub fn ChannelsPage() -> Element {
         f_url.set("https://api.openai.com/v1".to_string());
         f_keys.set(String::new());
         f_group.set("default".to_string());
+        f_remark.set(String::new());
         modal_state.set(ChannelModalState::New);
     };
 
-    let open_edit = move |idx: usize| {
-        if let Some(c) = channels.read().get(idx) {
+    let mut open_edit = move |key: String| {
+        if let Some(c) = channels().iter().find(|c| c.key == key) {
             f_name.set(c.name.clone());
-            f_ctype.set(c.ctype.clone());
-            f_url.set(c.url.clone());
-            f_keys.set(c.keys.clone());
-            f_group.set(c.group.clone());
-            modal_state.set(ChannelModalState::Edit(idx));
+            f_ctype.set(c.channel_type.clone());
+            f_url.set(c.base_url.clone());
+            f_keys.set(String::new());
+            f_group.set(c.group_name.clone());
+            f_remark.set(c.remark.clone());
+            modal_state.set(ChannelModalState::Edit(key));
         }
     };
 
-    let toggle_status = move |idx: usize| {
-        let mut ch = channels;
-        if idx < ch.read().len() {
-            let cur = ch.read()[idx].status;
-            ch.write()[idx].status = if cur == 1 { 0 } else { 1 };
-        }
-    };
-
-    let test_single = move |idx: usize| {
-        testing_idx.set(Some(idx));
-        let n = test_counter.peek().wrapping_add(1);
-        test_counter.set(n);
-        let ms = 120 + (n.wrapping_mul(97) % 380);
-        let mut ch = channels;
-        spawn(async move {
-            gloo_timers::future::TimeoutFuture::new(500).await;
-            if idx < ch.read().len() {
-                ch.write()[idx].latency_ms = Some(ms);
-            }
-            testing_idx.set(None);
-        });
-    };
-
-    let test_all = move |_| {
-        let n = test_counter.peek().wrapping_add(1);
-        test_counter.set(n);
-        let mut ch = channels;
-        let count = ch.read().len();
-        spawn(async move {
-            for i in 0..count {
-                let ms = 110 + ((n.wrapping_add(i as u32)).wrapping_mul(73) % 420);
-                ch.write()[i].latency_ms = Some(ms);
-            }
-        });
-    };
-
-    let delete_channel = move |idx: usize| {
-        let mut ch = channels;
-        if idx < ch.read().len() {
-            ch.write().remove(idx);
-        }
-    };
-
-    let commit_edit = move |_| {
-        let n = f_name.peek().trim().to_string();
-        if n.is_empty() {
-            return;
-        }
-        let ct = f_ctype.peek().clone();
-        let u = f_url.peek().trim().to_string();
-        let k = f_keys.peek().trim().to_string();
-        let g = f_group.peek().clone();
-
-        let mut ch = channels;
-        match *modal_state.peek() {
-            ChannelModalState::New => {
-                ch.write().push(ChannelRow {
-                    name: n,
-                    ctype: ct,
-                    url: u,
-                    keys: k,
-                    status: 1,
-                    group: g,
-                    latency_ms: None,
-                    candidates: vec![
-                        ("gpt-4o".to_string(), false),
-                        ("gpt-4o-mini".to_string(), false),
-                    ],
-                    dispatch: vec!["gpt-4o".to_string()],
-                });
-            }
-            ChannelModalState::Edit(idx) => {
-                let mut w = ch.write();
-                if idx < w.len() {
-                    w[idx].name = n;
-                    w[idx].ctype = ct;
-                    w[idx].url = u;
-                    w[idx].keys = k;
-                    w[idx].group = g;
+    // 写操作助手工厂:返回独立闭包,分别交给卡片(启停/删除)。
+    // Signal 是 Copy;每次调用先复制一份再 move 进 async,避免把闭包捕获的
+    // signal 移动出去(FnMut 不允许)。
+    let make_write = || {
+        let busy_sig = busy;
+        let notice_sig = notice;
+        let reload_sig = reload;
+        move |key: String, op: WriteOp| {
+            let (mut b, mut n, mut r) = (busy_sig, notice_sig, reload_sig);
+            spawn(async move {
+                b.set(true);
+                n.set(None);
+                let client = ApiClient::shared().clone();
+                let res = match op {
+                    WriteOp::Toggle(status) => set_channel_status_api(&client, &key, status).await,
+                    WriteOp::Delete => delete_channel_api(&client, &key).await,
+                };
+                match res {
+                    Ok(_) => {
+                        n.set(Some("操作成功".to_string()));
+                        r.set(r() + 1);
+                    }
+                    Err(e) => n.set(Some(format!("操作失败:{e}"))),
                 }
-            }
-            _ => {}
+                b.set(false);
+            });
         }
-        modal_state.set(ChannelModalState::Closed);
     };
+    let write_toggle = make_write();
+    let write_delete = make_write();
 
-    let commit_batch_group = move |_| {
-        let target = batch_group_target.peek().clone();
-        let mut ch = channels;
-        for c in ch.write().iter_mut() {
-            c.group = target.clone();
-        }
+    // 弹窗关闭并触发重拉
+    let close_and_reload = move |_| {
         modal_state.set(ChannelModalState::Closed);
-    };
-
-    let commit_import = move |_| {
-        let u = import_url.peek().trim().to_string();
-        let k = import_key.peek().trim().to_string();
-        if u.is_empty() || k.is_empty() {
-            return;
-        }
-        let n = if !import_name.peek().trim().is_empty() {
-            import_name.peek().trim().to_string()
-        } else {
-            "导入渠道".to_string()
-        };
-        let mut ch = channels;
-        ch.write().push(ChannelRow {
-            name: n,
-            ctype: "openai-compat".to_string(),
-            url: u,
-            keys: k,
-            status: 1,
-            group: "default".to_string(),
-            latency_ms: None,
-            candidates: vec![("gpt-4o".to_string(), false)],
-            dispatch: vec!["gpt-4o".to_string()],
-        });
-        import_raw.set(String::new());
-        import_url.set(String::new());
-        import_key.set(String::new());
-        import_name.set(String::new());
-        modal_state.set(ChannelModalState::Closed);
+        reload.set(reload() + 1);
     };
 
     rsx! {
         div { class: "flex flex-col gap-6",
+                // 通知条(成功/错误/进行中)
+                if let Some(msg) = notice() {
+                    div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                        "{msg}"
+                        if busy() { " ···" }
+                    }
+                }
+
                 // 1. 概览统计区
                 section { id: "channels-sec-stats", class: "scroll-mt-8 space-y-3",
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
@@ -273,23 +211,14 @@ pub fn ChannelsPage() -> Element {
                     div { class: "flex items-center justify-between gap-3",
                         div { class: "flex items-center gap-2",
                             h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                            span { class: "text-xs text-zinc-500", "按状态、类型或关键词筛选" }
+                            span { class: "text-xs text-zinc-500", "按状态或关键词筛选" }
                         }
                         div { class: "flex items-center gap-2",
                             button {
                                 class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
-                                onclick: test_all,
-                                "⚡ 一键测速"
-                            }
-                            button {
-                                class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
-                                onclick: move |_| modal_state.set(ChannelModalState::BatchGroup),
-                                "批量分组"
-                            }
-                            button {
-                                class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
-                                onclick: move |_| modal_state.set(ChannelModalState::Import),
-                                "📋 导入"
+                                "data-testid": "refresh-channels",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "刷新"
                             }
                             button {
                                 class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
@@ -320,30 +249,44 @@ pub fn ChannelsPage() -> Element {
                     div { class: "flex items-center justify-between",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
                         span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                            "{filtered_indices.len()} 个渠道"
+                            if loading() { "加载中…" } else { "{filtered.len()} 个渠道" }
                         }
                     }
 
-                    if filtered_indices.is_empty() {
+                    if let Some(e) = err() {
+                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
+                            p { class: "text-sm text-red-300", "加载渠道失败" }
+                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                            button {
+                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "重试"
+                            }
+                        }
+                    } else if loading() {
+                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                            p { class: "text-zinc-400", "正在加载渠道…" }
+                        }
+                    } else if filtered.is_empty() {
                         div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
                             p { class: "text-zinc-400", "没有匹配的渠道" }
                         }
                     } else {
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for idx in filtered_indices {
+                            "data-testid": "channels-list",
+                            for c in filtered {
                                 {
-                                    let c = channels.read()[idx].clone();
-                                    let is_testing = testing_idx() == Some(idx);
+                                    let edit_key = c.key.clone();
+                                    let toggle_key = c.key.clone();
+                                    let delete_key = c.key.clone();
+                                    let target = if c.status == 1 { 0 } else { 1 };
                                     rsx! {
                                         ChannelCard {
-                                            key: "{c.name}_{idx}",
+                                            key: "{c.key}",
                                             channel: c,
-                                            index: idx,
-                                            is_testing: is_testing,
-                                            on_edit: open_edit,
-                                            on_toggle: toggle_status,
-                                            on_test: test_single,
-                                            on_delete: delete_channel,
+                                            on_edit: move |_| open_edit(edit_key.clone()),
+                                            on_toggle: move |_| write_toggle(toggle_key.clone(), WriteOp::Toggle(target)),
+                                            on_delete: move |_| write_delete(delete_key.clone(), WriteOp::Delete),
                                         }
                                     }
                                 }
@@ -357,65 +300,18 @@ pub fn ChannelsPage() -> Element {
             if matches!(modal_state(), ChannelModalState::New | ChannelModalState::Edit(_)) {
                 ChannelFormModal {
                     editing: matches!(modal_state(), ChannelModalState::Edit(_)),
+                    channel_key: match modal_state() {
+                        ChannelModalState::Edit(k) => Some(k),
+                        _ => None,
+                    },
                     name: f_name,
                     ctype: f_ctype,
                     url: f_url,
                     keys: f_keys,
                     group: f_group,
-                    channel_idx: match modal_state() {
-                        ChannelModalState::Edit(idx) => Some(idx),
-                        _ => None,
-                    },
+                    remark: f_remark,
                     on_cancel: move |_| modal_state.set(ChannelModalState::Closed),
-                    on_submit: commit_edit,
-                }
-            }
-
-            // 导入弹窗
-            if modal_state() == ChannelModalState::Import {
-                ChannelImportModal {
-                    raw: import_raw,
-                    url: import_url,
-                    api_key: import_key,
-                    name: import_name,
-                    on_cancel: move |_| modal_state.set(ChannelModalState::Closed),
-                    on_submit: commit_import,
-                }
-            }
-
-            // 批量改分组弹窗
-            if modal_state() == ChannelModalState::BatchGroup {
-                Modal {
-                    title: "批量绑定分组".to_string(),
-                    on_close: move |_| modal_state.set(ChannelModalState::Closed),
-                    div { class: "space-y-4",
-                        p { class: "text-xs text-zinc-400 leading-relaxed",
-                            "将全部渠道切换到指定的目标分组中，生效后服务拓扑将同步更新。"
-                        }
-                        div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "目标分组" }
-                            select {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                                value: "{batch_group_target}",
-                                onchange: move |e| batch_group_target.set(e.value()),
-                                for g in groups.read().iter() {
-                                    option { value: "{g.name}", "{g.name} ({g.display})" }
-                                }
-                            }
-                        }
-                        div { class: "mt-6 flex gap-3",
-                            button {
-                                class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
-                                onclick: move |_| modal_state.set(ChannelModalState::Closed),
-                                "取消"
-                            }
-                            button {
-                                class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                                onclick: commit_batch_group,
-                                "应用到全部渠道"
-                            }
-                        }
-                    }
+                    on_submit: close_and_reload,
                 }
             }
     }
@@ -424,13 +320,10 @@ pub fn ChannelsPage() -> Element {
 /// 单个渠道卡片 (对齐 GroupCard / UserCard 规范)
 #[component]
 fn ChannelCard(
-    channel: ChannelRow,
-    index: usize,
-    is_testing: bool,
-    on_edit: EventHandler<usize>,
-    on_toggle: EventHandler<usize>,
-    on_test: EventHandler<usize>,
-    on_delete: EventHandler<usize>,
+    channel: ChannelDto,
+    on_edit: EventHandler<()>,
+    on_toggle: EventHandler<()>,
+    on_delete: EventHandler<()>,
 ) -> Element {
     let initial = channel
         .name
@@ -451,48 +344,9 @@ fn ChannelCard(
         ("已停用", "border-zinc-700 bg-zinc-800/80 text-zinc-400")
     };
 
-    let (latency_text, latency_tone, latency_bar_tone, latency_pct) = match channel.latency_ms {
-        Some(ms) if ms < 250 => (
-            format!("{ms}ms"),
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "bg-emerald-500",
-            ((ms as f64 / 800.0) * 100.0).clamp(15.0, 100.0) as u32,
-        ),
-        Some(ms) if ms < 600 => (
-            format!("{ms}ms"),
-            "border-amber-500/30 bg-amber-500/20 text-amber-400",
-            "bg-amber-500",
-            ((ms as f64 / 800.0) * 100.0).clamp(15.0, 100.0) as u32,
-        ),
-        Some(ms) => (
-            format!("{ms}ms"),
-            "border-red-500/30 bg-red-500/20 text-red-400",
-            "bg-red-500",
-            95,
-        ),
-        None => (
-            "未测速".to_string(),
-            "border-zinc-700 bg-zinc-800/80 text-zinc-500",
-            "bg-zinc-700",
-            20,
-        ),
-    };
-
-    // 掩码 API Key:只展示首尾
-    let masked_key = if channel.keys.len() > 8 {
-        let prefix = &channel.keys[..4.min(channel.keys.len())];
-        let suffix = &channel.keys[channel.keys.len().saturating_sub(4)..];
-        format!("{prefix}****{suffix}")
-    } else if !channel.keys.is_empty() {
-        "sk-****".to_string()
-    } else {
-        "未配置密钥".to_string()
-    };
-
-    let dispatch_count = channel.dispatch.len();
-
     rsx! {
         div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            "data-testid": "channel-card",
             div { class: "space-y-3",
                 // 头部
                 div { class: "flex items-start gap-3",
@@ -503,78 +357,59 @@ fn ChannelCard(
                         div { class: "flex items-center justify-between gap-2",
                             h3 { class: "truncate text-sm font-medium text-zinc-100", "{channel.name}" }
                             span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                                "#{index + 1}"
+                                "#{channel.key}"
                             }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{channel.ctype} · {channel.group}" }
+                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{channel.channel_type} · {channel.group_name}" }
                     }
                 }
 
                 // 徽标行
                 div { class: "flex flex-wrap gap-1.5",
                     Badge { text: status_text.to_string(), tone: status_tone }
-                    Badge { text: channel.group.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
-                    Badge { text: latency_text, tone: latency_tone }
-                }
-
-                // 延迟进度条
-                div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 text-[11px]",
-                        span { class: "text-zinc-400", "延迟响应" }
-                        if let Some(ms) = channel.latency_ms {
-                            span { class: "whitespace-nowrap font-medium text-zinc-200 font-mono", "{ms} ms" }
-                        } else {
-                            span { class: "whitespace-nowrap font-medium text-zinc-500", "未测试" }
-                        }
-                    }
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
-                        div { class: "h-full rounded-full {latency_bar_tone} transition-all duration-300", style: "width: {latency_pct}%" }
-                    }
+                    Badge { text: channel.group_name.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
+                    Badge { text: format!("{} 密钥", channel.key_count), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-500" }
                 }
 
                 // 指标详情行
                 div { class: "space-y-1.5 text-xs pt-1",
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 text-zinc-400", "接口地址" }
-                        span { class: "truncate font-mono text-zinc-300 max-w-[140px]", title: "{channel.url}", "{channel.url}" }
+                        span { class: "truncate font-mono text-zinc-300 max-w-[140px]", title: "{channel.base_url}", "{channel.base_url}" }
                     }
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "密钥配置" }
-                        span { class: "font-mono text-zinc-400", "{masked_key}" }
+                        span { class: "shrink-0 text-zinc-400", "权重" }
+                        span { class: "font-medium text-zinc-200", "{channel.weight}" }
                     }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "调度模型" }
-                        span { class: "font-medium text-zinc-200", "{dispatch_count} 个已进拓扑" }
+                    if !channel.remark.is_empty() {
+                        div { class: "flex justify-between gap-2",
+                            span { class: "shrink-0 text-zinc-400", "备注" }
+                            span { class: "truncate font-medium text-zinc-200", "{channel.remark}" }
+                        }
                     }
                 }
             }
 
-            // 底部操作区 (标准三键布局: [编辑] [测速] [启用/停用])
+            // 底部操作区 (标准三键布局: [编辑] [启用/停用] [删除])
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    onclick: move |_| on_edit.call(index),
+                    onclick: move |_| on_edit.call(()),
                     "编辑"
-                }
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300 disabled:opacity-40",
-                    disabled: is_testing,
-                    onclick: move |_| on_test.call(index),
-                    if is_testing { "测速中" } else { "测速" }
                 }
                 button {
                     class: if is_enabled {
                         "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300"
                     } else {
-                        "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+                        "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300"
                     },
-                    onclick: move |_| on_toggle.call(index),
+                    onclick: move |_| on_toggle.call(()),
                     if is_enabled { "停用" } else { "启用" }
                 }
                 button {
                     class: "w-7 rounded-lg border border-zinc-800 bg-zinc-800/40 py-1.5 text-xs text-zinc-500 hover:text-red-400 hover:border-red-900/60 transition-colors flex items-center justify-center",
                     title: "删除渠道",
-                    onclick: move |_| on_delete.call(index),
+                    onclick: move |_| on_delete.call(()),
                     "✕"
                 }
             }
@@ -582,23 +417,20 @@ fn ChannelCard(
     }
 }
 
-/// 渠道编辑/新建综合弹窗 (含类型、名称、URL、Key、分组、模型候补与调度)
+/// 渠道编辑/新建综合弹窗 (含类型、名称、URL、Key、分组、备注;后端暂不支持模型调度候补)
 #[component]
 fn ChannelFormModal(
     editing: bool,
+    channel_key: Option<String>,
     name: Signal<String>,
     ctype: Signal<String>,
     url: Signal<String>,
     keys: Signal<String>,
     group: Signal<String>,
-    channel_idx: Option<usize>,
+    remark: Signal<String>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
-    let store = use_context::<EntityStore>();
-    let mut channels = store.channels;
-    let groups = store.groups;
-
     let title = if editing {
         "编辑渠道"
     } else {
@@ -610,30 +442,52 @@ fn ChannelFormModal(
         "创建渠道"
     };
 
-    let pull_models = move |_| {
-        if let Some(idx) = channel_idx {
-            let pool = [
-                "gpt-4o",
-                "gpt-4o-mini",
-                "gpt-5",
-                "o3",
-                "o3-mini",
-                "claude-3-5-sonnet",
-            ];
-            let mut w = channels.write();
-            let c = &mut w[idx];
-            let have: Vec<String> = c
-                .candidates
-                .iter()
-                .map(|(n, _)| n.clone())
-                .chain(c.dispatch.iter().cloned())
-                .collect();
-            for m in pool {
-                if !have.iter().any(|x| x == m) {
-                    c.candidates.push((m.to_string(), false));
-                }
-            }
+    let submitting = use_signal(|| false);
+
+    // 工厂式复制,避免把原 signal 移动出闭包(供 rsx 中 submitting() 继续读取)
+    let submitting2 = submitting;
+    let on_submit2 = on_submit;
+    let channel_key2 = channel_key.clone();
+    let do_submit = move |_| {
+        let key = channel_key2.clone();
+        let n = name.peek().trim().to_string();
+        if n.is_empty() {
+            return;
         }
+        let ct = ctype.peek().clone();
+        let u = url.peek().trim().to_string();
+        let k: Vec<String> = keys
+            .peek()
+            .split('\n')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let g = group.peek().clone();
+        let rm = remark.peek().clone();
+        let (mut sub, cb) = (submitting2, on_submit2);
+        spawn(async move {
+            sub.set(true);
+            let client = ApiClient::shared().clone();
+            let req = ChannelUpsertRequest {
+                name: n,
+                channel_type: ct,
+                base_url: u,
+                keys: k,
+                models: json!([]),
+                group_name: g,
+                priority: 0,
+                weight: 0,
+                test_model: None,
+                remark: rm,
+            };
+            let res = match key {
+                Some(kk) => update_channel_api(&client, &kk, &req).await,
+                None => create_channel_api(&client, &req).await,
+            };
+            let _ = res;
+            sub.set(false);
+            cb.call(());
+        });
     };
 
     rsx! {
@@ -653,13 +507,11 @@ fn ChannelFormModal(
                     }
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "绑定分组" }
-                        select {
+                        input {
                             class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
+                            placeholder: "default",
                             value: "{group}",
-                            onchange: move |e| group.set(e.value()),
-                            for g in groups.read().iter() {
-                                option { value: "{g.name}", "{g.name} ({g.display})" }
-                            }
+                            oninput: move |e| group.set(e.value()),
                         }
                     }
                 }
@@ -694,191 +546,13 @@ fn ChannelFormModal(
                     }
                 }
 
-                // 模型调度管理 (仅编辑状态呈现)
-                if let Some(idx) = channel_idx {
-                    div { class: "rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-3",
-                        div { class: "flex items-center justify-between",
-                            div {
-                                p { class: "text-xs font-medium text-zinc-200", "模型候补池与调度" }
-                                p { class: "text-[11px] text-zinc-500", "拉取上游模型并加入拓扑调度" }
-                            }
-                            button {
-                                class: "rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-500 transition-colors",
-                                onclick: pull_models,
-                                "拉取模型"
-                            }
-                        }
-
-                        // 候补列表
-                        if !channels.read()[idx].candidates.is_empty() {
-                            div { class: "space-y-1",
-                                p { class: "text-[11px] text-zinc-400", "候补池 (勾选后加入调度):" }
-                                div { class: "flex flex-wrap gap-1.5",
-                                    for (j, (m, on)) in channels.read()[idx].candidates.iter().enumerate() {
-                                        {
-                                            let label = m.clone();
-                                            let checked = *on;
-                                            rsx! {
-                                                button {
-                                                    class: if checked {
-                                                        "rounded-md border border-zinc-100 bg-zinc-100 px-2 py-0.5 text-xs text-zinc-900 font-mono transition-colors"
-                                                    } else {
-                                                        "rounded-md border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-400 font-mono hover:border-zinc-600 transition-colors"
-                                                    },
-                                                    onclick: move |_| {
-                                                        let mut w = channels.write();
-                                                        let cur = w[idx].candidates[j].1;
-                                                        w[idx].candidates[j].1 = !cur;
-                                                    },
-                                                    "{label}"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                div { class: "pt-1 flex gap-2",
-                                    button {
-                                        class: "rounded-md bg-zinc-100 px-2.5 py-1 text-[11px] font-medium text-zinc-900 hover:bg-zinc-300",
-                                        onclick: move |_| {
-                                            let mut w = channels.write();
-                                            let picked: Vec<String> = w[idx]
-                                                .candidates
-                                                .iter()
-                                                .filter(|(_, on)| *on)
-                                                .map(|(n, _)| n.clone())
-                                                .collect();
-                                            for p in &picked {
-                                                if !w[idx].dispatch.contains(p) {
-                                                    w[idx].dispatch.push(p.clone());
-                                                }
-                                            }
-                                            w[idx].candidates.retain(|(n, on)| !(*on && picked.contains(n)));
-                                        },
-                                        "将勾选加入调度"
-                                    }
-                                }
-                            }
-                        }
-
-                        // 已调度模型标签
-                        div { class: "space-y-1 pt-1 border-t border-zinc-800/80",
-                            p { class: "text-[11px] text-zinc-400", "已进调度拓扑的模型:" }
-                            if channels.read()[idx].dispatch.is_empty() {
-                                p { class: "text-[11px] text-zinc-600", "暂无模型，请从候补池添加" }
-                            } else {
-                                div { class: "flex flex-wrap gap-1.5",
-                                    for (j, m) in channels.read()[idx].dispatch.iter().enumerate() {
-                                        {
-                                            let label = m.clone();
-                                            rsx! {
-                                                div { class: "flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs font-mono text-zinc-200",
-                                                    span { "{label}" }
-                                                    button {
-                                                        class: "text-zinc-500 hover:text-red-400 ml-1",
-                                                        onclick: move |_| {
-                                                            let mut w = channels.write();
-                                                            let rem = w[idx].dispatch.remove(j);
-                                                            w[idx].candidates.push((rem, false));
-                                                        },
-                                                        "✕"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            div { class: "mt-6 flex gap-3",
-                button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
-                    onclick: move |_| on_cancel.call(()),
-                    "取消"
-                }
-                button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                    onclick: move |_| on_submit.call(()),
-                    "{submit_label}"
-                }
-            }
-        }
-    }
-}
-
-/// 渠道快速解析与导入弹窗
-#[component]
-fn ChannelImportModal(
-    raw: Signal<String>,
-    url: Signal<String>,
-    api_key: Signal<String>,
-    name: Signal<String>,
-    on_cancel: EventHandler<()>,
-    on_submit: EventHandler<()>,
-) -> Element {
-    let mut parsed_state = use_signal(|| None::<bool>);
-
-    rsx! {
-        Modal { title: "快速导入渠道".to_string(), on_close: move |_| on_cancel.call(()),
-            div { class: "space-y-4",
-                p { class: "text-xs text-zinc-400 leading-relaxed",
-                    "在下方输入框中粘贴包含 Base URL 和 API Key 的文本，系统将自动识别并解析提取。"
-                }
-
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "快速粘贴 (支持 URL Key 或 Key=Value)" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "备注 (可选)" }
                     textarea {
-                        class: "w-full h-24 rounded-xl border border-dashed border-zinc-700 bg-zinc-950 px-4 py-2.5 text-xs text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none resize-none",
-                        placeholder: "例如:\nhttps://api.openai.com/v1\nsk-proj-123456789...",
-                        value: "{raw}",
-                        oninput: move |e| {
-                            let text = e.value();
-                            raw.set(text.clone());
-                            if let Some((u, k)) = parse_url_key(&text) {
-                                url.set(u);
-                                api_key.set(k);
-                                parsed_state.set(Some(true));
-                            } else {
-                                parsed_state.set(Some(false));
-                            }
-                        },
-                    }
-                }
-
-                if let Some(true) = parsed_state() {
-                    div { class: "rounded-xl border border-emerald-800/40 bg-emerald-950/30 p-3 text-xs space-y-1 text-emerald-300",
-                        p { "✓ 成功识别并解析目标参数" }
-                    }
-                }
-
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "渠道名称 (可选)" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                        placeholder: "OpenAI 代理",
-                        value: "{name}",
-                        oninput: move |e| name.set(e.value()),
-                    }
-                }
-
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "解析得到的 Base URL" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                        value: "{url}",
-                        oninput: move |e| url.set(e.value()),
-                    }
-                }
-
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "解析得到的 API Key" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                        value: "{api_key}",
-                        oninput: move |e| api_key.set(e.value()),
+                        class: "w-full h-16 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none resize-none",
+                        placeholder: "渠道用途说明",
+                        value: "{remark}",
+                        oninput: move |e| remark.set(e.value()),
                     }
                 }
             }
@@ -891,9 +565,9 @@ fn ChannelImportModal(
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
-                    disabled: url().trim().is_empty() || api_key().trim().is_empty(),
-                    onclick: move |_| on_submit.call(()),
-                    "完成并导入"
+                    disabled: submitting(),
+                    onclick: do_submit,
+                    "{submit_label}"
                 }
             }
         }

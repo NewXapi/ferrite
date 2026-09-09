@@ -1,0 +1,59 @@
+# UI Spec: 账户页 (密钥 / 用量日志 / 邀请奖励)
+# agent 用 tab.ariaSnapshot() + data-testid 逐项验证
+# 参考 OMP skill `ui-validate` 了解完整流程
+#
+# KeysPanel 与 UsageLogsPanel 已接真实后端:
+#   - 密钥:挂载后 use_effect 拉 GET /api/token,渲染 TokenDto,
+#           删除走 DELETE /api/token/{key},改状态走 PUT /api/token/{key},
+#           新建走 POST /api/token。
+#   - 日志:挂载后 use_effect 拉 GET /api/log/self,渲染 UsageLogDto。
+# RewardsPanel 仍是 mock(无后端端点,见 src/rewards.rs 注释)。
+# 下列元素为接线后的稳定契约。
+
+page: "/admin/account"
+name: "账户中心"
+
+elements:
+  - role: region
+    name: "账户中心"
+    required: true
+    testid: "keys-panel"
+
+  - role: region
+    name: "用量日志"
+    required: true
+    testid: "usage-panel"
+
+  # —— 密钥区(真实后端) ——
+  - role: button
+    name: "刷新"
+    testid: "refresh-keys"
+    action: click
+    expect_state_change: true
+
+  - role: listitem
+    name: "密钥 <name>"
+    testid: "key-card"
+    min_rows: 0
+    # 每个 key-card 内应含 编辑 / 启用或停用 / 删除 三个动作
+    children:
+      - role: button
+        name: "编辑"
+      - role: button
+        name: "启用"
+        # 或 "停用",取决于该密钥当前 status
+      - role: button
+        name: "删除"
+
+  # —— 日志区(真实后端) ——
+  - role: button
+    name: "刷新"
+    testid: "refresh-logs"
+    action: click
+    expect_state_change: true
+
+  - role: listitem
+    name: "日志 <model>"
+    testid: "log-card"
+    min_rows: 0
+    # 点击 log-card 打开日志详情弹窗

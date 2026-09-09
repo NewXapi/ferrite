@@ -1,5 +1,8 @@
 use dioxus::prelude::*;
 
+use client::ApiClient;
+use contract::api::usage::DashboardSummaryDto;
+
 use crate::api;
 
 // Layout convention (共享给所有面板组件, 详见仓库 README.md):
@@ -15,8 +18,37 @@ pub fn OverviewPanel() -> Element {
     // ponytail: full UI overhaul to add breakdown cards for all timeframes in one go.
     let timeframe = use_signal(|| "今天"); // "今天", "本周", "本月", "今年"
 
-    // Get the stats for the currently selected timeframe
-    let (stats, user_stats, model_stats) = api::overview::fetch_timeframe_stats(timeframe());
+    // 模型 / 用户 Top10 分布(无后端时间序列端点,保持 mock)
+    let (_stats, user_stats, model_stats) = api::overview::fetch_timeframe_stats(timeframe());
+
+    // 实时汇总:挂载时 use_effect 拉 GET /api/dashboard,写入 summary signal。
+    // 含 loading / error 态;刷新按钮重拉。
+    let mut summary = use_signal(|| None::<DashboardSummaryDto>);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    let mut reload = use_signal(|| 0u32);
+
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match api::get_dashboard_summary_api(&client).await {
+                Ok(d) => {
+                    summary.set(Some(d));
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
+
+    // 把实时 DTO 展开成 (值, 中文标签) 卡片列表(rsx! 之外计算,避免宏内 let)。
+    let stats_opt: Option<Vec<(String, &'static str)>> = summary().as_ref().map(dashboard_stats);
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
@@ -26,10 +58,38 @@ pub fn OverviewPanel() -> Element {
             // 模型调用健康度统计卡片
             crate::health::HealthStats {}
 
-            // Top-level stats
-            section { class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5",
-                for &(value, label) in stats.iter() {
-                    StatCard { value, label }
+            // 实时汇总统计卡(数据来自真实后端 /api/dashboard)
+            div { class: "space-y-3",
+                div { class: "flex items-center justify-between",
+                    h2 { class: "text-lg font-medium text-zinc-100", "总览统计" }
+                    button {
+                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                        "data-testid": "refresh-overview",
+                        onclick: move |_| reload.set(reload() + 1),
+                        "刷新"
+                    }
+                }
+                section { "data-testid": "overview-stats",
+                    class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5",
+                    if let Some(e) = err() {
+                        div { class: "col-span-full rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                            p { class: "text-sm text-red-300", "加载统计失败" }
+                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                            button {
+                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "重试"
+                            }
+                        }
+                    } else if loading() {
+                        div { class: "col-span-full rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
+                            p { class: "text-zinc-400", "正在加载统计…" }
+                        }
+                    } else if let Some(stats) = stats_opt {
+                        for (value, label) in stats {
+                            StatCard { value, label }
+                        }
+                    }
                 }
             }
 
@@ -87,13 +147,28 @@ pub fn OverviewPanel() -> Element {
 
 /// Compact single-stat card occupying one grid column.
 #[component]
-fn StatCard(value: &'static str, label: &'static str) -> Element {
+fn StatCard(value: String, label: &'static str) -> Element {
     rsx! {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/20 group cursor-default",
             p { class: "truncate text-base font-semibold text-zinc-100 transition-colors group-hover:text-white md:text-lg", "{value}" }
             p { class: "mt-0.5 truncate text-xs text-zinc-500 transition-colors group-hover:text-zinc-400", "{label}" }
         }
     }
+}
+
+/// 把实时 `DashboardSummaryDto` 展开成 (值, 中文标签) 卡片列表,供总览统计区渲染。
+///
+/// 顺序与标签:`总用户=users`、`启用渠道=channels_enabled`、`令牌=tokens`、
+/// `分组=groups`、`今日请求=requests_today`、`今日额度=quota_today`。
+fn dashboard_stats(d: &DashboardSummaryDto) -> Vec<(String, &'static str)> {
+    vec![
+        (d.users.to_string(), "总用户"),
+        (d.channels_enabled.to_string(), "启用渠道"),
+        (d.tokens.to_string(), "令牌"),
+        (d.groups.to_string(), "分组"),
+        (d.requests_today.to_string(), "今日请求"),
+        (d.quota_today.to_string(), "今日额度"),
+    ]
 }
 
 /// 模型配色(内联 hex, 不走 Tailwind 扫描, 避免 @source 漏扫隐形)

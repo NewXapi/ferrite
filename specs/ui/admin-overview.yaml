@@ -1,6 +1,9 @@
 # UI Spec: 管理总览页
 # agent 用 tab.ariaSnapshot() + data-testid 逐项验证
 # 参考 OMP skill `ui-validate` 了解完整流程
+#
+# 统计卡数据来自真实后端 GET /api/dashboard(DashboardSummaryDto)。
+# 趋势图 / 健康度 / Top10 分布目前仍是 mock(无后端时间序列端点)。
 
 page: "/admin"
 name: "管理总览"
@@ -10,6 +13,18 @@ elements:
     name: "系统状态"
     required: true
     testid: "heading-system-status"
+
+  - role: region
+    name: "总览统计"
+    required: true
+    testid: "overview-stats"
+    # 6 张实时卡片: 总用户 / 启用渠道 / 令牌 / 分组 / 今日请求 / 今日额度
+
+  - role: button
+    name: "刷新"
+    testid: "refresh-overview"
+    action: click
+    expect_state_change: true
 
   - role: tab
     name: "用户管理"

@@ -154,11 +154,9 @@ pub fn UsersPanel() -> Element {
     // UserForm(编辑回写)、TopUpForm(充值)。Signal 是 Copy;每次调用先复制一份
     // 再 move 进 async,避免把闭包捕获的 signal 移动出去(FnMut 不允许)。
     let make_manage = || {
-        let busy = busy;
-        let notice = notice;
-        let reload = reload;
+        let captured = (busy, notice, reload);
         move |key: String, action: String, value: Option<String>| {
-            let (mut b, mut n, mut r) = (busy, notice, reload);
+            let (mut b, mut n, mut r) = captured;
             spawn(async move {
                 b.set(true);
                 n.set(None);
@@ -688,9 +686,9 @@ fn UserForm(
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                    // 编辑时回写角色;新建暂以 set_role 语义占位(创建端点待接)
+                    // 角色回写(set_role);新建端点待接,暂以 set_role 占位
                     onclick: move |_| {
-                        let action = if editing { "set_role" } else { "set_role" }.to_string();
+                        let action = "set_role".to_string();
                         on_submit.call((action, Some(role().to_string())));
                     },
                     "{submit_label}"
@@ -710,7 +708,7 @@ fn TopUpForm(
     let mut amount = use_signal(|| "50".to_string());
     let parsed = amount().trim().parse::<f64>().ok().filter(|v| *v > 0.0);
     // 充值金额(元) → quota 增量;展示充值后额度
-    let delta_quota = parsed.map(|v| cny_to_quota(v).max(0) as i64);
+    let delta_quota = parsed.map(|v| cny_to_quota(v).max(0));
     let after = delta_quota
         .map(|d| fmt_cny(current_quota + d))
         .unwrap_or_else(|| fmt_cny(current_quota));
