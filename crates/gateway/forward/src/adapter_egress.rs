@@ -122,8 +122,16 @@ impl Service<Uri> for DialerConnector {
             })??;
 
             let stream: Box<dyn DialedStream> = if is_tls {
-                let tls = dial_and_wrap_tls(plain, &host)
+                // TLS 握手也必须在 connect_timeout 内完成：dial 只覆盖 TCP 建连，
+                // 握手挂死的坏节点若不设防会拖满整个 total timeout。
+                let tls = timeout(connect_timeout, dial_and_wrap_tls(plain, &host))
                     .await
+                    .map_err(|_| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            format!("tls handshake to {host}:{port} timed out"),
+                        )
+                    })?
                     .map_err(|e| io_err(format!("tls to {host}:{port}: {e}")))?;
                 Box::new(tls)
             } else {

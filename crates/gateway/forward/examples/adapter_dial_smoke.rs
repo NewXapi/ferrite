@@ -26,6 +26,7 @@ async fn main() {
         "http_proxy",
         "https_proxy",
     ] {
+        // 单线程 example 进程独占环境变量，无并发读取者，安全。
         unsafe { std::env::remove_var(var) };
     }
 

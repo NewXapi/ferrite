@@ -52,6 +52,28 @@ fn test_adapter_for_vless_invalid_uuid() {
     assert!(adapter_opt.is_none());
 }
 
+/// 合法 UUID 的 VLESS 节点走 require_uuid → VlessAdapter 的 happy path。
+/// 与 invalid-UUID 用例互为镜像：一个证明拒绝路径，一个证明接受路径。
+#[test]
+fn test_adapter_for_vless_valid_uuid() {
+    let node = ProxyNode {
+        id: 4,
+        scheme: ProxyScheme::Vless,
+        host: "proxy.example.com".to_string(),
+        port: 443,
+        auth: Some(BasicAuth {
+            user: "11111111-2222-3333-4444-555555555555".to_string(),
+            pass: String::new(),
+        }),
+        vless: None,
+        channel_keys: vec!["test-channel".to_string()],
+        priority: 0,
+    };
+    let adapter = adapter_for(&node);
+    assert!(adapter.is_some(), "合法 UUID 的 vless 必须构造出适配器");
+    assert_eq!(adapter.unwrap().adapter_type(), AdapterType::Vless);
+}
+
 #[test]
 fn test_adapter_for_direct() {
     let node = ProxyNode {

@@ -128,12 +128,17 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                 let sni = vless
                     .and_then(|o| o.sni.clone())
                     .unwrap_or_else(|| node.host.clone());
-                let mut cfg = meow_transport::tls::TlsConfig::new(sni);
+                let mut cfg = meow_transport::tls::TlsConfig::new(sni.clone());
                 if let Some(pbk) = vless.and_then(|o| o.pbk.clone()) {
                     match decode_reality(&pbk, vless.and_then(|o| o.sid.clone())) {
                         Ok(r) => cfg.reality = Some(r),
                         Err(e) => {
-                            tracing::warn!(error = %e, "REALITY 参数非法，节点回落直连");
+                            tracing::warn!(
+                                host = %node.host,
+                                port = node.port,
+                                error = %e,
+                                "REALITY 参数非法，节点回落直连"
+                            );
                             return None;
                         }
                     }
@@ -141,7 +146,13 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                 match meow_transport::tls::TlsLayer::new(&cfg) {
                     Ok(layer) => chain.push(Box::new(layer)),
                     Err(e) => {
-                        tracing::warn!(error = %e, "TLS 层构造失败，节点回落直连");
+                        tracing::warn!(
+                            host = %node.host,
+                            port = node.port,
+                            sni = %sni,
+                            error = %e,
+                            "TLS 层构造失败，节点回落直连"
+                        );
                         return None;
                     }
                 }
@@ -184,8 +195,24 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
 
 /// 取节点认证；缺失时 warn 并返回 `None`（`?` 提前退出整个映射）。
 fn require_auth(node: &ProxyNode) -> Option<&crate::node::BasicAuth> {
+    // SS 的 user= 密码方法、pass= 密码，两个都必须有；VLESS/VMess 的
+    // user=UUID 是唯一必填项（pass 是备注/security，允许为空）。
+    let require_both = matches!(node.scheme, ProxyScheme::Shadowsocks | ProxyScheme::Trojan);
     match &node.auth {
-        Some(a) if !a.user.is_empty() || !a.pass.is_empty() => Some(a),
+        Some(a) if !require_both || (!a.user.is_empty() && !a.pass.is_empty()) => Some(a),
+        Some(a) => {
+            // 只填了一半（比如 SS 只给了 cipher 没给密码）：按缺失处理，
+            // 否则会拖到 adapter 构造深处才报出难懂的错。
+            tracing::warn!(
+                host = %node.host,
+                port = node.port,
+                scheme = ?node.scheme,
+                has_user = !a.user.is_empty(),
+                has_pass = !a.pass.is_empty(),
+                "节点认证信息不完整，回落直连"
+            );
+            None
+        }
         _ => {
             tracing::warn!(
                 host = %node.host,
@@ -228,15 +255,21 @@ fn decode_reality(
     pbk: &str,
     sid: Option<String>,
 ) -> std::result::Result<meow_transport::tls::RealityConfig, String> {
-    let public_key = hex::decode(pbk)
-        .ok()
-        .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| format!("pbk 必须是 64 个 hex 字符，实际 {pbk:?}"))?;
+    // 区分「非 hex 字符」与「长度不对」：REALITY 公钥抄错一位是最常见的
+    // 配置事故，报错精确到错误类别才好排障。
+    let public_key: [u8; 32] = match hex::decode(pbk) {
+        Ok(b) if b.len() == 32 => b.try_into().expect("已判 len==32，转换必成功"),
+        Ok(b) => {
+            return Err(format!(
+                "pbk 必须是 32 字节（64 个 hex 字符），实际 {} 字节",
+                b.len()
+            ));
+        }
+        Err(e) => return Err(format!("pbk 含非法 hex 字符: {e}")),
+    };
     let mut short_id = [0u8; 8];
     if let Some(sid) = sid.filter(|s| !s.is_empty()) {
-        let bytes = hex::decode(sid.as_str())
-            .ok()
-            .ok_or_else(|| "sid 含非法 hex 字符".to_string())?;
+        let bytes = hex::decode(sid.as_str()).map_err(|e| format!("sid 含非法 hex 字符: {e}"))?;
         if bytes.len() > 8 {
             return Err(format!(
                 "sid 最多 8 字节（16 个 hex 字符），实际 {} 字节",
