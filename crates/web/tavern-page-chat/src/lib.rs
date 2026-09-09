@@ -113,8 +113,18 @@ pub fn ChatPage(
     // 当前模型显示(来源:设置里的 model;切换入口后续在设置页做)
     let current_model =
         use_memo(move || STATE.with(|s| s.model.clone().unwrap_or_else(|| "未设置".to_string())));
-    // 下拉列表:目前只有 settings 里配置的那一个模型
-    let models = use_memo(move || STATE.with(|s| s.model.clone().into_iter().collect::<Vec<_>>()));
+    // 是否有已配置模型:无模型时不显示模型菜单(Task A)
+    let has_model = use_memo(move || STATE.with(|s| s.model.is_some()));
+    // 下拉列表:内置可选项(agnes-2.5-flash) + 当前已配置模型。后续接入后端 /v1/models 动态目录。
+    let models = use_memo(move || {
+        let mut v = vec!["agnes-2.5-flash".to_string()];
+        if let Some(m) = STATE.with(|s| s.model.clone()) {
+            if !v.iter().any(|x| x == &m) {
+                v.push(m);
+            }
+        }
+        v
+    });
 
     // 发送处理
     let mut handle_send = move || {
@@ -558,8 +568,9 @@ pub fn ChatPage(
                     onclick: move |e| e.stop_propagation(),
 
                     div { class: "flex flex-wrap items-center justify-between gap-2 px-1 text-xs select-none",
-                        div { class: "relative",
-                            button {
+                        if has_model() {
+                            div { class: "relative",
+                                button {
                                 class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
                                 onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
                                 span { "⚡" }
@@ -591,6 +602,7 @@ pub fn ChatPage(
                                     }
                                 }
                             }
+                        }
                         }
 
                         div { class: "flex flex-wrap items-center gap-1.5",
