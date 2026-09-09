@@ -250,9 +250,14 @@ pub async fn send(text: String) {
         s.last_error = None;
     });
 
-    // 角色/模型仅决定能否触发后端生成:缺失则只展示用户输入,不发起生成。
-    let Some((_character_file, card)) = character_entry else {
-        return;
+    // 角色仅用于生成时的 system prompt;未选角色时用默认(空)角色,仍可正常对话。
+    // 对应"删掉选择角色门槛":用户不必先选角色即可与模型对话。
+    let (card, character_name) = match character_entry {
+        Some((_character_file, c)) => {
+            let name = c.name.clone();
+            (c, name)
+        }
+        None => (Character::default(), "对话".to_string()),
     };
     let Some(model) = model else {
         STATE.with_mut(|st| {
@@ -260,7 +265,6 @@ pub async fn send(text: String) {
         });
         return;
     };
-    let character_name = card.name.clone();
 
     STATE.with_mut(|s| {
         s.generating = true;

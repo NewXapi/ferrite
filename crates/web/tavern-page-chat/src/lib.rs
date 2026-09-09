@@ -562,7 +562,7 @@ pub fn ChatPage(
                         }
                     }
                     // 悬停输入框:浮于聊天区底部; 输入区上下带快捷按钮, 模型置于右下(悬停展开面板)
-                    div { class: "sticky bottom-0 z-20 flex self-center w-4/5 flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
+                    div { class: "sticky bottom-0 z-20 mb-4 flex self-center w-11/12 flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
                         onclick: move |e| e.stop_propagation(),
                         // 上方快捷按钮
                         div { class: "flex flex-wrap items-center gap-1.5",
