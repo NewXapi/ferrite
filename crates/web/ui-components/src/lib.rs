@@ -30,7 +30,8 @@ pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitBu
 pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
 pub use session::{
-    api_login, api_register, clear_cached_session, get_cached_token, get_cached_user,
-    get_storage_item, remove_storage_item, set_cached_session, set_storage_item,
+    api_login, api_register, clear_cached_session, get_cached_refresh_token, get_cached_token,
+    get_cached_user, get_storage_item, get_storage_scoped, refresh_access_token,
+    remove_storage_item, remove_storage_scoped, set_cached_session, set_storage_item,
     set_storage_scoped,
 };
