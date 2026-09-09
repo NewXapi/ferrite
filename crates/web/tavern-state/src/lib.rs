@@ -234,20 +234,9 @@ pub async fn send(text: String) {
     if already_generating {
         return;
     }
-    let Some((_character_file, card)) = character_entry else {
-        STATE.with_mut(|st| {
-            st.last_error = Some("请先选择角色".to_string());
-        });
-        return;
-    };
-    let Some(model) = model else {
-        STATE.with_mut(|st| {
-            st.last_error = Some("未设置模型".to_string());
-        });
-        return;
-    };
-    let character_name = card.name.clone();
 
+    // 乐观上屏:用户消息始终先追加,这样即使未选择角色/模型也能看到自己的输入。
+    // 角色与模型只用于后端生成,缺失时不再阻断展示(对应"删掉选择角色门槛")。
     STATE.with_mut(|s| {
         s.messages.push(Message {
             name: s.user_name.clone(),
@@ -258,9 +247,28 @@ pub async fn send(text: String) {
             swipe_id: None,
             extra: Default::default(),
         });
+        s.last_error = None;
+    });
+
+    // 角色仅用于生成时的 system prompt;未选角色时用默认(空)角色,仍可正常对话。
+    // 对应"删掉选择角色门槛":用户不必先选角色即可与模型对话。
+    let (card, character_name) = match character_entry {
+        Some((_character_file, c)) => {
+            let name = c.name.clone();
+            (c, name)
+        }
+        None => (Character::default(), "对话".to_string()),
+    };
+    let Some(model) = model else {
+        STATE.with_mut(|st| {
+            st.last_error = Some("未设置模型".to_string());
+        });
+        return;
+    };
+
+    STATE.with_mut(|s| {
         s.generating = true;
         s.aborted = false;
-        s.last_error = None;
     });
 
     let body = match build_generate_body(

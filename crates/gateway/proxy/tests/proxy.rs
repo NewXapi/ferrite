@@ -73,6 +73,7 @@ fn to_reqwest_proxy_returns_correct_variant() {
         port: 0,
         auth: None,
         channel_keys: vec![],
+        vless: None,
         priority: 0,
     };
     assert!(node.to_reqwest_proxy().unwrap().is_none());
@@ -88,6 +89,7 @@ fn to_reqwest_proxy_returns_correct_variant() {
             pass: "p".into(),
         }),
         channel_keys: vec![],
+        vless: None,
         priority: 0,
     };
     let proxy = node.to_reqwest_proxy().unwrap().unwrap();
@@ -102,6 +104,7 @@ fn to_reqwest_proxy_returns_correct_variant() {
         port: 1080,
         auth: None,
         channel_keys: vec![],
+        vless: None,
         priority: 0,
     };
     let proxy = node.to_reqwest_proxy().unwrap().unwrap();
@@ -126,6 +129,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
                 port: 1,
                 auth: None,
                 channel_keys: vec!["1".into()],
+                vless: None,
                 priority: 5,
             },
             ProxyNode {
@@ -135,6 +139,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
                 port: 2,
                 auth: None,
                 channel_keys: vec!["1".into()],
+                vless: None,
                 priority: 10,
             },
         ],
@@ -161,6 +166,7 @@ fn pick_respects_priority_layers_and_replaces_on_install() {
             port: 3,
             auth: None,
             channel_keys: vec!["1".into()],
+            vless: None,
             priority: 5,
         }],
     };
@@ -186,6 +192,7 @@ fn pick_random_within_same_priority_layer() {
                 port: 1,
                 auth: None,
                 channel_keys: vec!["1".into()],
+                vless: None,
                 priority: 10,
             },
             ProxyNode {
@@ -195,6 +202,7 @@ fn pick_random_within_same_priority_layer() {
                 port: 2,
                 auth: None,
                 channel_keys: vec!["1".into()],
+                vless: None,
                 priority: 10,
             },
         ],
@@ -351,6 +359,7 @@ fn test_node(
         host: host.into(),
         port,
         auth: None,
+        vless: None,
         channel_keys: vec![key.into()],
         priority,
     }
@@ -475,6 +484,7 @@ fn to_reqwest_proxy_new_schemes_return_error() {
             port: 443,
             auth: None,
             channel_keys: vec![],
+            vless: None,
             priority: 0,
         };
         let result = node.to_reqwest_proxy();

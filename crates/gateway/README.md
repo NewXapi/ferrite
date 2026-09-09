@@ -109,9 +109,12 @@ cargo test -p gateway --test config_wiring
 
 ## MVP：proxy
 
-`ProxyManager::acquire(channel_key)`（`channel_key` = `RouteUnitRecord.channel_key`）
-返回已注入 `reqwest::Proxy` 的 Client；无节点直连。
-`ForwardStage::with_proxies` 把租约接到模型请求。快照注入留给 admin-sync。
+`ProxyManager::acquire(channel_key)`（`channel_key` = `RouteUnitRecord.channel_key`）：
+- direct/http/socks5 → 返回已注入 `reqwest::Proxy` 的 `reqwest::Client`（`ProxyClient::Reqwest`）
+- ss/trojan/vless/vmess → 返回 meow `ProxyAdapter`（`ProxyClient::Adapter`），协议握手在拨号时完成
+
+`ForwardStage::with_proxies` 把租约接到模型请求；二态分派在 `forward::stage`。
+节点来自 `config.toml` 的 `[[proxy_nodes]]`（`build_proxy_snapshot` → `ProxyManager::install`）。
 
 ### 验收
 
@@ -119,9 +122,18 @@ cargo test -p gateway --test config_wiring
 cargo check -p gateway-proxy -p forward
 ```
 
+## MVP：meow 适配器出口
+
+复杂协议出口（SS/Trojan/VLESS/VMess）由 [`meow-proxy`](https://crates.io/crates/meow-proxy)
+（MIT）提供：`[[proxy_nodes]]` 经 `gateway_proxy::adapter::adapter_for` 映射成
+`ProxyAdapter`，`dial_tcp` 内完成协议握手；`forward::adapter_egress` 把拨出的流
+桥成 hyper connector（HTTPS 由 rustls 叠加），`ForwardStage` 不再对协议节点 502。
+Reality 由 `meow-transport` 的 `reality` feature 提供（待节点配置扩展接入）。
+
 ### 验收
 
 ```sh
-cargo check -p gateway-proxy -p forward
+cargo test -p gateway --test egress_wiring
+cargo run --release --example adapter_dial_smoke -p forward
 ```
 

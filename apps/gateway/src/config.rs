@@ -4,7 +4,9 @@
 //! `ConfigRetryLoop`）由 `lib.rs` 的 `build_app` 组装，配置结构不反向依赖它们的语义。
 //!
 //! 单机模式的数据面来源也在此：`[[channels]]` 与 `[[keys]]` 经
-//! [`build_route_snapshot`] / [`build_token_snapshot`] 变成运行期快照，
+//! [`build_route_snapshot`] / [`build_token_snapshot`] 变成运行期快照；
+//! `[[proxy_nodes]]` 经 [`build_proxy_snapshot`] 注入 `ProxyManager`；
+//! vless/vmess/ss/trojan 由 meow 适配器在拨号时完成协议握手。
 use gateway_gate::snapshot::{TokenEntry, TokenSnapshot, UserSnapshot};
 
 use contract::records::{
@@ -173,6 +175,23 @@ fn default_group() -> String {
     "default".to_string()
 }
 
+/// 一条出口节点。URL 支持 `http(s)://` / `socks5(h)://` / `ss://` / `trojan://` /
+/// `vless://` / `vmess://`；协议握手由 meow 适配器在 dial 时完成。
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProxyNodeConfig {
+    /// 节点 id；0 表示由 [`build_proxy_snapshot`] 按配置顺序从 1 起编号。
+    #[serde(default)]
+    pub id: i64,
+    /// 代理 URL，例如 `socks5://127.0.0.1:7890`。
+    pub url: String,
+    /// 绑定的渠道 `name` 列表；空则该节点不会被任何 `acquire` 选中。
+    #[serde(default)]
+    pub channel_keys: Vec<String>,
+    /// 优先级，数字越大越优先。
+    #[serde(default)]
+    pub priority: i32,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct GatewayConfig {
     #[serde(default = "default_listen")]
@@ -191,6 +210,9 @@ pub struct GatewayConfig {
     /// 本地 API key；空 = 所有请求 401。
     #[serde(default)]
     pub keys: Vec<KeyConfig>,
+    /// 出口节点。空 = 模型请求直连。
+    #[serde(default)]
+    pub proxy_nodes: Vec<ProxyNodeConfig>,
 }
 
 fn default_listen() -> String {
@@ -379,4 +401,66 @@ fn key_preview(key: &str) -> String {
     let head: String = key.chars().take(4).collect();
     let tail: String = key.chars().skip(n - 4).collect();
     format!("{head}****{tail}")
+}
+
+/// 代理 URL 掩码 —— userinfo 与 query（pbk/sid/密码）都含凭据，日志只保留
+/// `scheme://***@host:port` 骨架，能定位节点但不泄密。
+fn url_preview(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(u) => {
+            let auth = if u.username().is_empty() && u.password().is_none() {
+                String::new()
+            } else {
+                "***@".to_string()
+            };
+            let port = u.port().map(|p| format!(":{p}")).unwrap_or_default();
+            format!(
+                "{}://{}{}{}{}",
+                u.scheme(),
+                auth,
+                u.host_str().unwrap_or("?"),
+                port,
+                {
+                    // REALITY 的 pbk/sid 也算凭据，一并抹掉
+                    if u.query().is_some() { "?***" } else { "" }
+                }
+            )
+        }
+        Err(_) => "***（URL 无法解析）***".to_string(),
+    }
+}
+
+/// `[[proxy_nodes]]` → `ProxySnapshot`。非法 URL / 空 `channel_keys` 跳过并打 warn。
+///
+/// scheme 不再过滤：http/socks5 走 reqwest，ss/trojan/vless/vmess 走
+/// `gateway_proxy::adapter_for` 的 meow 适配器（配置有误时 `adapter_for`
+/// 自己 warn 并回落直连，不需要在这里预筛）。
+pub fn build_proxy_snapshot(nodes: &[ProxyNodeConfig]) -> gateway_proxy::ProxySnapshot {
+    use gateway_proxy::{ProxyNode, ProxySnapshot};
+
+    let mut out = Vec::new();
+    for (idx, cfg) in nodes.iter().enumerate() {
+        // URL 里的 userinfo / ss-vless query 都带凭据，日志只留骨架。
+        let preview = url_preview(&cfg.url);
+        if cfg.channel_keys.is_empty() {
+            tracing::warn!(url = %preview, "proxy_nodes 缺少 channel_keys，跳过");
+            continue;
+        }
+        let mut node = match ProxyNode::parse_url(&cfg.url) {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(url = %preview, error = %e, "proxy_nodes URL 解析失败，跳过");
+                continue;
+            }
+        };
+        node.id = if cfg.id == 0 {
+            (idx as i64).saturating_add(1)
+        } else {
+            cfg.id
+        };
+        node.channel_keys = cfg.channel_keys.clone();
+        node.priority = cfg.priority;
+        out.push(node);
+    }
+    ProxySnapshot { nodes: out }
 }

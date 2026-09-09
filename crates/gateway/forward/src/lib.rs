@@ -20,6 +20,7 @@
 //! 4. **可重放**: 请求体缓存 (Bytes 池), 重试时免读原始 body。
 
 pub mod adapter;
+pub mod adapter_egress;
 pub mod egress;
 pub mod pipeline;
 pub mod stage;

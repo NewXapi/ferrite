@@ -1,7 +1,7 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
 //! 深度优化满足需求:
-//! 1. 左侧改为常驻可收缩侧边栏 (Sidebar):展开显示角色/会话全信息,收缩为图标轨,会话以单字符号呈现;右侧时间线大纲仍为浮层抽屉 (Drawer),互斥排他。
+//! 1. 左侧改为常驻可收缩侧边栏 (Sidebar):展开显示角色/会话全信息,收缩为图标轨,会话以单字符号呈现;中央互动区左侧再接一条垂直居中的 prompt 导航条:以横线表示每一次用户 prompt,随滚动高亮当前 prompt,悬停弹窗预览完整 prompt,点击定位。原右侧「剧情大纲索引」浮层抽屉已移除。
 //! 2. 会话多聊天室真正独立隔离 (每个分支会话维护各自的消息历史，切换时完整重载不同内容)
 //! 3. 消息气泡交互升级: 点击气泡浮出专属操作菜单 (复制/编辑/分支切换/删除)
 //! 4. 侧栏「剧本详情」和「赞赏作品」以景深模糊弹窗 (Modal) 呈现
@@ -104,11 +104,25 @@ pub fn ChatPage(
     let mut draft = use_signal(String::new);
     let mut delete_id = use_signal(|| None::<usize>);
 
+    // 左侧 prompt 导航条相关状态
+    let active_prompt = use_signal(|| 0usize); // 当前滚动到的消息索引(用于高亮对应 prompt)
+    let scroll_dirty = use_signal(|| false); // 滚动去抖:仍有未处理的滚动
+    let scroll_running = use_signal(|| false); // 滚动计算任务是否进行中
+    let hovered_prompt = use_signal(|| None::<usize>); // 悬停预览的 prompt 序号
+
     // 当前模型显示(来源:设置里的 model;切换入口后续在设置页做)
     let current_model =
         use_memo(move || STATE.with(|s| s.model.clone().unwrap_or_else(|| "未设置".to_string())));
-    // 下拉列表:目前只有 settings 里配置的那一个模型
-    let models = use_memo(move || STATE.with(|s| s.model.clone().into_iter().collect::<Vec<_>>()));
+    // 下拉列表:内置可选项(agnes-2.5-flash) + 当前已配置模型。后续接入后端 /v1/models 动态目录。
+    let models = use_memo(move || {
+        let mut v = vec!["agnes-2.5-flash".to_string()];
+        if let Some(m) = STATE.with(|s| s.model.clone())
+            && !v.iter().any(|x| x == &m)
+        {
+            v.push(m);
+        }
+        v
+    });
 
     // 发送处理
     let mut handle_send = move || {
@@ -128,6 +142,51 @@ pub fn ChatPage(
         dioxus::document::eval(
             "setTimeout(() => { const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, 50);",
         );
+    };
+
+    // 滚动联动 prompt 导航条:根据视口顶部位置算出"当前消息",再映射到对应 prompt 高亮。
+    // 用 dirty/running 双信号做去抖合并,避免每次 scroll 都起一个 eval 任务。
+    let on_scroll = {
+        let mut active_prompt = active_prompt;
+        let mut scroll_dirty = scroll_dirty;
+        let mut scroll_running = scroll_running;
+        move |_evt| {
+            scroll_dirty.set(true);
+            if scroll_running() {
+                return;
+            }
+            scroll_running.set(true);
+            spawn(async move {
+                loop {
+                    scroll_dirty.set(false);
+                    let js = r#"
+                        (function(){
+                            const vp = document.getElementById('chat-scroll-viewport');
+                            if(!vp) return -1;
+                            const vpr = vp.getBoundingClientRect();
+                            const nodes = vp.querySelectorAll('[id^="story-node-"]');
+                            let best = 0;
+                            for (const n of nodes){
+                                const rel = n.getBoundingClientRect().top - vpr.top;
+                                if (rel <= 140) best = parseInt(n.id.split('-').pop(), 10);
+                                else break;
+                            }
+                            return best;
+                        })()
+                    "#;
+                    if let Ok(value) = dioxus::document::eval(js).await
+                        && let Some(n) = value.as_i64().or_else(|| value.as_u64().map(|x| x as i64))
+                        && n >= 0
+                    {
+                        active_prompt.set(n as usize);
+                    }
+                    if !scroll_dirty() {
+                        break;
+                    }
+                }
+                scroll_running.set(false);
+            });
+        }
     };
 
     // 角色头部信息
@@ -334,76 +393,64 @@ pub fn ChatPage(
                 }
             }
 
-            // 右侧时间线大纲抽屉
-            div {
-                class: if active_drawer() == Some("right") {
-                    "fixed inset-y-0 right-0 z-50 flex h-full w-80 flex-col border-l border-zinc-800/80 bg-zinc-900/95 backdrop-blur-2xl shadow-2xl transition-all duration-300 translate-x-0"
-                } else {
-                    "fixed inset-y-0 right-0 z-50 flex h-full w-80 flex-col border-l border-zinc-800/80 bg-zinc-900/95 backdrop-blur-2xl shadow-2xl transition-all duration-300 translate-x-full pointer-events-none"
-                },
-                div { class: "flex h-full w-full flex-col gap-3 p-5 select-none",
-                    div { class: "flex items-center justify-between border-b border-zinc-800 pb-3",
-                        div { class: "flex items-center gap-2",
-                            span { class: "text-sm", "📑" }
-                            h2 { class: "font-serif text-sm font-bold text-zinc-100", "剧情大纲索引" }
-                        }
-                        div { class: "flex items-center gap-2",
-                            span { class: "text-[10px] text-zinc-500 tabular-nums", "{STATE.read().messages.len()} 节点" }
-                            button {
-                                class: "flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
-                                onclick: move |_| active_drawer.set(None),
-                                "»"
-                            }
-                        }
-                    }
+            // (prompt 导航条已移至中央互动区:垂直居中的横线导航,见下方中央区实现)
 
-                    div { class: "flex-1 overflow-y-auto space-y-2 pr-0.5 no-scrollbar",
-                        for (idx, msg) in STATE.read().messages.iter().enumerate() {
-                            {
-                                let (content, mine, _, _) = msg_display(msg);
-                                let kind = if mine { "玩家" } else { "NPC" };
-                                let short: String = content.chars().take(20).collect();
-                                rsx! {
-                                    button {
-                                        key: "outline-{idx}",
-                                        class: "group flex w-full flex-col gap-1 rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-2.5 text-left transition-all hover:border-purple-500/50 hover:bg-zinc-900",
-                                        onclick: move |_| {
-                                            let eval_js = format!("document.getElementById('story-node-{}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});", idx);
-                                            dioxus::document::eval(&eval_js);
-                                            active_drawer.set(None);
-                                        },
-                                        div { class: "flex items-center justify-between text-[10px]",
-                                            span { class: "font-mono font-bold text-zinc-500 group-hover:text-purple-300 transition-colors",
-                                                "#{idx + 1:02}"
-                                            }
-                                            span { class: "rounded bg-zinc-800 px-1.5 py-0.2 text-[9px] text-zinc-400 group-hover:bg-purple-950 group-hover:text-purple-300 transition-colors",
-                                                "{kind}"
+            // 中央互动剧情主视区
+                div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                    // 左侧 prompt 导航条:垂直居中,以横线(每条=一次用户 prompt)显示,悬停弹窗,点击定位
+                    {
+                        let prompts: Vec<(usize, String, String)> = STATE.read().messages.iter().enumerate()
+                            .filter_map(|(i, m)| {
+                                let (content, mine, _, _) = msg_display(m);
+                                if mine { Some((i, m.name.clone(), content)) } else { None }
+                            }).collect();
+                        let active_msg = active_prompt();
+                        let active_prompt_idx = prompts.iter().rposition(|(mi, _, _)| *mi <= active_msg).unwrap_or(0);
+                        rsx! {
+                            if !prompts.is_empty() {
+                                div { class: "absolute left-2 top-1/2 z-30 flex max-h-[75vh] -translate-y-1/2 flex-col items-center gap-1.5 overflow-y-auto rounded-xl border border-zinc-800/50 bg-zinc-950/70 px-2 py-2 backdrop-blur-xl",
+                                for (pi, (midx, name, content)) in prompts.iter().enumerate() {
+                                    {
+                                        let is_active = active_prompt_idx == pi;
+                                        let name_c = name.clone();
+                                        let content_c = content.clone();
+                                        let midx_c = *midx;
+                                        let tt = format!("{}: {}", name_c, content_c);
+                                        let label = format!("{}", pi + 1);
+                                        let mut hp = hovered_prompt;
+                                        rsx! {
+                                            div {
+                                                class: if is_active {
+                                                    "h-[3px] w-6 cursor-pointer rounded-full bg-purple-400 shadow-[0_0_8px] shadow-purple-500/70 transition-all"
+                                                } else {
+                                                    "h-[3px] w-5 cursor-pointer rounded-full bg-zinc-600 hover:bg-zinc-300 hover:w-6 transition-all"
+                                                },
+                                                "data-testid": format!("prompt-nav-{}", pi),
+                                                title: "{tt}",
+                                                aria_label: "prompt {label}",
+                                                onmouseenter: move |_| hp.set(Some(pi)),
+                                                onmouseleave: move |_| hp.set(None),
+                                                onclick: move |_| {
+                                                    dioxus::document::eval(&format!("document.getElementById('story-node-{midx_c}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});"));
+                                                },
                                             }
                                         }
-                                        span { class: "line-clamp-1 text-xs text-zinc-300 group-hover:text-zinc-100 transition-colors",
-                                            "{msg.name}: {short}"
-                                        }
+                                    }
+                                }
+                            }
+                            }
+                            if let Some(pi) = hovered_prompt() {
+                                if let Some((_, name, content)) = prompts.get(pi) {
+                                    div { class: "pointer-events-none absolute left-12 top-1/2 z-40 -translate-y-1/2 w-60 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-2.5 text-[11px] leading-5 text-zinc-200 shadow-2xl backdrop-blur-xl",
+                                        span { class: "mb-1 block text-[10px] font-bold text-purple-300", "{name}" }
+                                        "{content}"
                                     }
                                 }
                             }
                         }
                     }
 
-                    button {
-                        class: "mt-auto flex items-center justify-center gap-1 rounded-xl border border-zinc-8 bg-zinc-900 py-2 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors",
-                        onclick: move |_| {
-                            dioxus::document::eval("const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });");
-                            active_drawer.set(None);
-                        },
-                        span { "⬇" }
-                        span { "平滑滑至最新" }
-                    }
-                }
-            }
-
-            // 中央互动剧情主视区
-            div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
+                    div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
                     div { class: "flex items-center gap-2",
                         button {
                             class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
@@ -433,21 +480,6 @@ pub fn ChatPage(
 
                     div { class: "flex items-center gap-2",
                         button {
-                            class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
-                            title: "展开剧情时间线大纲",
-                            onclick: move |e| {
-                                e.stop_propagation();
-                                if active_drawer() == Some("right") {
-                                    active_drawer.set(None);
-                                } else {
-                                    active_drawer.set(Some("right"));
-                                }
-                            },
-                            span { "📑" }
-                            span { class: "font-semibold", "时间线大纲" }
-                        }
-
-                        button {
                             class: "flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
                             title: "切换光暗",
                             onclick: move |_| on_toggle_theme.call(()),
@@ -468,7 +500,8 @@ pub fn ChatPage(
 
                 div {
                     id: "chat-scroll-viewport",
-                    class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto scroll-smooth p-4 sm:p-6 lg:px-24 xl:px-44 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                    class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 lg:px-24 xl:px-44 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                    onscroll: on_scroll,
                     for (idx, msg) in STATE.read().messages.iter().enumerate() {
                         {
                             let (content, mine, swipe_idx, swipes) = msg_display(msg);
@@ -525,74 +558,13 @@ pub fn ChatPage(
                                 }
                             }
                         }
-                    }
-                }
-
-                div { class: "flex shrink-0 flex-col gap-2 border-t border-zinc-800/60 bg-zinc-900/90 p-3 backdrop-blur-2xl z-10 select-none",
-                    onclick: move |e| e.stop_propagation(),
-
-                    div { class: "flex flex-wrap items-center justify-between gap-2 px-1 text-xs select-none",
-                        div { class: "relative",
-                            button {
-                                class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
-                                onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
-                                span { "⚡" }
-                                span { "{current_model()}" }
-                                span { class: "text-[10px] text-zinc-400", "⌵" }
-                            }
-                            if model_dropdown_open() {
-                                div { class: "absolute bottom-full left-0 z-50 mb-2 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-2xl backdrop-blur-2xl",
-                                    for m in models() {
-                                        {
-                                            let model_name = m.to_string();
-                                            rsx! {
-                                                button {
-                                                    key: "{m}",
-                                                    class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
-                                                    onclick: move |_| {
-                                                        STATE.with_mut(|s| {
-                                                            s.model = Some(model_name.clone());
-                                                        });
-                                                        model_dropdown_open.set(false);
-                                                    },
-                                                    span { "{m}" }
-                                                    if current_model() == m {
-                                                        span { class: "text-[10px] text-emerald-400", "✓" }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
-
+                    }
+                    // 悬停输入框:浮于聊天区底部; 输入区上下带快捷按钮, 模型置于右下(悬停展开面板)
+                    div { class: "sticky bottom-0 z-20 mb-4 flex self-center w-11/12 flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
+                        onclick: move |e| e.stop_propagation(),
+                        // 上方快捷按钮
                         div { class: "flex flex-wrap items-center gap-1.5",
-                            button {
-                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
-                                onclick: move |_| {
-                                    draft.set("【敏锐洞察】仔细打量四周环境与对方微妙的肢体反应。".into());
-                                    handle_send();
-                                },
-                                "🔍 观察现场"
-                            }
-                            button {
-                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
-                                onclick: move |_| {
-                                    draft.set("【深入追问】\"你刚才的话，似乎并没有说完。\"".into());
-                                    handle_send();
-                                },
-                                "🗣️ 深入追问"
-                            }
-                            button {
-                                class: "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors",
-                                onclick: move |_| {
-                                    draft.set("【推进剧情】沉默数秒后，直接切入核心条款。".into());
-                                    handle_send();
-                                },
-                                "⏩ 推进剧情"
-                            }
-
                             button {
                                 class: if mod_active() {
                                     "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
@@ -620,53 +592,91 @@ pub fn ChatPage(
                                 onclick: move |_| stream_toggle.set(!stream_toggle()),
                                 "≈ 流式"
                             }
-                            button {
-                                class: "rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-500/20",
-                                onclick: move |_| {
-                                    draft.set("【突发离场】拒绝此项提议，直接推门离场。".into());
-                                    handle_send();
+                        }
+                        // 输入框
+                        div { class: "flex items-end gap-2",
+                            textarea {
+                                class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
+                                placeholder: "输入你的决策或行动 (电脑端 Shift+回车换行)",
+                                value: "{draft()}",
+                                oninput: move |e| draft.set(e.value()),
+                                onkeydown: move |e| {
+                                    if e.key() == Key::Enter && !e.modifiers().shift() {
+                                        e.prevent_default();
+                                        handle_send();
+                                    }
                                 },
-                                "跑路！！！"
                             }
                         }
-
-                        if STATE.with(|s| s.generating) {
-                            div { class: "ml-auto flex items-center gap-2 text-[10px] text-cyan-400",
-                                span { "⚡ 生成中..." }
-                                button {
-                                    class: "ml-2 text-zinc-500 hover:text-white",
-                                    onclick: move |_| {
-                                        abort();
-                                    },
-                                    "✕"
+                        // 下方:左=状态, 右=模型选择 + 发送
+                        div { class: "flex items-center justify-between gap-2",
+                            div { class: "flex min-w-0 items-center gap-2 text-[10px]",
+                                if STATE.with(|s| s.generating) {
+                                    span { class: "flex items-center gap-1 text-cyan-400",
+                                        "⚡ 生成中..."
+                                        button {
+                                            class: "text-zinc-500 hover:text-white",
+                                            onclick: move |_| abort(),
+                                            "✕"
+                                        }
+                                    }
                                 }
                             }
-                        }
-                        if let Some(err) = STATE.with(|s| s.last_error.clone()) {
-                            div { class: "ml-auto text-[10px] text-rose-400", "{err}" }
+                            div { class: "flex shrink-0 items-center gap-2",
+                                // 模型选择器(右下, 悬停展开)
+                                div { class: "relative",
+                                    onmouseenter: move |_| model_dropdown_open.set(true),
+                                    onmouseleave: move |_| model_dropdown_open.set(false),
+                                    button {
+                                        class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
+                                        span { "⚡" }
+                                        span { "{current_model()}" }
+                                        span { class: "text-[10px] text-zinc-400", "⌵" }
+                                    }
+                                    if model_dropdown_open() {
+                                        div { class: "absolute bottom-full right-0 z-50 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 pt-3 shadow-2xl backdrop-blur-2xl",
+                                            for m in models() {
+                                                {
+                                                    let model_name = m.to_string();
+                                                    rsx! {
+                                                        button {
+                                                            key: "{m}",
+                                                            class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
+                                                            onclick: move |_| {
+                                                                STATE.with_mut(|s| {
+                                                                    s.model = Some(model_name.clone());
+                                                                });
+                                                                model_dropdown_open.set(false);
+                                                            },
+                                                            span { "{m}" }
+                                                            if current_model() == m {
+                                                                span { class: "text-[10px] text-emerald-400", "✓" }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                button {
+                                    class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
+                                    disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
+                                    onclick: move |_| handle_send(),
+                                    if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
+                                }
+                            }
                         }
                     }
 
-                    div { class: "flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2.5 shadow-inner",
-                        textarea {
-                            class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
-                            placeholder: "点击上方行动选项，或输入自定义决策 (电脑端 Shift+回车换行)",
-                            value: "{draft()}",
-                            oninput: move |e| draft.set(e.value()),
-                            onkeydown: move |e| {
-                                if e.key() == Key::Enter && !e.modifiers().shift() {
-                                    e.prevent_default();
-                                    handle_send();
-                                }
-                            },
-                        }
-                        div { class: "flex shrink-0 items-center gap-2 select-none",
-                            span { class: "text-[10px] text-zinc-600 tabular-nums", "{draft().len()}" }
+                div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800/60 bg-zinc-900/90 px-3 py-1.5 backdrop-blur-2xl z-10 select-none",
+                    if STATE.with(|s| s.generating) {
+                        div { class: "flex items-center gap-2 text-[10px] text-cyan-400",
+                            span { "⚡ 生成中..." }
                             button {
-                                class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
-                                disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
-                                onclick: move |_| handle_send(),
-                                if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
+                                class: "text-zinc-500 hover:text-white",
+                                onclick: move |_| abort(),
+                                "✕"
                             }
                         }
                     }
