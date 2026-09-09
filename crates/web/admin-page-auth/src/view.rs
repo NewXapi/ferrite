@@ -210,11 +210,10 @@ pub fn AuthPage() -> Element {
 
                 // Footer
                 p {
-                    class: "mt-8 text-center text-xs text-zinc-600",
+                    class: "mt-6 text-center text-xs text-zinc-600",
                     "By continuing, you agree to our "
-                    a {
-                        class: "text-zinc-500 hover:text-zinc-400 underline underline-offset-2 transition-colors",
-                        href: "#",
+                    span {
+                        class: "cursor-pointer text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200",
                         "Terms of Service"
                     }
                 }

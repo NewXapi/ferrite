@@ -171,23 +171,23 @@ fn UserMenu(name: String, on_logout: EventHandler<()>) -> Element {
                 "aria-expanded": "{open()}",
                 onclick: move |_| open.toggle(),
                 "{name}"
-                span { class: "ml-1 text-[10px]", "▾" }
             }
             if open() {
                 div {
-                    class: "absolute right-0 mt-2 w-40 rounded-xl border border-zinc-700 bg-zinc-900 py-1 text-left shadow-xl shadow-black/40",
+                    class: "absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/95 py-1 text-left shadow-xl shadow-black/40 backdrop-blur",
                     role: "menu",
                     "aria-label": "用户菜单",
                     a {
-                        class: "block px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                        class: "block px-4 py-2.5 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
                         "data-testid": "menu-account",
                         role: "menuitem",
                         href: "#account",
                         onclick: move |_| open.set(false),
                         "账户资料"
                     }
+                    div { class: "my-1 h-px bg-zinc-800" }
                     button {
-                        class: "block w-full text-left px-4 py-2 text-sm text-red-400 transition-colors hover:bg-zinc-800 hover:text-red-300",
+                        class: "block w-full text-left px-4 py-2.5 text-sm text-red-400 transition-colors hover:bg-zinc-800 hover:text-red-300",
                         "data-testid": "logout",
                         role: "menuitem",
                         onclick: move |_| { open.set(false); on_logout.call(()); },

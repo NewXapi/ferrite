@@ -1,7 +1,7 @@
 //! Auth page private form components: field styles + real submit wiring.
 
 use dioxus::prelude::*;
-use ui::{CodeField, FormField as Field, PasswordField, SubmitButton};
+use ui::{FormField as Field, PasswordField, SubmitButton};
 
 /// 提交共享状态：错误信息 + busy（按钮禁用）。
 #[derive(Clone, Default)]
@@ -73,9 +73,8 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                     }
                     span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
                 }
-                a {
-                    class: "text-zinc-400 hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
-                    href: "#",
+                span {
+                    class: "cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
                     "Forgot password?"
                 }
             }
@@ -100,7 +99,6 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
     let mut error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut email = use_signal(String::new);
-    let mut code = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut confirm = use_signal(String::new);
 
@@ -130,17 +128,9 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
                 label: "Email",
                 name: "email",
                 r#type: "email",
-                placeholder: "name@example.com",
+                placeholder: "name@example.com (optional)",
                 value: email(),
                 oninput: move |ev: dioxus::prelude::FormEvent| email.set(ev.value()),
-            }
-            CodeField {
-                label: "Verification code",
-                name: "verification_code",
-                placeholder: "6-digit code",
-                value: code(),
-                oninput: move |ev: dioxus::prelude::FormEvent| code.set(ev.value()),
-                on_send: move |_| {},
             }
             PasswordField {
                 label: "Password",
