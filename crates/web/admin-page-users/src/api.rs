@@ -39,7 +39,10 @@ use client::{ApiClient, ApiResult};
 use contract::api::admin::{AdminUserPage, ManageUserRequest};
 use contract::api::user::UserDto;
 
-/// 真实调用: GET /api/user?search=&page=&size=
+/// 真实调用: GET /api/user/users?search=&page=&size=
+///
+/// 路径含两段 `user(s)`：auth 子路由自身是 `/users`，被 admin-router
+/// 整体 nest 到 `/api/user` 之下，因此完整路径是 `/api/user/users`。
 pub async fn list_users_api(
     client: &ApiClient,
     search: Option<&str>,
@@ -59,19 +62,21 @@ pub async fn list_users_api(
         query.push(format!("size={sz}"));
     }
     let path = if query.is_empty() {
-        "/api/user".to_string()
+        "/api/user/users".to_string()
     } else {
-        format!("/api/user?{}", query.join("&"))
+        format!("/api/user/users?{}", query.join("&"))
     };
     client.get(&path).await
 }
 
-/// 真实调用: POST /api/user/manage
+/// 真实调用: POST /api/user/users/manage
+///
+/// 同 [`list_users_api`]：auth 的 `/users/manage` + nest 前缀 `/api/user`。
 pub async fn manage_user_api(
     client: &ApiClient,
     req: &ManageUserRequest,
 ) -> ApiResult<serde_json::Value> {
-    client.post("/api/user/manage", req).await
+    client.post("/api/user/users/manage", req).await
 }
 
 /// 真实调用: GET /api/user/self
