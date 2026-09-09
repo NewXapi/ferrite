@@ -105,10 +105,19 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
         }
         ProxyScheme::Trojan => {
             let auth = require_auth(node)?;
+            let tls = node.vless.as_ref(); // trojan 也复用 query 的 sni/insecure
+            let sni = tls
+                .and_then(|o| o.sni.clone())
+                .unwrap_or_else(|| node.host.clone());
+            let skip_verify = tls.is_some_and(|o| o.insecure);
             Some(Arc::new(TrojanAdapter::new(
-                &name, &node.host, node.port, &auth.pass,
-                // sni 缺省 = 服务器地址本身（rustls 会用 server name 校验）
-                &node.host, false, false,
+                &name,
+                &node.host,
+                node.port,
+                &auth.pass,
+                &sni,
+                skip_verify,
+                false,
             )))
         }
         ProxyScheme::Vless => {
@@ -276,9 +285,10 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
     }
 }
 fn require_auth(node: &ProxyNode) -> Option<&crate::node::BasicAuth> {
-    // SS 的 user= 密码方法、pass= 密码，两个都必须有；VLESS/VMess 的
-    // user=UUID 是唯一必填项（pass 是备注/security，允许为空）。
-    let require_both = matches!(node.scheme, ProxyScheme::Shadowsocks | ProxyScheme::Trojan);
+    // SS 的 user= 密码方法、pass= 密码，两个都必须有；Trojan/VLESS/VMess 的
+    // 密码/UUID 都在 user 字段（trojan://pass@host、vless://uuid@host），
+    // pass 允许为空——之前把 Trojan 也算成双字段协议，合法节点被拒。
+    let require_both = matches!(node.scheme, ProxyScheme::Shadowsocks);
     match &node.auth {
         Some(a) if !require_both || (!a.user.is_empty() && !a.pass.is_empty()) => Some(a),
         Some(a) => {
@@ -329,27 +339,35 @@ fn require_uuid(node: &ProxyNode) -> Option<[u8; 16]> {
 
 /// 把节点配置里的 REALITY 参数解码成 meow 的 [`RealityConfig`]。
 ///
-/// - `pbk`：X25519 公钥，hex 64 字符（32 字节），非法直接报错
+/// - `pbk`：X25519 公钥。**xray 分享链接里是 43 字符 base64url（无 padding）**，
+///   也兼容 64 字符 hex；两者解码后都必须是 32 字节，否则报错
 /// - `sid`：short id，hex 0-16 字符（0-8 字节），解码后**前对齐**补零到
 ///   8 字节（与 xray 的 SNI 拼接约定一致）；缺省全 0
 fn decode_reality(
     pbk: &str,
     sid: Option<String>,
 ) -> std::result::Result<meow_transport::tls::RealityConfig, String> {
-    // 区分「非 hex 字符」与「长度不对」：REALITY 公钥抄错一位是最常见的
-    // 配置事故，报错精确到错误类别才好排障。
-    let public_key: [u8; 32] = match hex::decode(pbk) {
-        Ok(b) if b.len() == 32 => b
-            .try_into()
-            .unwrap_or_else(|_| unreachable!("上一分支已判 len == 32，[u8; 32] 转换必然成功")),
-        Ok(b) => {
+    // 先试 hex（64 字符常规配置），失败再试 base64url 43 字符（xray 分享链接）：
+    // base64url 字母表与 hex 有交集，仅凭字符集无法区分，用「长度 + 解码成功」判定。
+    let decode32 = |s: &str, what: &str| -> Result<[u8; 32], String> {
+        let bytes = if s.len() == 64 {
+            hex::decode(s).map_err(|e| format!("{what} 含非法 hex 字符: {e}"))?
+        } else if s.len() == 43 {
+            use base64::Engine as _;
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(s)
+                .map_err(|e| format!("{what} base64url 解码失败: {e}"))?
+        } else {
             return Err(format!(
-                "pbk 必须是 32 字节（64 个 hex 字符），实际 {} 字节",
-                b.len()
+                "{what} 长度非法：应为 64 hex 或 43 base64url 字符，实际 {}",
+                s.len()
             ));
-        }
-        Err(e) => return Err(format!("pbk 含非法 hex 字符: {e}")),
+        };
+        bytes
+            .try_into()
+            .map_err(|b: Vec<u8>| format!("{what} 必须 32 字节，实际 {} 字节", b.len()))
     };
+    let public_key = decode32(pbk, "pbk")?;
     let mut short_id = [0u8; 8];
     if let Some(sid) = sid.filter(|s| !s.is_empty()) {
         let bytes = hex::decode(sid.as_str()).map_err(|e| format!("sid 含非法 hex 字符: {e}"))?;
