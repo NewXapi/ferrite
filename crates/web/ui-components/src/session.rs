@@ -111,14 +111,17 @@ pub async fn api_login(req: LoginRequest) -> Result<LoginResponse, String> {
                 email: format!("{}@ferrite.dev", req.username),
                 quota: 500000,
                 used_quota: 12000,
-                request_count: 42,
+                request_count: Some(42),
                 group: "default".into(),
-                role: if req.username == "root" || req.username == "admin" {
-                    "admin".into()
+                role: if req.username == "root" {
+                    100
+                } else if req.username == "admin" {
+                    10
                 } else {
-                    "user".into()
+                    1
                 },
                 status: 1,
+                auth_version: 0,
                 created_at: "2026-09-05".into(),
             };
             let mock_res = LoginResponse {

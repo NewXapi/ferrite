@@ -61,6 +61,7 @@ pub fn fetch_invite_link() -> &'static str {
 
 use client::{ApiClient, ApiResult};
 use contract::api::token::{CreateTokenRequest, TokenDto, UpdateTokenRequest};
+use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto};
 use contract::api::usage::{UsageLogPage, UsageStatDto};
 
 /// 真实调用: GET /api/token
@@ -117,4 +118,49 @@ pub async fn list_self_logs_api(
 /// 真实调用: GET /api/log/self/stat
 pub async fn get_self_stat_api(client: &ApiClient) -> ApiResult<UsageStatDto> {
     client.get("/api/log/self/stat").await
+}
+
+// ---- 用户信息 (self / sessions / settings) ----
+
+/// 真实调用: GET /api/user/self → 当前登录用户的真实资料 (UserView wire)。
+pub async fn get_self_api(client: &ApiClient) -> ApiResult<UserDto> {
+    client.get("/api/user/self").await
+}
+
+/// 真实调用: PUT /api/user/self — 改显示名 / 改密码 (改密须原密码+新密码成对)。
+pub async fn update_self_api(
+    client: &ApiClient,
+    req: &UpdateSelfRequest,
+) -> ApiResult<UserDto> {
+    client.put("/api/user/self", req).await
+}
+
+/// 真实调用: GET /api/user/self/sessions → 当前用户全部存活会话。
+pub async fn list_sessions_api(client: &ApiClient) -> ApiResult<Vec<SessionDto>> {
+    client.get("/api/user/self/sessions").await
+}
+
+/// 真实调用: DELETE /api/user/self/sessions/{sid} — 吊销指定会话。
+pub async fn revoke_session_api(client: &ApiClient, sid: &str) -> ApiResult<serde_json::Value> {
+    client.delete(&format!("/api/user/self/sessions/{sid}")).await
+}
+
+/// 真实调用: POST /api/user/self/sessions/revoke-others — 吊销其它设备会话。
+pub async fn revoke_others_sessions_api(
+    client: &ApiClient,
+) -> ApiResult<serde_json::Value> {
+    client.post("/api/user/self/sessions/revoke-others", &serde_json::json!({})).await
+}
+
+/// 真实调用: GET /api/user/self/setting → 用户设置 (自由 JSONB 对象)。
+pub async fn get_settings_api(client: &ApiClient) -> ApiResult<serde_json::Value> {
+    client.get("/api/user/self/setting").await
+}
+
+/// 真实调用: PUT /api/user/self/setting — 合并保存用户设置。
+pub async fn update_settings_api(
+    client: &ApiClient,
+    settings: &serde_json::Value,
+) -> ApiResult<serde_json::Value> {
+    client.put("/api/user/self/setting", settings).await
 }

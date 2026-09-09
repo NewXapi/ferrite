@@ -9,7 +9,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 // Page roots that implement each panel.
-use page_account::{KeysPanel, RewardsPanel, UsageLogsPanel};
+use page_account::{KeysPanel, RewardsPanel, SessionsPanel, SettingsPanel, UsageLogsPanel};
 use page_admin::{
     AliasesPage, ChannelsPage, GroupsPage, NetworkPanel, RedemptionsPage, SubscriptionsPage,
     SystemPage, state::EntityStore,
@@ -167,6 +167,8 @@ fn get_initial_route() -> (Section, u8) {
                 "#account" => (Section::Account, 0),
                 "#usage" => (Section::Account, 1),
                 "#rewards" => (Section::Account, 2),
+                "#sessions" => (Section::Account, 3),
+                "#settings" => (Section::Account, 4),
                 "#manage" | "#network" => (Section::Manage, 0),
                 "#users" => (Section::Manage, 1),
                 "#groups" => (Section::Manage, 2),
@@ -224,7 +226,13 @@ pub fn HomePage() -> Element {
     // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
     let labels: Vec<String> = match section() {
         Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
-        Section::Account => vec!["密钥·资料".into(), "用量·日志".into(), "邀请·奖励".into()],
+        Section::Account => vec![
+            "密钥·资料".into(),
+            "用量·日志".into(),
+            "邀请·奖励".into(),
+            "会话".into(),
+            "设置".into(),
+        ],
         Section::Manage => vec![
             "网络".into(),
             "用户".into(),
@@ -326,6 +334,8 @@ pub fn HomePage() -> Element {
                         (Section::Account, 0) => rsx! { KeysPanel {} },
                         (Section::Account, 1) => rsx! { UsageLogsPanel {} },
                         (Section::Account, 2) => rsx! { RewardsPanel {} },
+                        (Section::Account, 3) => rsx! { SessionsPanel {} },
+                        (Section::Account, 4) => rsx! { SettingsPanel {} },
                         (Section::Account, _) => rsx! { KeysPanel {} },
                         (Section::Manage, 0) => rsx! { NetworkPanel {} },
                         (Section::Manage, 1) => rsx! { UsersPanel {} },

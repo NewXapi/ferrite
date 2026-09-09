@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+use contract::api::user::{role_label, UpdateSelfRequest, UserDto};
+
 use crate::api::{self, ApiKey};
 
 /// 密钥·资料面板 - 左侧 ScrollSpyNav + 内滚动三区 (统计 / 个人资料 / 我的密钥)
@@ -16,9 +18,32 @@ pub fn KeysPanel() -> Element {
     let new_group = use_signal(|| "default".to_string());
     let new_quota = use_signal(|| "5000000".to_string());
 
+    // 编辑资料/改密弹窗
+    let mut show_edit = use_signal(|| false);
+
     let stats = api::fetch_key_stats();
-    let profile = api::fetch_profile();
     let keys = api::fetch_keys();
+
+    // ---- 真实用户信息 (GET /api/user/self) ----
+    let mut self_user = use_signal(|| None::<UserDto>);
+    let self_err = use_signal(String::new);
+    use_hook(move || {
+        let client = client::ApiClient::shared().clone();
+        let mut su = self_user.clone();
+        let mut se = self_err.clone();
+        spawn(async move {
+            match api::get_self_api(&client).await {
+                Ok(u) => {
+                    // 同步刷新共享缓存 (UserBadge / 顶栏读取 ferrite_current_user)
+                    if let Ok(s) = serde_json::to_string(&u) {
+                        ui::set_storage_item("ferrite_current_user", &s);
+                    }
+                    su.set(Some(u));
+                }
+                Err(e) => se.set(e.to_string()),
+            }
+        });
+    });
 
     rsx! {
             div { class: "flex flex-col gap-6",
@@ -42,25 +67,33 @@ pub fn KeysPanel() -> Element {
                         class: "scroll-mt-8 space-y-3",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
                         div { class: "grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5",
-                            // 个人资料卡 (占 3 栏)
+                            // 个人资料卡 (真实 /self 数据, 占 3 栏)
                             div { class: "md:col-span-2 xl:col-span-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
-                                div { class: "flex items-start justify-between",
-                                    div {
-                                        div { class: "space-y-4",
-                                            ProfileRow { label: "用户名", value: profile.username }
-                                            ProfileRow { label: "邮箱", value: profile.email }
-                                            ProfileRow { label: "用户ID", value: profile.user_id }
-                                            ProfileRow { label: "注册时间", value: profile.registered_at }
+                                div { class: "flex items-start justify-between gap-4",
+                                    div { class: "min-w-0",
+                                        if let Some(user) = self_user() {
+                                            div { class: "mb-4 flex items-center gap-2",
+                                                span { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
+                                                span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{role_label(user.role)}" }
+                                            }
+                                            div { class: "grid grid-cols-1 gap-3 sm:grid-cols-2",
+                                                ProfileRow { label: "显示名", value: user.display_name.clone() }
+                                                ProfileRow { label: "邮箱", value: user.email.clone() }
+                                                ProfileRow { label: "用户ID", value: user.key.clone() }
+                                                ProfileRow { label: "分组", value: user.group.clone() }
+                                                ProfileRow { label: "注册时间", value: user.created_at.clone() }
+                                            }
+                                        } else if !self_err().is_empty() {
+                                            p { class: "text-sm text-amber-400", "无法加载用户信息 (未登录或请求失败): {self_err()}" }
+                                        } else {
+                                            p { class: "text-sm text-zinc-500", "加载中…" }
                                         }
                                     }
-                                    svg {
-                                    class: "h-9 w-9 text-zinc-700",
-                                    fill: "none",
-                                    stroke: "currentColor",
-                                    view_box: "0 0 24 24",
-                                    stroke_width: "1.5",
-                                    path { stroke_linecap: "round", stroke_linejoin: "round", d: "M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" }
-                                }
+                                    button {
+                                        class: "shrink-0 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
+                                        onclick: move |_| show_edit.set(true),
+                                        "编辑资料 / 改密"
+                                    }
                                 }
                             }
 
@@ -112,6 +145,18 @@ pub fn KeysPanel() -> Element {
                     }
                 }
             }
+
+            // 编辑资料 / 改密弹窗
+            if show_edit() {
+                SelfEditModal {
+                    user: self_user().unwrap_or_default(),
+                    on_cancel: move || show_edit.set(false),
+                    on_saved: move |u: UserDto| {
+                        self_user.set(Some(u));
+                        show_edit.set(false);
+                    }
+                }
+            }
     }
 }
 
@@ -127,11 +172,135 @@ fn StatCard(value: &'static str, label: &'static str) -> Element {
 }
 
 #[component]
-fn ProfileRow(label: &'static str, value: &'static str) -> Element {
+fn ProfileRow(label: &'static str, value: String) -> Element {
     rsx! {
         div { class: "flex flex-col gap-0.5 text-sm sm:flex-row sm:gap-4",
             span { class: "shrink-0 text-zinc-400 sm:w-16", "{label}" }
             span { class: "min-w-0 break-all font-mono text-zinc-200", "{value}" }
+        }
+    }
+}
+
+/// 编辑资料 / 改密弹窗 — 走 PUT /api/user/self。
+/// 改密须原密码 + 新密码成对；成功后刷新共享缓存 (改密会使全端登出)。
+#[component]
+fn SelfEditModal(
+    user: UserDto,
+    on_cancel: EventHandler<()>,
+    on_saved: EventHandler<UserDto>,
+) -> Element {
+    let mut name = use_signal(|| user.display_name.clone());
+    let mut old_pwd = use_signal(String::new);
+    let mut new_pwd = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut err = use_signal(|| None::<String>);
+
+    let submit = move |_| {
+        let n = name().trim().to_string();
+        let op = old_pwd().clone();
+        let np = new_pwd().clone();
+
+        let change_pwd = !op.is_empty() || !np.is_empty();
+        if change_pwd && (op.is_empty() || np.is_empty()) {
+            err.set(Some("原密码与新密码需同时填写".into()));
+            return;
+        }
+
+        let req = UpdateSelfRequest {
+            display_name: if n.is_empty() { None } else { Some(n) },
+            original_password: if change_pwd { Some(op) } else { None },
+            new_password: if change_pwd { Some(np) } else { None },
+        };
+
+        busy.set(true);
+        err.set(None);
+        let client = client::ApiClient::shared().clone();
+        let on_saved = on_saved.clone();
+        let mut b = busy.clone();
+        let mut er = err.clone();
+        spawn(async move {
+            match api::update_self_api(&client, &req).await {
+                Ok(u) => {
+                    if let Ok(s) = serde_json::to_string(&u) {
+                        ui::set_storage_item("ferrite_current_user", &s);
+                    }
+                    on_saved.call(u);
+                }
+                Err(e) => {
+                    er.set(Some(e.to_string()));
+                }
+            }
+            b.set(false);
+        });
+    };
+
+    rsx! {
+        div {
+            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
+            onclick: move |_| on_cancel.call(()),
+            div {
+                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
+                onclick: move |e| e.stop_propagation(),
+
+                div { class: "mb-5 flex items-center justify-between",
+                    h3 { class: "text-base font-semibold text-zinc-100", "编辑资料 / 修改密码" }
+                    button {
+                        class: "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                        onclick: move |_| on_cancel.call(()),
+                        "aria-label": "关闭",
+                        "✕"
+                    }
+                }
+
+                div { class: "space-y-4",
+                    div {
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "显示名 (留空不改)" }
+                        input {
+                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            value: "{name}",
+                            oninput: move |e| name.set(e.value()),
+                        }
+                    }
+
+                    div { class: "border-t border-zinc-800 pt-4",
+                        p { class: "mb-3 text-xs text-zinc-500", "修改密码 (两项都填才生效；改密后所有设备需重新登录)" }
+                        div { class: "space-y-3",
+                            input {
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                                r#type: "password",
+                                placeholder: "原密码",
+                                value: "{old_pwd}",
+                                oninput: move |e| old_pwd.set(e.value()),
+                            }
+                            input {
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                                r#type: "password",
+                                placeholder: "新密码 (8-128 位)",
+                                value: "{new_pwd}",
+                                oninput: move |e| new_pwd.set(e.value()),
+                            }
+                        }
+                    }
+
+                    if let Some(m) = err() {
+                        p { class: "text-xs text-red-400", "{m}" }
+                    }
+                }
+
+                div { class: "mt-6 flex gap-3",
+                    button {
+                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                        onclick: move |_| on_cancel.call(()),
+                        "取消"
+                    }
+                    button {
+                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                        disabled: busy(),
+                        onclick: submit,
+                        "保存"
+                    }
+                }
+            }
         }
     }
 }

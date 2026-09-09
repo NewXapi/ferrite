@@ -1,7 +1,7 @@
 //! 共享登录/注册弹窗组件 (AuthModal) 与用户态徽标 (UserBadge)。
 
 use contract::api::auth::{LoginRequest, RegisterRequest};
-use contract::api::user::UserDto;
+use contract::api::user::{role_label, UserDto};
 use dioxus::prelude::*;
 
 use crate::session::{api_login, api_register, clear_cached_session, get_cached_user};
@@ -218,7 +218,7 @@ pub fn UserBadge(
                         class: "absolute right-0 top-full mt-2 z-50 w-44 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs flex flex-col gap-1",
                         div { class: "px-2.5 py-2 border-b border-zinc-800/80 flex flex-col gap-0.5",
                             span { class: "font-bold text-white truncate", "{user.display_name}" }
-                            span { class: "text-[10px] text-zinc-500 truncate", "@{user.username} · {user.role}" }
+                            span { class: "text-[10px] text-zinc-500 truncate", "@{user.username} · {role_label(user.role)}" }
                         }
                         button {
                             class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left",
