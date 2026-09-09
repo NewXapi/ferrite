@@ -5,7 +5,7 @@ use crate::api;
 use crate::api::contract_auth;
 use crate::form::{SignInForm, SignInPayload, SignUpForm, SignUpPayload};
 use crate::state::{AuthTab, auth_tab};
-use client::ApiClient;
+use client::{ApiClient, ApiError};
 use dioxus::prelude::*;
 
 impl From<SignInPayload> for SubmitPayload {
@@ -96,7 +96,14 @@ pub fn AuthPage() -> Element {
                 .await
             {
                 state.busy.set(false);
-                state.error.set(Some(e.to_string()));
+                // 后端对重复用户名/邮箱返回 409；翻译成中文，避免裸 `HTTP 409: Conflict`。
+                let msg = match &e {
+                    ApiError::Http { status, .. } if *status == 409 => {
+                        "该用户名或邮箱已被占用，请换一个再试".to_string()
+                    }
+                    _ => e.to_string(),
+                };
+                state.error.set(Some(msg));
                 return;
             }
             let result = api::login_api(
@@ -208,9 +215,9 @@ pub fn AuthPage() -> Element {
                     }
                 }
 
-                // Footer
+                // Footer — placed clearly below the form, separated by a hairline.
                 p {
-                    class: "mt-6 text-center text-xs text-zinc-600",
+                    class: "mt-6 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-600",
                     "By continuing, you agree to our "
                     span {
                         class: "cursor-pointer text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200",
