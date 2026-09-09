@@ -15,12 +15,44 @@ pub struct UserDto {
     pub email: String,
     pub quota: i64,
     pub used_quota: i64,
+    /// auth_users 表无该列, 后端登录/self 响应可能不含此字段, 缺省为 0 以兼容。
+    #[serde(default)]
     pub request_count: u64,
     pub group: String,
-    /// "user" | "admin" | "root" (从 u16 位映射, 转换逻辑见 From<&UserRecord>)。
+    /// "user" | "admin" | "root"。后端 wire 上是整数 role (1/10/100),
+    /// 这里兼容整数与字符串两种形态, 统一归一成语义字符串。
+    #[serde(deserialize_with = "de_role", default = "default_role")]
     pub role: String,
     pub status: u8,
     pub created_at: String,
+}
+
+/// 后端 `UserView.role` 是 SMALLINT (1 | 10 | 100), 但本 DTO 约定语义字符串。
+/// 同时容忍已经序列化为字符串的调用方, 保证登录/self/账户页都能解析成功。
+fn de_role<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum RawRole {
+        Str(String),
+        Num(u32),
+    }
+    match RawRole::deserialize(d)? {
+        RawRole::Str(s) => Ok(s),
+        RawRole::Num(n) => Ok(match n {
+            100 => "root",
+            10 => "admin",
+            _ => "user",
+        }
+        .to_string()),
+    }
+}
+
+fn default_role() -> String {
+    "user".to_string()
 }
 
 impl From<&UserRecord> for UserDto {

@@ -18,7 +18,8 @@ pub fn SegmentedCapsule(
     /// 选择回调
     on_select: EventHandler<usize>,
     /// 测试 ID 前缀 (给 agent 验证用)
-    #[props(default)] testid_prefix: String,
+    #[props(default)]
+    testid_prefix: String,
 ) -> Element {
     let n = items.len();
     rsx! {

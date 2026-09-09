@@ -157,6 +157,48 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
     }
 }
 
+/// 顶栏用户菜单：点击用户名展开下拉,含「账户资料」与「退出登录」。
+#[component]
+fn UserMenu(name: String, on_logout: EventHandler<()>) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        div {
+            class: "relative",
+            button {
+                class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
+                "data-testid": "user-menu-button",
+                "aria-haspopup": "menu",
+                "aria-expanded": "{open()}",
+                onclick: move |_| open.toggle(),
+                "{name}"
+            }
+            if open() {
+                div {
+                    class: "absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/95 py-1 text-left shadow-xl shadow-black/40 backdrop-blur",
+                    role: "menu",
+                    "aria-label": "用户菜单",
+                    a {
+                        class: "block px-4 py-2.5 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                        "data-testid": "menu-account",
+                        role: "menuitem",
+                        href: "#account",
+                        onclick: move |_| open.set(false),
+                        "账户资料"
+                    }
+                    div { class: "my-1 h-px bg-zinc-800" }
+                    button {
+                        class: "block w-full text-left px-4 py-2.5 text-sm text-red-400 transition-colors hover:bg-zinc-800 hover:text-red-300",
+                        "data-testid": "logout",
+                        role: "menuitem",
+                        onclick: move |_| { open.set(false); on_logout.call(()); },
+                        "退出登录"
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn get_initial_route() -> (Section, u8) {
     if let Some(w) = web_sys::window() {
         if let Ok(loc) = w.location().hash() {
@@ -191,7 +233,7 @@ pub fn HomePage() -> Element {
     use_context_provider(EntityStore::seed);
 
     // 启动恢复：localStorage 里有 token → 注入 shared client，顶部显示用户名
-    let logged_user = use_signal(|| {
+    let mut logged_user = use_signal(|| {
         ui::get_storage_item("ferrite_username").filter(|_| ui::get_cached_token().is_some())
     });
     use_hook(move || {
@@ -201,24 +243,51 @@ pub fn HomePage() -> Element {
     });
     let is_light = theme() == Theme::Light;
 
-    use_hook(move || {
+    // 用户菜单下拉状态 + 退出登录。do_logout 仅捕获 Copy 的 Signal,本身可 Copy,
+    // 可在桌面/移动两个 header 分支复用。
+    let mut dropdown_open = use_signal(|| false);
+    let mut do_logout = move || {
+        ui::remove_storage_item("ferrite_access_token");
+        ui::remove_storage_item("ferrite_refresh_token");
+        ui::remove_storage_item("ferrite_username");
+        ui::remove_storage_item("ferrite_current_user");
+        client::ApiClient::shared().set_token(None);
+        logged_user.set(None);
+        dropdown_open.set(false);
+        if let Some(w) = web_sys::window() {
+            let _ = w.location().set_hash("#signup");
+        }
+    };
+
+    // 同步 URL hash → 当前 section/tab。HomePage 切到 #auth/#signup/#login/#retro
+    // 时会卸载,其 section/dash_tab signal 随之 drop;监听必须在卸载时移除,否则旧
+    // listener 在下次 hashchange 写入已释放的 signal 触发 ValueDroppedError panic
+    // (原 .forget() 让监听常驻,正是 apps/admin-web/src/lib.rs:215 panic 的根因)。
+    let hash_listener = use_signal(|| {
+        let mut section_sig = section;
+        let mut dash_tab_sig = dash_tab;
         let cb = Closure::<dyn FnMut()>::new(move || {
-            // 只在 console 路由时写 signal：#auth/#signup/#login/#retro 会卸载
-            // HomePage，此时 section/dash_tab 的 owner 已 drop，set 会 panic
-            // (ValueDroppedError)。守卫让 auth/retro hash 直接跳过。
             let h = current_hash();
             let is_console = h != "#auth" && h != "#signup" && h != "#login" && h != "#retro";
             if !is_console {
                 return;
             }
             let (s, t) = get_initial_route();
-            section.set(s);
-            dash_tab.set(t);
+            section_sig.set(s);
+            dash_tab_sig.set(t);
         });
         if let Some(w) = web_sys::window() {
             let _ = w.add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());
         }
-        cb.forget();
+        cb
+    });
+    use_drop(move || {
+        if let Some(w) = web_sys::window() {
+            let _ = w.remove_event_listener_with_callback(
+                "hashchange",
+                hash_listener.read().as_ref().unchecked_ref(),
+            );
+        }
     });
 
     // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
@@ -285,11 +354,7 @@ pub fn HomePage() -> Element {
                         if is_light { "Dark" } else { "Light" }
                     }
                     if let Some(name) = logged_user() {
-                        a {
-                            class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
-                            href: "#account",
-                            "{name}"
-                        }
+                        UserMenu { name, on_logout: move |_| do_logout() }
                     } else {
                         a {
                             class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
@@ -303,11 +368,7 @@ pub fn HomePage() -> Element {
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "Ferrite · 控制台" }
                     if let Some(name) = logged_user() {
-                        a {
-                            class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
-                            href: "#account",
-                            "{name}"
-                        }
+                        UserMenu { name, on_logout: move |_| do_logout() }
                     } else {
                         a {
                             class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
