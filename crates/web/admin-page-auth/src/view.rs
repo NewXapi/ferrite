@@ -213,15 +213,15 @@ pub fn AuthPage() -> Element {
                         AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
                         AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()) } },
                     }
-                }
 
-                // Footer — placed clearly below the form, separated by a hairline.
-                p {
-                    class: "mt-6 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-600",
-                    "By continuing, you agree to our "
-                    span {
-                        class: "cursor-pointer text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200",
-                        "Terms of Service"
+                    // Footer — placed clearly BELOW the form, inside the card, separated by a hairline.
+                    p {
+                        class: "mt-6 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-600",
+                        "By continuing, you agree to our "
+                        span {
+                            class: "cursor-pointer text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200",
+                            "Terms of Service"
+                        }
                     }
                 }
             }
