@@ -9,9 +9,21 @@ const USER_KEY: &str = "ferrite_current_user";
 pub fn get_storage_item(key: &str) -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
-        web_sys::window()
-            .and_then(|w| w.local_storage().ok().flatten())
-            .and_then(|s| s.get_item(key).ok().flatten())
+        let w = web_sys::window()?;
+        // 优先 localStorage (勾选 Remember me), 回退 sessionStorage (未勾选的当前会话)。
+        // 否则未勾选时 token 只写在 sessionStorage, 而恢复逻辑只读 localStorage,
+        // 会导致登录后立刻掉登录。
+        for store in [
+            w.local_storage().ok().flatten(),
+            w.session_storage().ok().flatten(),
+        ] {
+            if let Some(s) = store {
+                if let Ok(Some(v)) = s.get_item(key) {
+                    return Some(v);
+                }
+            }
+        }
+        None
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -48,8 +60,14 @@ pub fn set_storage_scoped(key: &str, val: &str, persistent: bool) {
 pub fn remove_storage_item(key: &str) {
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
-            let _ = s.remove_item(key);
+        if let Some(w) = web_sys::window() {
+            // 两条存储都清, 覆盖 Remember me 勾选 / 未勾选两种情况。
+            if let Some(s) = w.local_storage().ok().flatten() {
+                let _ = s.remove_item(key);
+            }
+            if let Some(s) = w.session_storage().ok().flatten() {
+                let _ = s.remove_item(key);
+            }
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
