@@ -1,7 +1,7 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
 //! 深度优化满足需求:
-//! 1. 左侧改为常驻可收缩侧边栏 (Sidebar):展开显示角色/会话全信息,收缩为图标轨,会话以单字符号呈现;侧栏右侧再接一条 prompt 导航条 (按用户 prompt 数量生成,随滚动高亮当前 prompt,悬停预览完整 prompt)。原右侧「剧情大纲索引」浮层抽屉已移除。
+//! 1. 左侧改为常驻可收缩侧边栏 (Sidebar):展开显示角色/会话全信息,收缩为图标轨,会话以单字符号呈现;中央互动区左侧再接一条垂直居中的 prompt 导航条:以横线表示每一次用户 prompt,随滚动高亮当前 prompt,悬停弹窗预览完整 prompt,点击定位。原右侧「剧情大纲索引」浮层抽屉已移除。
 //! 2. 会话多聊天室真正独立隔离 (每个分支会话维护各自的消息历史，切换时完整重载不同内容)
 //! 3. 消息气泡交互升级: 点击气泡浮出专属操作菜单 (复制/编辑/分支切换/删除)
 //! 4. 侧栏「剧本详情」和「赞赏作品」以景深模糊弹窗 (Modal) 呈现
@@ -386,64 +386,62 @@ pub fn ChatPage(
                 }
             }
 
-            // 左侧 prompt 导航条:按用户发送的 prompt 数量生成,当前滚动位置对应的 prompt 亮条高亮,悬停显示完整 prompt
-            {
-                let prompts: Vec<(usize, String, String)> = STATE.read().messages.iter().enumerate()
-                    .filter_map(|(i, m)| {
-                        let (content, mine, _, _) = msg_display(m);
-                        if mine { Some((i, m.name.clone(), content)) } else { None }
-                    }).collect();
-                let active_msg = active_prompt();
-                let active_prompt_idx = prompts.iter().rposition(|(mi, _, _)| *mi <= active_msg).unwrap_or(0);
-                rsx! {
-                    div { class: "relative flex w-9 shrink-0 flex-col bg-zinc-950/30 border-r border-zinc-800/40 select-none",
-                        div { class: "flex h-full w-full flex-col items-center gap-1.5 overflow-y-auto py-3",
-                            span { class: "text-[9px] font-bold tracking-widest text-zinc-600", "P" }
-                            for (pi, (midx, name, content)) in prompts.iter().enumerate() {
-                                {
-                                    let is_active = active_prompt_idx == pi;
-                                    let label = format!("{}", pi + 1);
-                                    let name_c = name.clone();
-                                    let content_c = content.clone();
-                                    let midx_c = *midx;
-                                    let tt = format!("{}: {}", name_c, content_c);
-                                    let mut hp = hovered_prompt;
-                                    rsx! {
-                                        div {
-                                            class: if is_active {
-                                                "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-purple-500 text-[11px] font-bold text-white shadow-[0_0_10px] shadow-purple-500/70 transition-all"
-                                            } else {
-                                                "flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-zinc-700/40 text-[11px] font-medium text-zinc-400 hover:bg-zinc-600/60 hover:text-zinc-100 transition-all"
-                                            },
-                                            "data-testid": format!("prompt-nav-{}", pi),
-                                            title: "{tt}",
-                                            aria_label: "prompt {label}",
-                                            onmouseenter: move |_| hp.set(Some(pi)),
-                                            onmouseleave: move |_| hp.set(None),
-                                            onclick: move |_| {
-                                                dioxus::document::eval(&format!("document.getElementById('story-node-{midx_c}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});"));
-                                            },
-                                            "{label}"
+            // (prompt 导航条已移至中央互动区:垂直居中的横线导航,见下方中央区实现)
+
+            // 中央互动剧情主视区
+                div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                    // 左侧 prompt 导航条:垂直居中,以横线(每条=一次用户 prompt)显示,悬停弹窗,点击定位
+                    {
+                        let prompts: Vec<(usize, String, String)> = STATE.read().messages.iter().enumerate()
+                            .filter_map(|(i, m)| {
+                                let (content, mine, _, _) = msg_display(m);
+                                if mine { Some((i, m.name.clone(), content)) } else { None }
+                            }).collect();
+                        let active_msg = active_prompt();
+                        let active_prompt_idx = prompts.iter().rposition(|(mi, _, _)| *mi <= active_msg).unwrap_or(0);
+                        rsx! {
+                            div { class: "absolute left-2 top-1/2 z-30 flex max-h-[75vh] -translate-y-1/2 flex-col items-center gap-1.5 overflow-y-auto rounded-xl border border-zinc-800/50 bg-zinc-950/70 px-2 py-2 backdrop-blur-xl",
+                                for (pi, (midx, name, content)) in prompts.iter().enumerate() {
+                                    {
+                                        let is_active = active_prompt_idx == pi;
+                                        let name_c = name.clone();
+                                        let content_c = content.clone();
+                                        let midx_c = *midx;
+                                        let tt = format!("{}: {}", name_c, content_c);
+                                        let label = format!("{}", pi + 1);
+                                        let mut hp = hovered_prompt;
+                                        rsx! {
+                                            div {
+                                                class: if is_active {
+                                                    "h-[3px] w-6 cursor-pointer rounded-full bg-purple-400 shadow-[0_0_8px] shadow-purple-500/70 transition-all"
+                                                } else {
+                                                    "h-[3px] w-5 cursor-pointer rounded-full bg-zinc-600 hover:bg-zinc-300 hover:w-6 transition-all"
+                                                },
+                                                "data-testid": format!("prompt-nav-{}", pi),
+                                                title: "{tt}",
+                                                aria_label: "prompt {label}",
+                                                onmouseenter: move |_| hp.set(Some(pi)),
+                                                onmouseleave: move |_| hp.set(None),
+                                                onclick: move |_| {
+                                                    dioxus::document::eval(&format!("document.getElementById('story-node-{midx_c}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});"));
+                                                },
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        if let Some(pi) = hovered_prompt() {
-                            if let Some((_, name, content)) = prompts.get(pi) {
-                                div { class: "pointer-events-none absolute left-full top-2 z-50 ml-1 w-60 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-2.5 text-[11px] leading-5 text-zinc-200 shadow-2xl backdrop-blur-xl",
-                                    span { class: "mb-1 block text-[10px] font-bold text-purple-300", "{name}" }
-                                    "{content}"
+                            if let Some(pi) = hovered_prompt() {
+                                if let Some((_, name, content)) = prompts.get(pi) {
+                                    div { class: "pointer-events-none absolute left-12 top-1/2 z-40 -translate-y-1/2 w-60 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-2.5 text-[11px] leading-5 text-zinc-200 shadow-2xl backdrop-blur-xl",
+                                        span { class: "mb-1 block text-[10px] font-bold text-purple-300", "{name}" }
+                                        "{content}"
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            }
 
-            // 中央互动剧情主视区
-            div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
+                    div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
                     div { class: "flex items-center gap-2",
                         button {
                             class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
