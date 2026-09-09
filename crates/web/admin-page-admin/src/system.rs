@@ -43,13 +43,12 @@ pub(crate) fn validate_proxy_url(url: &str) -> Option<&'static str> {
             ("pbk=", "REALITY 公钥 pbk 需 64 个 hex 字符"),
             ("sid=", "REALITY short id sid 最多 16 个 hex 字符"),
         ] {
-            if let Some(v) = trimmed.split(k).nth(1).and_then(|s| s.split('&').next()) {
-                if hex::decode(v).is_err()
+            if let Some(v) = trimmed.split(k).nth(1).and_then(|s| s.split('&').next())
+                && (hex::decode(v).is_err()
                     || (k == "pbk=" && v.len() != 64)
-                    || (k == "sid=" && v.len() > 16)
-                {
-                    return Some(bad);
-                }
+                    || (k == "sid=" && v.len() > 16))
+            {
+                return Some(bad);
             }
         }
     }
