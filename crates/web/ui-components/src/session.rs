@@ -129,6 +129,11 @@ fn refresh_is_persistent() -> bool {
 /// 响应 `{accessToken, refreshToken, expiresIn}` —— 刷新即轮换，旧 refreshToken 作废，
 /// 新 token 对按原作用域回写。返回 Some(新 access token) 供 client 重试原请求；
 /// None = 没有或已失效的 refreshToken（调用方清会话走重新登录）。
+///
+/// 并发安全：页面挂载会同时发出多个请求，可能同时 401 并各自触发本函数；
+/// 只有第一个用当前 RT 刷新会成功（轮换使其余的 401）。败者不清会话，而是
+/// 重读 storage——胜者已把新 token 对写回，直接复用即可，避免把胜者的
+/// 新 refreshToken 误当失效清掉（否则一次并发就能把会话打死）。
 pub async fn refresh_access_token() -> Option<String> {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -147,7 +152,15 @@ pub async fn refresh_access_token() -> Option<String> {
         .await
         .ok()?;
     if !resp.ok() {
-        return None;
+        // 我们的 RT 失败了。若 storage 里的 RT 已被并发胜者轮换（≠ 我们用的那个），
+        // 复用胜者写入的新 access token；否则才是真的失效，清会话。
+        return match get_cached_refresh_token() {
+            Some(newer) if newer != rt => get_cached_token(),
+            _ => {
+                clear_cached_session();
+                None
+            }
+        };
     }
     let body: RefreshResp = resp.json().await.ok()?;
     set_storage_scoped(TOKEN_KEY, &body.access_token, persistent);
