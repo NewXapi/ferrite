@@ -35,6 +35,11 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
     let error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut password = use_signal(String::new);
+    let box_class = if remember() {
+        "bg-indigo-400 border-indigo-400"
+    } else {
+        "bg-zinc-800/60 border-zinc-500 group-hover:border-zinc-400"
+    };
 
     rsx! {
         form {
@@ -65,11 +70,20 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                 class: "flex items-center justify-between text-sm pt-1",
                 label {
                     class: "flex items-center gap-2 cursor-pointer group",
-                    input {
-                        class: "size-4 cursor-pointer rounded border-zinc-500 bg-zinc-800/60 accent-indigo-400 transition-colors focus:ring-2 focus:ring-indigo-400/60 group-hover:border-zinc-400",
-                        r#type: "checkbox",
-                        checked: remember(),
-                        oninput: move |ev| remember.set(ev.checked()),
+                    div {
+                        class: "relative size-4 shrink-0",
+                        input {
+                            class: "sr-only",
+                            r#type: "checkbox",
+                            checked: remember(),
+                            oninput: move |ev| remember.set(ev.checked()),
+                        }
+                        div {
+                            class: "flex size-4 items-center justify-center rounded border transition-colors {box_class}",
+                            if remember() {
+                                span { class: "text-[11px] font-bold leading-none text-white", "✓" }
+                            }
+                        }
                     }
                     span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
                 }
