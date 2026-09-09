@@ -109,9 +109,11 @@ cargo test -p gateway --test config_wiring
 
 ## MVP：proxy
 
-`ProxyManager::acquire(channel_key)`（`channel_key` = `RouteUnitRecord.channel_key`）
-返回已注入 `reqwest::Proxy` 的 Client；无节点直连。
-`ForwardStage::with_proxies` 把租约接到模型请求。
+`ProxyManager::acquire(channel_key)`（`channel_key` = `RouteUnitRecord.channel_key`）：
+- direct/http/socks5 → 返回已注入 `reqwest::Proxy` 的 `reqwest::Client`（`ProxyClient::Reqwest`）
+- ss/trojan/vless/vmess → 返回 meow `ProxyAdapter`（`ProxyClient::Adapter`），协议握手在拨号时完成
+
+`ForwardStage::with_proxies` 把租约接到模型请求；二态分派在 `forward::stage`。
 节点来自 `config.toml` 的 `[[proxy_nodes]]`（`build_proxy_snapshot` → `ProxyManager::install`）。
 
 ### 验收
@@ -133,7 +135,5 @@ Reality 由 `meow-transport` 的 `reality` feature 提供（待节点配置扩�
 ```sh
 cargo test -p gateway --test egress_wiring
 cargo run --release --example adapter_dial_smoke -p forward
-```sh
-cargo test -p gateway --test egress_wiring
 ```
 
