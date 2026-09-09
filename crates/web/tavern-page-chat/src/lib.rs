@@ -562,7 +562,7 @@ pub fn ChatPage(
                         }
                     }
                     // 悬停输入框:浮于聊天区底部; 输入区上下带快捷按钮, 模型置于右下(悬停展开面板)
-                    div { class: "sticky bottom-0 z-20 mt-2 mx-auto flex w-full max-w-2xl flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
+                    div { class: "sticky bottom-0 z-20 mt-2 mx-auto flex w-[80%] flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
                         onclick: move |e| e.stop_propagation(),
                         // 上方快捷按钮
                         div { class: "flex flex-wrap items-center gap-1.5",
@@ -593,14 +593,6 @@ pub fn ChatPage(
                                 onclick: move |_| stream_toggle.set(!stream_toggle()),
                                 "≈ 流式"
                             }
-                            button {
-                                class: "rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-500/20",
-                                onclick: move |_| {
-                                    draft.set("【突发离场】拒绝此项提议，直接推门离场。".into());
-                                    handle_send();
-                                },
-                                "跑路！！！"
-                            }
                         }
                         // 输入框
                         div { class: "flex items-end gap-2",
@@ -630,9 +622,6 @@ pub fn ChatPage(
                                         }
                                     }
                                 }
-                                if let Some(err) = STATE.with(|s| s.last_error.clone()) {
-                                    span { class: "truncate text-rose-400", "{err}" }
-                                }
                             }
                             div { class: "flex shrink-0 items-center gap-2",
                                 // 模型选择器(右下, 悬停展开)
@@ -646,7 +635,7 @@ pub fn ChatPage(
                                         span { class: "text-[10px] text-zinc-400", "⌵" }
                                     }
                                     if model_dropdown_open() {
-                                        div { class: "absolute bottom-full right-0 z-50 mb-2 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 shadow-2xl backdrop-blur-2xl",
+                                        div { class: "absolute bottom-full right-0 z-50 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 pt-3 shadow-2xl backdrop-blur-2xl",
                                             for m in models() {
                                                 {
                                                     let model_name = m.to_string();
@@ -691,9 +680,6 @@ pub fn ChatPage(
                                 "✕"
                             }
                         }
-                    }
-                    if let Some(err) = STATE.with(|s| s.last_error.clone()) {
-                        div { class: "ml-auto text-[10px] text-rose-400", "{err}" }
                     }
                 }
 
