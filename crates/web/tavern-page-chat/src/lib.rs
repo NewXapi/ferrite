@@ -116,10 +116,10 @@ pub fn ChatPage(
     // 下拉列表:内置可选项(agnes-2.5-flash) + 当前已配置模型。后续接入后端 /v1/models 动态目录。
     let models = use_memo(move || {
         let mut v = vec!["agnes-2.5-flash".to_string()];
-        if let Some(m) = STATE.with(|s| s.model.clone()) {
-            if !v.iter().any(|x| x == &m) {
-                v.push(m);
-            }
+        if let Some(m) = STATE.with(|s| s.model.clone())
+            && !v.iter().any(|x| x == &m)
+        {
+            v.push(m);
         }
         v
     });
@@ -174,12 +174,11 @@ pub fn ChatPage(
                             return best;
                         })()
                     "#;
-                    if let Ok(value) = dioxus::document::eval(js).await {
-                        if let Some(n) = value.as_i64().or_else(|| value.as_u64().map(|x| x as i64)) {
-                            if n >= 0 {
-                                active_prompt.set(n as usize);
-                            }
-                        }
+                    if let Ok(value) = dioxus::document::eval(js).await
+                        && let Some(n) = value.as_i64().or_else(|| value.as_u64().map(|x| x as i64))
+                        && n >= 0
+                    {
+                        active_prompt.set(n as usize);
                     }
                     if !scroll_dirty() {
                         break;
