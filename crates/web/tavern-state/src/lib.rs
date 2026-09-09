@@ -234,10 +234,24 @@ pub async fn send(text: String) {
     if already_generating {
         return;
     }
-    let Some((_character_file, card)) = character_entry else {
-        STATE.with_mut(|st| {
-            st.last_error = Some("请先选择角色".to_string());
+
+    // 乐观上屏:用户消息始终先追加,这样即使未选择角色/模型也能看到自己的输入。
+    // 角色与模型只用于后端生成,缺失时不再阻断展示(对应"删掉选择角色门槛")。
+    STATE.with_mut(|s| {
+        s.messages.push(Message {
+            name: s.user_name.clone(),
+            is_user: true,
+            send_date: String::new(),
+            mes: text,
+            swipes: Vec::new(),
+            swipe_id: None,
+            extra: Default::default(),
         });
+        s.last_error = None;
+    });
+
+    // 角色/模型仅决定能否触发后端生成:缺失则只展示用户输入,不发起生成。
+    let Some((_character_file, card)) = character_entry else {
         return;
     };
     let Some(model) = model else {
@@ -249,18 +263,8 @@ pub async fn send(text: String) {
     let character_name = card.name.clone();
 
     STATE.with_mut(|s| {
-        s.messages.push(Message {
-            name: s.user_name.clone(),
-            is_user: true,
-            send_date: String::new(),
-            mes: text,
-            swipes: Vec::new(),
-            swipe_id: None,
-            extra: Default::default(),
-        });
         s.generating = true;
         s.aborted = false;
-        s.last_error = None;
     });
 
     let body = match build_generate_body(
