@@ -33,9 +33,9 @@ pub struct BasicAuth {
 /// query 键与常见分享链接约定一致：
 /// - `flow=xtls-rprx-vision` — XTLS-Vision 内层流模式 (VLESS)
 /// - `sni=<域名>` — TLS / REALITY / Hysteria2 / AnyTLS 的 SNI
-/// - `pbk=<64hex>` — REALITY 服务端 X25519 公钥（出现即视为 REALITY 节点）
+/// - `pbk=` — REALITY 服务端 X25519 公钥（64 hex 或 43 base64url；出现即视为 REALITY 节点）
 /// - `sid=<0-16hex>` — REALITY short id（缺省全 0）
-/// - `insecure=1` — 跳过证书验证 (Hysteria2/AnyTLS/Trojan 兼容)
+/// - `insecure=1` / `allowInsecure=1` — 跳过证书验证 (Hysteria2/AnyTLS/Trojan 兼容)
 /// - `version=v4|v5` — Snell 版本 (缺省 v5)
 /// - `obfs=http|tls` — Snell 混淆 (缺省 none)
 /// - `obfs-uri=` — Snell obfs host/uri
@@ -45,11 +45,11 @@ pub struct VlessOpts {
     pub flow: Option<String>,
     /// TLS / REALITY SNI
     pub sni: Option<String>,
-    /// REALITY 公钥（hex 64 字符），与 `short_id` 成对
+    /// REALITY 公钥（64 hex 或 43 base64url），与 `sid` 成对
     pub pbk: Option<String>,
     /// REALITY short id（hex，0-16 字符）
     pub sid: Option<String>,
-    /// insecure=1 or skip_cert_verify (Hysteria2, AnyTLS, etc)
+    /// 跳过 TLS 证书验证
     pub insecure: bool,
     /// Snell version
     pub version: Option<String>,
