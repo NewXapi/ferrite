@@ -158,26 +158,26 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
 }
 
 fn get_initial_route() -> (Section, u8) {
-    if let Some(w) = web_sys::window() {
-        if let Ok(loc) = w.location().hash() {
-            return match loc.as_str() {
-                "#overview" => (Section::Dashboard, 0),
-                "#models" => (Section::Dashboard, 1),
-                "#leaderboard" => (Section::Dashboard, 2),
-                "#account" => (Section::Account, 0),
-                "#usage" => (Section::Account, 1),
-                "#rewards" => (Section::Account, 2),
-                "#manage" | "#network" => (Section::Manage, 0),
-                "#users" => (Section::Manage, 1),
-                "#groups" => (Section::Manage, 2),
-                "#aliases" => (Section::Manage, 3),
-                "#channels" => (Section::Manage, 4),
-                "#subscriptions" => (Section::Manage, 5),
-                "#redemptions" => (Section::Manage, 6),
-                "#system" => (Section::Manage, 7),
-                _ => (Section::Dashboard, 0),
-            };
-        }
+    if let Some(w) = web_sys::window()
+        && let Ok(loc) = w.location().hash()
+    {
+        return match loc.as_str() {
+            "#overview" => (Section::Dashboard, 0),
+            "#models" => (Section::Dashboard, 1),
+            "#leaderboard" => (Section::Dashboard, 2),
+            "#account" => (Section::Account, 0),
+            "#usage" => (Section::Account, 1),
+            "#rewards" => (Section::Account, 2),
+            "#manage" | "#network" => (Section::Manage, 0),
+            "#users" => (Section::Manage, 1),
+            "#groups" => (Section::Manage, 2),
+            "#aliases" => (Section::Manage, 3),
+            "#channels" => (Section::Manage, 4),
+            "#subscriptions" => (Section::Manage, 5),
+            "#redemptions" => (Section::Manage, 6),
+            "#system" => (Section::Manage, 7),
+            _ => (Section::Dashboard, 0),
+        };
     }
     (Section::Dashboard, 0)
 }

@@ -178,7 +178,10 @@ impl ReqwestEgress {
 /// - 429 → rate_limited, 可重试
 /// - 5xx → upstream_error, 可重试
 /// - 其它 4xx → upstream_error (致命), 不重试 (协议/客户端问题, 换渠道救不了)
-fn classify_status(status: u16, body_preview: String) -> contract::error::NormalizedError {
+pub(crate) fn classify_status(
+    status: u16,
+    body_preview: String,
+) -> contract::error::NormalizedError {
     use contract::error::code;
     let (code, http_status, retryable) = match status {
         401 | 403 => (code::INVALID_API_KEY, status, false),
@@ -195,7 +198,7 @@ fn classify_status(status: u16, body_preview: String) -> contract::error::Normal
     }
 }
 
-fn build_header_map(
+pub(crate) fn build_header_map(
     headers: &[(String, String)],
 ) -> Result<HeaderMap, contract::error::NormalizedError> {
     let mut map = HeaderMap::new();

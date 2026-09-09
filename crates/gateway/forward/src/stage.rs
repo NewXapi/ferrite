@@ -29,6 +29,73 @@ pub struct ForwardStage {
     proxies: Option<Arc<ProxyManager>>,
 }
 
+/// meow `ProxyAdapter` → [`StreamDialer`] 适配。
+///
+/// `dial(host, port)` 语义对齐：meow 的 `Metadata.host/dst_port` 就是拨号目标，
+/// 协议握手在 `dial_tcp` 内完成，返回流直接承载上层流量。
+struct AdapterDialer(Arc<dyn gateway_proxy::ProxyAdapter>);
+
+impl std::fmt::Debug for AdapterDialer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdapterDialer").finish_non_exhaustive()
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::adapter_egress::StreamDialer for AdapterDialer {
+    async fn dial(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> std::io::Result<Box<dyn crate::adapter_egress::DialedStream>> {
+        let meta = gateway_proxy::tcp_metadata(host, port);
+        let conn = self
+            .0
+            .dial_tcp(&meta)
+            .await
+            .map_err(std::io::Error::other)?;
+        Ok(Box::new(MeowConn(conn)))
+    }
+}
+
+/// `Box<dyn ProxyConn>` → `DialedStream`：两个 trait bound 都是
+/// AsyncRead + AsyncWrite + Unpin + Send + Sync，透传即可。
+struct MeowConn(Box<dyn gateway_proxy::ProxyConn>);
+
+impl tokio::io::AsyncRead for MeowConn {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for MeowConn {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.0).poll_shutdown(cx)
+    }
+}
+
 impl ForwardStage {
     /// 使用注入的 [`crate::egress::Egress`]（测试或无代理池）。
     pub fn new(egress: Arc<dyn crate::egress::Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
@@ -59,22 +126,26 @@ impl ForwardStage {
 
         let lease = proxies.acquire(&task.candidate.unit.channel_key);
         let node_id = lease.node_id;
-        let egress = lease
-            .reqwest_client()
-            .map(|client| ReqwestEgress::with_client((*client).clone(), Duration::from_secs(5)));
-        // Connector 变体（SS/Trojan 等）暂未接入 forward 直连管道，
-        // 返回 502 让 retry 层换候选。PR3 打通 connector→forward 桥。
-        let Some(egress) = egress else {
+        // 出口二态：reqwest Client（direct/http/socks5）或协议适配器
+        // （SS/Trojan/VLESS/VMess——meow dial_tcp 经 adapter_egress 桥成 HTTP）。
+        let result = if let Some(adapter) = lease.adapter() {
+            let egress = crate::adapter_egress::AdapterEgress::new(
+                Arc::new(AdapterDialer(adapter)),
+                Duration::from_secs(5),
+            );
+            crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await
+        } else if let Some(client) = lease.reqwest_client() {
+            let egress = ReqwestEgress::with_client((*client).clone(), Duration::from_secs(5));
+            crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await
+        } else {
             proxies.feedback(node_id, 502, false);
             return Err(contract::error::NormalizedError {
                 code: contract::error::code::UPSTREAM_ERROR,
                 status: 502,
                 retryable: true,
-                message: "proxy connector not yet bridged to forward".into(),
+                message: "lease produced neither reqwest client nor adapter".into(),
             });
         };
-        let result =
-            crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await;
         match &result {
             Ok(forwarded) => proxies.feedback(node_id, forwarded.status, false),
             Err(err) => {

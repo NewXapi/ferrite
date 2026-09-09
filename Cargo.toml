@@ -55,7 +55,7 @@ members = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.89"  # meow-proxy/meow-common 0.21 要求 1.89
 publish = false
 
 [workspace.dependencies]

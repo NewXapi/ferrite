@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 # 出口代理节点：解析 + 按 channel_key 选节点 + 租约 Client。
-# HTTP/SOCKS 握手交给 reqwest；vless/vmess/ss/trojan 走 proto/（shoes 移植）。
+# HTTP/SOCKS 握手交给 reqwest；vless/vmess/ss/trojan 走 meow_proxy 适配器。
 
 [dependencies]
 reqwest        = { workspace = true }
@@ -17,23 +17,14 @@ rand           = { workspace = true }
 tokio          = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "net"] }
 async-trait    = "0.1"
 memchr         = "2"
-bytes          = { workspace = true }
 tracing        = { workspace = true }
 url            = "2"
 percent-encoding = "2"
-# PR2: SS/Trojan 协议栈（shoes 移植）
-aws-lc-rs = { version = "1.18", default-features = false }
-blake3 = "1.5"
-md-5 = "0.10"
-rustls = { version = "0.23.2", default-features = false, features = ["std", "tls12"] }
-tokio-rustls = "0.26"
-sha1 = "0.10"
-parking_lot = "0.12"
-webpki-roots = "0.26"
-subtle = "2"
-futures = "0.3"
-# PR3: VMess/VLESS/WebSocket 协议栈（shoes 移植）
-sha2 = "0.10"
-shake = "0.1"
-uuid = { version = "1", features = ["serde", "v4"] }
-base64 = "0.21"
+uuid = "1"
+
+# 出口协议适配（meow-rs, MIT）：vless/vmess/ss/trojan 等由 ProxyAdapter 提供
+meow-common = "0.21"
+meow-proxy = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vless-vision", "vmess"] }
+meow-transport = { version = "0.21", default-features = false, features = ["tls", "ws", "reality"] }
+smol_str = "0.3"
+hex            = { workspace = true }
