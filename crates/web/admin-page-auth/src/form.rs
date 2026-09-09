@@ -71,18 +71,15 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                 label {
                     class: "flex items-center gap-2 cursor-pointer group",
                     div {
-                        class: "relative size-4 shrink-0",
+                        class: "relative size-4 shrink-0 flex items-center justify-center rounded border transition-colors {box_class}",
                         input {
-                            class: "sr-only",
+                            style: "position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;",
                             r#type: "checkbox",
                             checked: remember(),
                             oninput: move |ev| remember.set(ev.checked()),
                         }
-                        div {
-                            class: "flex size-4 items-center justify-center rounded border transition-colors {box_class}",
-                            if remember() {
-                                span { class: "text-[11px] font-bold leading-none text-white", "✓" }
-                            }
+                        if remember() {
+                            span { class: "text-[11px] font-bold leading-none text-white", "✓" }
                         }
                     }
                     span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
