@@ -8,10 +8,10 @@ use crate::api;
 
 #[component]
 pub fn SettingsPanel() -> Element {
-    let mut settings = use_signal(|| None::<serde_json::Value>);
+    let settings = use_signal(|| None::<serde_json::Value>);
     let mut err = use_signal(String::new);
     let mut flash = use_signal(|| None::<String>);
-    let mut busy = use_signal(|| false);
+    let busy = use_signal(|| false);
 
     // 快捷字段 (仅取常见键, 其余键保留在 JSON 里不受影响)
     let mut language = use_signal(String::new);
@@ -19,10 +19,10 @@ pub fn SettingsPanel() -> Element {
 
     use_hook(move || {
         let client = client::ApiClient::shared().clone();
-        let mut s = settings.clone();
-        let mut e = err.clone();
-        let mut lang = language.clone();
-        let mut notif = notifications.clone();
+        let mut s = settings;
+        let mut e = err;
+        let mut lang = language;
+        let mut notif = notifications;
         spawn(async move {
             match api::get_settings_api(&client).await {
                 Ok(v) => {
@@ -84,14 +84,14 @@ pub fn SettingsPanel() -> Element {
                             if busy() {
                                 return;
                             }
-                            let mut b = busy.clone();
+                            let mut b = busy;
                             b.set(true);
                             flash.set(None);
                             err.set(String::new());
                             let client = client::ApiClient::shared().clone();
-                            let mut s = settings.clone();
-                            let mut f = flash.clone();
-                            let mut e = err.clone();
+                            let mut s = settings;
+                            let mut f = flash;
+                            let mut e = err;
                             let payload = serde_json::json!({
                                 "language": language(),
                                 "notifications": notifications(),

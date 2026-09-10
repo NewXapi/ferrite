@@ -60,21 +60,28 @@ pub fn fetch_invite_link() -> &'static str {
 }
 
 use client::{ApiClient, ApiResult};
-use contract::api::token::{CreateTokenRequest, TokenDto, UpdateTokenRequest};
+use contract::api::token::{
+    CreateTokenRequest, CreateTokenResult, TokenDto, TokenList, UpdateTokenRequest,
+};
+use contract::api::usage::{UsageDailyStatDto, UsageDailyStatPage, UsageLogPage, UsageStatDto};
 use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto};
-use contract::api::usage::{UsageLogPage, UsageStatDto};
 
-/// 真实调用: GET /api/token
+/// 真实调用: GET /api/token (owner 模式, 后端按 token 属主过滤, 无 query 参数)。
+/// 列表为 `{items}` 信封, 拆包后返回 `Vec<TokenDto>`。
 pub async fn list_tokens_api(client: &ApiClient) -> ApiResult<Vec<TokenDto>> {
-    client.get("/api/token").await
+    let page = client.get::<TokenList>("/api/token").await?;
+    Ok(page.items)
 }
 
-/// 真实调用: POST /api/token
-pub async fn create_token_api(client: &ApiClient, req: &CreateTokenRequest) -> ApiResult<TokenDto> {
+/// 真实调用: POST /api/token — 响应含一次性明文 key (只在创建时返回一次)。
+pub async fn create_token_api(
+    client: &ApiClient,
+    req: &CreateTokenRequest,
+) -> ApiResult<CreateTokenResult> {
     client.post("/api/token", req).await
 }
 
-/// 真实调用: PUT /api/token/{key}
+/// 真实调用: PUT /api/token/{key} — 缺省字段不发, 后端按「缺省=不改」处理。
 pub async fn update_token_api(
     client: &ApiClient,
     key: &str,
@@ -88,24 +95,50 @@ pub async fn delete_token_api(client: &ApiClient, key: &str) -> ApiResult<serde_
     client.delete(&format!("/api/token/{key}")).await
 }
 
-/// 真实调用: GET /api/log/self?start=&end=&model=&p=&page_size=
+/// 真实调用: GET /api/log/self/stat/daily?days=… — 近 N 天按天聚合
+/// (requests / tokens / quota)。`days` 后端 clamp 到 1..=365。
+pub async fn get_self_daily_stat_api(
+    client: &ApiClient,
+    days: i32,
+) -> ApiResult<Vec<UsageDailyStatDto>> {
+    let page = client
+        .get::<UsageDailyStatPage>(&format!("/api/log/self/stat/daily?days={days}"))
+        .await?;
+    Ok(page.items)
+}
+
+/// 真实调用: GET /api/log/self — 用户自查用量日志。
+/// 参数与后端 `LogQuery` 对齐 (camelCase): modelName 过滤、start/end 为 RFC3339
+/// (start 闭 / end 开)、page 1-based、size 后端 clamp 1..=100 (缺省 20)。
 pub async fn list_self_logs_api(
     client: &ApiClient,
     model: Option<&str>,
-    page: Option<u32>,
-    page_size: Option<u32>,
+    start: Option<&str>,
+    end: Option<&str>,
+    page: Option<i64>,
+    size: Option<i64>,
 ) -> ApiResult<UsageLogPage> {
     let mut query = Vec::new();
     if let Some(m) = model
         && !m.is_empty()
     {
-        query.push(format!("model={m}"));
+        query.push(format!("modelName={m}"));
+    }
+    if let Some(st) = start
+        && !st.is_empty()
+    {
+        query.push(format!("start={st}"));
+    }
+    if let Some(en) = end
+        && !en.is_empty()
+    {
+        query.push(format!("end={en}"));
     }
     if let Some(p) = page {
-        query.push(format!("p={p}"));
+        query.push(format!("page={p}"));
     }
-    if let Some(ps) = page_size {
-        query.push(format!("page_size={ps}"));
+    if let Some(sz) = size {
+        query.push(format!("size={sz}"));
     }
     let path = if query.is_empty() {
         "/api/log/self".to_string()
@@ -128,10 +161,7 @@ pub async fn get_self_api(client: &ApiClient) -> ApiResult<UserDto> {
 }
 
 /// 真实调用: PUT /api/user/self — 改显示名 / 改密码 (改密须原密码+新密码成对)。
-pub async fn update_self_api(
-    client: &ApiClient,
-    req: &UpdateSelfRequest,
-) -> ApiResult<UserDto> {
+pub async fn update_self_api(client: &ApiClient, req: &UpdateSelfRequest) -> ApiResult<UserDto> {
     client.put("/api/user/self", req).await
 }
 
@@ -142,14 +172,19 @@ pub async fn list_sessions_api(client: &ApiClient) -> ApiResult<Vec<SessionDto>>
 
 /// 真实调用: DELETE /api/user/self/sessions/{sid} — 吊销指定会话。
 pub async fn revoke_session_api(client: &ApiClient, sid: &str) -> ApiResult<serde_json::Value> {
-    client.delete(&format!("/api/user/self/sessions/{sid}")).await
+    client
+        .delete(&format!("/api/user/self/sessions/{sid}"))
+        .await
 }
 
 /// 真实调用: POST /api/user/self/sessions/revoke-others — 吊销其它设备会话。
-pub async fn revoke_others_sessions_api(
-    client: &ApiClient,
-) -> ApiResult<serde_json::Value> {
-    client.post("/api/user/self/sessions/revoke-others", &serde_json::json!({})).await
+pub async fn revoke_others_sessions_api(client: &ApiClient) -> ApiResult<serde_json::Value> {
+    client
+        .post(
+            "/api/user/self/sessions/revoke-others",
+            &serde_json::json!({}),
+        )
+        .await
 }
 
 /// 真实调用: GET /api/user/self/setting → 用户设置 (自由 JSONB 对象)。

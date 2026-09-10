@@ -27,8 +27,8 @@ pub fn SessionsPanel() -> Element {
 
     use_hook(move || {
         let client = client::ApiClient::shared().clone();
-        let s = sessions.clone();
-        let e = err.clone();
+        let s = sessions;
+        let e = err;
         spawn(async move {
             load_sessions(&client, s, e).await;
         });
@@ -45,9 +45,9 @@ pub fn SessionsPanel() -> Element {
                     class: "rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
                     onclick: move |_| {
                         let client = client::ApiClient::shared().clone();
-                        let s = sessions.clone();
-                        let e = err.clone();
-                        let mut f = flash.clone();
+                        let s = sessions;
+                        let e = err;
+                        let mut f = flash;
                         spawn(async move {
                             match api::revoke_others_sessions_api(&client).await {
                                 Ok(_) => {
@@ -78,9 +78,9 @@ pub fn SessionsPanel() -> Element {
                                 session: s,
                                 on_revoke: move |sid: String| {
                                     let client = client::ApiClient::shared().clone();
-                                    let sk = sessions.clone();
-                                    let ek = err.clone();
-                                    let mut fk = flash.clone();
+                                    let sk = sessions;
+                                    let ek = err;
+                                    let mut fk = flash;
                                     spawn(async move {
                                         match api::revoke_session_api(&client, &sid).await {
                                             Ok(_) => {
