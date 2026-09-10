@@ -3,18 +3,78 @@ pub mod app;
 pub mod retro;
 pub use app::RootApp;
 
+use app::current_hash;
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 // Page roots that implement each panel.
-use page_account::{KeysPanel, RewardsPanel, UsageLogsPanel};
+use page_account::{KeysPanel, RewardsPanel, SessionsPanel, SettingsPanel, UsageLogsPanel};
 use page_admin::{
     AliasesPage, ChannelsPage, GroupsPage, NetworkPanel, RedemptionsPage, SubscriptionsPage,
     SystemPage, state::EntityStore,
 };
 use page_overview::{LeaderboardPanel, ModelsPanel, OverviewPanel};
 use page_users::UsersPanel;
+
+use client::TokenFuture;
+use serde::Deserialize;
+
+/// 401 静默刷新接线 (应用启动时由 main 调用一次):
+/// - refresher: 读存储的 refresh token → `POST /api/user/refresh` (后端轮换 access+refresh)
+///   → 按原持久化级别写回 → 返回新 access token 供客户端对原请求做一次重试;
+/// - on_unauthorized: 无 refresh token / 刷新失败 → 清空全部登录态并跳登录页。
+pub fn init_auth() {
+    let client = client::ApiClient::shared();
+    client.set_refresher(start_token_refresh);
+    client.set_on_unauthorized(handle_unauthorized);
+}
+
+/// 刷新不可恢复时的统一清理: 4 个登录态存储 key + client 内存 token 全部清空,
+/// 并把 hash 切到 #signup 让 RootApp 渲染登录页。
+fn handle_unauthorized() {
+    ui::remove_storage_item("ferrite_access_token");
+    ui::remove_storage_item("ferrite_refresh_token");
+    ui::remove_storage_item("ferrite_username");
+    ui::remove_storage_item("ferrite_current_user");
+    client::ApiClient::shared().set_token(None);
+    if let Some(w) = web_sys::window() {
+        let _ = w.location().set_hash("#signup");
+    }
+}
+
+/// 一次 access token 刷新。走 `post_once` (刷新请求自身 401 时不再递归刷新);
+/// 后端按 `auth::service::RefreshResult` 轮换两枚 token, 均按原持久化级别写回。
+fn start_token_refresh() -> TokenFuture {
+    Box::pin(async move {
+        let refresh_token = match ui::get_storage_item("ferrite_refresh_token") {
+            Some(t) if !t.is_empty() => t,
+            _ => return None,
+        };
+        let persistent = ui::token_is_persistent();
+        let body = serde_json::json!({ "refreshToken": refresh_token });
+        let client = client::ApiClient::shared().clone();
+        match client
+            .post_once::<_, RefreshWire>("/api/user/refresh", &body, None)
+            .await
+        {
+            Ok(r) => {
+                ui::set_storage_scoped("ferrite_access_token", &r.access_token, persistent);
+                ui::set_storage_scoped("ferrite_refresh_token", &r.refresh_token, persistent);
+                Some(r.access_token)
+            }
+            Err(_) => None,
+        }
+    })
+}
+
+/// `POST /api/user/refresh` 响应 wire (后端 `RefreshResult`, camelCase)。
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshWire {
+    access_token: String,
+    refresh_token: String,
+}
 
 /// Top-level console sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -156,6 +216,48 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
     }
 }
 
+/// 顶栏用户菜单：点击用户名展开下拉,含「账户资料」与「退出登录」。
+#[component]
+fn UserMenu(name: String, on_logout: EventHandler<()>) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        div {
+            class: "relative",
+            button {
+                class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
+                "data-testid": "user-menu-button",
+                "aria-haspopup": "menu",
+                "aria-expanded": "{open()}",
+                onclick: move |_| open.toggle(),
+                "{name}"
+            }
+            if open() {
+                div {
+                    class: "absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/95 py-1 text-left shadow-xl shadow-black/40 backdrop-blur",
+                    role: "menu",
+                    "aria-label": "用户菜单",
+                    a {
+                        class: "block px-4 py-2.5 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                        "data-testid": "menu-account",
+                        role: "menuitem",
+                        href: "#account",
+                        onclick: move |_| open.set(false),
+                        "账户资料"
+                    }
+                    div { class: "my-1 h-px bg-zinc-800" }
+                    button {
+                        class: "block w-full text-left px-4 py-2.5 text-sm text-red-400 transition-colors hover:bg-zinc-800 hover:text-red-300",
+                        "data-testid": "logout",
+                        role: "menuitem",
+                        onclick: move |_| { open.set(false); on_logout.call(()); },
+                        "退出登录"
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn get_initial_route() -> (Section, u8) {
     if let Some(w) = web_sys::window()
         && let Ok(loc) = w.location().hash()
@@ -167,6 +269,8 @@ fn get_initial_route() -> (Section, u8) {
             "#account" => (Section::Account, 0),
             "#usage" => (Section::Account, 1),
             "#rewards" => (Section::Account, 2),
+            "#sessions" => (Section::Account, 3),
+            "#settings" => (Section::Account, 4),
             "#manage" | "#network" => (Section::Manage, 0),
             "#users" => (Section::Manage, 1),
             "#groups" => (Section::Manage, 2),
@@ -190,7 +294,7 @@ pub fn HomePage() -> Element {
     use_context_provider(EntityStore::seed);
 
     // 启动恢复：localStorage 里有 token → 注入 shared client，顶部显示用户名
-    let logged_user = use_signal(|| {
+    let mut logged_user = use_signal(|| {
         ui::get_storage_item("ferrite_username").filter(|_| ui::get_cached_token().is_some())
     });
     use_hook(move || {
@@ -200,29 +304,63 @@ pub fn HomePage() -> Element {
     });
     let is_light = theme() == Theme::Light;
 
-    use_hook(move || {
+    // 用户菜单下拉状态 + 退出登录。do_logout 仅捕获 Copy 的 Signal,本身可 Copy,
+    // 可在桌面/移动两个 header 分支复用。
+    let mut dropdown_open = use_signal(|| false);
+    let mut do_logout = move || {
+        ui::remove_storage_item("ferrite_access_token");
+        ui::remove_storage_item("ferrite_refresh_token");
+        ui::remove_storage_item("ferrite_username");
+        ui::remove_storage_item("ferrite_current_user");
+        client::ApiClient::shared().set_token(None);
+        logged_user.set(None);
+        dropdown_open.set(false);
+        if let Some(w) = web_sys::window() {
+            let _ = w.location().set_hash("#signup");
+        }
+    };
+
+    // 同步 URL hash → 当前 section/tab。HomePage 切到 #auth/#signup/#login/#retro
+    // 时会卸载,其 section/dash_tab signal 随之 drop;监听必须在卸载时移除,否则旧
+    // listener 在下次 hashchange 写入已释放的 signal 触发 ValueDroppedError panic
+    // (原 .forget() 让监听常驻,正是 apps/admin-web/src/lib.rs:215 panic 的根因)。
+    let hash_listener = use_signal(|| {
+        let mut section_sig = section;
+        let mut dash_tab_sig = dash_tab;
         let cb = Closure::<dyn FnMut()>::new(move || {
-            // HomePage 卸载后 (进入 #auth/#signup 等)旧 signal 已 drop;
-            // 用 try_write 代替 set, 静默丢弃迟到的 hashchange, 避免 panic
-            // (ValueDroppedError): 守卫只查目标 hash, 拦不住"从 auth 返回 console"。
-            if let Ok(mut s) = section.try_write() {
-                let (sec, tab) = get_initial_route();
-                *s = sec;
-                if let Ok(mut t) = dash_tab.try_write() {
-                    *t = tab;
-                }
+            let h = current_hash();
+            let is_console = h != "#auth" && h != "#signup" && h != "#login" && h != "#retro";
+            if !is_console {
+                return;
             }
+            let (s, t) = get_initial_route();
+            section_sig.set(s);
+            dash_tab_sig.set(t);
         });
         if let Some(w) = web_sys::window() {
             let _ = w.add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());
         }
-        cb.forget();
+        cb
+    });
+    use_drop(move || {
+        if let Some(w) = web_sys::window() {
+            let _ = w.remove_event_listener_with_callback(
+                "hashchange",
+                hash_listener.read().as_ref().unchecked_ref(),
+            );
+        }
     });
 
     // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
     let labels: Vec<String> = match section() {
         Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
-        Section::Account => vec!["密钥·资料".into(), "用量·日志".into(), "邀请·奖励".into()],
+        Section::Account => vec![
+            "密钥·资料".into(),
+            "用量·日志".into(),
+            "邀请·奖励".into(),
+            "会话".into(),
+            "设置".into(),
+        ],
         Section::Manage => vec![
             "网络".into(),
             "用户".into(),
@@ -283,11 +421,7 @@ pub fn HomePage() -> Element {
                         if is_light { "Dark" } else { "Light" }
                     }
                     if let Some(name) = logged_user() {
-                        a {
-                            class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
-                            href: "#account",
-                            "{name}"
-                        }
+                        UserMenu { name, on_logout: move |_| do_logout() }
                     } else {
                         a {
                             class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
@@ -300,13 +434,8 @@ pub fn HomePage() -> Element {
             main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "Ferrite · 控制台" }
-                    if let Some(name) = logged_user() {
-                        a {
-                            class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
-                            href: "#account",
-                            "{name}"
-                        }
-                    } else {
+                    // 登录态入口只在桌面 fixed header (UserMenu), 移动行不再重复展示
+                    if logged_user().is_none() {
                         a {
                             class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
                             href: "#signup",
@@ -324,6 +453,8 @@ pub fn HomePage() -> Element {
                         (Section::Account, 0) => rsx! { KeysPanel {} },
                         (Section::Account, 1) => rsx! { UsageLogsPanel {} },
                         (Section::Account, 2) => rsx! { RewardsPanel {} },
+                        (Section::Account, 3) => rsx! { SessionsPanel {} },
+                        (Section::Account, 4) => rsx! { SettingsPanel {} },
                         (Section::Account, _) => rsx! { KeysPanel {} },
                         (Section::Manage, 0) => rsx! { NetworkPanel {} },
                         (Section::Manage, 1) => rsx! { UsersPanel {} },

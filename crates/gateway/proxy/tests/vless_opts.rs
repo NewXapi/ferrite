@@ -7,7 +7,7 @@ use gateway_proxy::adapter::adapter_for;
 use gateway_proxy::node::{ProxyNode, ProxyScheme};
 
 /// 64 个 hex 字符的合法 REALITY 公钥（内容任意，只要长度对）。
-const PBK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const PBK: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
 const UUID: &str = "11111111-2222-3333-4444-555555555555";
 
 fn vless_node(query: &str) -> ProxyNode {
@@ -73,12 +73,18 @@ fn oversized_sid_falls_back_to_direct() {
     assert!(adapter_for(&node).is_none(), "sid 超长必须回落直连");
 }
 
-/// 未知 flow 不该让节点失效：warn 后按非 Vision 处理，适配器照样构造。
+/// 废弃/未知 flow 必须回落直连而**不是**静默降级为非 Vision。
+///
+/// 旧实现 warn 后当普通 VLESS 用——用户以为有 Vision 保护，实际没有。
+/// meow-config 按 ADR-0002 Class A 硬拒（`xtls-rprx-direct` / `xtls-rprx-splice`
+/// 是 xray 已废弃的不安全 flow；未知值可能跳过预期的安全处理）。
 #[test]
-fn unknown_flow_degrades_to_plain() {
-    let node = vless_node("?flow=xtls-rprx-direct");
-    assert!(
-        adapter_for(&node).is_some(),
-        "未知 flow 只降级不失效（节点仍可用）"
-    );
+fn deprecated_or_unknown_flow_falls_back_to_direct() {
+    for flow in ["xtls-rprx-direct", "xtls-rprx-splice", "not-a-flow"] {
+        let node = vless_node(&format!("?flow={flow}"));
+        assert!(
+            adapter_for(&node).is_none(),
+            "flow={flow} 必须回落直连，不能静默当非 Vision 用"
+        );
+    }
 }

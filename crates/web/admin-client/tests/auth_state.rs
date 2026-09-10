@@ -26,3 +26,14 @@ fn fire_unauthorized_calls_hook() {
     state.fire_unauthorized();
     assert!(fired.get());
 }
+
+#[test]
+fn recently_refreshed_window_gates_suppression() {
+    // 并发 401 竞态窗口: mark_refreshed 后短窗口内判定为"刚刷新过",
+    // dispatch_unauthorized 依据它跳过清登录态; 窗口外恢复触发。
+    let mut state = AuthState::new();
+    assert!(!state.recently_refreshed(std::time::Duration::from_secs(5)));
+    state.mark_refreshed();
+    assert!(state.recently_refreshed(std::time::Duration::from_secs(5)));
+    assert!(!state.recently_refreshed(std::time::Duration::ZERO));
+}
