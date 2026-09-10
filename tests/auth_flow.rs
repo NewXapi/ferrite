@@ -84,10 +84,13 @@ fn e2e_web_session_storage_and_dto_interop() {
         email: "alice@ferrite.dev".into(),
         quota: 100000,
         used_quota: 500,
-        request_count: 12,
+        // #104 后 request_count 是 Option<u64>：真实 /self 响应不带该字段
+        request_count: Some(12),
         group: "default".into(),
-        role: "user".into(),
+        // wire 位值语义: 1=user | 10=admin | 100=root
+        role: 1,
         status: 1,
+        auth_version: 1,
         created_at: "2026-09-05".into(),
     };
 
