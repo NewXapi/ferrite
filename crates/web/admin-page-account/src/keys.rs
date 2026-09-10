@@ -405,6 +405,7 @@ fn NewKeyForm(
             group: if g.is_empty() { None } else { Some(g) },
             quota: quota_v,
             unlimited_quota: unlimited,
+            // 新建暂不设置过期 (MVP); 需要时由 CreateTokenRequest.expires_at 传入 RFC3339。
             expires_at: None,
         };
 
