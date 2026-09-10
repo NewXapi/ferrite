@@ -25,7 +25,6 @@ pub fn OverviewPanel() -> Element {
     let mut reload = use_signal(|| 0u32);
 
     // 趋势 + Top10 共用的窗口数据源：timeframe/reload 变化即重拉。
-    let mut data_empty = use_signal(|| false);
     let mut top_users = use_signal(Vec::<(String, String, f64)>::new);
     let mut top_models = use_signal(Vec::<(String, String, f64)>::new);
     let mut buckets = use_signal(Vec::<TrendBucketFE>::new);
@@ -53,10 +52,7 @@ pub fn OverviewPanel() -> Element {
             );
             match (trend_r, users_r, models_r) {
                 (Ok(rows), Ok(users), Ok(models)) => {
-                    let empty = rows.iter().all(|r| r.tokens == 0);
                     let (b, order) = api::pivot_trend(rows, tf);
-                    // 记录窗口是否全零（诚实空态判定）
-                    data_empty.set(empty);
                     buckets.set(b);
                     model_order.set(order);
                     // 用户榜按消耗(quota→¥)排,模型榜按 tokens 排;百分比各自占总和
@@ -127,7 +123,11 @@ pub fn OverviewPanel() -> Element {
     let stats_opt: Option<Vec<(String, &'static str)>> = summary().as_ref().map(dashboard_stats);
     let trend_loading = data_loading();
     let trend_err = data_err();
-    let empty_window = !trend_loading && trend_err.is_none() && data_empty();
+    // 用计算后的 buckets 判空 (单一数据源): pivot 后如果每桶 total 都是 0,
+    // 则以渲染为准 — 与 setter 里的行判零语义一致, 但不会错位。
+    let empty_window = !trend_loading
+        && trend_err.is_none()
+        && buckets().iter().all(|b| b.total <= 0.0);
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
@@ -183,7 +183,7 @@ pub fn OverviewPanel() -> Element {
                         if top_models().is_empty() {
                             p { class: "py-6 text-center text-xs text-zinc-500", "该时间窗内暂无调用" }
                         }
-                        for (i, &(ref name, ref amount, pct)) in top_models().iter().enumerate() {
+                        for (i, (name, amount, pct)) in top_models().iter().enumerate() {
                             div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
                                 div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
@@ -207,7 +207,7 @@ pub fn OverviewPanel() -> Element {
                         if top_users().is_empty() {
                             p { class: "py-6 text-center text-xs text-zinc-500", "该时间窗内暂无调用" }
                         }
-                        for (i, &(ref name, ref amount, pct)) in top_users().iter().enumerate() {
+                        for (i, (name, amount, pct)) in top_users().iter().enumerate() {
                             div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
                                 div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
