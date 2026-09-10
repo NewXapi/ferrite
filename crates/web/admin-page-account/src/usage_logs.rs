@@ -8,6 +8,7 @@
 use chrono::{DateTime, Duration, Local, SecondsFormat, Utc};
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
+use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use contract::api::usage::{UsageLogDto, UsageStatDto};
 
@@ -304,8 +305,9 @@ pub fn UsageLogsPanel() -> Element {
                 // 错误态不再提供「加载更多」
             } else if shown_len < total_len {
                 div { class: "flex justify-center pt-4",
-                    button {
-                        class: "px-8 py-3 rounded-2xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-sm text-zinc-400 hover:text-zinc-200 transition-all active:scale-95",
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        size: ButtonSize::Lg,
                         onclick: on_load_more,
                         "加载更多"
                     }

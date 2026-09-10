@@ -167,3 +167,22 @@ pub fn token_is_persistent() -> bool {
         false
     }
 }
+
+/// 复制文本到系统剪贴板 (Clipboard API, 需要 secure context; localhost 视为安全)。
+/// 只发起写入不等待 Promise 结果; 是否成功由调用方按需另行提示。
+pub fn copy_text_to_clipboard(text: &str) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(w) = web_sys::window() {
+            // write_text 返回 Promise (fire-and-forget), 提交即视为已发起
+            let _ = w.navigator().clipboard().write_text(text);
+            return true;
+        }
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = text;
+        false
+    }
+}

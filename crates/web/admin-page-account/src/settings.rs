@@ -3,6 +3,7 @@
 //! 数据全部经 `api` 取用, 面板不认识数据怎么来。
 
 use dioxus::prelude::*;
+use ui::components::button::{Button, ButtonVariant};
 
 use crate::api;
 
@@ -77,8 +78,8 @@ pub fn SettingsPanel() -> Element {
                 }
 
                 div { class: "mt-4 flex items-center gap-3",
-                    button {
-                        class: "rounded-xl bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    Button {
+                        variant: ButtonVariant::Primary,
                         disabled: busy(),
                         onclick: move |_| {
                             if busy() {

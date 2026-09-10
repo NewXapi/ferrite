@@ -63,7 +63,7 @@ use client::{ApiClient, ApiResult};
 use contract::api::token::{
     CreateTokenRequest, CreateTokenResult, TokenDto, TokenList, UpdateTokenRequest,
 };
-use contract::api::usage::{UsageDailyStatDto, UsageDailyStatPage, UsageLogPage, UsageStatDto};
+use contract::api::usage::{UsageLogPage, UsageStatDto};
 use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto};
 
 /// 真实调用: GET /api/token (owner 模式, 后端按 token 属主过滤, 无 query 参数)。
@@ -93,18 +93,6 @@ pub async fn update_token_api(
 /// 真实调用: DELETE /api/token/{key}
 pub async fn delete_token_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
     client.delete(&format!("/api/token/{key}")).await
-}
-
-/// 真实调用: GET /api/log/self/stat/daily?days=… — 近 N 天按天聚合
-/// (requests / tokens / quota)。`days` 后端 clamp 到 1..=365。
-pub async fn get_self_daily_stat_api(
-    client: &ApiClient,
-    days: i32,
-) -> ApiResult<Vec<UsageDailyStatDto>> {
-    let page = client
-        .get::<UsageDailyStatPage>(&format!("/api/log/self/stat/daily?days={days}"))
-        .await?;
-    Ok(page.items)
 }
 
 /// 真实调用: GET /api/log/self — 用户自查用量日志。

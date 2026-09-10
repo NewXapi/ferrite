@@ -434,9 +434,8 @@ pub fn HomePage() -> Element {
             main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 div { class: "mb-4 flex items-center justify-between lg:hidden",
                     span { class: "text-base font-semibold", "Ferrite · 控制台" }
-                    if let Some(name) = logged_user() {
-                        UserMenu { name, on_logout: move |_| do_logout() }
-                    } else {
+                    // 登录态入口只在桌面 fixed header (UserMenu), 移动行不再重复展示
+                    if logged_user().is_none() {
                         a {
                             class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
                             href: "#signup",

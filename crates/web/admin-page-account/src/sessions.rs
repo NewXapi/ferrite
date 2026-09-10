@@ -4,6 +4,7 @@
 
 use contract::api::user::SessionDto;
 use dioxus::prelude::*;
+use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::api;
 
@@ -41,8 +42,9 @@ pub fn SessionsPanel() -> Element {
                     h2 { class: "text-lg font-medium text-zinc-100", "登录会话" }
                     p { class: "mt-1 text-sm text-zinc-500", "当前用户全部存活设备, 可随时吊销其它会话" }
                 }
-                button {
-                    class: "rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
+                Button {
+                    variant: ButtonVariant::Outline,
+                    size: ButtonSize::Sm,
                     onclick: move |_| {
                         let client = client::ApiClient::shared().clone();
                         let s = sessions;

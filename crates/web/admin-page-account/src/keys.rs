@@ -1,10 +1,10 @@
 use dioxus::prelude::*;
 
 use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
-use contract::api::usage::UsageDailyStatDto;
-use contract::api::user::{UpdateSelfRequest, UserDto, role_label};
+use contract::api::user::{UserDto, role_label};
 
 use crate::api;
+use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 /// 拉取当前用户的密钥列表 (GET /api/token, owner 模式) 并写回三个 Signal。
 /// 首次加载与 create/update/delete 成功后刷新共用此入口。
@@ -26,8 +26,8 @@ fn load_keys(mut k: Signal<Vec<TokenDto>>, mut kl: Signal<bool>, mut ke: Signal<
 /// 密钥·资料面板 — 资料/密钥区全部走真实 API:
 /// - 个人资料: GET/PUT /api/user/self
 /// - 我的密钥: GET /api/token (owner 模式) + create/update/delete
-/// - 个人数据卡: 密钥总数 (列表长度) / 近 30 天消耗·请求 (GET /api/log/self/stat/daily)
-///   / 剩余额度 (/self quota-used_quota); 成功率后端无数据源, 显示「—」
+/// - 个人数据卡: 密钥总数 (列表长度) / 剩余额度 (/self quota-used_quota)
+///   / 成功率与近 30 天聚合暂无数据源 (daily 端点待 overview 会话合入后接回), 显示「—」
 #[component]
 pub fn KeysPanel() -> Element {
     // —— 区段标题 (ScrollSpyNav + h2 同用) ——
@@ -40,20 +40,14 @@ pub fn KeysPanel() -> Element {
     let mut new_group = use_signal(String::new);
     let mut new_quota = use_signal(String::new);
 
-    // 编辑资料/改密弹窗
-    let mut show_edit = use_signal(|| false);
-
     // ---- 真实用户信息 (GET /api/user/self) ----
-    let mut self_user = use_signal(|| None::<UserDto>);
+    let self_user = use_signal(|| None::<UserDto>);
     let self_err = use_signal(String::new);
 
     // ---- 我的密钥 (GET /api/token) + 近 30 天按天统计 ----
     let keys = use_signal(Vec::<TokenDto>::new);
     let keys_loaded = use_signal(|| false);
     let keys_err = use_signal(String::new);
-    let daily = use_signal(Vec::<UsageDailyStatDto>::new);
-    let daily_loaded = use_signal(|| false);
-    let daily_err = use_signal(String::new);
 
     // 新建成功后的明文展示 (只出现一次)
     let mut created_key = use_signal(|| None::<CreateTokenResult>);
@@ -80,32 +74,10 @@ pub fn KeysPanel() -> Element {
             }
         });
 
-        // 近 30 天按天统计 (只拉一次)
-        let mut d = daily;
-        let mut dl = daily_loaded;
-        let mut de = daily_err;
-        let client2 = client::ApiClient::shared().clone();
-        spawn(async move {
-            match api::get_self_daily_stat_api(&client2, 30).await {
-                Ok(v) => {
-                    d.set(v);
-                    dl.set(true);
-                }
-                Err(e) => {
-                    de.set(e.to_string());
-                    dl.set(true);
-                }
-            }
-        });
-
         // 密钥列表首载 (create/update/delete 成功后同入口刷新)
         load_keys(keys, keys_loaded, keys_err);
     });
 
-    // 近 30 天聚合
-    let daily_items = daily();
-    let d30_req: i64 = daily_items.iter().map(|d| d.requests).sum();
-    let d30_quota: i64 = daily_items.iter().map(|d| d.quota).sum();
     let remaining: Option<i64> = self_user().as_ref().map(|u| u.quota - u.used_quota);
 
     let pending = String::from("…");
@@ -123,18 +95,8 @@ pub fn KeysPanel() -> Element {
                         value: if keys_loaded() { keys().len().to_string() } else { pending.clone() },
                         label: "密钥总数",
                     }
-                    StatCard {
-                        value: if daily_loaded() {
-                            if daily_err().is_empty() { d30_quota.to_string() } else { none_v.clone() }
-                        } else { pending.clone() },
-                        label: "近 30 天消耗 (额度单位)",
-                    }
-                    StatCard {
-                        value: if daily_loaded() {
-                            if daily_err().is_empty() { d30_req.to_string() } else { none_v.clone() }
-                        } else { pending.clone() },
-                        label: "近 30 天请求",
-                    }
+                    StatCard { value: none_v.clone(), label: "近 30 天消耗 (暂无数据)" }
+                    StatCard { value: none_v.clone(), label: "近 30 天请求 (暂无数据)" }
                     StatCard {
                         value: match remaining {
                             Some(v) => v.to_string(),
@@ -155,45 +117,27 @@ pub fn KeysPanel() -> Element {
                 id: "keys-sec-profile",
                 class: "scroll-mt-8 space-y-3",
                 h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
-                div { class: "grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5",
-                    div { class: "md:col-span-2 xl:col-span-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
-                        div { class: "flex items-start justify-between gap-4",
-                            div { class: "min-w-0",
-                                if let Some(user) = self_user() {
-                                    div { class: "mb-4 flex items-center gap-2",
-                                        span { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
-                                        span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{role_label(user.role)}" }
-                                    }
-                                    div { class: "grid grid-cols-1 gap-3 sm:grid-cols-2",
-                                        ProfileRow { label: "显示名", value: user.display_name.clone() }
-                                        ProfileRow { label: "邮箱", value: user.email.clone() }
-                                        ProfileRow { label: "用户ID", value: user.key.clone() }
-                                        ProfileRow { label: "分组", value: user.group.clone() }
-                                        ProfileRow { label: "注册时间", value: user.created_at.clone() }
-                                    }
-                                } else if !self_err().is_empty() {
-                                    p { class: "text-sm text-amber-400", "无法加载用户信息 (未登录或请求失败): {self_err()}" }
-                                } else {
-                                    p { class: "text-sm text-zinc-500", "加载中…" }
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
+                    div { class: "flex items-start justify-between gap-4",
+                        div { class: "min-w-0",
+                            if let Some(user) = self_user() {
+                                div { class: "mb-4 flex items-center gap-2",
+                                    span { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
+                                    span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{role_label(user.role)}" }
                                 }
+                                // 资料项横向流式排布, 一行放不下自动换行。
+                                // 无「分组」行: group 是创建密钥时的分组语义, 不属于用户资料。
+                                div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",
+                                    ProfileItem { label: "显示名", value: user.display_name.clone() }
+                                    ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() } }
+                                    ProfileItem { label: "用户ID", value: user.key.clone() }
+                                    ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>() }
+                                }
+                            } else if !self_err().is_empty() {
+                                p { class: "text-sm text-amber-400", "无法加载用户信息 (未登录或请求失败): {self_err()}" }
+                            } else {
+                                p { class: "text-sm text-zinc-500", "加载中…" }
                             }
-                            button {
-                                class: "shrink-0 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                                onclick: move |_| show_edit.set(true),
-                                "编辑资料 / 改密"
-                            }
-                        }
-                    }
-
-                    div { class: "md:col-span-1 xl:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 self-start",
-                        div {
-                            h3 { class: "text-lg font-medium text-zinc-100", "快捷操作" }
-                            p { class: "mt-2 text-sm text-zinc-500", "为新的应用或环境签发一个独立密钥,可随时停用" }
-                        }
-                        button {
-                            class: "mt-4 w-full py-3 rounded-xl bg-white text-zinc-900 font-medium hover:bg-zinc-100 active:bg-zinc-200 transition-colors flex items-center justify-center gap-2",
-                            onclick: move |_| show_new_form.set(true),
-                            "✚ 新建密钥"
                         }
                     }
                 }
@@ -204,10 +148,18 @@ pub fn KeysPanel() -> Element {
                 id: "keys-sec-keys",
                 class: "scroll-mt-8",
                 div { class: "space-y-4",
-                    div { class: "flex items-center justify-between",
-                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_KEYS}" }
-                        span { class: "text-xs px-3 py-1 rounded-full bg-zinc-800 text-zinc-400",
-                            if keys_loaded() { "{keys().len()} 个" } else { "…" }
+                    div { class: "flex items-center justify-between gap-3",
+                        div { class: "flex items-center gap-2",
+                            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_KEYS}" }
+                            span { class: "text-xs px-3 py-1 rounded-full bg-zinc-800 text-zinc-400",
+                                if keys_loaded() { "{keys().len()} 个" } else { "…" }
+                            }
+                        }
+                        Button {
+                            variant: ButtonVariant::Primary,
+                            size: ButtonSize::Sm,
+                            onclick: move |_| show_new_form.set(true),
+                            "✚ 新建密钥"
                         }
                     }
 
@@ -283,18 +235,6 @@ pub fn KeysPanel() -> Element {
             }
         }
 
-        // 编辑资料 / 改密弹窗
-        if show_edit() {
-            SelfEditModal {
-                user: self_user().unwrap_or_default(),
-                on_cancel: move || show_edit.set(false),
-                on_saved: move |u: UserDto| {
-                    self_user.set(Some(u));
-                    show_edit.set(false);
-                }
-            }
-        }
-
         // 编辑密钥弹窗
         if let Some(t) = edit_key() {
             EditKeyModal {
@@ -332,135 +272,14 @@ fn StatCard(value: String, label: &'static str) -> Element {
     }
 }
 
+/// 横向资料项: label 与 value 同行 (label 灰、value 等宽字体)。
+/// 由父容器 flex-wrap 控制换行, 单项不自带换行逻辑。
 #[component]
-fn ProfileRow(label: &'static str, value: String) -> Element {
+fn ProfileItem(label: &'static str, value: String) -> Element {
     rsx! {
-        div { class: "flex flex-col gap-0.5 text-sm sm:flex-row sm:gap-4",
-            span { class: "shrink-0 text-zinc-400 sm:w-16", "{label}" }
+        div { class: "flex items-baseline gap-2",
+            span { class: "shrink-0 text-zinc-400", "{label}" }
             span { class: "min-w-0 break-all font-mono text-zinc-200", "{value}" }
-        }
-    }
-}
-
-/// 编辑资料 / 改密弹窗 — 走 PUT /api/user/self。
-/// 改密须原密码 + 新密码成对；成功后刷新共享缓存 (改密会使全端登出)。
-#[component]
-fn SelfEditModal(
-    user: UserDto,
-    on_cancel: EventHandler<()>,
-    on_saved: EventHandler<UserDto>,
-) -> Element {
-    let mut name = use_signal(|| user.display_name.clone());
-    let mut old_pwd = use_signal(String::new);
-    let mut new_pwd = use_signal(String::new);
-    let mut busy = use_signal(|| false);
-    let mut err = use_signal(|| None::<String>);
-
-    let submit = move |_| {
-        let n = name().trim().to_string();
-        let op = old_pwd().clone();
-        let np = new_pwd().clone();
-
-        let change_pwd = !op.is_empty() || !np.is_empty();
-        if change_pwd && (op.is_empty() || np.is_empty()) {
-            err.set(Some("原密码与新密码需同时填写".into()));
-            return;
-        }
-
-        let req = UpdateSelfRequest {
-            display_name: if n.is_empty() { None } else { Some(n) },
-            original_password: if change_pwd { Some(op) } else { None },
-            new_password: if change_pwd { Some(np) } else { None },
-        };
-
-        busy.set(true);
-        err.set(None);
-        let client = client::ApiClient::shared().clone();
-        let mut b = busy;
-        let mut er = err;
-        spawn(async move {
-            match api::update_self_api(&client, &req).await {
-                Ok(u) => {
-                    if let Ok(s) = serde_json::to_string(&u) {
-                        ui::set_storage_item("ferrite_current_user", &s);
-                    }
-                    on_saved.call(u);
-                }
-                Err(e) => {
-                    er.set(Some(e.to_string()));
-                }
-            }
-            b.set(false);
-        });
-    };
-
-    rsx! {
-        div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
-            onclick: move |_| on_cancel.call(()),
-            div {
-                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
-                onclick: move |e| e.stop_propagation(),
-
-                div { class: "mb-5 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-zinc-100", "编辑资料 / 修改密码" }
-                    button {
-                        class: "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
-                        onclick: move |_| on_cancel.call(()),
-                        "aria-label": "关闭",
-                        "✕"
-                    }
-                }
-
-                div { class: "space-y-4",
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "显示名 (留空不改)" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
-                            value: "{name}",
-                            oninput: move |e| name.set(e.value()),
-                        }
-                    }
-
-                    div { class: "border-t border-zinc-800 pt-4",
-                        p { class: "mb-3 text-xs text-zinc-500", "修改密码 (两项都填才生效；改密后所有设备需重新登录)" }
-                        div { class: "space-y-3",
-                            input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
-                                r#type: "password",
-                                placeholder: "原密码",
-                                value: "{old_pwd}",
-                                oninput: move |e| old_pwd.set(e.value()),
-                            }
-                            input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
-                                r#type: "password",
-                                placeholder: "新密码 (8-128 位)",
-                                value: "{new_pwd}",
-                                oninput: move |e| new_pwd.set(e.value()),
-                            }
-                        }
-                    }
-
-                    if let Some(m) = err() {
-                        p { class: "text-xs text-red-400", "{m}" }
-                    }
-                }
-
-                div { class: "mt-6 flex gap-3",
-                    button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
-                        onclick: move |_| on_cancel.call(()),
-                        "取消"
-                    }
-                    button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
-                        disabled: busy(),
-                        onclick: submit,
-                        "保存"
-                    }
-                }
-            }
         }
     }
 }
@@ -503,7 +322,10 @@ fn KeyCard(
             div { class: "mb-3 flex items-start justify-between gap-2",
                 div { class: "min-w-0",
                     h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
-                    p { class: "mt-0.5 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
+                    div { class: "mt-0.5 flex items-center gap-1",
+                        p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
+                        CopyKeyButton { text: entry.key_preview.clone() }
+                    }
                 }
                 span {
                     class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
@@ -525,19 +347,24 @@ fn KeyCard(
             }
 
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
+                Button {
+                    variant: ButtonVariant::Secondary,
+                    size: ButtonSize::Xs,
+                    class: "flex-1",
                     onclick: move |_| on_edit.call(e_edit.clone()),
                     "编辑"
                 }
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium transition-colors hover:bg-zinc-700",
-                    class: if enabled { "text-amber-400 hover:text-amber-300" } else { "text-emerald-400 hover:text-emerald-300" },
+                Button {
+                    variant: ButtonVariant::Outline,
+                    size: ButtonSize::Xs,
+                    class: "flex-1",
                     onclick: move |_| on_toggle.call(e_toggle.clone()),
                     if enabled { "停用" } else { "启用" }
                 }
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
+                Button {
+                    variant: ButtonVariant::Destructive,
+                    size: ButtonSize::Xs,
+                    class: "flex-1",
                     onclick: move |_| on_delete.call(e_del.clone()),
                     "删除"
                 }
@@ -651,13 +478,15 @@ fn NewKeyForm(
                 }
 
                 div { class: "mt-6 flex gap-3",
-                    button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        class: "flex-1",
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
-                    button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    Button {
+                        variant: ButtonVariant::Primary,
+                        class: "flex-1",
                         disabled: busy(),
                         onclick: submit,
                         "创建密钥"
@@ -699,8 +528,8 @@ fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Elem
                 p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name} — 选中上方内容后复制 (Ctrl/Cmd+C)" }
 
                 div { class: "mt-5 flex justify-end",
-                    button {
-                        class: "rounded-xl bg-white px-5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                    Button {
+                        variant: ButtonVariant::Primary,
                         onclick: move |_| on_close.call(()),
                         "完成"
                     }
@@ -838,17 +667,56 @@ fn DeleteKeyModal(
                 }
 
                 div { class: "mt-6 flex gap-3",
-                    button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        class: "flex-1",
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
-                    button {
-                        class: "flex-1 rounded-xl bg-red-500/90 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-40",
+                    Button {
+                        variant: ButtonVariant::Destructive,
+                        class: "flex-1",
                         disabled: busy(),
                         onclick: confirm,
                         "确认删除"
                     }
+                }
+            }
+        }
+    }
+}
+
+/// 复制密钥预览的小图标按钮: 点击写入剪贴板, 成功后图标短暂变 ✓。
+#[component]
+fn CopyKeyButton(text: String) -> Element {
+    let mut copied = use_signal(|| false);
+    rsx! {
+        Button {
+            variant: ButtonVariant::Ghost,
+            size: ButtonSize::IconXs,
+            title: "复制密钥",
+            "aria-label": "复制密钥",
+            class: if copied() { "text-emerald-400" } else { "" },
+            onclick: move |_| {
+                let ok = ui::copy_text_to_clipboard(text.as_str());
+                copied.set(ok);
+                let mut c = copied;
+                spawn(async move {
+                    gloo_timers::future::TimeoutFuture::new(1500).await;
+                    c.set(false);
+                });
+            },
+            if copied() {
+                span { class: "block h-3.5 w-3.5 text-center text-[11px] leading-[14px]", "✓" }
+            } else {
+                svg {
+                    class: "h-3.5 w-3.5",
+                    fill: "none",
+                    stroke: "currentColor",
+                    view_box: "0 0 24 24",
+                    stroke_width: "2",
+                    rect { x: "9", y: "9", width: "13", height: "13", rx: "2" }
+                    path { d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" }
                 }
             }
         }
