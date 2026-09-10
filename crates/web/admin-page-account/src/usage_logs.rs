@@ -117,9 +117,11 @@ fn load_logs(
                 }
                 total.set(pg.total);
                 page.set(next_page);
-                if !append {
-                    // 模型筛选项 = "全部" + 已见数据去重 (后端无 self distinct-models 端点)
-                    let mut seen = vec![FILTER_ALL.to_string()];
+                // 模型筛选项 = "全部" + 历史窗口内见过的模型去重 (后端无 self
+                // distinct-models 端点)。只在「不带模型筛选」的加载时合并 —
+                // 筛选某模型后的重拉若重建清单, 选项会收窄成 [全部, 该模型]。
+                if !append && model.is_none() {
+                    let mut seen = models();
                     for l in logs() {
                         if !seen.contains(&l.model_name) {
                             seen.push(l.model_name);
