@@ -4,8 +4,12 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use crate::manage_auth_token::{AuthState, SharedAuthState, TokenFuture};
+
+/// 刷新成功后的竞态抑制窗口: 窗口内的 401 视为并发尾巴, 直接重试或跳过清理。
+const UNAUTHORIZED_SUPPRESS_WINDOW: Duration = Duration::from_secs(5);
 use crate::{ApiError, ApiResult, Envelope};
 
 /// HTTP client for the New API backend with automatic Bearer token injection
@@ -73,6 +77,22 @@ impl ApiClient {
         self.auth.borrow_mut().set_on_unauthorized(Box::new(f));
     }
 
+    /// 401 无法恢复时的统一出口。回调先克隆、释放 borrow 之后再调用 —
+    /// 回调内部通常 set_token (borrow_mut), 在 borrow 作用域内同步触发会
+    /// RefCell 重入 panic。并发 401 的竞态尾巴 (刚成功刷新过) 则跳过清理。
+    fn dispatch_unauthorized(&self) {
+        let cb = {
+            let state = self.auth.borrow();
+            if state.recently_refreshed(UNAUTHORIZED_SUPPRESS_WINDOW) {
+                return;
+            }
+            state.cloned_on_unauthorized()
+        };
+        if let Some(cb) = cb {
+            cb();
+        }
+    }
+
     /// GET request with 401 refresh retry.
     pub async fn get<T: DeserializeOwned + Default>(&self, path: &str) -> ApiResult<T> {
         self.request(Method::GET, path, None::<&()>).await
@@ -127,18 +147,29 @@ impl ApiClient {
 
         // Check if we got a 401 that we can retry
         if let Err(ApiError::Unauthorized) = &result {
-            // Produce the refresh future without holding the borrow across await.
-            let refresh_fut = self.auth.borrow().refresh();
-            if let Some(fut) = refresh_fut {
-                if let Some(new_token) = fut.await {
-                    self.set_token(Some(new_token));
-                    // Retry once with the new token.
-                    result = self.request_once(method, path, body, None).await;
-                } else {
-                    self.auth.borrow().fire_unauthorized();
-                }
+            // 并发竞态: 另一路请求刚刚完成刷新 → 直接带新 token 重试,
+            // 不再触发第二次 refresh (旧 refresh token 已被轮换, 必失败)。
+            if self
+                .auth
+                .borrow()
+                .recently_refreshed(UNAUTHORIZED_SUPPRESS_WINDOW)
+            {
+                result = self.request_once(method, path, body, None).await;
             } else {
-                self.auth.borrow().fire_unauthorized();
+                // Produce the refresh future without holding the borrow across await.
+                let refresh_fut = self.auth.borrow().refresh();
+                if let Some(fut) = refresh_fut {
+                    if let Some(new_token) = fut.await {
+                        self.set_token(Some(new_token));
+                        self.auth.borrow_mut().mark_refreshed();
+                        // Retry once with the new token.
+                        result = self.request_once(method, path, body, None).await;
+                    } else {
+                        self.dispatch_unauthorized();
+                    }
+                } else {
+                    self.dispatch_unauthorized();
+                }
             }
         }
 

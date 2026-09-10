@@ -145,7 +145,7 @@ pub fn PasswordField(
     rsx! {
         label { class: "block space-y-1.5",
             span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
-            div { class: "relative",
+            div { class: "relative", style: "position:relative; width:100%;",
                 input {
                     class: "{INPUT_CLASS} pr-10",
                     name: "{name}",
@@ -159,9 +159,10 @@ pub fn PasswordField(
                     },
                 }
                 button {
-                    class: "absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors",
+                    class: "text-sm text-zinc-500 hover:text-zinc-300 transition-colors",
                     r#type: "button",
                     tabindex: "-1",
+                    style: "position:absolute; right:12px; top:50%; transform:translateY(-50%);",
                     onclick: move |_| visible.toggle(),
                     aria_label: if visible() { "Hide password" } else { "Show password" },
                     "{eye}"

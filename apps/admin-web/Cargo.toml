@@ -20,6 +20,8 @@ path = "src/lib.rs"
 [dependencies]
 dioxus           = { workspace = true }
 client           = { path = "../../crates/web/admin-client" }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
 ui               = { package = "ui-components", path = "../../crates/web/ui-components" }
 page-auth        = { package = "admin-page-auth", path = "../../crates/web/admin-page-auth" }
 page-account     = { package = "admin-page-account", path = "../../crates/web/admin-page-account" }

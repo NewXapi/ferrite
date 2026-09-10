@@ -12,25 +12,30 @@ fn test_tcp_metadata_host_port() {
     assert_eq!(meta.network, Network::Tcp);
 }
 
+/// http/socks5 由 reqwest（workspace `socks` feature）处理，`manager` 也只为它们
+/// 产出 `ProxyClient::Reqwest`——所以 `adapter_for` 必须返回 `None`。
+/// 旧实现会为它们造一个从未被用过的 meow 适配器（死代码）。
 #[test]
-fn test_adapter_for_socks5() {
-    let node = ProxyNode {
-        id: 1,
-        scheme: ProxyScheme::Socks5,
-        host: "proxy.example.com".to_string(),
-        port: 1080,
-        auth: Some(BasicAuth {
-            user: "user".to_string(),
-            pass: "pass".to_string(),
-        }),
-        channel_keys: vec!["test-channel".to_string()],
-        vless: None,
-        priority: 0,
-    };
-    let adapter_opt = adapter_for(&node);
-    assert!(adapter_opt.is_some());
-    let adapter = adapter_opt.unwrap();
-    assert_eq!(adapter.adapter_type(), AdapterType::Socks5);
+fn test_adapter_for_reqwest_schemes_have_no_adapter() {
+    for scheme in [ProxyScheme::Http, ProxyScheme::Socks5] {
+        let node = ProxyNode {
+            id: 1,
+            scheme,
+            host: "proxy.example.com".to_string(),
+            port: 1080,
+            auth: Some(BasicAuth {
+                user: "user".to_string(),
+                pass: "pass".to_string(),
+            }),
+            channel_keys: vec!["test-channel".to_string()],
+            vless: None,
+            priority: 0,
+        };
+        assert!(
+            adapter_for(&node).is_none(),
+            "{scheme:?} 该走 reqwest 而非 meow 适配器"
+        );
+    }
 }
 
 #[test]
@@ -88,4 +93,19 @@ fn test_adapter_for_direct() {
     };
     let adapter_opt = adapter_for(&node);
     assert!(adapter_opt.is_none());
+}
+
+/// trojan 密码在 user 字段（`trojan://pass@host`），clash 侧必须映射到 password 键。
+/// OCR 抓的回归：一度错取 pass 字段导致 trojan 节点全部空密码。
+#[test]
+fn trojan_password_lands_in_clash_password() {
+    let node = ProxyNode::parse_url("trojan://sekret@example.com:443").expect("parse");
+    let adapter = adapter_for(&node).expect("trojan 节点必须能构造适配器");
+    // 适配器构造成功 = meow-config 收到了非空 password（否则 parse_proxy 报
+    // "missing password" 返回 Err → adapter_for 为 None）
+    assert_eq!(
+        adapter.name(),
+        "node-0-trojan",
+        "parse_url 产出的节点 id=0，name 由 id 派生"
+    );
 }

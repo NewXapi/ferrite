@@ -63,7 +63,7 @@ fn vless_tls_fingerprint_builds_adapter_without_utls_feature() {
 /// REALITY + fingerprint 同样能构造适配器
 #[test]
 fn reality_fingerprint_builds_adapter_without_utls_feature() {
-    const PBK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const PBK: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
     let node = vless_node(&format!(
         "?fingerprint=chrome&sni=cdn.example.com&pbk={PBK}&sid=01ab"
     ));

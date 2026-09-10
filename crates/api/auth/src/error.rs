@@ -59,9 +59,10 @@ impl AuthError {
             Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::MissingSecret => StatusCode::INTERNAL_SERVER_ERROR,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Db(_) | Self::Crypto(_) | Self::Jwt(_) | Self::Internal(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            // JWT 解析失败 = 凭证无效, 必须 401 (前端 401 刷新链依赖该语义);
+            // 真正的服务端故障 (密钥缺失/DB/crypto) 才是 500。
+            Self::Jwt(_) => StatusCode::UNAUTHORIZED,
+            Self::Db(_) | Self::Crypto(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
         }
     }

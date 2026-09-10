@@ -5,7 +5,8 @@ edition = "2024"
 publish = false
 
 # 出口代理节点：解析 + 按 channel_key 选节点 + 租约 Client。
-# HTTP/SOCKS 握手交给 reqwest；vless/vmess/ss/trojan 走 meow_proxy 适配器。
+# HTTP/SOCKS 握手交给 reqwest；协议节点交给 meow-config 的 `parse_proxy`
+# （clash 风格配置 map → 组装好协议/传输/TLS 的 adapter），本 crate 不手写协议接线。
 
 [dependencies]
 reqwest        = { workspace = true }
@@ -23,11 +24,14 @@ percent-encoding = "2"
 uuid = "1"
 meow-common = "0.21"
 
-# 出口协议适配（meow-rs, MIT）：vless/vmess/ss/trojan/hysteria2/anytls/snell 等由 ProxyAdapter 提供
-meow-proxy = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vless-vision", "vmess", "hysteria2", "anytls", "snell"] }
-meow-transport = { version = "0.21", default-features = false, features = ["tls", "ws", "reality"] }
+# 出口协议装配（meow-rs, MIT）：`meow_config::proxy_parser::parse_proxy` 吃 clash
+# 风格 map，自己组装协议 + 传输链（ws/grpc/h2/httpupgrade）+ TLS/REALITY/uTLS。
+# 协议/传输的组合爆炸由它吸收——本 crate 只做 ProxyNode → map 的字段映射。
+meow-config = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vless-vision", "vmess", "hysteria2", "anytls", "snell"] }
+serde_yaml = "0.9"
 smol_str = "0.3"
-base64 = "0.22"
-hex            = { workspace = true }
+
+
 [features]
-utls = ["meow-transport/boring-tls"]
+# uTLS 指纹仿冒（BoringSSL；需系统 cmake，见 README）
+utls = ["meow-config/boring-tls"]
