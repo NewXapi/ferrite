@@ -13,11 +13,13 @@
 -- [索引演进] 删除 idx_usage_logs_token_name / idx_usage_logs_model_name：
 --   每个索引都是写放大，token/model 维度统计属低频分析查询，
 --   未来由聚合表承担，不在热写表上养索引。
--- 调优备忘：月增 10 万行以上时转 TimescaleDB hypertable 或原生月度分区
---   （见 db/README.md 的可选插件章节）；分区后 PK(id) 需改为 (id, created_at)。
+-- 调优备忘：月增 10 万行以上时转 TimescaleDB hypertable（见 db/optional/）。
+-- [演进 v2] PK 直接定为 (id, created_at)：与 hypertable 的唯一约束要求对齐，
+--   TS 转换无需再改主键。代价：裸 PG 表上不再由约束保证 id 单列唯一
+--   （id 来自 BIGSERIAL 序列，实际恒唯一）；按 id 单列查询仍走 PK 前缀索引。
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS usage_logs (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  BIGSERIAL,
     log_type            SMALLINT NOT NULL DEFAULT 2,  -- 1=充值 2=消费 5=错误（对齐 new-api 枚举）
     user_key            UUID NOT NULL,                -- → auth_users.key
     username            TEXT NOT NULL DEFAULT '',     -- 用户名冗余（用户改名不改历史日志）
@@ -49,3 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_usage_logs_created ON usage_logs(created_at);    
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user    ON usage_logs(user_key, created_at); -- "某用户的账单"页
 DROP INDEX IF EXISTS idx_usage_logs_token_name;  -- [演进] 统计走聚合表，热表减负
 DROP INDEX IF EXISTS idx_usage_logs_model_name;  -- [演进] 同上
+
+-- [演进 v2] 主键统一收敛为 (id, created_at)：
+--   旧库（PK=id 单列）在此处摘掉重建；新库建表时未定义主键，此处一次成型。
+ALTER TABLE usage_logs DROP CONSTRAINT IF EXISTS usage_logs_pkey;
+ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_pkey PRIMARY KEY (id, created_at);
