@@ -2498,17 +2498,15 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "async-trait",
- "base64 0.22.1",
- "hex",
  "memchr",
  "meow-common",
- "meow-proxy",
- "meow-transport",
+ "meow-config",
  "percent-encoding",
  "rand 0.8.8",
  "reqwest",
  "serde",
  "serde_json",
+ "serde_yaml",
  "smol_str",
  "thiserror 2.0.20",
  "tokio",
@@ -2653,6 +2651,25 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "h2"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef8e5e5a340588f4452631496976cf8636d4a7ecf600239fdc27615d2530bc16"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "indexmap",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -3229,6 +3246,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
 
 [[package]]
+name = "iprange"
+version = "0.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37209be0ad225457e63814401415e748e2453a5297f9b637338f5fb8afa4ec00"
+dependencies = [
+ "ipnet",
+]
+
+[[package]]
 name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3758,6 +3784,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "meow-config"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b95102e47996431c14a063a404b065a2d835a18ba6bb84d251fb98132bbffae"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "futures-util",
+ "hickory-proto",
+ "httparse",
+ "ipnet",
+ "libc",
+ "maxminddb",
+ "meow-common",
+ "meow-dns",
+ "meow-proxy",
+ "meow-rules",
+ "meow-transport",
+ "meow-trie",
+ "parking_lot",
+ "regex",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_yaml",
+ "smol_str",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "url",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
 name = "meow-dns"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3774,13 +3835,16 @@ dependencies = [
  "meow-trie",
  "parking_lot",
  "rand 0.9.5",
+ "rustls",
  "serde",
  "serde_json",
  "smallvec",
  "smol_str",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-rustls",
  "tracing",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -3828,6 +3892,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "meow-rules"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fed786a8fcc0808d2a8f18b0b81fc878165c2a3bdcb9fa31f33b564a3eba64b0"
+dependencies = [
+ "ipnet",
+ "iprange",
+ "maxminddb",
+ "meow-common",
+ "meow-trie",
+ "regex",
+ "smol_str",
+ "thiserror 2.0.20",
+ "tracing",
+ "zstd",
+]
+
+[[package]]
 name = "meow-transport"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3840,7 +3922,10 @@ dependencies = [
  "boring-sys",
  "bytes",
  "futures-util",
+ "h2",
  "hmac 0.12.1",
+ "http",
+ "httparse",
  "rand 0.9.5",
  "rustls",
  "sha2",
@@ -5080,6 +5165,19 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -6582,6 +6680,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+
+[[package]]
 name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7400,3 +7504,31 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[package]]
+name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.1.0+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
