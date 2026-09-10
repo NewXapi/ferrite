@@ -103,5 +103,5 @@ fn trojan_password_lands_in_clash_password() {
     let adapter = adapter_for(&node).expect("trojan 节点必须能构造适配器");
     // 适配器构造成功 = meow-config 收到了非空 password（否则 parse_proxy 报
     // "missing password" 返回 Err → adapter_for 为 None）
-    assert_eq!(adapter.name(), "node-1-trojan");
+    assert_eq!(adapter.name(), "node-0-trojan", "parse_url 产出的节点 id=0，name 由 id 派生");
 }
