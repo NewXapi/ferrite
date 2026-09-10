@@ -29,3 +29,5 @@ meow-transport = { version = "0.21", default-features = false, features = ["tls"
 smol_str = "0.3"
 base64 = "0.22"
 hex            = { workspace = true }
+[features]
+utls = ["meow-transport/boring-tls"]

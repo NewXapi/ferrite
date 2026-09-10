@@ -38,8 +38,7 @@ pub struct BasicAuth {
 /// - `insecure=1` / `allowInsecure=1` — 跳过证书验证 (Hysteria2/AnyTLS/Trojan 兼容)
 /// - `version=v4|v5` — Snell 版本 (缺省 v5)
 /// - `obfs=http|tls` — Snell 混淆 (缺省 none)
-/// - `obfs-uri=` — Snell obfs host/uri
-#[derive(Debug, Clone, Default)]
+/// - `fp=` / `fingerprint=` — uTLS 指纹（需开启 `utls` feature）
 pub struct VlessOpts {
     /// XTLS flow，目前只识别 `xtls-rprx-vision`
     pub flow: Option<String>,
@@ -57,6 +56,8 @@ pub struct VlessOpts {
     pub obfs: Option<String>,
     /// Snell obfs host/uri
     pub obfs_uri: Option<String>,
+    /// uTLS 指纹（`fingerprint=chrome` / `fp=chrome`），需开启 `utls` feature
+    pub fingerprint: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct ProxyNode {
@@ -133,15 +134,8 @@ impl ProxyNode {
                     "flow" => opts.flow = Some(v.into_owned()),
                     "sni" => opts.sni = Some(v.into_owned()),
                     "pbk" => opts.pbk = Some(v.into_owned()),
-                    "sid" => opts.sid = Some(v.into_owned()),
-                    "insecure" => {
-                        // 分享链接惯例是 insecure=1 / allowInsecure=1，不是 Rust bool 字面量
-                        opts.insecure = v == "1" || v.eq_ignore_ascii_case("true");
-                    }
-                    "version" => opts.version = Some(v.into_owned()),
-                    "obfs" => opts.obfs = Some(v.into_owned()),
-                    "obfs-uri" => opts.obfs_uri = Some(v.into_owned()),
-                    _ => {}
+                    "fp" => opts.fingerprint = Some(v.into_owned()),
+                    "fingerprint" => opts.fingerprint = Some(v.into_owned()),
                 }
             }
             opts
