@@ -8,6 +8,7 @@ mod rewards;
 mod sessions;
 mod settings;
 mod usage_logs;
+pub mod usage_support;
 
 pub use keys::KeysPanel;
 pub use rewards::RewardsPanel;

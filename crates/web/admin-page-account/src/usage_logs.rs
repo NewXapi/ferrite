@@ -5,7 +5,7 @@
 //! 后端 `usage_logs` 无 success/error 列, 状态/失败率无数据源 → 不渲染相关 UI;
 //! quota 为内部额度单位 (500_000 ≈ $1), 展示按此换算并标注「估」。
 
-use chrono::{DateTime, Duration, Local, SecondsFormat, Utc};
+use chrono::{DateTime, Local};
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
@@ -13,11 +13,11 @@ use ui::components::button::{Button, ButtonSize, ButtonVariant};
 use contract::api::usage::{UsageLogDto, UsageStatDto};
 
 use crate::api;
+use crate::usage_support::{
+    RANGE_7D, RANGE_30D, RANGE_TODAY, fmt_num, fmt_quota, fmt_time, fmt_time_full, range_bounds,
+};
 
 const FILTER_ALL: &str = "全部";
-const RANGE_TODAY: &str = "今天";
-const RANGE_7D: &str = "7天";
-const RANGE_30D: &str = "30天";
 const LABEL_TODAY: &str = "今天";
 const LABEL_7D: &str = "近 7 天";
 const LABEL_30D: &str = "近 30 天";
@@ -25,59 +25,6 @@ const SEC_STATS: &str = "用量统计";
 const SEC_LOGS: &str = "请求日志";
 /// 每页条数 (后端 clamp 1..=100)。
 const PAGE_SIZE: i64 = 20;
-/// 内部额度单位 → 美元换算基数 (后端口径)。
-const QUOTA_PER_USD: f64 = 500_000.0;
-
-/// 时间范围标签 → (start, end) RFC3339 (UTC, Z 结尾, 无 `+` 避免 URL 转义)。
-fn range_bounds(label: &str) -> (String, String) {
-    let end = Utc::now();
-    let days = match label {
-        RANGE_TODAY => 1,
-        RANGE_7D => 7,
-        _ => 30,
-    };
-    let start = end - Duration::days(days);
-    (
-        start.to_rfc3339_opts(SecondsFormat::Secs, true),
-        end.to_rfc3339_opts(SecondsFormat::Secs, true),
-    )
-}
-
-/// RFC3339 → 本地 "MM-dd HH:mm" 展示; 解析失败原样返回。
-fn fmt_time(rfc3339: &str) -> String {
-    DateTime::parse_from_rfc3339(rfc3339)
-        .map(|t| t.with_timezone(&Local).format("%m-%d %H:%M").to_string())
-        .unwrap_or_else(|_| rfc3339.to_string())
-}
-
-/// RFC3339 → 本地 "YYYY-MM-dd HH:mm:ss" (详情弹窗用)。
-fn fmt_time_full(rfc3339: &str) -> String {
-    DateTime::parse_from_rfc3339(rfc3339)
-        .map(|t| {
-            t.with_timezone(&Local)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_else(|_| rfc3339.to_string())
-}
-
-/// 千分位格式化。
-fn fmt_num(n: i64) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
-/// 内部额度单位 → 估算美元展示 (500_000 ≈ $1)。
-fn fmt_quota(quota: i64) -> String {
-    format!("${:.4}", quota as f64 / QUOTA_PER_USD)
-}
 
 /// 拉取一页日志并写回状态。`append=true` 时追加 (加载更多), 否则重置列表并合并
 /// 模型筛选项。page 为已加载页码, 成功后推进到请求页。
