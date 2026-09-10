@@ -432,9 +432,10 @@ fn TrendPanel(
                                                     },
                                                 }
 
-                                                // 直方图有色堆叠容器
+                                                // 直方图有色堆叠容器 (堆叠段连续无间隙, 参照 new-api 堆叠图;
+                                                // 之前 gap 1.5px 让亚像素小片段看起来像"间隙", 视觉不一致)
                                                 div {
-                                                    class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
+                                                    class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200",
                                                     style: "height: {hpct:.1}%",
                                                     for (i, v) in b.per_model.iter().enumerate() {
                                                         {
@@ -447,7 +448,7 @@ fn TrendPanel(
                                                             let denom = if b.total > 0.0 { b.total } else { 1.0 };
                                                             rsx! {
                                                                 div {
-                                                                    class: "pointer-events-auto w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
+                                                                    class: "pointer-events-auto w-full cursor-pointer hover:brightness-125 transition-all",
                                                                     style: "height: {(v / denom * 100.0):.1}%; background: {seg_color}",
                                                                     onmouseenter: move |evt| {
                                                                         evt.stop_propagation();
