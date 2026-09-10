@@ -1,485 +1,356 @@
-//! 系统配置页:卡片式网格,对齐 GroupsPage / ChannelsPage / UsersPanel 规范。
-//! 包含:顶部系统状态概览、模块分区卡片网格、站点通用信息表单、用户默认注册策略。
+//! 系统页:接入真实 `/api/system-info`(admin-ops system_info)的系统诊断面板。
+//! 包含:顶部运行指标概览(运行时长/内存/CPU/数据库/进程内存)、核心实体统计、
+//! 运行环境明细行。所有数据来自后端实时采集;后端不提供的站点配置/功能开关
+//! 字段已移除,不再使用 EntityStore mock 假数据。
 
-use crate::groups::{Badge, StatCard};
-use crate::state::EntityStore;
 use dioxus::prelude::*;
-use ui::SegmentedCapsule;
+
+use crate::groups::StatCard;
+use client::ApiClient;
 
 const SEC_STATS: &str = "系统概览";
-const SEC_FILTER: &str = "功能模块与开关";
-const SEC_BASE: &str = "站点信息与策略";
+const SEC_COUNTS: &str = "实体统计";
+const SEC_ENV: &str = "运行环境";
 
-/// 单个开关项
-#[derive(Clone, PartialEq)]
-struct SwitchItem {
-    key: &'static str,
-    title: &'static str,
-    desc: &'static str,
-    group: &'static str,
+// ---------- 本地 DTO ----------
+// 只声明页面渲染所需的字段;serde 默认忽略未知字段,数值字段带 default
+// 防御个别字段缺失导致整个面板解码失败。
+
+/// 系统综合信息视图,对应后端 `admin_ops::system_info::SystemInfoView`。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemInfoView {
+    #[serde(default)]
+    runtime: RuntimeInfo,
+    #[serde(default)]
+    uptime: UptimeInfo,
+    #[serde(default)]
+    memory: MemoryInfo,
+    #[serde(default)]
+    cpu: CpuInfo,
+    #[serde(default)]
+    database: DatabaseInfo,
+    #[serde(default)]
+    counts: EntityCounts,
 }
 
-const ALL_SWITCHES: &[SwitchItem] = &[
-    SwitchItem {
-        key: "站点公告",
-        title: "站点公告横幅",
-        desc: "在控制台顶端展示全局系统通知",
-        group: "站点",
-    },
-    SwitchItem {
-        key: "页头导航",
-        title: "自定义页头导航",
-        desc: "启用顶部自定义跳转链接与外部文档菜单",
-        group: "站点",
-    },
-    SwitchItem {
-        key: "货币与展示",
-        title: "多币种与汇率展示",
-        desc: "自动按人民币与美元双币种折算用量与套餐",
-        group: "站点",
-    },
-    SwitchItem {
-        key: "基础认证",
-        title: "邮箱密码注册与登录",
-        desc: "允许常规账密形式注册和 Argon2 鉴权",
-        group: "认证",
-    },
-    SwitchItem {
-        key: "OAuth 集成",
-        title: "GitHub & LinuxDO 登录",
-        desc: "一键关联第三方开放平台单点登录",
-        group: "认证",
-    },
-    SwitchItem {
-        key: "自定义 OAuth",
-        title: "OIDC / CAS 协议接入",
-        desc: "对接企业内部私有身份服务提供商",
-        group: "认证",
-    },
-    SwitchItem {
-        key: "Passkey",
-        title: "WebAuthn 生物密钥",
-        desc: "支持指纹/面容/FIDO2 硬件安全验证",
-        group: "认证",
-    },
-    SwitchItem {
-        key: "支付网关",
-        title: "聚合在线收银台",
-        desc: "支持微信、支付宝、Stripe 自动化上分",
-        group: "计费",
-    },
-    SwitchItem {
-        key: "签到奖励",
-        title: "每日签到赠金",
-        desc: "用户每日登录控制台领取随机额度奖励",
-        group: "计费",
-    },
-    SwitchItem {
-        key: "路由单位",
-        title: "精细化 Token 结算",
-        desc: "支持按请求次数或每 1k Token 独立计价",
-        group: "计费",
-    },
-    SwitchItem {
-        key: "机器人防护",
-        title: "Cloudflare Turnstile",
-        desc: "注册与登录行为验证码人机校验",
-        group: "安全",
-    },
-    SwitchItem {
-        key: "频率限制",
-        title: "高频 IP 智能限速",
-        desc: "防范恶意刷接口与暴力破解攻击",
-        group: "安全",
-    },
-    SwitchItem {
-        key: "敏感词",
-        title: "敏感词实时过滤审计",
-        desc: "多轮输入输出安全词典流式阻断",
-        group: "安全",
-    },
-    SwitchItem {
-        key: "SSRF 防护",
-        title: "内网穿透与出口拦截",
-        desc: "禁止渠道目标转发至私有网段",
-        group: "安全",
-    },
-    SwitchItem {
-        key: "公告",
-        title: "系统全局广播系统",
-        desc: "支持 Markdown 富文本弹窗与常驻通告",
-        group: "内容",
-    },
-    SwitchItem {
-        key: "FAQ",
-        title: "常见问题知识库",
-        desc: "在控制台前台公开常用调用与排障指引",
-        group: "内容",
-    },
-    SwitchItem {
-        key: "绘画",
-        title: "Midjourney / DALL-E",
-        desc: "启用文生图接口与操作代理面板",
-        group: "内容",
-    },
-    SwitchItem {
-        key: "侧边栏模块",
-        title: "酒馆与工作台扩展",
-        desc: "开启内置角色扮演与工作流集成",
-        group: "内容",
-    },
-    SwitchItem {
-        key: "日志维护",
-        title: "调用详情链路日志",
-        desc: "记录完整请求响应 Token 消耗追溯",
-        group: "运维",
-    },
-    SwitchItem {
-        key: "监控告警",
-        title: "渠道熔断与宕机通知",
-        desc: "通过 Telegram / 飞书即时通报警报",
-        group: "运维",
-    },
-    SwitchItem {
-        key: "性能",
-        title: "缓存与内存预热",
-        desc: "高频模型别名与路由就近命中优化",
-        group: "运维",
-    },
-    SwitchItem {
-        key: "Worker 代理",
-        title: "CF Workers 边缘中继",
-        desc: "使用无服务器节点分流上游流量",
-        group: "运维",
-    },
-];
+/// 运行时基础环境。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeInfo {
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    os: String,
+    #[serde(default)]
+    arch: String,
+    #[serde(default)]
+    hostname: String,
+}
 
+/// 进程启动与运行时间。`started_at` 是后端 DateTime<Utc> 序列化的 RFC3339 串。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UptimeInfo {
+    #[serde(default)]
+    started_at: String,
+    #[serde(default)]
+    uptime_seconds: u64,
+}
+
+/// 内存监控数据(字节)。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MemoryInfo {
+    #[serde(default)]
+    process_rss_bytes: u64,
+    #[serde(default)]
+    system_total_bytes: u64,
+    #[serde(default)]
+    system_used_bytes: u64,
+    #[serde(default)]
+    system_available_bytes: u64,
+}
+
+/// CPU 核心数与系统负载。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CpuInfo {
+    #[serde(default)]
+    num_cpus: usize,
+    #[serde(default)]
+    load_avg_1m: Option<f64>,
+    #[serde(default)]
+    load_avg_5m: Option<f64>,
+    #[serde(default)]
+    load_avg_15m: Option<f64>,
+}
+
+/// 数据库连接池诊断。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseInfo {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    pool_size: u32,
+    #[serde(default)]
+    idle_connections: u32,
+}
+
+/// 核心业务实体数量统计。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityCounts {
+    #[serde(default)]
+    users: i64,
+    #[serde(default)]
+    channels: i64,
+    #[serde(default)]
+    active_channels: i64,
+    #[serde(default)]
+    models: i64,
+    #[serde(default)]
+    tokens: i64,
+}
+
+/// 系统页:顶部运行指标 + 实体统计 + 运行环境明细,数据来自 `/api/system-info`。
 #[component]
 pub fn SystemPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let groups = store.groups;
+    let mut info = use_signal(|| None::<SystemInfoView>);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    let mut reload = use_signal(|| 0u32);
 
-    let mut search = use_signal(String::new);
-    let mut filter_group = use_signal(|| 0usize);
-    let mut save_flash = use_signal(|| false);
-
-    // 站点基本配置
-    let mut site_name = use_signal(|| "Ferrite New-API".to_string());
-    let mut announcement = use_signal(|| "欢迎使用 Ferrite 统一大模型分发控制台".to_string());
-    let mut def_group = use_signal(|| "default".to_string());
-    let mut topup_rate = use_signal(|| "1.0".to_string());
-    let mut contact_info = use_signal(|| "admin@ferrite.dev".to_string());
-
-    // 开关状态存储 (HashMap)
-    let toggles = use_signal(|| {
-        let mut m = std::collections::HashMap::<&'static str, bool>::new();
-        m.insert("站点公告", true);
-        m.insert("基础认证", true);
-        m.insert("货币与展示", true);
-        m.insert("签到奖励", true);
-        m.insert("敏感词", true);
-        m.insert("频率限制", true);
-        m.insert("SSRF 防护", true);
-        m.insert("日志维护", true);
-        m.insert("监控告警", true);
-        m
+    use_effect(move || {
+        // reload 变化(首帧或点击刷新)触发重新拉取
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared();
+            match client.get::<SystemInfoView>("/api/system-info").await {
+                Ok(v) => {
+                    info.set(Some(v));
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
     });
 
-    let group_categories = ["全部", "站点", "认证", "计费", "安全", "内容", "运维"];
+    let data = info();
+    let loading = loading();
+    let err = err();
 
-    let total_switches = ALL_SWITCHES.len();
-    let enabled_switches = ALL_SWITCHES
-        .iter()
-        .filter(|s| toggles.read().get(s.key).copied().unwrap_or(false))
-        .count();
-    let security_count = ALL_SWITCHES
-        .iter()
-        .filter(|s| s.group == "安全" && toggles.read().get(s.key).copied().unwrap_or(false))
-        .count();
-    let billing_count = ALL_SWITCHES
-        .iter()
-        .filter(|s| s.group == "计费" && toggles.read().get(s.key).copied().unwrap_or(false))
-        .count();
-
-    let stats: [(String, &str); 5] = [
-        (total_switches.to_string(), "功能模块数"),
-        (enabled_switches.to_string(), "已启用模块"),
-        (format!("{security_count}/4"), "安全防护项"),
-        (format!("{billing_count}/3"), "支付计费项"),
-        (def_group(), "新用户默认分组"),
-    ];
-
-    let filter_options: Vec<String> = group_categories
-        .iter()
-        .map(|c| {
-            if *c == "全部" {
-                format!("全部 ({total_switches})")
-            } else {
-                let cnt = ALL_SWITCHES.iter().filter(|s| s.group == *c).count();
-                format!("{c} ({cnt})")
-            }
-        })
-        .collect();
-
-    let filtered_switches: Vec<&'static SwitchItem> = {
-        let q = search().trim().to_lowercase();
-        let cat = group_categories[filter_group()];
-        ALL_SWITCHES
-            .iter()
-            .filter(|s| {
-                if !q.is_empty()
-                    && !s.title.to_lowercase().contains(&q)
-                    && !s.desc.to_lowercase().contains(&q)
-                    && !s.group.to_lowercase().contains(&q)
-                {
-                    return false;
-                }
-                if cat != "全部" && s.group != cat {
-                    return false;
-                }
-                true
-            })
-            .collect()
+    // 概览统计卡:运行时长 / 内存占用 / CPU 负载 / 数据库 / 进程内存
+    let stats: Vec<(String, &'static str)> = match &data {
+        Some(v) => vec![
+            (format_uptime(v.uptime.uptime_seconds), "运行时长"),
+            (
+                format!(
+                    "{}/{}",
+                    format_bytes(v.memory.system_used_bytes),
+                    format_bytes(v.memory.system_total_bytes)
+                ),
+                "系统内存 (已用/总量)",
+            ),
+            (
+                format!("{} · {}核", format_load(v.cpu.load_avg_1m), v.cpu.num_cpus),
+                "CPU 负载 (1m)",
+            ),
+            (format_db_status(&v.database.status), "数据库状态"),
+            (format_bytes(v.memory.process_rss_bytes), "进程常驻内存"),
+        ],
+        None => Vec::new(),
     };
 
-    let save_base_info = move |_| {
-        save_flash.set(true);
-        spawn(async move {
-            gloo_timers::future::TimeoutFuture::new(1200).await;
-            save_flash.set(false);
-        });
+    // 实体统计卡:核心业务实体行数
+    let count_cards: Vec<(String, &'static str)> = match &data {
+        Some(v) => vec![
+            (v.counts.users.to_string(), "注册用户"),
+            (v.counts.channels.to_string(), "渠道总数"),
+            (v.counts.active_channels.to_string(), "启用渠道"),
+            (v.counts.models.to_string(), "模型数量"),
+            (v.counts.tokens.to_string(), "Token 总数"),
+        ],
+        None => Vec::new(),
+    };
+
+    // 运行环境明细行
+    let env_rows: Vec<(String, String)> = match &data {
+        Some(v) => vec![
+            ("服务版本".to_string(), v.runtime.version.clone()),
+            (
+                "操作系统".to_string(),
+                format!("{} / {}", v.runtime.os, v.runtime.arch),
+            ),
+            ("主机名".to_string(), v.runtime.hostname.clone()),
+            (
+                "启动时间".to_string(),
+                format_started_at(&v.uptime.started_at),
+            ),
+            (
+                "负载均值".to_string(),
+                format!(
+                    "1m {} · 5m {} · 15m {}",
+                    format_load(v.cpu.load_avg_1m),
+                    format_load(v.cpu.load_avg_5m),
+                    format_load(v.cpu.load_avg_15m)
+                ),
+            ),
+            (
+                "连接池".to_string(),
+                format!(
+                    "大小 {} · 空闲 {}",
+                    v.database.pool_size, v.database.idle_connections
+                ),
+            ),
+            (
+                "内存明细".to_string(),
+                format!(
+                    "已用 {} · 可用 {} · 进程 {}",
+                    format_bytes(v.memory.system_used_bytes),
+                    format_bytes(v.memory.system_available_bytes),
+                    format_bytes(v.memory.process_rss_bytes)
+                ),
+            ),
+        ],
+        None => Vec::new(),
     };
 
     rsx! {
-            div { class: "flex flex-col gap-6",
-                // 1. 概览统计区
-                section { id: "system-sec-stats", class: "scroll-mt-8 space-y-3",
+        div { class: "flex flex-col gap-6",
+
+            // 1. 系统概览统计区(真实 /api/system-info 采集)
+            section {
+                id: "system-sec-stats",
+                "data-testid": "system-panel",
+                class: "scroll-mt-8 space-y-3",
+                div { class: "flex items-center justify-between",
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+                    button {
+                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                        "data-testid": "refresh-system",
+                        onclick: move |_| reload.set(reload() + 1),
+                        "刷新"
+                    }
+                }
+                if let Some(e) = err {
+                    div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                        p { class: "text-sm text-red-300", "加载系统信息失败" }
+                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                        button {
+                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                            onclick: move |_| reload.set(reload() + 1),
+                            "重试"
+                        }
+                    }
+                } else if loading {
+                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
+                        p { class: "text-zinc-400", "正在加载系统信息…" }
+                    }
+                } else if stats.is_empty() {
+                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
+                        p { class: "text-zinc-400", "暂无系统信息" }
+                        p { class: "mt-1 text-xs text-zinc-600", "后端未返回采集数据 —— 服务重启产生指标后这里会展示真实系统状态" }
+                    }
+                } else {
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                         for (value, label) in stats {
                             StatCard { value, label }
                         }
                     }
                 }
+            }
 
-                // 2. 站点核心设置卡片 (替代原空荡荡的面板 2 与面板 3)
+            // 2. 实体统计(核心业务实体行数)
+            if !count_cards.is_empty() {
+                section { id: "system-sec-counts", class: "scroll-mt-8 space-y-3",
+                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_COUNTS}" }
+                    div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                        for (value, label) in count_cards {
+                            StatCard { value, label }
+                        }
+                    }
+                }
+            }
+
+            // 3. 运行环境明细行
+            if !env_rows.is_empty() {
                 section {
-                    id: "system-sec-base",
+                    id: "system-sec-env",
                     class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
-                    div { class: "flex items-center justify-between",
-                        div {
-                            h2 { class: "text-sm font-medium text-zinc-200", "{SEC_BASE}" }
-                            p { class: "text-xs text-zinc-500", "配置平台全局展示名称、公告信息及注册落点策略" }
-                        }
-                        div { class: "flex items-center gap-3",
-                            if save_flash() {
-                                span { class: "text-xs text-emerald-400 animate-pulse", "✓ 配置已保存生效" }
-                            }
-                            button {
-                                class: "rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
-                                onclick: save_base_info,
-                                "保存基础设置"
+                    div {
+                        h2 { class: "text-sm font-medium text-zinc-200", "{SEC_ENV}" }
+                        p { class: "text-xs text-zinc-500", "采集自服务端进程与数据库连接池的实时诊断数据" }
+                    }
+                    div { class: "divide-y divide-zinc-800/80",
+                        for (label, value) in env_rows {
+                            div { class: "flex items-center justify-between gap-4 py-2.5",
+                                span { class: "shrink-0 text-xs text-zinc-500", "{label}" }
+                                span { class: "break-all text-right text-xs font-mono text-zinc-300", "{value}" }
                             }
                         }
                     }
-
-                    div { class: "grid grid-cols-1 md:grid-cols-3 gap-4 pt-1",
-                        div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "站点名称" }
-                            input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                                value: "{site_name}",
-                                oninput: move |e| site_name.set(e.value()),
-                            }
-                        }
-                        div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "默认用户分组" }
-                            select {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                                value: "{def_group}",
-                                onchange: move |e| def_group.set(e.value()),
-                                for g in groups.read().iter() {
-                                    option { value: "{g.name}", "{g.name} ({g.display})" }
-                                }
-                            }
-                        }
-                        div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "充值汇率折算 (¥/USD)" }
-                            input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                                value: "{topup_rate}",
-                                oninput: move |e| topup_rate.set(e.value()),
-                            }
-                        }
-                    }
-
-                    div { class: "grid grid-cols-1 md:grid-cols-2 gap-4",
-                        div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "全局顶部公告" }
-                            input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                                value: "{announcement}",
-                                oninput: move |e| announcement.set(e.value()),
-                            }
-                        }
-                        div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "管理员联系邮箱" }
-                            input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                                value: "{contact_info}",
-                                oninput: move |e| contact_info.set(e.value()),
-                            }
-                        }
-                    }
-                }
-
-                // 3. 模块开关筛选与卡片区
-                section {
-                    id: "system-sec-filter",
-                    class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
-                    div { class: "flex items-center justify-between gap-3",
-                        div { class: "flex items-center gap-2",
-                            h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                            span { class: "text-xs text-zinc-500", "点击开关即时切换各功能与服务子域" }
-                        }
-                        span { class: "text-xs text-zinc-400",
-                            "共 {filtered_switches.len()} 项"
-                        }
-                    }
-
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
-                        r#type: "text",
-                        placeholder: "搜索模块标题、关键词或描述 (如 安全, 验证码, SSRF, 支付)...",
-                        value: "{search}",
-                        oninput: move |e| search.set(e.value()),
-                    }
-
-                    div { class: "flex flex-wrap gap-2",
-                        SegmentedCapsule {
-                            items: filter_options,
-                            active: filter_group(),
-                            on_select: move |i: usize| filter_group.set(i),
-                        }
-                    }
-                }
-
-                // 4. 卡片网格展示
-                section { class: "space-y-4",
-                    if filtered_switches.is_empty() {
-                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                            p { class: "text-zinc-400", "没有匹配的功能模块" }
-                        }
-                    } else {
-                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for sw in filtered_switches {
-                                {
-                                    let is_on = toggles.read().get(sw.key).copied().unwrap_or(false);
-                                    let k = sw.key;
-                                    rsx! {
-                                        SwitchCard {
-                                            key: "{sw.key}",
-                                            item: sw,
-                                            is_on: is_on,
-                                            on_toggle: move |_| {
-                                                let mut t = toggles;
-                                                let cur = t.read().get(k).copied().unwrap_or(false);
-                                                t.write().insert(k, !cur);
-                                            },
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-    }
-}
-
-/// 功能开关卡片 (严格对齐统一卡片规范)
-#[component]
-fn SwitchCard(item: &'static SwitchItem, is_on: bool, on_toggle: EventHandler<()>) -> Element {
-    let initial = item
-        .group
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_uppercase()
-        .to_string();
-
-    let (status_text, status_tone, group_tone, bar_tone) = if is_on {
-        (
-            "已开启",
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "border-zinc-700 bg-zinc-800/80 text-zinc-300",
-            "bg-emerald-500",
-        )
-    } else {
-        (
-            "未启用",
-            "border-zinc-700 bg-zinc-800/80 text-zinc-500",
-            "border-zinc-800 bg-zinc-900 text-zinc-500",
-            "bg-zinc-700",
-        )
-    };
-
-    rsx! {
-        div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-            div { class: "space-y-3",
-                // 头部
-                div { class: "flex items-start gap-3",
-                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
-                        "{initial}"
-                    }
-                    div { class: "min-w-0 flex-1",
-                        div { class: "flex items-center justify-between gap-2",
-                            h3 { class: "truncate text-sm font-medium text-zinc-100", "{item.title}" }
-                            span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                                "{item.group}"
-                            }
-                        }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{item.key}" }
-                    }
-                }
-
-                // 徽标行
-                div { class: "flex flex-wrap gap-1.5",
-                    Badge { text: status_text.to_string(), tone: status_tone }
-                    Badge { text: format!("{}域", item.group), tone: group_tone }
-                }
-
-                // 状态指示条
-                div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 text-[11px]",
-                        span { class: "text-zinc-400", "运行状态" }
-                        span { class: if is_on { "font-medium text-emerald-400" } else { "font-medium text-zinc-500" },
-                            "{status_text}"
-                        }
-                    }
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
-                        div { class: "h-full rounded-full {bar_tone} transition-all duration-300", style: if is_on { "width: 100%" } else { "width: 8%" } }
-                    }
-                }
-
-                // 说明文本行
-                div { class: "text-xs pt-1",
-                    p { class: "text-zinc-400 leading-relaxed min-h-[36px]", "{item.desc}" }
-                }
-            }
-
-            // 底部操作区 (开关按钮)
-            div { class: "mt-4 border-t border-zinc-800 pt-3",
-                button {
-                    class: if is_on {
-                        "w-full rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-2 text-xs text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300 font-medium"
-                    } else {
-                        "w-full rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
-                    },
-                    onclick: move |_| on_toggle.call(()),
-                    if is_on { "点击停用模块" } else { "点击启用模块" }
                 }
             }
         }
     }
+}
+
+/// 秒数 → 人类可读运行时长(天/小时/分,不足一分钟时显示秒)。
+fn format_uptime(total_secs: u64) -> String {
+    let days = total_secs / 86_400;
+    let hours = (total_secs % 86_400) / 3_600;
+    let mins = (total_secs % 3_600) / 60;
+    let secs = total_secs % 60;
+    if days > 0 {
+        format!("{days}天 {hours}小时")
+    } else if hours > 0 {
+        format!("{hours}小时 {mins}分")
+    } else if mins > 0 {
+        format!("{mins}分 {secs}秒")
+    } else {
+        format!("{secs}秒")
+    }
+}
+
+/// 字节数 → 人类可读容量(1 位小数,自动选 GB/MB/KB/B)。
+fn format_bytes(bytes: u64) -> String {
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.1}GB", b / GB)
+    } else if b >= MB {
+        format!("{:.1}MB", b / MB)
+    } else if b >= KB {
+        format!("{:.1}KB", b / KB)
+    } else {
+        format!("{bytes}B")
+    }
+}
+
+/// 负载均值 → 两位小数;None(平台不提供)显示占位符,不造数据。
+fn format_load(v: Option<f64>) -> String {
+    v.map(|x| format!("{x:.2}")).unwrap_or_else(|| "—".into())
+}
+
+/// 数据库连通状态码 → 中文标签(未知值原样展示)。
+fn format_db_status(status: &str) -> String {
+    match status {
+        "connected" => "已连接".to_string(),
+        "degraded" => "已降级".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// RFC3339 启动时间 → 去掉小数秒的可读时间串。
+fn format_started_at(rfc3339: &str) -> String {
+    rfc3339.split('.').next().unwrap_or(rfc3339).to_string()
 }

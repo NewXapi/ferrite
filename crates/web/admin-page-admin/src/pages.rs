@@ -228,6 +228,11 @@ pub fn SubscriptionsPage() -> Element {
 
     rsx! {
         div { class: "flex flex-col gap-4 w-full",
+            // 诚实横幅: 订阅套餐后端暂未实现
+            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-400",
+                span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 font-bold text-zinc-300", "i" }
+                span { "订阅套餐后端暂未实现——此页暂无真实数据,以下为本地演示态" }
+            }
             // 顶部栏: 提示横幅 + 新建按钮
             div { class: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3",
                 div { class: "flex items-center gap-2 text-xs text-amber-300",

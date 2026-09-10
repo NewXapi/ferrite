@@ -169,6 +169,10 @@ pub fn AliasesPage() -> Element {
 
     rsx! {
             div { class: "flex flex-col gap-6",
+                // 价格字段说明(后端 models 端点暂无计费字段)
+                div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
+                    span { "别名来自真实 /api/models;价格字段后端暂未提供,显示为 0" }
+                }
                 // 1. 统计区
                 section { id: "aliases-sec-stats", class: "scroll-mt-8 space-y-3",
                     h2 { class: "text-lg font-medium text-zinc-100", "别名概览" }

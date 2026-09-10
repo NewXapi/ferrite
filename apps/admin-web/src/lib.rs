@@ -230,7 +230,14 @@ pub fn HomePage() -> Element {
     let mut section = use_signal(move || init_sec);
     let mut dash_tab = use_signal(move || init_tab);
     let mut theme = use_signal(|| Theme::Dark);
-    use_context_provider(EntityStore::seed);
+    use_context_provider(EntityStore::empty);
+    // 启动即从真实后端灌入 分组/渠道/路由单元/模型别名(网络拓扑与别名页吃真数据);
+    // 未登录时 401 静默保持空,登录成功后 HomePage 重挂载会再次 hydrate。
+    use_effect(move || {
+        spawn(async move {
+            page_admin::state::EntityStore::hydrate(EntityStore::empty()).await;
+        });
+    });
 
     // 启动恢复：localStorage 里有 token → 注入 shared client，顶部显示用户名
     let mut logged_user = use_signal(|| {

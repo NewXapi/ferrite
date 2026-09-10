@@ -115,3 +115,81 @@ pub async fn update_group_api(
 pub async fn delete_group_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
     client.delete(&format!("/api/group/{key}")).await
 }
+
+// ---------- 兑换码 (billing_redemptions) ----------
+
+/// 兑换码视图 — 对齐 admin-billing RedemptionView (camelCase)。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedemptionView {
+    pub key: String,
+    pub code_preview: String,
+    pub quota: i64,
+    pub status: i16,
+    pub redeemed_by: Option<String>,
+    pub redeemed_at: Option<String>,
+    pub created_at: String,
+}
+
+/// 后端列表端点统一包装 `{"items":[...]}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct RedemptionItems {
+    #[serde(default)]
+    items: Vec<RedemptionView>,
+    #[serde(default)]
+    total: u64,
+}
+
+/// 真实调用: GET /api/redemption?status=&page=&size=
+pub async fn list_redemptions_api(
+    client: &ApiClient,
+    status: Option<i16>,
+    page: Option<u32>,
+    size: Option<u32>,
+) -> ApiResult<(Vec<RedemptionView>, u64)> {
+    let mut query = Vec::new();
+    if let Some(s) = status {
+        query.push(format!("status={s}"));
+    }
+    if let Some(p) = page {
+        query.push(format!("page={p}"));
+    }
+    if let Some(sz) = size {
+        query.push(format!("size={sz}"));
+    }
+    let path = if query.is_empty() {
+        "/api/redemption".to_string()
+    } else {
+        format!("/api/redemption?{}", query.join("&"))
+    };
+    let r: RedemptionItems = client.get(&path).await?;
+    Ok((r.items, r.total))
+}
+
+/// 真实调用: POST /api/redemption {quota, count} — 明文码只返回一次。
+pub async fn generate_redemptions_api(
+    client: &ApiClient,
+    quota: i64,
+    count: u32,
+) -> ApiResult<Vec<String>> {
+    #[derive(Default, serde::Deserialize)]
+    struct CodesResp {
+        #[serde(default)]
+        codes: Vec<String>,
+    }
+    let r: CodesResp = client
+        .post(
+            "/api/redemption",
+            &serde_json::json!({ "quota": quota, "count": count }),
+        )
+        .await?;
+    Ok(r.codes)
+}
+
+/// 真实调用: DELETE /api/redemption/{key} — 后端语义为停用 (status→2)。
+pub async fn disable_redemption_api(client: &ApiClient, key: &str) -> ApiResult<()> {
+    client
+        .delete::<serde_json::Value>(&format!("/api/redemption/{key}"))
+        .await?;
+    Ok(())
+}
