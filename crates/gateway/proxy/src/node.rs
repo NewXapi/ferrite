@@ -41,6 +41,7 @@ pub struct BasicAuth {
 /// - `obfs-uri=` — Snell obfs host/uri
 /// - `type=ws` / `path=/xxx` — WebSocket 传输层（path 存在即视为 WS 节点）
 /// - `host=sni域名` — WebSocket Host header（可选，默认用 SNI 或 host）
+/// - `fp=` / `fingerprint=` — uTLS 指纹（需开启 `utls` feature）
 #[derive(Debug, Clone, Default)]
 pub struct VlessOpts {
     /// XTLS flow，目前只识别 `xtls-rprx-vision`
@@ -63,6 +64,8 @@ pub struct VlessOpts {
     pub ws_path: Option<String>,
     /// WebSocket host header（query key "host"）
     pub ws_host: Option<String>,
+    /// uTLS 指纹（`fingerprint=chrome` / `fp=chrome`），需开启 `utls` feature
+    pub fingerprint: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct ProxyNode {
@@ -144,13 +147,14 @@ impl ProxyNode {
                     "sni" => opts.sni = Some(v.into_owned()),
                     "pbk" => opts.pbk = Some(v.into_owned()),
                     "sid" => opts.sid = Some(v.into_owned()),
-                    "insecure" => {
-                        // 分享链接惯例是 insecure=1 / allowInsecure=1，不是 Rust bool 字面量
+                    "insecure" | "allowInsecure" => {
+                        // 分享链接惯例是 insecure=1，不是 Rust bool 字面量
                         opts.insecure = v == "1" || v.eq_ignore_ascii_case("true");
                     }
                     "version" => opts.version = Some(v.into_owned()),
                     "obfs" => opts.obfs = Some(v.into_owned()),
                     "obfs-uri" => opts.obfs_uri = Some(v.into_owned()),
+                    "fp" | "fingerprint" => opts.fingerprint = Some(v.into_owned()),
                     "path" => opts.ws_path = Some(v.into_owned()),
                     "host" => opts.ws_host = Some(v.into_owned()),
                     _ => {}

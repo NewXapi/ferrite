@@ -30,7 +30,7 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 
 ### VLESS 的 query 参数
 
-`vless://<uuid>@host:port?flow=&sni=&pbk=&sid=` —— 与常见分享链接同名：
+`vless://<uuid>@host:port?flow=&sni=&pbk=&sid=&fp=` —— 与常见分享链接同名：
 
 |参数|含义|缺省|
 |---|---|---|
@@ -41,9 +41,27 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 |`type`|`ws` 启用 WebSocket 传输层（等价于 `path` 存在）|无|
 |`path`|WebSocket 路径（如 `/ws`）；**存在即视为 WS 节点**|无|
 |`host`|WebSocket Host header（可选，默认用 SNI 或节点 host）|无|
+|`fp` / `fingerprint`|uTLS 指纹（`chrome`/`firefox`/`safari`/`ios`/`android`/`edge`/`360`/`qq`/`random`/`randomized`/`deprecated`），需开启 `utls` feature|无（默认 rustls，不仿冒）|
 
 `sni` 或 `pbk` 任一存在才挂 TLS 层；参数非法（pbk 长度不对、sid 超 8 字节）
 → warn + 回落直连，不 panic。Hysteria2 / AnyTLS / Snell 尚未接节点配置。
+
+### uTLS 指纹 feature
+
+默认**不开启**。开启需要满足**构建前提**：
+
+- 系统装有 `cmake`（BoringSSL 构建脚本硬依赖；缺失时 `boring-sys` 直接失败：`is cmake not installed?`）
+- 编译耗时以十分钟计（BoringSSL 是 C/C++ 工程）
+
+```bash
+# Arch/CachyOS: sudo pacman -S cmake
+cargo build -p gateway-proxy --features utls
+```
+或在依赖链中传递：`gateway-proxy = { ..., features = ["utls"] }`
+
+- 开启后：`fp=chrome` → BoringSSL 真实 uTLS 仿冒
+- 未开启：`fp=chrome` 落入 `TlsConfig.fingerprint`，**仅触发一次性 warn**（meow 内部 stub 实现），**依然使用 rustls**，不阻断节点构造
+- Trojan 协议暂不支持 fingerprint（meow `TrojanAdapter` 无 fingerprint 参数），仅 VLESS TLS/REALITY 路径生效
 
 ## SSRF
 
