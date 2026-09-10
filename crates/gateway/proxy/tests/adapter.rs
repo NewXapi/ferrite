@@ -94,3 +94,14 @@ fn test_adapter_for_direct() {
     let adapter_opt = adapter_for(&node);
     assert!(adapter_opt.is_none());
 }
+
+/// trojan 密码在 user 字段（`trojan://pass@host`），clash 侧必须映射到 password 键。
+/// OCR 抓的回归：一度错取 pass 字段导致 trojan 节点全部空密码。
+#[test]
+fn trojan_password_lands_in_clash_password() {
+    let node = ProxyNode::parse_url("trojan://sekret@example.com:443").expect("parse");
+    let adapter = adapter_for(&node).expect("trojan 节点必须能构造适配器");
+    // 适配器构造成功 = meow-config 收到了非空 password（否则 parse_proxy 报
+    // "missing password" 返回 Err → adapter_for 为 None）
+    assert_eq!(adapter.name(), "node-1-trojan");
+}

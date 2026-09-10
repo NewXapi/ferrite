@@ -101,7 +101,10 @@ fn clash_config(node: &ProxyNode, proxy_type: &str) -> HashMap<String, Yaml> {
     put("server", str_val(&node.host));
     put("port", Yaml::Number(node.port.into()));
 
-    // 认证：各协议的密码/UUID 位置见模块注释
+    // 认证：parse_url 把 URL userinfo 拆成 user/pass——`scheme://pass@host` 形态的
+    // 协议（trojan/hysteria2/anytls/snell/vless/vmess）密码或 UUID 都落在 user，
+    // pass 为空；只有 `ss://cipher:pass@` 两个字段都有值。
+    // clash 侧键名：ss→cipher+password，vless/vmess→uuid，snell→psk，其余→password。
     if let Some(auth) = &node.auth {
         match proxy_type {
             "ss" => {
@@ -109,11 +112,10 @@ fn clash_config(node: &ProxyNode, proxy_type: &str) -> HashMap<String, Yaml> {
                 put("password", str_val(&auth.pass));
             }
             "vless" | "vmess" => put("uuid", str_val(&auth.user)),
-            // trojan/hysteria2/anytls/snell 的密码在 user 字段
             "snell" => put("psk", str_val(&auth.user)),
             _ => put("password", str_val(&auth.user)),
         }
-        // VMess 的加密方式复用 auth.pass（旧约定），空值让 meow 取缺省
+        // VMess 的加密方式复用 auth.pass（旧约定），空值让 meow 取缺省 auto
         if proxy_type == "vmess" && !auth.pass.is_empty() {
             put("cipher", str_val(&auth.pass));
         }
