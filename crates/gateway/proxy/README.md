@@ -38,6 +38,9 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 |`sni`|TLS / REALITY 的 SNI|回落节点 host|
 |`pbk`|REALITY 服务端 X25519 公钥（64 hex）；**出现即走 REALITY**|无（明文 TCP）|
 |`sid`|REALITY short id（0–16 hex，前对齐补零到 8 字节）|全 0|
+|`type`|`ws` 启用 WebSocket 传输层（等价于 `path` 存在）|无|
+|`path`|WebSocket 路径（如 `/ws`）；**存在即视为 WS 节点**|无|
+|`host`|WebSocket Host header（可选，默认用 SNI 或节点 host）|无|
 
 `sni` 或 `pbk` 任一存在才挂 TLS 层；参数非法（pbk 长度不对、sid 超 8 字节）
 → warn + 回落直连，不 panic。Hysteria2 / AnyTLS / Snell 尚未接节点配置。

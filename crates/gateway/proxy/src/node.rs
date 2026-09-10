@@ -39,6 +39,8 @@ pub struct BasicAuth {
 /// - `version=v4|v5` — Snell 版本 (缺省 v5)
 /// - `obfs=http|tls` — Snell 混淆 (缺省 none)
 /// - `obfs-uri=` — Snell obfs host/uri
+/// - `type=ws` / `path=/xxx` — WebSocket 传输层（path 存在即视为 WS 节点）
+/// - `host=sni域名` — WebSocket Host header（可选，默认用 SNI 或 host）
 #[derive(Debug, Clone, Default)]
 pub struct VlessOpts {
     /// XTLS flow，目前只识别 `xtls-rprx-vision`
@@ -57,6 +59,10 @@ pub struct VlessOpts {
     pub obfs: Option<String>,
     /// Snell obfs host/uri
     pub obfs_uri: Option<String>,
+    /// WebSocket path（query key "path"）
+    pub ws_path: Option<String>,
+    /// WebSocket host header（query key "host"）
+    pub ws_host: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct ProxyNode {
@@ -121,10 +127,14 @@ impl ProxyNode {
             | ProxyScheme::Snell => url_obj.port().unwrap_or(443),
             _ => url_obj.port().unwrap_or(8080), // Http or Direct (though Direct never reaches here)
         };
-        // 解析 query 参数：VLESS / Hysteria2 / AnyTLS / Snell 共用 VlessOpts
+        // 解析 query 参数：VLESS / VMess（ws 传输） / Hysteria2 / AnyTLS / Snell 共用 VlessOpts
         let needs_opts = matches!(
             scheme,
-            ProxyScheme::Vless | ProxyScheme::Hysteria2 | ProxyScheme::AnyTls | ProxyScheme::Snell
+            ProxyScheme::Vless
+                | ProxyScheme::Vmess
+                | ProxyScheme::Hysteria2
+                | ProxyScheme::AnyTls
+                | ProxyScheme::Snell
         );
         let vless = needs_opts.then(|| {
             let mut opts = VlessOpts::default();
@@ -141,6 +151,8 @@ impl ProxyNode {
                     "version" => opts.version = Some(v.into_owned()),
                     "obfs" => opts.obfs = Some(v.into_owned()),
                     "obfs-uri" => opts.obfs_uri = Some(v.into_owned()),
+                    "path" => opts.ws_path = Some(v.into_owned()),
+                    "host" => opts.ws_host = Some(v.into_owned()),
                     _ => {}
                 }
             }

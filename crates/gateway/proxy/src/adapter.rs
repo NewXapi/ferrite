@@ -131,6 +131,7 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                 None => None,
             };
             // 传输层：配置了 sni 或 pbk 才挂 TLS 层；pbk 存在即 REALITY 握手
+            // 传输层：配置了 sni 或 pbk 才挂 TLS 层；pbk 存在即 REALITY 握手
             let vless = node.vless.as_ref();
             let need_tls = vless.is_some_and(|o| o.sni.is_some() || o.pbk.is_some());
             let mut chain = TransportChain::empty();
@@ -167,6 +168,32 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                     }
                 }
             }
+            // Add WebSocket layer if ws_path is configured
+            if let Some(ws_path) = vless.and_then(|o| o.ws_path.clone()) {
+                // meow 要求 host_header 必填（ADR-0001：transport 不自行推断）；
+                // 缺省回落 sni，再回落节点 host
+                let ws_host = vless
+                    .and_then(|o| o.ws_host.clone())
+                    .or_else(|| vless.and_then(|o| o.sni.clone()))
+                    .unwrap_or_else(|| node.host.clone());
+                let ws_cfg = meow_transport::ws::WsConfig {
+                    path: ws_path,
+                    host_header: Some(ws_host),
+                    ..Default::default()
+                };
+                match meow_transport::ws::WsLayer::new(ws_cfg) {
+                    Ok(layer) => chain.push(Box::new(layer)),
+                    Err(e) => {
+                        tracing::warn!(
+                            host = %node.host,
+                            port = node.port,
+                            error = %e,
+                            "WebSocket 层构造失败，节点回落直连"
+                        );
+                        return None;
+                    }
+                }
+            }
             Some(Arc::new(VlessAdapter::new(
                 &name, &node.host, node.port, uuid, flow, false, chain,
             )))
@@ -190,14 +217,35 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
                 }
                 None => VmessSecurity::Aes128Gcm,
             };
+            let vless = node.vless.as_ref();
+            let mut chain = TransportChain::empty();
+            // Add WebSocket layer if ws_path is configured
+            if let Some(ws_path) = vless.and_then(|o| o.ws_path.clone()) {
+                let ws_host = vless.and_then(|o| o.ws_host.clone()).unwrap_or_else(|| {
+                    vless
+                        .and_then(|o| o.sni.clone())
+                        .unwrap_or_else(|| node.host.clone())
+                });
+                let mut ws_cfg = meow_transport::ws::WsConfig {
+                    path: ws_path,
+                    ..Default::default()
+                };
+                ws_cfg.host_header = Some(ws_host);
+                match meow_transport::ws::WsLayer::new(ws_cfg) {
+                    Ok(layer) => chain.push(Box::new(layer)),
+                    Err(e) => {
+                        tracing::warn!(
+                            host = %node.host,
+                            port = node.port,
+                            error = %e,
+                            "WebSocket 层构造失败，节点回落直连"
+                        );
+                        return None;
+                    }
+                }
+            }
             Some(Arc::new(VmessAdapter::new(
-                &name,
-                &node.host,
-                node.port,
-                uuid,
-                security,
-                false,
-                TransportChain::empty(),
+                &name, &node.host, node.port, uuid, security, false, chain,
             )))
         }
         ProxyScheme::Hysteria2 => {
