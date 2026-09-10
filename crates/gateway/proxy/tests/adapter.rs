@@ -12,25 +12,30 @@ fn test_tcp_metadata_host_port() {
     assert_eq!(meta.network, Network::Tcp);
 }
 
+/// http/socks5 由 reqwest（workspace `socks` feature）处理，`manager` 也只为它们
+/// 产出 `ProxyClient::Reqwest`——所以 `adapter_for` 必须返回 `None`。
+/// 旧实现会为它们造一个从未被用过的 meow 适配器（死代码）。
 #[test]
-fn test_adapter_for_socks5() {
-    let node = ProxyNode {
-        id: 1,
-        scheme: ProxyScheme::Socks5,
-        host: "proxy.example.com".to_string(),
-        port: 1080,
-        auth: Some(BasicAuth {
-            user: "user".to_string(),
-            pass: "pass".to_string(),
-        }),
-        channel_keys: vec!["test-channel".to_string()],
-        vless: None,
-        priority: 0,
-    };
-    let adapter_opt = adapter_for(&node);
-    assert!(adapter_opt.is_some());
-    let adapter = adapter_opt.unwrap();
-    assert_eq!(adapter.adapter_type(), AdapterType::Socks5);
+fn test_adapter_for_reqwest_schemes_have_no_adapter() {
+    for scheme in [ProxyScheme::Http, ProxyScheme::Socks5] {
+        let node = ProxyNode {
+            id: 1,
+            scheme,
+            host: "proxy.example.com".to_string(),
+            port: 1080,
+            auth: Some(BasicAuth {
+                user: "user".to_string(),
+                pass: "pass".to_string(),
+            }),
+            channel_keys: vec!["test-channel".to_string()],
+            vless: None,
+            priority: 0,
+        };
+        assert!(
+            adapter_for(&node).is_none(),
+            "{scheme:?} 该走 reqwest 而非 meow 适配器"
+        );
+    }
 }
 
 #[test]
