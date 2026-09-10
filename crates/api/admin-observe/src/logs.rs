@@ -121,6 +121,22 @@ pub struct UsageStat {
     pub tpm: i64,
 }
 
+/// 按天聚合的用户用量统计视图 (`GET /api/log/self/stat/daily` 响应项)。
+///
+/// 一行 = 某自然日 (session 时区) 内该用户 usage_logs 的聚合。
+#[derive(Debug, Clone, FromRow, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyUsageStat {
+    /// 日期, `YYYY-MM-DD` 格式 (session 时区, 与 `date(created_at)` 一致)。
+    pub date: String,
+    /// 当日请求条数 (count(*)，含 topup 行，口径同 `self_stat`)。
+    pub requests: i64,
+    /// 当日 prompt_tokens + completion_tokens 合计。
+    pub tokens: i64,
+    /// 当日 quota 合计。
+    pub quota: i64,
+}
+
 pub struct LogService {
     pool: PgPool,
 }
@@ -308,6 +324,38 @@ impl LogService {
         self.stat_inner(Some(user_key)).await
     }
 
+    /// 用户自查按天聚合: 近 `days` 天每天的 requests / tokens / quota, 按日期倒序。
+    ///
+    /// log_type 口径: 与 `self_stat` 保持一致——`self_stat` (stat_inner) 未过滤 log_type
+    /// (count(*)/sum 覆盖该用户全部行, topup 行也计入), 故本方法也不加 log_type 过滤,
+    /// 避免两个 self 端点口径打架。注意网关写入路径 `apps/api/src/usage.rs` 目前把
+    /// consume 记录写成 log_type=1 (已知 bug, 本次不修), 若按 log_type=2 过滤当前
+    /// 结果将为空, 这也是不取 2 口径的额外理由。
+    ///
+    /// 返回 Vec 中一行 = 一天; 无数据的中间日期不补零, 只有有行的日期出现。
+    pub async fn self_daily_stats(
+        &self,
+        user_key: Uuid,
+        days: i32,
+    ) -> Result<Vec<DailyUsageStat>, AuthError> {
+        let rows: Vec<DailyUsageStat> = sqlx::query_as(
+            r#"SELECT date(created_at)::text AS date,
+                     count(*) AS requests,
+                     COALESCE(sum(prompt_tokens + completion_tokens), 0)::bigint AS tokens,
+                     COALESCE(sum(quota), 0)::bigint AS quota
+               FROM usage_logs
+               WHERE user_key = $1
+                 AND created_at >= now() - make_interval(days => $2)
+               GROUP BY 1
+               ORDER BY 1 DESC"#,
+        )
+        .bind(user_key)
+        .bind(days)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// dashboard 汇总 — 一次查全。
     pub async fn dashboard(&self) -> Result<serde_json::Value, AuthError> {
         let (users, tokens, channels, channels_enabled, groups): (i64, i64, i64, i64, i64) =
@@ -351,6 +399,7 @@ pub fn router(state: LogAppState) -> axum::Router {
         .route("/api/log/stat", get(stat))
         .route("/api/log/self", get(list_self))
         .route("/api/log/self/stat", get(self_stat))
+        .route("/api/log/self/stat/daily", get(self_daily_stat))
         .route("/api/dashboard", get(dashboard))
         .with_state(state)
 }
@@ -463,6 +512,35 @@ async fn self_stat(
         .map_err(err_json)?;
     match state.svc.self_stat(key).await {
         Ok(s) => Ok(axum::Json(serde_json::json!(s))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+/// `GET /api/log/self/stat/daily` 的 `days` 查询参数。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DailyStatQuery {
+    /// 回看天数, 缺省 30; handler 层 clamp 到 1..=365。
+    days: Option<i32>,
+}
+
+/// `GET /api/log/self/stat/daily?days=30` — 用户自查按天聚合用量。
+///
+/// 守卫与 `self_stat` 完全一致: `bearer_user` 取 token 内 user_key, 不接受外部 user_id;
+/// 未登录/无效 token 返回 401, 响应形状同现有 self 端点 (err_json)。
+async fn self_daily_stat(
+    axum::extract::State(state): axum::extract::State<LogAppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<DailyStatQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
+    let key = Uuid::parse_str(&user.key)
+        .map_err(|_| AuthError::InvalidToken)
+        .map_err(err_json)?;
+    let days = q.days.unwrap_or(30).clamp(1, 365);
+    match state.svc.self_daily_stats(key, days).await {
+        Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
         Err(e) => Err(err_json(e)),
     }
 }

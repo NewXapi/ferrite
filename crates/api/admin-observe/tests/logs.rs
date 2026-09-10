@@ -121,3 +121,77 @@ async fn record_and_query_flow() {
         .await
         .expect("cleanup");
 }
+
+/// daily 聚合: 写两天消费日志 (+ 一条 topup) → 按天断言 requests/tokens/quota。
+///
+/// 口径说明: `self_daily_stats` 与 `self_stat` 一致, **不按 log_type 过滤**——
+/// topup (log_type=1) 行计入当日聚合, 故下方 topup 行会拉高今天那组的 requests/quota。
+#[tokio::test]
+#[ignore]
+async fn daily_stats_aggregation() {
+    let svc = make_svc().await;
+    let user = uuid::Uuid::new_v4();
+    let marker = format!("m-{}", uuid::Uuid::new_v4().simple());
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+
+    // 两天数据: 2 天前写 2 条 consume, 今天写 1 条 consume + 1 条 topup。
+    // 用 2 天偏移远离 make_interval(days=>30) 的 30 天窗口边界, 避免时间竞态。
+    sqlx::query(
+        r#"INSERT INTO usage_logs
+               (log_type, user_key, username, model_name, prompt_tokens, completion_tokens, quota, created_at)
+           VALUES
+             (2, $1, 'alice', $2, 100, 50, 1000, now() - interval '2 day'),
+             (2, $1, 'alice', $2, 200, 50, 2000, now() - interval '2 day'),
+             (2, $1, 'alice', $2, 10, 10, 50, now()),
+             (1, $1, 'alice', $2, 0, 0, 500000, now())"#,
+    )
+    .bind(user)
+    .bind(&marker)
+    .execute(&pool)
+    .await
+    .expect("seed daily rows");
+
+    let days: Vec<observe::logs::DailyUsageStat> = svc
+        .self_daily_stats(user, 30)
+        .await
+        .expect("self_daily_stats");
+    // 两个有数据的日期, 倒序: [0]=今天, [1]=2 天前
+    assert_eq!(days.len(), 2, "应只有两天有数据: {days:?}");
+    let today = &days[0];
+    let prev = &days[1];
+    // 今天: 1 consume + 1 topup (口径同 self_stat, topup 计入)
+    assert_eq!(
+        today.requests, 2,
+        "topup 行计入, 与 self_stat 口径一致: {today:?}"
+    );
+    assert_eq!(today.tokens, 20);
+    assert_eq!(today.quota, 500_050, "consume 50 + topup 500000: {today:?}");
+    // 2 天前: 2 条 consume
+    assert_eq!(prev.requests, 2);
+    assert_eq!(prev.tokens, 400);
+    assert_eq!(prev.quota, 3000);
+    // 日期字符串与 SQL 侧 to_char 对齐 (避免 session TZ 漂移), 且 YYYY-MM-DD 格式
+    let (exp_prev, exp_today): (String, String) = sqlx::query_as(
+        "SELECT to_char(now() - interval '2 day', 'YYYY-MM-DD'), to_char(now(), 'YYYY-MM-DD')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(today.date, exp_today, "{today:?}");
+    assert_eq!(prev.date, exp_prev, "{prev:?}");
+    assert_eq!(today.date.len(), 10);
+
+    // 无数据用户返回空 vec
+    let stranger: Vec<observe::logs::DailyUsageStat> = svc
+        .self_daily_stats(uuid::Uuid::new_v4(), 30)
+        .await
+        .expect("stranger");
+    assert!(stranger.is_empty());
+
+    // 清理: daily 按 user_key 聚合, 残留行会污染后续断言
+    sqlx::query("DELETE FROM usage_logs WHERE model_name = $1")
+        .bind(&marker)
+        .execute(&pool)
+        .await
+        .expect("cleanup");
+}
