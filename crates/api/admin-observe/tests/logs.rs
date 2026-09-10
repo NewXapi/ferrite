@@ -121,3 +121,42 @@ async fn record_and_query_flow() {
         .await
         .expect("cleanup");
 }
+
+#[tokio::test]
+#[ignore]
+async fn top_usage_and_trend_aggregate_consume_rows() {
+    let svc = make_svc().await;
+    let user = uuid::Uuid::new_v4();
+    let marker_a = format!("ta-{}", uuid::Uuid::new_v4().simple());
+    let marker_b = format!("tb-{}", uuid::Uuid::new_v4().simple());
+
+    let mut a = UsageEvent::consume(user, "alice_agg", &marker_a);
+    a.prompt_tokens = 100;
+    a.completion_tokens = 50;
+    a.quota = 300;
+    svc.record(&a).await.expect("record a");
+
+    let mut b = UsageEvent::consume(user, "bob_agg", &marker_b);
+    b.prompt_tokens = 10;
+    b.completion_tokens = 5;
+    b.quota = 30;
+    svc.record(&b).await.expect("record b");
+
+    let models = svc.top_usage("model", None, None, 10).await.unwrap();
+    let a_row = models.iter().find(|r| r.name == marker_a).expect("model a");
+    assert_eq!(a_row.tokens, 150);
+    assert_eq!(a_row.calls, 1);
+
+    let users = svc.top_usage("user", None, None, 10).await.unwrap();
+    assert!(users.iter().any(|r| r.name == "alice_agg" && r.tokens == 150));
+
+    let trend = svc.trend("hour", None, None).await.unwrap();
+    assert!(trend.iter().any(|r| r.model_name == marker_a && r.tokens == 150));
+
+    sqlx::query("DELETE FROM usage_logs WHERE model_name IN ($1, $2)")
+        .bind(&marker_a)
+        .bind(&marker_b)
+        .execute(&sqlx::PgPool::connect(&db_url()).await.unwrap())
+        .await
+        .expect("cleanup");
+}

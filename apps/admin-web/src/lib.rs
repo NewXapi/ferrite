@@ -3,7 +3,6 @@ pub mod app;
 pub mod retro;
 pub use app::RootApp;
 
-use app::current_hash;
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -203,17 +202,16 @@ pub fn HomePage() -> Element {
 
     use_hook(move || {
         let cb = Closure::<dyn FnMut()>::new(move || {
-            // 只在 console 路由时写 signal：#auth/#signup/#login/#retro 会卸载
-            // HomePage，此时 section/dash_tab 的 owner 已 drop，set 会 panic
-            // (ValueDroppedError)。守卫让 auth/retro hash 直接跳过。
-            let h = current_hash();
-            let is_console = h != "#auth" && h != "#signup" && h != "#login" && h != "#retro";
-            if !is_console {
-                return;
+            // HomePage 卸载后 (进入 #auth/#signup 等)旧 signal 已 drop;
+            // 用 try_write 代替 set, 静默丢弃迟到的 hashchange, 避免 panic
+            // (ValueDroppedError): 守卫只查目标 hash, 拦不住"从 auth 返回 console"。
+            if let Ok(mut s) = section.try_write() {
+                let (sec, tab) = get_initial_route();
+                *s = sec;
+                if let Ok(mut t) = dash_tab.try_write() {
+                    *t = tab;
+                }
             }
-            let (s, t) = get_initial_route();
-            section.set(s);
-            dash_tab.set(t);
         });
         if let Some(w) = web_sys::window() {
             let _ = w.add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());

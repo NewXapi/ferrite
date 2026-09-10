@@ -6,7 +6,8 @@
 - `src/logs.rs` — **已实现**：`usage_logs` 平表（BIGSERIAL，log_type 1=topup
   2=consume 3=manage 4=system），`LogService::record(&UsageEvent)` 供网关写入，
   admin/self 查询（log_type/username/token_name/model_name/时间范围 + 分页）、
-  stat（今日 quota/requests + 60s 窗口 rpm/tpm）、`/api/dashboard` 汇总端点（5 路由）。
+  stat（今日 quota/requests + 60s 窗口 rpm/tpm）、`/api/dashboard` 汇总、
+  `/api/log/top`（按用户/模型消耗排行）与 `/api/log/trend`（时间桶 × 模型）端点（7 路由）。
 - `src/monitor.rs` — **已实现**：`monitor_history` 平表，`record_probe`/
   `history`/`availability`/`availability_all`，`MonitorDeps` 封装 +
   admin 路由 `/api/monitor/{key}`、`/api/monitor`（2 路由）。
@@ -30,6 +31,7 @@
 | 方法 | 路径 | 鉴权 |
 |------|------|------|
 | GET | `/api/log`、`/api/log/stat` | admin |
+| GET | `/api/log/top`、`/api/log/trend` | admin |
 | GET | `/api/log/self`、`/api/log/self/stat` | user |
 | GET | `/api/dashboard` | admin |
 | GET | `/api/monitor/{key}`、`/api/monitor` | admin |
