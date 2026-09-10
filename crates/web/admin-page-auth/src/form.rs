@@ -1,7 +1,7 @@
 //! Auth page private form components: field styles + real submit wiring.
 
 use dioxus::prelude::*;
-use ui::{CodeField, FormField as Field, PasswordField, SubmitButton};
+use ui::{FormField as Field, PasswordField, SubmitButton};
 
 /// 提交共享状态：错误信息 + busy（按钮禁用）。
 #[derive(Clone, Default)]
@@ -35,6 +35,11 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
     let error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut password = use_signal(String::new);
+    let box_class = if remember() {
+        "bg-indigo-400 border-indigo-400"
+    } else {
+        "bg-zinc-800/60 border-zinc-500 group-hover:border-zinc-400"
+    };
 
     rsx! {
         form {
@@ -65,17 +70,22 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                 class: "flex items-center justify-between text-sm pt-1",
                 label {
                     class: "flex items-center gap-2 cursor-pointer group",
-                    input {
-                        class: "size-4 rounded border-zinc-700 bg-zinc-800/60 text-zinc-100 transition-colors focus:ring-1 focus:ring-zinc-500 group-hover:border-zinc-600",
-                        r#type: "checkbox",
-                        checked: "{remember()}",
-                        oninput: move |ev| remember.set(ev.checked()),
+                    div {
+                        class: "relative size-4 shrink-0 flex items-center justify-center rounded border transition-colors {box_class}",
+                        input {
+                            style: "position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;",
+                            r#type: "checkbox",
+                            checked: remember(),
+                            oninput: move |ev| remember.set(ev.checked()),
+                        }
+                        if remember() {
+                            span { class: "text-[11px] font-bold leading-none text-white", "✓" }
+                        }
                     }
                     span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
                 }
-                a {
-                    class: "text-zinc-400 hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
-                    href: "#",
+                span {
+                    class: "cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
                     "Forgot password?"
                 }
             }
@@ -100,7 +110,6 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
     let mut error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut email = use_signal(String::new);
-    let mut code = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut confirm = use_signal(String::new);
 
@@ -130,17 +139,9 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
                 label: "Email",
                 name: "email",
                 r#type: "email",
-                placeholder: "name@example.com",
+                placeholder: "name@example.com (optional)",
                 value: email(),
                 oninput: move |ev: dioxus::prelude::FormEvent| email.set(ev.value()),
-            }
-            CodeField {
-                label: "Verification code",
-                name: "verification_code",
-                placeholder: "6-digit code",
-                value: code(),
-                oninput: move |ev: dioxus::prelude::FormEvent| code.set(ev.value()),
-                on_send: move |_| {},
             }
             PasswordField {
                 label: "Password",
