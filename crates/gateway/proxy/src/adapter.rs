@@ -104,7 +104,8 @@ pub fn adapter_for(node: &ProxyNode) -> Option<Arc<dyn ProxyAdapter>> {
             }
         }
         ProxyScheme::Trojan => {
-            let tls = node.vless.as_ref(); // trojan 也复用 query 的 sni/insecure/fingerprint
+            let auth = require_auth(node)?;
+            let tls = node.vless.as_ref(); // trojan 复用 query 的 sni/insecure
             // TrojanAdapter 暂不支持 fingerprint（meow 实现限制），仅 vless+tls/reality 路径生效
             let sni = tls
                 .and_then(|o| o.sni.clone())

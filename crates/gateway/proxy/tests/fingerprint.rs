@@ -54,7 +54,10 @@ fn vless_tls_fingerprint_builds_adapter_without_utls_feature() {
     // - 运行时会触发 meow 的一次性 stub warn，但不影响测试通过
     let node = vless_node("?fingerprint=chrome&sni=cdn.example.com");
     let adapter = adapter_for(&node);
-    assert!(adapter.is_some(), "feature 关时 fingerprint 不应阻断适配器构造");
+    assert!(
+        adapter.is_some(),
+        "feature 关时 fingerprint 不应阻断适配器构造"
+    );
 }
 
 /// REALITY + fingerprint 同样能构造适配器
@@ -65,16 +68,18 @@ fn reality_fingerprint_builds_adapter_without_utls_feature() {
         "?fingerprint=chrome&sni=cdn.example.com&pbk={PBK}&sid=01ab"
     ));
     let adapter = adapter_for(&node);
-    assert!(adapter.is_some(), "REALITY + fingerprint feature 关时不应阻断");
+    assert!(
+        adapter.is_some(),
+        "REALITY + fingerprint feature 关时不应阻断"
+    );
 }
 
 /// 非 VLESS 节点不解析 fingerprint（通过 VlessOpts 共用机制，仅 VLESS/H2/AnyTLS/Snell 有）
 #[test]
 fn non_vless_no_fingerprint() {
-    let node = ProxyNode::parse_url(
-        "socks5://127.0.0.1:7890?fingerprint=chrome&sni=cdn.example.com",
-    )
-    .unwrap();
+    let node =
+        ProxyNode::parse_url("socks5://127.0.0.1:7890?fingerprint=chrome&sni=cdn.example.com")
+            .unwrap();
     assert_eq!(node.scheme, ProxyScheme::Socks5);
     assert!(node.vless.is_none());
 }

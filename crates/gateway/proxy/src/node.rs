@@ -39,6 +39,7 @@ pub struct BasicAuth {
 /// - `version=v4|v5` — Snell 版本 (缺省 v5)
 /// - `obfs=http|tls` — Snell 混淆 (缺省 none)
 /// - `fp=` / `fingerprint=` — uTLS 指纹（需开启 `utls` feature）
+#[derive(Debug, Clone, Default)]
 pub struct VlessOpts {
     /// XTLS flow，目前只识别 `xtls-rprx-vision`
     pub flow: Option<String>,
@@ -58,6 +59,10 @@ pub struct VlessOpts {
     pub obfs_uri: Option<String>,
     /// uTLS 指纹（`fingerprint=chrome` / `fp=chrome`），需开启 `utls` feature
     pub fingerprint: Option<String>,
+    /// WebSocket 升级路径（`path=/xxx`；存在即视为 ws 传输）
+    pub ws_path: Option<String>,
+    /// WebSocket Host 头（`host=域名`；缺省回落 sni / 节点 host）
+    pub ws_host: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct ProxyNode {
@@ -122,10 +127,14 @@ impl ProxyNode {
             | ProxyScheme::Snell => url_obj.port().unwrap_or(443),
             _ => url_obj.port().unwrap_or(8080), // Http or Direct (though Direct never reaches here)
         };
-        // 解析 query 参数：VLESS / Hysteria2 / AnyTLS / Snell 共用 VlessOpts
+        // 解析 query 参数：VLESS / VMess（ws） / Hysteria2 / AnyTLS / Snell 共用 VlessOpts
         let needs_opts = matches!(
             scheme,
-            ProxyScheme::Vless | ProxyScheme::Hysteria2 | ProxyScheme::AnyTls | ProxyScheme::Snell
+            ProxyScheme::Vless
+                | ProxyScheme::Vmess
+                | ProxyScheme::Hysteria2
+                | ProxyScheme::AnyTls
+                | ProxyScheme::Snell
         );
         let vless = needs_opts.then(|| {
             let mut opts = VlessOpts::default();
@@ -134,8 +143,18 @@ impl ProxyNode {
                     "flow" => opts.flow = Some(v.into_owned()),
                     "sni" => opts.sni = Some(v.into_owned()),
                     "pbk" => opts.pbk = Some(v.into_owned()),
-                    "fp" => opts.fingerprint = Some(v.into_owned()),
-                    "fingerprint" => opts.fingerprint = Some(v.into_owned()),
+                    "sid" => opts.sid = Some(v.into_owned()),
+                    "insecure" | "allowInsecure" => {
+                        // 分享链接惯例是 insecure=1，不是 Rust bool 字面量
+                        opts.insecure = v == "1" || v.eq_ignore_ascii_case("true");
+                    }
+                    "version" => opts.version = Some(v.into_owned()),
+                    "obfs" => opts.obfs = Some(v.into_owned()),
+                    "obfs-uri" => opts.obfs_uri = Some(v.into_owned()),
+                    "fp" | "fingerprint" => opts.fingerprint = Some(v.into_owned()),
+                    "path" => opts.ws_path = Some(v.into_owned()),
+                    "host" => opts.ws_host = Some(v.into_owned()),
+                    _ => {}
                 }
             }
             opts
