@@ -48,8 +48,13 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 
 ### uTLS 指纹 feature
 
-默认**不开启**（`boring-tls` 编译耗时极大）。需显式开启：
+默认**不开启**。开启需要满足**构建前提**：
+
+- 系统装有 `cmake`（BoringSSL 构建脚本硬依赖；缺失时 `boring-sys` 直接失败：`is cmake not installed?`）
+- 编译耗时以十分钟计（BoringSSL 是 C/C++ 工程）
+
 ```bash
+# Arch/CachyOS: sudo pacman -S cmake
 cargo build -p gateway-proxy --features utls
 ```
 或在依赖链中传递：`gateway-proxy = { ..., features = ["utls"] }`
@@ -57,6 +62,7 @@ cargo build -p gateway-proxy --features utls
 - 开启后：`fp=chrome` → BoringSSL 真实 uTLS 仿冒
 - 未开启：`fp=chrome` 落入 `TlsConfig.fingerprint`，**仅触发一次性 warn**（meow 内部 stub 实现），**依然使用 rustls**，不阻断节点构造
 - Trojan 协议暂不支持 fingerprint（meow `TrojanAdapter` 无 fingerprint 参数），仅 VLESS TLS/REALITY 路径生效
+
 ## SSRF
 
 `validate_url` 只校验 IP 字面量。域名必须由调用方 DNS 解析后再调 `validate_resolved`。
