@@ -173,28 +173,23 @@ impl ProxyNodeService {
     pub async fn update(
         &self,
         key: Uuid,
-        name: &str,
-        url: &str,
-        channel_keys: &[String],
-        priority: i32,
-        enabled: bool,
-        remark: &str,
+        req: &NodeRequest,
     ) -> Result<ProxyNodeView, ServiceError> {
-        validate(url, channel_keys).await?;
-        self.check_channels(channel_keys).await?;
-        let channels_json = serde_json::to_value(channel_keys).unwrap_or_default();
+        validate(&req.url, &req.channel_keys).await?;
+        self.check_channels(&req.channel_keys).await?;
+        let channels_json = serde_json::to_value(&req.channel_keys).unwrap_or_default();
         let row: ProxyNodeRow = sqlx::query_as(&format!(
             "UPDATE proxy_nodes SET name = $2, url = $3, channel_keys = $4, priority = $5,
              enabled = $6, remark = $7, updated_at = now()
              WHERE key = $1 RETURNING {COLS}"
         ))
         .bind(key)
-        .bind(name)
-        .bind(url)
+        .bind(&req.name)
+        .bind(&req.url)
         .bind(channels_json)
-        .bind(priority)
-        .bind(enabled)
-        .bind(remark)
+        .bind(req.priority)
+        .bind(req.enabled)
+        .bind(&req.remark)
         .fetch_optional(&self.pool)
         .await?
         .ok_or(ServiceError::NotFound)?;
@@ -252,6 +247,25 @@ impl ProxyNodeService {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeRequest {
+    #[serde(default)]
+    name: String,
+    url: String,
+    #[serde(default)]
+    channel_keys: Vec<String>,
+    #[serde(default)]
+    priority: i32,
+    #[serde(default = "default_true")]
+    enabled: bool,
+    #[serde(default)]
+    remark: String,
+}
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -322,25 +336,6 @@ fn svc_err(e: ServiceError) -> ErrResp {
     )
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NodeRequest {
-    #[serde(default)]
-    name: String,
-    url: String,
-    #[serde(default)]
-    channel_keys: Vec<String>,
-    #[serde(default)]
-    priority: i32,
-    #[serde(default = "default_true")]
-    enabled: bool,
-    #[serde(default)]
-    remark: String,
-}
-fn default_true() -> bool {
-    true
-}
-
 async fn list(State(s): State<ProxyNodeAppState>, h: HeaderMap) -> Result<Json<Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
     let items = s
@@ -380,19 +375,7 @@ async fn update(
     require_admin(&s.auth, &h).await.map_err(err_json)?;
     let key =
         Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid key".into())))?;
-    let v = s
-        .svc
-        .update(
-            key,
-            &req.name,
-            &req.url,
-            &req.channel_keys,
-            req.priority,
-            req.enabled,
-            &req.remark,
-        )
-        .await
-        .map_err(svc_err)?;
+    let v = s.svc.update(key, &req).await.map_err(svc_err)?;
     Ok(Json(json!(v)))
 }
 
