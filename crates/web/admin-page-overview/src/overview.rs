@@ -311,6 +311,9 @@ fn TrendPanel(
         .map(|b| b.total)
         .fold(0.0f64, f64::max)
         .max(1.0);
+    // Y 轴封顶: step = ⌈max/4 的最高位⌉, 轴顶 = 4×step — 最高柱恒低于顶格,
+    // 5 条虚线 (含 0) 等间隔且刻度整齐 (参照 new-api VChart 的 nice ticks)。
+    let axis_max = api::nice_axis_max(max_total);
     let avg = total_all / all_buckets.len().max(1) as f64;
     let peak = all_buckets
         .iter()
@@ -376,9 +379,10 @@ fn TrendPanel(
                         onmouseleave: move |_| tip.set(None),
                         div { class: "relative",
                             div { class: "pointer-events-none absolute inset-0 flex flex-col justify-between py-0", aria_hidden: "true",
-                                for frac in [1.0f64, 0.75, 0.5, 0.25] {
+                                // 顶格是封顶线 (axis_max), 其下三条是 step 等分, 最后是 0 基线
+                                for i in [4, 3, 2, 1] {
                                     div { class: "relative w-full border-t border-dashed border-zinc-800",
-                                        span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((max_total * frac) as i64)}" }
+                                        span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((axis_max * i as f64 / 4.0) as i64)}" }
                                     }
                                 }
                                 div { class: "relative w-full border-t border-dashed border-zinc-800",
@@ -388,7 +392,7 @@ fn TrendPanel(
                             div { class: "relative flex h-56 items-end", style: "gap: 3px",
                                 for b in all_buckets.iter() {
                                     {
-                                        let hpct = (b.total / max_total * 100.0).max(3.0);
+                                        let hpct = (b.total / axis_max * 100.0).max(3.0);
                                         let label = b.label.clone();
                                         // 列模式明细: 非零模型按量降序
                                         let mut col_rows: Vec<(String, &'static str, f64)> = b

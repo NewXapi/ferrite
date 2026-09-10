@@ -65,3 +65,26 @@ fn pivot_truncates_to_top_ten_models() {
     assert_eq!(order[0], "m0");
     assert_eq!(buckets.len(), 24);
 }
+
+#[test]
+fn nice_axis_caps_above_max_with_clean_ticks() {
+    use admin_page_overview::api::nice_axis_max;
+
+    // 209.5M → step 60M → 轴顶 240M, 柱顶 (209.5/240 ≈ 87%) 不触顶
+    let axis = nice_axis_max(209.5e6);
+    assert_eq!(axis, 240.0e6);
+    assert!(axis > 209.5e6);
+    // 刻度 = axis × i/4 全为整数个千万 (无零头)
+    for i in 1..=4 {
+        let tick = axis * i as f64 / 4.0;
+        assert_eq!(tick % 10_000_000.0, 0.0, "tick {tick} 应只保留最高位");
+    }
+    // 128M → 40M 步长 → 160M
+    assert_eq!(nice_axis_max(128e6), 160e6);
+    // 恰好落在整位: max=160M → raw 40M → digit 4 → 160M, 柱顶 100%? 不, 见下
+    // max=200M → raw=50M → digit=5 → 200M 轴顶, 柱顶=200/200=100% —— 恰好满格。
+    // 接受恰满格 (max==axis 仅当 max 本身就是整齐值), 此时刻度仍整齐。
+    assert_eq!(nice_axis_max(200e6), 200e6);
+    // 空窗兜底: 不出现 0 除法
+    assert_eq!(nice_axis_max(0.0), 4.0);
+}

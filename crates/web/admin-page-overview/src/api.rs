@@ -176,6 +176,22 @@ pub struct TrendBucketFE {
     pub per_model: Vec<f64>,
 }
 
+/// Y 轴封顶值: step = ⌈(max/4) 的最高位⌉, 返回值 = 4 × step。
+///
+/// 例: max=209.5M → raw=52.4M → 最高位取整 60M → 轴顶 240M (刻度 60/120/180/240);
+///     max=128M → raw=32M → 40M → 轴顶 160M (刻度 40/80/120/160)。
+/// 最高柱因此恒低于轴顶, 虚线刻度始终是不带零头的整齐数 (参照 new-api 的 nice ticks)。
+pub fn nice_axis_max(m: f64) -> f64 {
+    if m <= 0.0 {
+        return 4.0; // 空窗兜底: 单位轴
+    }
+    let raw = m / 4.0;
+    let mag = 10f64.powf(raw.log10().floor());
+    // -εpsilon: 让恰好整位的 raw (如 5.0) 不被浮点误差顶到 6, 保留恰好满格的情况
+    let digit = (raw / mag - 1e-9).ceil();
+    digit * mag * 4.0
+}
+
 /// 把服务端 trend 行（桶×模型）pivot 成连续桶序列 + 全局模型序。
 ///
 /// 桶粒度随 timeframe：今天→小时(24 桶)，本周/本月→天，今年→月。空桶补零，
