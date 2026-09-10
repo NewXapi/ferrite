@@ -102,23 +102,34 @@ def load_real_rows(db_path: Path):
         con.close()
 
 
-def ts_expr(days_ago: float) -> str:
-    """相对时间戳 SQL: now() - interval, 保留到秒。"""
-    total = days_ago * 86400
-    d = int(total // 86400)
-    s = int(total % 86400)
-    return f"now() - interval '{d} days {s // 3600} hours {(s % 3600) // 60} minutes {s % 60} seconds'"
+def ts_abs(day_int: int, hour: int, minute: int, sec: int) -> str:
+    """绝对钟点时间戳: 今天 0 点回退 day_int 天, 再加当天钟点。
+    与执行时刻解耦 — 同一钟点永远落在同一小时桶, 昼夜节奏可复现。"""
+    return (
+        f"date_trunc('day', now()) - interval '{day_int} days'"
+        f" + interval '{hour} hours {minute} minutes {sec} seconds'"
+    )
 
 
-def build_usage_layer(real, rng, count, span_days, start_offset_days, idx0):
-    """一层用量行: 真实纹理 × 重映射时间窗。返回 SQL VALUES 行列表。"""
+def pick_clock(r, rng):
+    """真实小时 + 高斯抖动 (±~1h) → 保留昼夜节奏又填平稀疏桶。"""
+    hour = int(round(r["hour"] + rng.gauss(0, 1.2))) % 24
+    return hour, rng.randrange(60), rng.randrange(60)
+
+
+def build_usage_layer(real, rng, count, day_base, day_span, idx0):
+    """一层用量行: 真实纹理 × 窗口内均匀的天位置 × 真实昼夜钟点。
+
+    天位置用均匀随机而非真实 frac — 真实窗口只有两周且高度成簇 (3 天占了
+    全部流量), 直接映射会把簇砸进个别桶 (单桶撑爆/中间全空); 真实感保留在
+    模型配比、token 量级与小时分布上。
+    """
     out = []
     n_real = len(real)
     for i in range(count):
         r = real[(i * 7919 + idx0) % n_real]  # 质数步进, 避免按顺序循环
-        # 窗口内位置: 真实 frac 保留节奏, 加抖动防条带
-        pos = min(max(r["frac"] + rng.gauss(0, 0.02), 0.0), 0.999)
-        days_ago = start_offset_days + (1.0 - pos) * span_days
+        day = int(day_base + rng.uniform(0, day_span))
+        hour, minute, sec = pick_clock(r, rng)
         user = rng.choices(USER_NAMES, weights=USER_WEIGHTS, k=1)[0]
         ch_idx = (r["channel_id"] - 1) % len(CHANNEL_NAMES)
         prompt = max(r["prompt"] + rng.randint(-50, 50), 1)
@@ -140,7 +151,7 @@ def build_usage_layer(real, rng, count, span_days, start_offset_days, idx0):
                 ms=use_ms,
                 st="true" if (r["stream"] if rng.random() > 0.1 else not r["stream"]) else "false",
                 rid=q(f"{SEED_MARK}{idx0 + i}"),
-                ts=ts_expr(days_ago),
+                ts=ts_abs(day, hour, minute, sec),
             )
         )
     return out
@@ -196,9 +207,10 @@ def main():
     mon_rows = []
     for ci, ck in enumerate(CHANNEL_KEYS):
         for j in range(320):
-            days_ago = rng.uniform(0.02, 7.0)
+            day = int(rng.uniform(0, 7))
             ok = rng.random() < CHANNEL_AVAIL[ci]
             lat = int(rng.gauss(CHANNEL_LATENCY[ci], CHANNEL_LATENCY[ci] * 0.25))
+            hour, minute, sec = rng.randrange(24), rng.randrange(60), rng.randrange(60)
             mon_rows.append(
                 "({ck}, {cn}, 'gpt-5.6-sol', {ok}, {sc}, {lat}, {ek}, {msg}, {ts})".format(
                     ck=q(ck), cn=q(CHANNEL_NAMES[ci]),
@@ -207,7 +219,7 @@ def main():
                     lat=max(lat, 20),
                     ek=q("" if ok else rng.choice(["http", "timeout", "connect"])),
                     msg=q("probe" if ok else "seed failure"),
-                    ts=ts_expr(days_ago),
+                    ts=ts_abs(day, hour, minute, sec),
                 )
             )
     for i in range(0, len(mon_rows), 500):
@@ -217,16 +229,16 @@ def main():
             emit(mon_header)
     emit("\n")
 
-    # ---- 用量: 三层时间窗 ----
+    # ---- 用量: 三层时间窗 (天位置均匀, 钟点用真实小时分布) ----
     layers = [
-        (YEAR_ROWS, 358.0, 7.0, 0),      # 全年: 358 天跨度, 起点 7 天前
-        (WEEK_ROWS, 6.5, 1.0, YEAR_ROWS),  # 近 7 天加密
-        (DAY_ROWS, 0.95, 0.0, YEAR_ROWS + WEEK_ROWS),  # 近 24h 加密
+        (YEAR_ROWS, 7, 357.0, 0),        # 全年: 7~364 天前
+        (WEEK_ROWS, 0, 6.4, YEAR_ROWS),  # 近 7 天加密
+        (DAY_ROWS, 0, 0.0, YEAR_ROWS + WEEK_ROWS),  # 今天 (真实小时分布)
     ]
     emit("INSERT INTO usage_logs (log_type, user_key, username, token_key, token_name, channel_key, channel_name, model_name, prompt_tokens, completion_tokens, quota, use_time_ms, is_stream, ip, request_id, content, created_at) VALUES\n")
     all_rows = []
-    for count, span, offset, idx0 in layers:
-        all_rows.extend(build_usage_layer(real, rng, count, span, offset, idx0))
+    for count, day_base, day_span, idx0 in layers:
+        all_rows.extend(build_usage_layer(real, rng, count, day_base, day_span, idx0))
     for i in range(0, len(all_rows), 500):
         chunk = all_rows[i : i + 500]
         emit(",\n".join(chunk) + ";\n")
