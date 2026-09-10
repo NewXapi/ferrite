@@ -1,6 +1,6 @@
 //! ui-components 认证 DTO 与会话不变量测试
 use contract::api::auth::{LoginRequest, RegisterRequest};
-use contract::api::user::{role_label, UserDto};
+use contract::api::user::{UserDto, role_label};
 use ui_components::{clear_cached_session, get_cached_token, set_cached_session};
 
 #[test]
@@ -76,6 +76,9 @@ fn test_self_wire_shape_decodes() {
     let user: UserDto = serde_json::from_str(wire).expect("real /self wire must decode");
     assert_eq!(user.role, 10);
     assert_eq!(role_label(user.role), "admin");
-    assert_eq!(user.request_count, None, "/self 不带 requestCount → 默认 None");
+    assert_eq!(
+        user.request_count, None,
+        "/self 不带 requestCount → 默认 None"
+    );
     assert_eq!(user.auth_version, 3);
 }

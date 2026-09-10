@@ -1,7 +1,7 @@
 //! 共享登录/注册弹窗组件 (AuthModal) 与用户态徽标 (UserBadge)。
 
 use contract::api::auth::{LoginRequest, RegisterRequest};
-use contract::api::user::{role_label, UserDto};
+use contract::api::user::{UserDto, role_label};
 use dioxus::prelude::*;
 
 use crate::session::{api_login, api_register, clear_cached_session, get_cached_user};

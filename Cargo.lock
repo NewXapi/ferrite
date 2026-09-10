@@ -104,6 +104,8 @@ dependencies = [
  "admin-page-users",
  "client",
  "dioxus",
+ "serde",
+ "serde_json",
  "ui-components",
  "wasm-bindgen",
  "web-sys",

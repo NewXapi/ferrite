@@ -17,6 +17,65 @@ use page_admin::{
 use page_overview::{LeaderboardPanel, ModelsPanel, OverviewPanel};
 use page_users::UsersPanel;
 
+use client::TokenFuture;
+use serde::Deserialize;
+
+/// 401 静默刷新接线 (应用启动时由 main 调用一次):
+/// - refresher: 读存储的 refresh token → `POST /api/user/refresh` (后端轮换 access+refresh)
+///   → 按原持久化级别写回 → 返回新 access token 供客户端对原请求做一次重试;
+/// - on_unauthorized: 无 refresh token / 刷新失败 → 清空全部登录态并跳登录页。
+pub fn init_auth() {
+    let client = client::ApiClient::shared();
+    client.set_refresher(start_token_refresh);
+    client.set_on_unauthorized(handle_unauthorized);
+}
+
+/// 刷新不可恢复时的统一清理: 4 个登录态存储 key + client 内存 token 全部清空,
+/// 并把 hash 切到 #signup 让 RootApp 渲染登录页。
+fn handle_unauthorized() {
+    ui::remove_storage_item("ferrite_access_token");
+    ui::remove_storage_item("ferrite_refresh_token");
+    ui::remove_storage_item("ferrite_username");
+    ui::remove_storage_item("ferrite_current_user");
+    client::ApiClient::shared().set_token(None);
+    if let Some(w) = web_sys::window() {
+        let _ = w.location().set_hash("#signup");
+    }
+}
+
+/// 一次 access token 刷新。走 `post_once` (刷新请求自身 401 时不再递归刷新);
+/// 后端按 `auth::service::RefreshResult` 轮换两枚 token, 均按原持久化级别写回。
+fn start_token_refresh() -> TokenFuture {
+    Box::pin(async move {
+        let refresh_token = match ui::get_storage_item("ferrite_refresh_token") {
+            Some(t) if !t.is_empty() => t,
+            _ => return None,
+        };
+        let persistent = ui::token_is_persistent();
+        let body = serde_json::json!({ "refreshToken": refresh_token });
+        let client = client::ApiClient::shared().clone();
+        match client
+            .post_once::<_, RefreshWire>("/api/user/refresh", &body, None)
+            .await
+        {
+            Ok(r) => {
+                ui::set_storage_scoped("ferrite_access_token", &r.access_token, persistent);
+                ui::set_storage_scoped("ferrite_refresh_token", &r.refresh_token, persistent);
+                Some(r.access_token)
+            }
+            Err(_) => None,
+        }
+    })
+}
+
+/// `POST /api/user/refresh` 响应 wire (后端 `RefreshResult`, camelCase)。
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshWire {
+    access_token: String,
+    refresh_token: String,
+}
+
 /// Top-level console sections, in navigation order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
