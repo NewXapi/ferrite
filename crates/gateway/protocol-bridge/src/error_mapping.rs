@@ -121,6 +121,7 @@ fn error_code(e: &StageError) -> &'static str {
         QuotaExhausted { .. } => "quota_exhausted",
         Forbidden(_) => "forbidden",
         NoRoute => "no_route",
+        RateLimited => "rate_limited",
         NotReady => "service_not_ready",
         PayloadTooLarge => "payload_too_large",
         Upstream(_) => "upstream_error",
@@ -135,6 +136,8 @@ fn error_status(e: &StageError) -> http::StatusCode {
         QuotaExhausted { .. } => http::StatusCode::PAYMENT_REQUIRED,
         Forbidden(_) => http::StatusCode::FORBIDDEN,
         NoRoute => http::StatusCode::NOT_FOUND,
+        // 与 gateway_pipeline::router::error_to_response 的 RateLimited 映射一致。
+        RateLimited => http::StatusCode::TOO_MANY_REQUESTS,
         NotReady => http::StatusCode::SERVICE_UNAVAILABLE,
         PayloadTooLarge => http::StatusCode::PAYLOAD_TOO_LARGE,
         Upstream(_) => http::StatusCode::BAD_GATEWAY,

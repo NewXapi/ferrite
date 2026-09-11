@@ -66,6 +66,10 @@ pub trait RetryLoop: Send + Sync {
 }
 
 /// 一个尝试的上下文 (retry 传给 forward 的最小信息)。
+///
+/// 循环成功结束时也把它随 outcome 返回, 调用方据此知道**是哪个候选获胜**
+/// (流式回传要读获胜 candidate 的 channel_key / upstream_model 组装 SSE 上下文)。
+#[derive(Debug)]
 pub struct Attempt {
     pub candidate: Candidate,
     pub attempt_no: u32,
@@ -137,9 +141,8 @@ impl Failover {
 ///   outcome   = attempt(candidate).await                     // 一次转发
 ///   report(candidate, outcome)                               // 健康回报
 ///   match outcome {
-///     Done { .. }      => return Ok           // 成功 / 4xx 已处理
-///     Retryable(_)     => mark_tried; continue  // 换候选重试
-///     Fatal(_)         => return Ok           // 客户端问题, 不换渠道
+///     Done { .. } | Fatal(_) => return Ok((attempt, outcome)) // 获胜候选带出
+///     Retryable(_)           => mark_tried; continue          // 换候选重试
 ///   }
 /// }
 /// Err(RetriesExhausted)
@@ -147,6 +150,10 @@ impl Failover {
 ///
 /// `RetryPolicy::max_attempts` 预算耗尽 → `DispatchError::RetriesExhausted`
 /// (上层映射 502/503, 与 NoCandidate=503 区分)。
+///
+/// 成功返回 `Ok((Attempt, AttemptOutcome))`: 获胜 (或 Fatal 终止) 的那次尝试的
+/// 上下文与结果; 调用方 (forward::ForwardStage) 需要候选身份来组装响应流与
+/// 落健康归属。失败仍返回 `Err(DispatchError)`。
 pub async fn run_retry_loop<Sel, Attempt, Fut>(
     group: &str,
     model: &str,
@@ -154,14 +161,14 @@ pub async fn run_retry_loop<Sel, Attempt, Fut>(
     mut select: Sel,
     mut attempt: Attempt,
     mut report: impl FnMut(&str, Result<u16, FailureClass>),
-) -> Result<AttemptOutcome, crate::DispatchError>
+) -> Result<(crate::Attempt, AttemptOutcome), crate::DispatchError>
 where
     Sel: FnMut(&str, &str, &[String]) -> Result<Candidate, crate::DispatchError>,
     Attempt: FnMut(&Candidate) -> Fut,
     Fut: std::future::Future<Output = AttemptOutcome>,
 {
     let mut failover = Failover::new(*policy);
-    while failover.next_attempt().is_some() {
+    while let Some(attempt_no) = failover.next_attempt() {
         let candidate = select(group, model, failover.exclude())?;
         let outcome = attempt(&candidate).await;
         report(
@@ -175,7 +182,17 @@ where
             },
         );
         match outcome {
-            AttemptOutcome::Done { .. } | AttemptOutcome::Fatal(_) => return Ok(outcome),
+            // Done (成功 / 4xx-with-usage) 与 Fatal (客户端问题, 不换渠道) 都
+            // 终止循环, 把获胜 (或终止) 那次尝试的候选上下文一并带出。
+            AttemptOutcome::Done { .. } | AttemptOutcome::Fatal(_) => {
+                return Ok((
+                    crate::Attempt {
+                        candidate,
+                        attempt_no,
+                    },
+                    outcome,
+                ));
+            }
             AttemptOutcome::Retryable(_) => {
                 failover.mark_tried(candidate.unit.meta.key.clone());
             }

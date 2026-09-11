@@ -31,7 +31,6 @@ pub mod snapshot;
 pub mod tavern;
 pub mod usage;
 
-use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable};
 use forward::egress::ReqwestEgress;
 use forward::stage::ForwardStage;
@@ -134,9 +133,9 @@ async fn assemble(
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
-            // dispatcher 同时被 reload 路由持有（ReloadState），此处 clone 一份给 stage
-            .push(DispatchStage::new(dispatcher.clone()))
-            .push(forward_stage)
+            // dispatcher 同时被 reload 路由（ReloadState）与重试循环持有，clone 一份给 stage；
+            // with_retry 后 ForwardStage 自己驱动选路，不再需要 DispatchStage（避免双次 select/限流计数）
+            .push(forward_stage.with_retry(dispatcher.clone(), dispatch::RetryPolicy::default()))
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 
