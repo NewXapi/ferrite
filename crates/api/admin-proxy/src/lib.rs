@@ -19,6 +19,7 @@ use uuid::Uuid;
 use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
+use gateway_proxy::ProxySnapshot;
 use gateway_proxy::node::ProxyNode;
 
 pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
@@ -119,8 +120,59 @@ fn mask_url(url: &str) -> String {
     }
 }
 
+/// 从 DB 加载 enabled 节点 → 数据面 `ProxySnapshot`（M1-2 热更新入口）。
+///
+/// URL 解析失败/绑定空渠道的行跳过并 warn（与 config.toml 的
+/// `build_proxy_snapshot` 同语义）；id 按行序连续编号（≥1，0 是直连哨兵）。
+pub async fn load_proxy_snapshot(pool: &PgPool) -> Result<ProxySnapshot, sqlx::Error> {
+    let rows: Vec<ProxyNodeRow> = sqlx::query_as(&format!(
+        "{COLS} FROM proxy_nodes WHERE enabled = true ORDER BY priority DESC, created_at"
+    ))
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::new();
+    for (idx, r) in rows.into_iter().enumerate() {
+        let keys: Vec<String> = r
+            .channel_keys
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let preview = mask_url(&r.url);
+        if keys.is_empty() {
+            tracing::warn!(url = %preview, "proxy_nodes 缺少 channel_keys，跳过");
+            continue;
+        }
+        let mut node = match ProxyNode::parse_url(&r.url) {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(url = %preview, error = %e, "proxy_nodes URL 解析失败，跳过");
+                continue;
+            }
+        };
+        node.id = (idx as i64).saturating_add(1);
+        node.channel_keys = keys;
+        node.priority = r.priority;
+        out.push(node);
+    }
+    Ok(ProxySnapshot { nodes: out })
+}
+
 pub struct ProxyNodeService {
     pub(crate) pool: PgPool,
+}
+
+impl ProxyNodeService {
+    /// 变更后从 DB 重建快照并原地 install——管理台改节点立即生效，不重启。
+    pub async fn reload_into(&self, proxies: &gateway_proxy::ProxyManager) {
+        match load_proxy_snapshot(&self.pool).await {
+            Ok(snap) => proxies.install(snap),
+            Err(e) => tracing::error!(error = %e, "proxy_nodes 快照重建失败，沿用旧快照"),
+        }
+    }
 }
 
 impl ProxyNodeService {
@@ -253,16 +305,16 @@ impl ProxyNodeService {
 #[serde(rename_all = "camelCase")]
 pub struct NodeRequest {
     #[serde(default)]
-    name: String,
-    url: String,
+    pub name: String,
+    pub url: String,
     #[serde(default)]
-    channel_keys: Vec<String>,
+    pub channel_keys: Vec<String>,
     #[serde(default)]
-    priority: i32,
+    pub priority: i32,
     #[serde(default = "default_true")]
-    enabled: bool,
+    pub enabled: bool,
     #[serde(default)]
-    remark: String,
+    pub remark: String,
 }
 fn default_true() -> bool {
     true
@@ -294,6 +346,8 @@ async fn validate(url: &str, channel_keys: &[String]) -> Result<ProxyNode, Servi
 pub struct ProxyNodeAppState {
     pub svc: std::sync::Arc<ProxyNodeService>,
     pub auth: std::sync::Arc<AuthService>,
+    /// 数据面共享的 ProxyManager：CRUD 变更后原地 install（热更新）。
+    pub proxies: std::sync::Arc<gateway_proxy::ProxyManager>,
 }
 
 pub fn router(state: ProxyNodeAppState) -> axum::Router {
@@ -376,6 +430,7 @@ async fn update(
     let key =
         Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid key".into())))?;
     let v = s.svc.update(key, &req).await.map_err(svc_err)?;
+    s.svc.reload_into(&s.proxies).await;
     Ok(Json(json!(v)))
 }
 
@@ -388,6 +443,7 @@ async fn remove(
     let key =
         Uuid::parse_str(&key).map_err(|_| err_json(AuthError::BadRequest("invalid key".into())))?;
     s.svc.delete(key).await.map_err(svc_err)?;
+    s.svc.reload_into(&s.proxies).await;
     Ok(Json(json!({ "deleted": true })))
 }
 

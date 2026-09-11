@@ -86,6 +86,7 @@ version = "0.1.0"
 dependencies = [
  "auth",
  "axum",
+ "catalog",
  "chrono",
  "gateway-proxy",
  "serde",
@@ -107,6 +108,7 @@ dependencies = [
  "axum",
  "billing",
  "catalog",
+ "gateway-proxy",
  "observe",
  "ops",
  "sqlx",
@@ -235,6 +237,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "api"
 version = "0.1.0"
 dependencies = [
+ "admin-proxy",
  "admin-router",
  "anyhow",
  "arc-swap",
@@ -248,6 +251,7 @@ dependencies = [
  "gateway-gate",
  "gateway-pipeline",
  "gateway-protocol-bridge",
+ "gateway-proxy",
  "hex",
  "metering",
  "observe",
