@@ -1,4 +1,4 @@
-//! WebSocket 传输层：URL query → `VlessOpts` → meow `WsLayer`。
+//! WebSocket 传输层：URL query → `NodeOpts` → meow `WsLayer`。
 //!
 //! VLESS 和 VMess 都支持 `type=ws&path=/xxx&host=sni域名`。
 //! 约定：`path` 存在即视为 WS 节点；`host` 可选，默认用 SNI 或节点 host。
@@ -26,7 +26,7 @@ fn vmess_node(query: &str) -> ProxyNode {
 #[test]
 fn vless_query_parses_ws_path_and_host() {
     let node = vless_node("?path=/ws&host=cdn.example.com&type=ws");
-    let opts = node.vless.expect("vless 节点必须带 VlessOpts");
+    let opts = node.opts.expect("vless 节点必须带 NodeOpts");
     assert_eq!(opts.ws_path.as_deref(), Some("/ws"));
     assert_eq!(opts.ws_host.as_deref(), Some("cdn.example.com"));
 }
@@ -34,7 +34,7 @@ fn vless_query_parses_ws_path_and_host() {
 #[test]
 fn vmess_query_parses_ws_path_and_host() {
     let node = vmess_node("?path=/vmess-ws&host=vmess.example.com");
-    let opts = node.vless.expect("vmess 节点也复用 VlessOpts 存 WS 参数");
+    let opts = node.opts.expect("vmess 节点也复用 NodeOpts 存 WS 参数");
     assert_eq!(opts.ws_path.as_deref(), Some("/vmess-ws"));
     assert_eq!(opts.ws_host.as_deref(), Some("vmess.example.com"));
 }
@@ -43,17 +43,17 @@ fn vmess_query_parses_ws_path_and_host() {
 fn ws_path_alone_implies_ws_transport() {
     // 只要有 path 即视为 WS，不需要显式 type=ws
     let node = vless_node("?path=/ws-only");
-    let opts = node.vless.expect("vless 节点必须带 VlessOpts");
+    let opts = node.opts.expect("vless 节点必须带 NodeOpts");
     assert_eq!(opts.ws_path.as_deref(), Some("/ws-only"));
     assert!(opts.ws_host.is_none());
 }
 
 #[test]
 fn non_vless_non_vmess_schemes_do_not_get_ws_opts() {
-    // SOCKS5 / HTTP 等不该复用 VlessOpts
+    // SOCKS5 / HTTP 等不该复用 NodeOpts
     let node = ProxyNode::parse_url("socks5://127.0.0.1:7890?path=/ws&host=foo").unwrap();
     assert_eq!(node.scheme, ProxyScheme::Socks5);
-    assert!(node.vless.is_none());
+    assert!(node.opts.is_none());
 }
 
 #[test]

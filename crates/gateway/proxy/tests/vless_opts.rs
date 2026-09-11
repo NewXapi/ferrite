@@ -1,4 +1,4 @@
-//! VLESS 传输层选项：URL query → [`VlessOpts`] → meow 适配器。
+//! VLESS 传输层选项：URL query → [`NodeOpts`] → meow 适配器。
 //!
 //! Vision flow 与 REALITY 参数从 `vless://` 的 query 读；配置错误必须 warn +
 //! 回落直连（返回 `None`），不能 panic 网关——节点 URL 来自用户配置。
@@ -17,25 +17,25 @@ fn vless_node(query: &str) -> ProxyNode {
     node
 }
 
-/// query 里的 flow / sni / pbk / sid 必须落进 `VlessOpts`。
+/// query 里的 flow / sni / pbk / sid 必须落进 `NodeOpts`。
 #[test]
 fn query_fills_vless_opts() {
     let node = vless_node(&format!(
         "?flow=xtls-rprx-vision&sni=cdn.example.com&pbk={PBK}&sid=01ab"
     ));
-    let opts = node.vless.expect("vless 节点必须带 VlessOpts");
+    let opts = node.opts.expect("vless 节点必须带 NodeOpts");
     assert_eq!(opts.flow.as_deref(), Some("xtls-rprx-vision"));
     assert_eq!(opts.sni.as_deref(), Some("cdn.example.com"));
     assert_eq!(opts.pbk.as_deref(), Some(PBK));
     assert_eq!(opts.sid.as_deref(), Some("01ab"));
 }
 
-/// 非 VLESS 节点不该带 `VlessOpts`——避免其他 scheme 误读 query。
+/// 非 VLESS 节点不该带 `NodeOpts`——避免其他 scheme 误读 query。
 #[test]
 fn non_vless_has_no_opts() {
     let node = ProxyNode::parse_url("socks5://127.0.0.1:7890?flow=xtls-rprx-vision").unwrap();
     assert_eq!(node.scheme, ProxyScheme::Socks5);
-    assert!(node.vless.is_none());
+    assert!(node.opts.is_none());
 }
 
 /// Vision + REALITY 的完整节点必须构造出适配器（TLS 层 + flow 都要接上）。

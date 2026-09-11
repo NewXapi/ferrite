@@ -28,7 +28,11 @@ pub struct BasicAuth {
     pub pass: String,
 }
 
-/// VLESS / Hysteria2 / AnyTLS / Snell 传输层选项（从 URL query 解析；其他协议恒为 `None`）
+/// 节点传输层选项（从 URL query 解析）
+///
+/// vless / vmess / hysteria2 / anytls / snell 五种协议共用；其他协议恒为 `None`。
+/// 原名带 Vless 前缀、字段也叫 `vless`——名字只提 vless 名不副实，
+/// 0.1 系列纯符号重命名为 `NodeOpts` / `opts`，字段语义与默认值不变（结构体字段公开，属 breaking）。
 ///
 /// query 键与常见分享链接约定一致：
 /// - `flow=xtls-rprx-vision` — XTLS-Vision 内层流模式 (VLESS)
@@ -43,7 +47,7 @@ pub struct BasicAuth {
 /// - `host=sni域名` — WebSocket Host header（可选，默认用 SNI 或 host）
 /// - `fp=` / `fingerprint=` — uTLS 指纹（需开启 `utls` feature）
 #[derive(Debug, Clone, Default)]
-pub struct VlessOpts {
+pub struct NodeOpts {
     /// XTLS flow，目前只识别 `xtls-rprx-vision`
     pub flow: Option<String>,
     /// TLS / REALITY SNI
@@ -74,8 +78,8 @@ pub struct ProxyNode {
     pub host: String,
     pub port: u16,
     pub auth: Option<BasicAuth>,
-    /// VLESS 传输层选项；非 VLESS 节点为 `None`
-    pub vless: Option<VlessOpts>,
+    /// 节点传输层选项（vless/vmess/hysteria2/anytls/snell 共用）；其他协议为 `None`
+    pub opts: Option<NodeOpts>,
     pub channel_keys: Vec<String>,
     pub priority: i32,
 }
@@ -130,7 +134,7 @@ impl ProxyNode {
             | ProxyScheme::Snell => url_obj.port().unwrap_or(443),
             _ => url_obj.port().unwrap_or(8080), // Http or Direct (though Direct never reaches here)
         };
-        // 解析 query 参数：VLESS / VMess（ws 传输） / Hysteria2 / AnyTLS / Snell 共用 VlessOpts
+        // 解析 query 参数：VLESS / VMess（ws 传输） / Hysteria2 / AnyTLS / Snell 共用 NodeOpts
         let needs_opts = matches!(
             scheme,
             ProxyScheme::Vless
@@ -139,8 +143,8 @@ impl ProxyNode {
                 | ProxyScheme::AnyTls
                 | ProxyScheme::Snell
         );
-        let vless = needs_opts.then(|| {
-            let mut opts = VlessOpts::default();
+        let opts = needs_opts.then(|| {
+            let mut opts = NodeOpts::default();
             for (k, v) in url_obj.query_pairs() {
                 match k.to_string().as_str() {
                     "flow" => opts.flow = Some(v.into_owned()),
@@ -177,7 +181,7 @@ impl ProxyNode {
             host: host.to_string(),
             port,
             auth,
-            vless,
+            opts,
             channel_keys: vec![],
             priority: 0,
         })

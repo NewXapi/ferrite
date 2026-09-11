@@ -346,25 +346,25 @@ fn KeyCard(
                 }
             }
 
-            div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
+            div { class: "mt-4 flex items-center gap-2 border-t border-zinc-800 pt-3",
                 Button {
-                    variant: ButtonVariant::Secondary,
+                    variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1",
+                    class: "flex-1 text-zinc-400",
                     onclick: move |_| on_edit.call(e_edit.clone()),
                     "编辑"
                 }
                 Button {
-                    variant: ButtonVariant::Outline,
+                    variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1",
+                    class: "flex-1 text-zinc-400",
                     onclick: move |_| on_toggle.call(e_toggle.clone()),
                     if enabled { "停用" } else { "启用" }
                 }
                 Button {
-                    variant: ButtonVariant::Destructive,
+                    variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1",
+                    class: "flex-1 text-red-400",
                     onclick: move |_| on_delete.call(e_del.clone()),
                     "删除"
                 }

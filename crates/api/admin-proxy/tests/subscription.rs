@@ -54,7 +54,7 @@ fn clash_vless_roundtrips_via_parse_url() {
     assert_eq!(node.port, 443);
     let auth = node.auth.expect("应有 auth");
     assert_eq!(auth.user, "550e8400-e29b-41d4-a716-446655440000");
-    let opts = node.vless.expect("应有 opts");
+    let opts = node.opts.expect("应有 opts");
     assert_eq!(opts.ws_path.as_deref(), Some("/wspath"));
     assert_eq!(opts.sni.as_deref(), Some("sni.example.com"));
     assert_eq!(opts.flow.as_deref(), Some("xtls-rprx-vision"));
@@ -204,7 +204,7 @@ fn ws_without_path_defaults_to_root() {
     ]);
     let url = clash_proxy_to_url(&proxy).expect("应构造成功（默认 /）");
     let node = ProxyNode::parse_url(&url).expect("URL 应能被 parse_url 消费");
-    let opts = node.vless.expect("应有 opts");
+    let opts = node.opts.expect("应有 opts");
     assert_eq!(opts.ws_path.as_deref(), Some("/"));
 }
 
