@@ -6,8 +6,6 @@
 //! 做持久化。native 目标下 eval 静默返回失败，等价于「localStorage 不可用」
 //! 时降级：读不到用默认布局，写失败忽略。
 
-use std::collections::HashMap;
-
 use dioxus::prelude::*;
 use tavern_state::dock::{
     DockItem, DockLayout, Side, SplitRatio, Zone, deserialize, move_item, reorder_in_zone,
@@ -53,9 +51,9 @@ fn default_layout() -> DockLayout {
                 title: "模型与轮次".into(),
             },
         ],
-        active_by_zone: HashMap::new(),
         split_left: SplitRatio::DEFAULT,
         split_right: SplitRatio::DEFAULT,
+        ..DockLayout::default()
     }
 }
 

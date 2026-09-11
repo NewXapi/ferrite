@@ -87,16 +87,28 @@ impl Default for SplitRatio {
 }
 
 /// 整个 dock 布局状态。
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DockLayout {
     /// 全部面板项。
     pub items: Vec<DockItem>,
-    /// 各区当前激活项 id（`None` = 无激活）。
+    /// 各区当前激活项 id（`None` = 无激活）。全四区键恒存在（total map）：
+    /// 读取无需处理缺键，跨区移动/折叠的写入语义也不依赖键是否已存在。
     pub active_by_zone: HashMap<Zone, Option<String>>,
     /// 左列上下分割比例。
     pub split_left: SplitRatio,
     /// 右列上下分割比例。
     pub split_right: SplitRatio,
+}
+
+impl Default for DockLayout {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            active_by_zone: Zone::ALL.map(|z| (z, None::<String>)).into_iter().collect(),
+            split_left: SplitRatio::DEFAULT,
+            split_right: SplitRatio::DEFAULT,
+        }
+    }
 }
 
 /// 左右列（分割比例所属侧）。

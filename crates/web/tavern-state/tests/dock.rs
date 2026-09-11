@@ -3,8 +3,6 @@
 //! 覆盖：跨区移动（源区激活切换 + order 追加末尾）、同区 reorder 越界 clamp、
 //! dock_tab 去重、split 越界 clamp、serialize/deserialize 往返与损坏输入。
 
-use std::collections::HashMap;
-
 use tavern_state::dock::{
     DockItem, DockLayout, Side, SplitRatio, Zone, deserialize, dock_tab, move_item,
     reorder_in_zone, serialize, set_split, set_zone_collapsed,
@@ -21,10 +19,12 @@ fn item(id: &str, zone: Zone, order: u32, enabled: bool) -> DockItem {
 }
 
 fn layout_with_active(items: Vec<DockItem>, active: &[(Zone, Option<&str>)]) -> DockLayout {
-    let active_by_zone = active
-        .iter()
-        .map(|(z, id)| (*z, id.map(String::from)))
-        .collect::<HashMap<Zone, Option<String>>>();
+    // 从 total map（全四区键恒存在）出发，再覆盖测试指定的激活项；
+    // 与 Default 的不变量保持一致。
+    let mut active_by_zone = DockLayout::default().active_by_zone;
+    for (z, id) in active {
+        active_by_zone.insert(*z, id.map(String::from));
+    }
     DockLayout {
         items,
         active_by_zone,
@@ -117,10 +117,10 @@ fn reorder_in_zone_stable_swap_and_clamp() {
     // 其他区不受影响。
     assert_eq!(ord(&layout, "d"), 0);
 
-    // to_index 越界（99）clamp 到 n-1=2：把 a（index1）移到末尾 → [b,c,a]。
+    // to_index 越界（99）clamp 到 n-1=2：把 a（index1）移到末尾 → [c,b,a]。
     reorder_in_zone(&mut layout, Zone::RightTop, 1, 99);
-    assert_eq!(ord(&layout, "b"), 0);
-    assert_eq!(ord(&layout, "c"), 1);
+    assert_eq!(ord(&layout, "c"), 0);
+    assert_eq!(ord(&layout, "b"), 1);
     assert_eq!(ord(&layout, "a"), 2);
 
     // from_index 越界（5 >= n=3）no-op，order 不变。
