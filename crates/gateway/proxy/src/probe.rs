@@ -96,6 +96,9 @@ pub async fn probe_node(node: &ProxyNode, target: &str, timeout: Duration) -> Pr
 /// 从右侧找最后一个 `:`：IPv6 地址本身含冒号，从左找会把地址切断。
 fn split_host_port(target: &str) -> Option<(&str, u16)> {
     let (host, port) = target.rsplit_once(':')?;
+    if host.starts_with('[') != host.ends_with(']') {
+        return None;
+    }
     let host = host.strip_prefix('[').unwrap_or(host);
     let host = host.strip_suffix(']').unwrap_or(host);
     if host.is_empty() {

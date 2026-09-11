@@ -313,7 +313,6 @@ impl ProxyManager {
     }
 
     /// 节点运行时状态视图：把进程内私有状态导出给管理面。
-    ///
     /// `inflight` / `health` 是私有字段，管理台此前看不到任何运行时信息。
     /// 这是 `GET /api/proxy_nodes/report` 的数据源。
     ///
@@ -324,12 +323,18 @@ impl ProxyManager {
         let now = Instant::now();
         let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
         let health = self.health.lock().unwrap_or_else(|e| e.into_inner());
+        let inflight_map: HashMap<i64, u32> = inflight.clone();
+        let health_data: HashMap<i64, (u32, Option<Instant>)> = health
+            .iter()
+            .map(|(&id, h)| (id, (h.failure_count, h.cooldown_until)))
+            .collect();
+        drop(inflight);
+        drop(health);
+
         let adapters = self
             .connector_cache
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        // 缓存键是 (node_id, fingerprint)，同一节点换指纹会有多条；取任意一条即可
-        // ——延迟是节点级属性，不随指纹变。
         let delay_by_node: HashMap<i64, u16> = adapters
             .iter()
             .filter_map(|((node_id, _fp), adapter)| {
@@ -343,13 +348,14 @@ impl ProxyManager {
             .all_nodes()
             .iter()
             .map(|node| {
-                let h = health.get(&node.id);
+                let inflight = inflight_map.get(&node.id).copied().unwrap_or(0);
+                let (failure_count, cooldown_until) =
+                    health_data.get(&node.id).copied().unwrap_or((0, None));
                 NodeStats {
                     node_id: node.id,
-                    inflight: inflight.get(&node.id).copied().unwrap_or(0),
-                    failure_count: h.map_or(0, |h| h.failure_count),
-                    cooldown_remaining_secs: h
-                        .and_then(|h| h.cooldown_until)
+                    inflight,
+                    failure_count,
+                    cooldown_remaining_secs: cooldown_until
                         .map_or(0, |until| until.saturating_duration_since(now).as_secs()),
                     last_delay_ms: delay_by_node.get(&node.id).copied(),
                 }
