@@ -26,7 +26,6 @@ async fn make_svcs() -> (ModelService, ChannelService) {
         .await
         .expect("connect PG");
     db_bootstrap::run_migrations(&pool).await.expect("migrations");
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     (ModelService::new(pool.clone()), ChannelService::new(pool))
 }
 

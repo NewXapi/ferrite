@@ -25,7 +25,6 @@ async fn make_svcs() -> (ChannelService, GroupService) {
         .await
         .expect("PG connect");
     db_bootstrap::run_migrations(&pool).await.expect("migrations");
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     (ChannelService::new(pool.clone()), GroupService::new(pool))
 }
 
@@ -256,7 +255,6 @@ async fn probe_records_history_and_availability() {
     //   网络路径的格式错误分支（非法 URL）由 test_channel 对 error_kind 的归类覆盖。）
     let (_ch, _g) = make_svcs().await;
     let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     db_bootstrap::run_migrations(&pool).await.expect("migrations");
     let monitor = observe::monitor::MonitorDeps::new(pool.clone());
     let key = uuid::Uuid::new_v4();
