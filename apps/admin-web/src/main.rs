@@ -15,6 +15,8 @@ fn main() {
 fn App() -> Element {
     rsx! {
         document::Stylesheet { href: TAILWIND_CSS }
+        // 全局 toast 出口：组件内 ui::components::toast::toast() 触发。
+        ui::components::toast::Toaster {}
         RootApp {}
     }
 }
