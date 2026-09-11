@@ -38,6 +38,8 @@
 | `crg_impact` | l2 | merge | WARN | diff 跨 3+ crate 改动，提示耦合 |
 | `pr_labels` | l1 | merge | FAIL | PR 至少挂 1 个 type label（bug/feature/chore/refactor/tests/documentation/epic）；标题命中域关键词但缺域 label 时给出建议（gh api 取数，取数失败输出"跳过、请人工核对"） |
 | `pr_crg_review` | l1 | merge | FAIL | PR 讨论区需留有 CRG（code-review-graph）审查结论；若记录提到过问题/风险，需附修复/回应记录（Fix/采纳/驳回 + commit 或验证结论）。只统计 PR 创建后的评论（gh api 取数，取数失败输出"跳过、请人工核对"） |
+| `doc_sync` | l1 | pre-commit/push/merge | FAIL | 有 Cargo.toml 的功能 crate 必须配 README.md；域目录（crates/<domain>/）必须有 README；根 README.md 必须存在 |
+| `code_doc` | l1 | pre-commit/push/merge | WARN | 公共 API 缺 `///` rust doc、模块头缺 `//!`（只查本次 PR diff 触碰的 .rs，不追责存量） |
 
 ## 路径无关性（重要）
 
