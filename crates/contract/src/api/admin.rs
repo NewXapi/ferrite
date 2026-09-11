@@ -133,7 +133,7 @@ pub struct ChannelDto {
     #[serde(default)]
     pub keys: Option<Vec<String>>,
     pub models: serde_json::Value,
-    pub group_name: String,
+    pub groups: Vec<String>,
     pub priority: i32,
     pub weight: i32,
     pub status: i16,
@@ -157,7 +157,7 @@ pub struct ChannelUpsertRequest {
     #[serde(default)]
     pub keys: Vec<String>,
     pub models: serde_json::Value,
-    pub group_name: String,
+    pub groups: Vec<String>,
     pub priority: i32,
     pub weight: i32,
     #[serde(default)]

@@ -97,7 +97,7 @@ apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
 | PUT/DELETE | `/api/group/{key}` | 编辑倍率白名单 / 删除 (有引用拒删) |
 
 表 `api_groups` 启动时 seed default 组；auth_users.group_id /
-api_tokens.group_id / api_channels.group_name 按名字引用 (loose)。
+api_tokens.group_id / api_channels.groups 按名字引用 (loose)。
 
 ### 已完成 — `observe/` logs + dashboard (5 端点)
 

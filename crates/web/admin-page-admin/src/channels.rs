@@ -87,7 +87,7 @@ pub fn ChannelsPage() -> Element {
     let disabled_count = list.iter().filter(|c| c.status != 1).count();
     let total_keys: i64 = list.iter().map(|c| c.key_count).sum();
     let group_set: std::collections::BTreeSet<String> =
-        list.iter().map(|c| c.group_name.clone()).collect();
+        list.iter().flat_map(|c| c.groups.iter().cloned()).collect();
 
     let stats: [(String, &str); 5] = [
         (total.to_string(), "总渠道数"),
@@ -112,7 +112,7 @@ pub fn ChannelsPage() -> Element {
                     && !c.name.to_lowercase().contains(&q)
                     && !c.channel_type.to_lowercase().contains(&q)
                     && !c.base_url.to_lowercase().contains(&q)
-                    && !c.group_name.to_lowercase().contains(&q)
+                    && !c.groups.iter().any(|g| g.to_lowercase().contains(&q))
                 {
                     return false;
                 }
@@ -141,7 +141,7 @@ pub fn ChannelsPage() -> Element {
             f_ctype.set(c.channel_type.clone());
             f_url.set(c.base_url.clone());
             f_keys.set(String::new());
-            f_group.set(c.group_name.clone());
+            f_group.set(c.groups.join(","));
             f_remark.set(c.remark.clone());
             modal_state.set(ChannelModalState::Edit(key));
         }
@@ -361,14 +361,14 @@ fn ChannelCard(
                                 "#{channel.key}"
                             }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{channel.channel_type} · {channel.group_name}" }
+                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{channel.channel_type} · {channel.groups.join(\", \")}" }
                     }
                 }
 
                 // 徽标行
                 div { class: "flex flex-wrap gap-1.5",
                     Badge { text: status_text.to_string(), tone: status_tone }
-                    Badge { text: channel.group_name.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
+                    Badge { text: channel.groups.join(", "), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
                     Badge { text: format!("{} 密钥", channel.key_count), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-500" }
                 }
 
@@ -478,7 +478,11 @@ fn ChannelFormModal(
                 base_url: u,
                 keys: k,
                 models: json!([]),
-                group_name: g,
+                groups: g
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 priority: 0,
                 weight: 0,
                 test_model: None,

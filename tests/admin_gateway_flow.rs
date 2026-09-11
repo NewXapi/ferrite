@@ -113,8 +113,8 @@ async fn insert_channel(pool: &sqlx::PgPool) {
     let key = uuid::Uuid::new_v4();
     let name = format!("ch_{}", &key.to_string()[..8]);
     sqlx::query(
-        r#"INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name, status)
-           VALUES ($1, $2, 'openai', 'http://mock', '["sk"]', '["gpt-4o"]', 'default', 1)"#,
+        r#"INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, groups, status)
+           VALUES ($1, $2, 'openai', 'http://mock', '["sk"]', '["gpt-4o"]', '{default}', 1)"#,
     )
     .bind(key)
     .bind(&name)

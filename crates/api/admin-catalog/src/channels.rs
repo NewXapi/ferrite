@@ -32,7 +32,7 @@ pub struct ChannelView {
     pub key_count: i64,
     pub keys: Option<Vec<String>>,
     pub models: Value,
-    pub group_name: String,
+    pub groups: Vec<String>,
     pub priority: i32,
     pub weight: i32,
     pub status: i16,
@@ -51,7 +51,7 @@ struct ChannelRow {
     base_url: String,
     keys: Value,
     models: Value,
-    group_name: String,
+    groups: Vec<String>,
     priority: i32,
     weight: i32,
     status: i16,
@@ -62,7 +62,7 @@ struct ChannelRow {
     updated_at: DateTime<Utc>,
 }
 
-const SELECT_COLS: &str = "key, name, channel_type, base_url, keys, models, group_name, \
+const SELECT_COLS: &str = "key, name, channel_type, base_url, keys, models, groups, \
      priority, weight, status, tags, test_model, remark, created_at, updated_at";
 
 fn row_to_view(r: ChannelRow, include_keys: bool) -> ChannelView {
@@ -79,7 +79,7 @@ fn row_to_view(r: ChannelRow, include_keys: bool) -> ChannelView {
         channel_type: r.channel_type,
         base_url: r.base_url,
         models: r.models,
-        group_name: r.group_name,
+        groups: r.groups,
         priority: r.priority,
         weight: r.weight,
         status: r.status,
@@ -107,17 +107,22 @@ impl ChannelService {
         base_url: &str,
         keys: Vec<String>,
         models: Value,
-        group_name: &str,
+        groups: &[String],
         priority: i32,
         weight: i32,
         test_model: Option<String>,
         remark: &str,
     ) -> Result<ChannelView, AuthError> {
         validate(name, channel_type, base_url, &keys, &models)?;
+        // groups 为空 → snapshot 展开零路由单元，渠道上线即"永不通"。
+        // 写侧必须拦（ocr：validate 此前未覆盖 groups）。
+        if groups.is_empty() || groups.iter().any(|g| g.trim().is_empty()) {
+            return Err(AuthError::BadRequest("groups: 至少一个非空分组名".into()));
+        }
         let key = Uuid::new_v4();
         let res = sqlx::query(
             r#"INSERT INTO api_channels
-               (key, name, channel_type, base_url, keys, models, group_name,
+               (key, name, channel_type, base_url, keys, models, groups,
                 priority, weight, test_model, remark)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
         )
@@ -127,7 +132,7 @@ impl ChannelService {
         .bind(base_url.trim())
         .bind(serde_json::to_value(&keys).map_err(|e| AuthError::Crypto(e.to_string()))?)
         .bind(models)
-        .bind(group_name.trim())
+        .bind(groups)
         .bind(priority)
         .bind(weight)
         .bind(test_model)
@@ -188,7 +193,7 @@ impl ChannelService {
         base_url: Option<&str>,
         keys: Option<Vec<String>>,
         models: Option<Value>,
-        group_name: Option<&str>,
+        groups: Option<&[String]>,
         priority: Option<i32>,
         weight: Option<i32>,
         test_model: Option<Option<String>>,
@@ -210,7 +215,7 @@ impl ChannelService {
             r#"UPDATE api_channels SET
                name = COALESCE($2, name), channel_type = COALESCE($3, channel_type),
                base_url = COALESCE($4, base_url), keys = COALESCE($5, keys),
-               models = COALESCE($6, models), group_name = COALESCE($7, group_name),
+               models = COALESCE($6, models), groups = COALESCE($7, groups),
                priority = COALESCE($8, priority), weight = COALESCE($9, weight),
                test_model = $10, remark = COALESCE($11, remark),
                status = COALESCE($12, status), updated_at = now() WHERE key = $1"#,
@@ -221,7 +226,7 @@ impl ChannelService {
         .bind(base_url.map(str::trim))
         .bind(keys.map(|_| cur_keys))
         .bind(models)
-        .bind(group_name.map(str::trim))
+        .bind(groups)
         .bind(priority)
         .bind(weight)
         .bind(test_model)
@@ -632,8 +637,8 @@ struct CreateChannelRequest {
     keys: Vec<String>,
     #[serde(default)]
     models: Value,
-    #[serde(default = "default_grp")]
-    group_name: String,
+    #[serde(default = "default_grps")]
+    groups: Vec<String>,
     #[serde(default)]
     priority: i32,
     #[serde(default)]
@@ -645,8 +650,8 @@ struct CreateChannelRequest {
 fn default_ct() -> String {
     "openai".into()
 }
-fn default_grp() -> String {
-    "default".into()
+fn default_grps() -> Vec<String> {
+    vec!["default".into()]
 }
 
 #[derive(Debug, Deserialize)]
@@ -657,7 +662,7 @@ struct UpdateChannelRequest {
     base_url: Option<String>,
     keys: Option<Vec<String>>,
     models: Option<Value>,
-    group_name: Option<String>,
+    groups: Option<Vec<String>>,
     priority: Option<i32>,
     weight: Option<i32>,
     test_model: Option<Option<String>>,
@@ -735,7 +740,7 @@ async fn create(
             &req.base_url,
             req.keys,
             req.models,
-            &req.group_name,
+            &req.groups,
             req.priority,
             req.weight,
             req.test_model,
@@ -776,7 +781,7 @@ async fn update(
             req.base_url.as_deref(),
             req.keys,
             req.models,
-            req.group_name.as_deref(),
+            req.groups.as_deref(),
             req.priority,
             req.weight,
             req.test_model,
