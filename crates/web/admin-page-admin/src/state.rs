@@ -437,7 +437,6 @@ impl EntityStore {
         #[derive(Default, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct ChannelDto {
-            key: String,
             name: String,
             #[serde(default)]
             channel_type: String,
@@ -445,7 +444,7 @@ impl EntityStore {
             base_url: String,
             status: i16,
             #[serde(default)]
-            group_name: String,
+            groups: Vec<String>,
             #[serde(default)]
             models: serde_json::Value,
         }
@@ -458,48 +457,26 @@ impl EntityStore {
         };
         let channels = r.items;
 
-        // 路由单元 → 每个渠道的 dispatch(对外模型)与候选(上游模型)
-        #[derive(Default, serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct RouteUnitDto {
-            #[serde(default)]
-            channel_key: String,
-            #[serde(default)]
-            public_model: String,
-        }
-        let r: Items<RouteUnitDto> = match client.get("/api/route_unit?size=100").await {
-            Ok(r) => r,
-            Err(e) => {
-                log_hydrate_error("route_unit", &e);
-                Items { items: Vec::new() }
-            }
-        };
-        let route_units = r.items;
-
-        let mut dispatch_by_channel: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        for ru in &route_units {
-            let v = dispatch_by_channel
-                .entry(ru.channel_key.clone())
-                .or_default();
-            if !v.contains(&ru.public_model) {
-                v.push(ru.public_model.clone());
-            }
-        }
-
         let rows: Vec<ChannelRow> = channels
             .into_iter()
             .map(|c| {
-                let models = c
+                // 对外模型名来自渠道自身的 models JSONB（字符串或 {alias,upstream}），
+                // 不再打已删除的 /api/route_unit。
+                let models: Vec<String> = c
                     .models
                     .as_array()
                     .map(|a| {
                         a.iter()
-                            .filter_map(|m| m.as_str().map(|s| s.to_string()))
-                            .collect::<Vec<_>>()
+                            .filter_map(|m| {
+                                m.as_str().map(|s| s.to_string()).or_else(|| {
+                                    m.get("alias")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string())
+                                })
+                            })
+                            .collect()
                     })
                     .unwrap_or_default();
-                let dispatch = dispatch_by_channel.get(&c.key).cloned().unwrap_or_default();
                 ChannelRow {
                     name: c.name,
                     ctype: if c.channel_type.is_empty() {
@@ -510,14 +487,14 @@ impl EntityStore {
                     url: c.base_url,
                     keys: String::new(),
                     status: if c.status == 1 { 1 } else { 0 },
-                    group: if c.group_name.is_empty() {
+                    group: if c.groups.is_empty() {
                         "default".into()
                     } else {
-                        c.group_name
+                        c.groups.join(",")
                     },
                     latency_ms: None,
                     candidates: models.iter().map(|m| (m.clone(), false)).collect(),
-                    dispatch,
+                    dispatch: models,
                 }
             })
             .collect();

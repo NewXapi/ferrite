@@ -28,11 +28,11 @@ INSERT INTO api_groups (key, name, ratio, model_whitelist, remark, status) VALUE
   ('00000000-0000-0000-0000-00000000bb01', 'default', 1.0, '[]', 'dev 种子: 基准分组', 1),
   ('00000000-0000-0000-0000-00000000bb02', 'vip', 0.8, '[]', 'dev 种子: 优惠分组', 1);
 
-INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name, priority, weight, status, tags, remark) VALUES
-  ('00000000-0000-0000-0000-00000000cc01', 'wt-52mxw', 'openai', 'https://api.openai.com/v1', '[]', '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]', 'default', 10, 10, 1, '[]', 'dev 种子'),
-  ('00000000-0000-0000-0000-00000000cc02', 'wt-cao', 'openai', 'https://oneapi.example.internal/v1', '[]', '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]', 'default', 9, 9, 1, '[]', 'dev 种子'),
-  ('00000000-0000-0000-0000-00000000cc03', 'wt-factory', 'openai', 'https://factory.example.internal/v1', '[]', '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]', 'default', 8, 8, 1, '[]', 'dev 种子'),
-  ('00000000-0000-0000-0000-00000000cc04', 'OneAPI 上游', 'openai', 'https://relay.example.internal/v1', '[]', '["gpt-5.6-sol","kimi-k3"]', 'default', 7, 7, 1, '[]', 'dev 种子');
+INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, groups, priority, weight, status, tags, remark) VALUES
+  ('00000000-0000-0000-0000-00000000cc01', 'wt-52mxw', 'openai', 'https://api.openai.com/v1', '[]', '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]', '{default}', 10, 10, 1, '[]', 'dev 种子'),
+  ('00000000-0000-0000-0000-00000000cc02', 'wt-cao', 'openai', 'https://oneapi.example.internal/v1', '[]', '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]', '{default}', 9, 9, 1, '[]', 'dev 种子'),
+  ('00000000-0000-0000-0000-00000000cc03', 'wt-factory', 'openai', 'https://factory.example.internal/v1', '[]', '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]', '{default}', 8, 8, 1, '[]', 'dev 种子'),
+  ('00000000-0000-0000-0000-00000000cc04', 'OneAPI 上游', 'openai', 'https://relay.example.internal/v1', '[]', '["gpt-5.6-sol","kimi-k3"]', '{default}', 7, 7, 1, '[]', 'dev 种子');
 
 
 INSERT INTO api_tokens (key, user_key, name, key_hash, key_preview, group_id, quota, unlimited_quota, used_quota, status) VALUES

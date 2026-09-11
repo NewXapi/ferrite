@@ -2,7 +2,7 @@
 //!
 //! 替代原 store-trait 骨架。倍率 (ratio) 语义对齐 new-api: 用户组倍率 ×
 //! 模型倍率 = 最终计费倍率 (MVP 只落组倍率)。
-//! auth_users.group_id / api_tokens.group_id / api_channels.group_name
+//! auth_users.group_id / api_tokens.group_id / api_channels.groups
 //! 按名字引用 (loose, 无 FK)；default 组不可删 (防孤儿)。
 
 use axum::http::HeaderMap;
@@ -153,7 +153,7 @@ impl GroupService {
         let refs: i64 = sqlx::query_scalar(
             "SELECT (SELECT count(*) FROM auth_users WHERE group_id = $1) \
            + (SELECT count(*) FROM api_tokens WHERE group_id = $1) \
-           + (SELECT count(*) FROM api_channels WHERE group_name = $1)",
+           + (SELECT count(*) FROM api_channels WHERE $1 = ANY(groups))",
         )
         .bind(&existing.name)
         .fetch_one(&self.pool)

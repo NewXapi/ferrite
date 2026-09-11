@@ -48,7 +48,7 @@ async fn channel_crud_flow() {
             "https://api.x.com",
             vec![],
             models_json(),
-            "default",
+            &["default".into()],
             0,
             0,
             None,
@@ -65,7 +65,7 @@ async fn channel_crud_flow() {
             "ftp://x",
             vec!["sk-1".into()],
             models_json(),
-            "default",
+            &["default".into()],
             0,
             0,
             None,
@@ -83,7 +83,7 @@ async fn channel_crud_flow() {
             "https://api.x.com",
             vec!["sk-a".into(), "sk-b".into()],
             models_json(),
-            "default",
+            &["default".into()],
             10,
             5,
             Some("gpt-4o".into()),
@@ -103,7 +103,7 @@ async fn channel_crud_flow() {
             "https://api.x.com",
             vec!["sk-1".into()],
             models_json(),
-            "default",
+            &["default".into()],
             0,
             0,
             None,
@@ -320,8 +320,8 @@ async fn test_channel_rejects_bad_config() {
     // 直接插一个无 keys 渠道（create 校验会拦，这里绕过以测 test_channel 分支）
     let key = uuid::Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name) \
-         VALUES ($1, $2, 'openai', 'https://upstream.test', '[]', '[]', 'default')",
+        "INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, groups) \
+         VALUES ($1, $2, 'openai', 'https://upstream.test', '[]', '[]', '{default}')",
     )
     .bind(key)
     .bind(format!("ch-empty-{}", uuid::Uuid::new_v4().simple()))
