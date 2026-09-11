@@ -46,6 +46,7 @@ tavern-settings   = { path = "../../crates/api/tavern-settings" }
 tavern-secrets    = { path = "../../crates/api/tavern-secrets" }
 tavern-generate   = { path = "../../crates/api/tavern-generate" }
 admin-router = { path = "../../crates/api/admin-router" }
+auth = { path = "../../crates/api/auth" }
 observe = { path = "../../crates/api/admin-observe" }
 metering = { path = "../../crates/gateway/metering" }
 gateway-pipeline = { path = "../../crates/gateway/pipeline" }

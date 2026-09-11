@@ -1,0 +1,77 @@
+# UI Spec: 渠道与分组管理页
+# agent 用 tab.ariaSnapshot() + data-testid 逐项验证
+# 参考 OMP skill `ui-validate` 了解完整流程
+#
+# 数据来自真实后端:挂载后 use_effect 拉 GET /api/channel 与 GET /api/group,
+# 渲染 ChannelDto / GroupDto。下列元素为接线后的稳定契约。
+
+page: "/admin"
+name: "渠道与分组管理"
+
+elements:
+  # —— 渠道列表 ——
+  - role: region
+    name: "渠道列表"
+    testid: "channels-list"
+    required: true
+
+  - role: button
+    name: "刷新"
+    testid: "refresh-channels"
+    action: click
+    expect_state_change: true
+
+  - role: button
+    name: "✚ 新建渠道"
+    testid: "new-channel"
+    action: click
+    expect_navigate: "/admin/channels/new"
+
+  - role: listitem
+    name: "渠道 <name>"
+    testid: "channel-card"
+    min_rows: 1
+    # 每个 channel-card 内应含 编辑 / 启用或停用 / 删除 三个动作
+    children:
+      - role: button
+        name: "编辑"
+        testid: "edit-channel"
+      - role: button
+        name: "启用"
+        testid: "toggle-channel"
+        # 或 "停用",取决于该渠道当前 status
+      - role: button
+        name: "删除"
+        testid: "delete-channel"
+
+  # —— 分组列表 ——
+  - role: region
+    name: "分组列表"
+    testid: "groups-list"
+    required: true
+
+  - role: button
+    name: "刷新"
+    testid: "refresh-groups"
+    action: click
+    expect_state_change: true
+
+  - role: button
+    name: "✚ 新建分组"
+    testid: "new-group"
+    action: click
+    expect_navigate: "/admin/groups/new"
+
+  - role: listitem
+    name: "分组 <name>"
+    testid: "group-card"
+    min_rows: 1
+    # 每个 group-card 内应含 编辑 / 删除(或内置) 两个动作
+    children:
+      - role: button
+        name: "编辑"
+        testid: "edit-channel"
+      - role: button
+        name: "删除"
+        testid: "delete-channel"
+        # 或 "内置"(默认分组不可删除)

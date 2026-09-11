@@ -1,10 +1,13 @@
 //! 管理面板的共享实体 store：分组 / 模型别名 / 渠道 / 订阅套餐 / 兑换码。
 //! 拓扑图、抽屉与「设置」tab 读写同一份数据，任一侧修改立即同步。
-//! 目前全是 mock；将来 API crate 加载后替换初始值即可替换来源。
+//! 数据在应用启动时由 `hydrate()` 从真实后端灌入
+//! (/api/group + /api/channel + /api/route_unit + /api/models);
+//! 订阅套餐暂无后端端点,保持空列表(页面显示诚实空态)。
 //!
 //! 索引必须与图的 SEED_EDGES 对齐（见 network/mod.rs）：
 //! 分组顺序 default/claude/gpt-5/vip，别名 gpt-4o/gpt-5/claude-sonnet-4/gemini-2.5-pro。
 
+use client::ApiClient;
 use dioxus::prelude::*;
 
 #[derive(Clone, PartialEq)]
@@ -374,4 +377,186 @@ impl EntityStore {
             ]),
         }
     }
+}
+
+impl EntityStore {
+    /// 空店：分组/别名/渠道/套餐/兑换码全空,等 hydrate 灌入真实数据。
+    pub fn empty() -> Self {
+        Self {
+            groups: Signal::new(Vec::new()),
+            aliases: Signal::new(Vec::new()),
+            channels: Signal::new(Vec::new()),
+            plans: Signal::new(Vec::new()),
+            redemptions: Signal::new(Vec::new()),
+        }
+    }
+
+    /// 从真实后端灌水：分组(/api/group)、渠道(/api/channel)、
+    /// 路由单元(/api/route_unit → 渠道 dispatch 模型)、模型别名(/api/models)。
+    /// 未登录(401)时静默保持空,登录后 HomePage 重挂载会再次 hydrate。
+    pub async fn hydrate(mut store: EntityStore) {
+        #[derive(Debug, Default, serde::Deserialize)]
+        struct Items<T> {
+            #[serde(default)]
+            items: Vec<T>,
+        }
+
+        let client = ApiClient::shared().clone();
+
+        // 分组
+        #[derive(Default, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct GroupDto {
+            name: String,
+            ratio: f64,
+            #[serde(default)]
+            remark: String,
+        }
+        let r: Items<GroupDto> = match client.get("/api/group").await {
+            Ok(r) => r,
+            Err(e) => {
+                log_hydrate_error("group", &e);
+                return; // 未登录/后端不可达:保持空
+            }
+        };
+        let groups = r.items;
+        store.groups.write().extend(groups.into_iter().map(|g| {
+            let display = if g.remark.is_empty() {
+                g.name.clone()
+            } else {
+                g.remark
+            };
+            GroupRow {
+                name: g.name,
+                display,
+                multiplier: g.ratio,
+            }
+        }));
+
+        // 渠道
+        #[derive(Default, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ChannelDto {
+            key: String,
+            name: String,
+            #[serde(default)]
+            channel_type: String,
+            #[serde(default)]
+            base_url: String,
+            status: i16,
+            #[serde(default)]
+            group_name: String,
+            #[serde(default)]
+            models: serde_json::Value,
+        }
+        let r: Items<ChannelDto> = match client.get("/api/channel").await {
+            Ok(r) => r,
+            Err(e) => {
+                log_hydrate_error("channel", &e);
+                return;
+            }
+        };
+        let channels = r.items;
+
+        // 路由单元 → 每个渠道的 dispatch(对外模型)与候选(上游模型)
+        #[derive(Default, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RouteUnitDto {
+            #[serde(default)]
+            channel_key: String,
+            #[serde(default)]
+            public_model: String,
+        }
+        let r: Items<RouteUnitDto> = match client.get("/api/route_unit?size=100").await {
+            Ok(r) => r,
+            Err(e) => {
+                log_hydrate_error("route_unit", &e);
+                Items { items: Vec::new() }
+            }
+        };
+        let route_units = r.items;
+
+        let mut dispatch_by_channel: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for ru in &route_units {
+            let v = dispatch_by_channel
+                .entry(ru.channel_key.clone())
+                .or_default();
+            if !v.contains(&ru.public_model) {
+                v.push(ru.public_model.clone());
+            }
+        }
+
+        let rows: Vec<ChannelRow> = channels
+            .into_iter()
+            .map(|c| {
+                let models = c
+                    .models
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|m| m.as_str().map(|s| s.to_string()))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let dispatch = dispatch_by_channel.get(&c.key).cloned().unwrap_or_default();
+                ChannelRow {
+                    name: c.name,
+                    ctype: if c.channel_type.is_empty() {
+                        "openai".into()
+                    } else {
+                        c.channel_type
+                    },
+                    url: c.base_url,
+                    keys: String::new(),
+                    status: if c.status == 1 { 1 } else { 0 },
+                    group: if c.group_name.is_empty() {
+                        "default".into()
+                    } else {
+                        c.group_name
+                    },
+                    latency_ms: None,
+                    candidates: models.iter().map(|m| (m.clone(), false)).collect(),
+                    dispatch,
+                }
+            })
+            .collect();
+        store.channels.write().extend(rows);
+
+        // 模型别名
+        #[derive(Default, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ModelDto {
+            name: String,
+        }
+        let r: Items<ModelDto> = match client.get("/api/models?size=100").await {
+            Ok(r) => r,
+            Err(e) => {
+                log_hydrate_error("models", &e);
+                Items { items: Vec::new() }
+            }
+        };
+        let models = r.items;
+        let mut aliases: Vec<AliasRow> = models
+            .into_iter()
+            .map(|m| AliasRow {
+                alias: m.name,
+                display: String::new(),
+                input_per_1k: 0.0,
+                output_per_1k: 0.0,
+                multiplier: 1.0,
+            })
+            .collect();
+        aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
+        store.aliases.write().extend(aliases);
+    }
+}
+
+/// hydrate 失败的可见化：浏览器 console.warn（wasm 下 std eprintln 不可见）。
+fn log_hydrate_error(what: &str, e: &client::ApiError) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::warn_1(&format!("EntityStore hydrate {what} failed: {e}").into());
+    #[cfg(not(target_arch = "wasm32"))]
+    eprintln!("EntityStore hydrate {what} failed: {e}");
+    let _ = (what, e);
 }

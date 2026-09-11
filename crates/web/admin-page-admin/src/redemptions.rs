@@ -1,38 +1,90 @@
 //! 兑换码管理页:卡片式网格,对齐 GroupsPage / ChannelsPage / UsersPanel 规范。
-//! 包含:顶部兑换码概览、综合筛选与批量生成、卡片网格、批量生成兑换码弹窗。
+//! 数据来自真实后端 `/api/redemption`(列表 / 批量生成 / 停用)。
+//! 后端语义:DELETE 即停用 (status→2,无硬删、无重新启用);
+//! 明文码只在生成响应里出现一次,页面用弹窗展示。
 
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
+use crate::api::{
+    RedemptionView, disable_redemption_api, generate_redemptions_api, list_redemptions_api,
+};
 use crate::groups::{Badge, Modal, StatCard};
-use crate::state::{EntityStore, RedRow};
+use client::ApiClient;
+
+const SEC_STATS: &str = "兑换码概览";
+const SEC_FILTER: &str = "筛选与操作";
+const SEC_LIST: &str = "兑换码列表";
 
 /// 弹窗状态
 #[derive(Clone, PartialEq)]
 enum RedModalState {
     Closed,
     Generate,
+    /// 生成成功后的一次性明文码展示
+    Codes(Vec<String>),
 }
 
-const SEC_STATS: &str = "兑换码概览";
-const SEC_FILTER: &str = "筛选与操作";
-const SEC_LIST: &str = "兑换码列表";
+/// 页面内兑换码视图模型 (金额已换算为 ¥)。
+#[derive(Clone, PartialEq)]
+struct RedRowFE {
+    key: String,
+    code_preview: String,
+    quota_cny: f64,
+    status: u8, // 1 未用 / 2 停用 / 3 已核销
+    redeemed_by: Option<String>,
+    redeemed_at: String,
+    created: String,
+}
 
 #[component]
 pub fn RedemptionsPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let reds = store.redemptions;
+    let mut reds = use_signal(Vec::<RedRowFE>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    let mut reload = use_signal(|| 0u32);
 
     let mut search = use_signal(String::new);
     let mut filter_tier = use_signal(|| 0usize);
     let mut modal_state = use_signal(|| RedModalState::Closed);
     let mut copied_key = use_signal(|| None::<String>);
 
-    // 生成弹窗字段
-    let mut f_name = use_signal(String::new);
+    // 生成弹窗字段(后端只支持 面额+数量;活动名/有效期无对应字段)
     let mut f_count = use_signal(|| "1".to_string());
     let mut f_quota = use_signal(|| "50".to_string());
-    let mut f_expire_days = use_signal(String::new);
+
+    // 拉取(挂载/刷新/写回后)
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match list_redemptions_api(&client, None, Some(1), Some(100)).await {
+                Ok((items, _total)) => {
+                    reds.set(
+                        items
+                            .into_iter()
+                            .map(|v: RedemptionView| RedRowFE {
+                                key: v.key,
+                                code_preview: v.code_preview,
+                                quota_cny: v.quota as f64 / 500_000.0,
+                                status: v.status as u8,
+                                redeemed_by: v.redeemed_by,
+                                redeemed_at: v.redeemed_at.unwrap_or_default(),
+                                created: v.created_at,
+                            })
+                            .collect(),
+                    );
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
 
     let red_list = reds.read().clone();
     let total = red_list.len();
@@ -40,11 +92,11 @@ pub fn RedemptionsPage() -> Element {
     let used_count = red_list.iter().filter(|r| r.status == 3).count();
     let disabled_count = red_list.iter().filter(|r| r.status == 2).count();
 
-    let total_quota: f64 = red_list.iter().map(|r| r.quota).sum();
+    let total_quota: f64 = red_list.iter().map(|r| r.quota_cny).sum();
     let available_quota: f64 = red_list
         .iter()
         .filter(|r| r.status == 1)
-        .map(|r| r.quota)
+        .map(|r| r.quota_cny)
         .sum();
 
     let stats: [(String, &str); 5] = [
@@ -62,15 +114,14 @@ pub fn RedemptionsPage() -> Element {
         format!("已停用 ({disabled_count})"),
     ];
 
-    let filtered_indices: Vec<usize> = {
+    let filtered_rows: Vec<RedRowFE> = {
         let q = search().trim().to_lowercase();
         let tier = filter_tier();
         red_list
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| {
+            .into_iter()
+            .filter(|r| {
                 if !q.is_empty()
-                    && !r.name.to_lowercase().contains(&q)
+                    && !r.code_preview.to_lowercase().contains(&q)
                     && !r.key.to_lowercase().contains(&q)
                 {
                     return false;
@@ -82,79 +133,66 @@ pub fn RedemptionsPage() -> Element {
                     _ => true,
                 }
             })
-            .map(|(i, _)| i)
             .collect()
     };
 
-    let open_generate = move |_| {
-        f_name.set("活动码".to_string());
-        f_count.set("1".to_string());
-        f_quota.set("50".to_string());
-        f_expire_days.set(String::new());
-        modal_state.set(RedModalState::Generate);
-    };
+    let err_for_effect = err;
+    let reload_for_effect = reload;
 
-    let toggle_status = move |idx: usize| {
-        let mut rd = reds;
-        if idx < rd.read().len() {
-            let cur = rd.read()[idx].status;
-            if cur != 3 {
-                rd.write()[idx].status = if cur == 1 { 2 } else { 1 };
+    let disable_red = move |key: String| {
+        let mut err = err_for_effect;
+        let mut reload = reload_for_effect;
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match disable_redemption_api(&client, &key).await {
+                Ok(_) => reload.set(reload() + 1),
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                }
             }
-        }
-    };
-
-    let delete_red = move |idx: usize| {
-        let mut rd = reds;
-        if idx < rd.read().len() {
-            rd.write().remove(idx);
-        }
+        });
     };
 
     let commit_generate = move |_| {
-        let n = f_name.peek().trim().to_string();
-        if n.is_empty() {
-            return;
-        }
         let cnt = f_count
             .peek()
             .trim()
             .parse::<u32>()
             .unwrap_or(1)
             .clamp(1, 100);
-        let q = f_quota
+        // 后端 quota 是内部计费单位(500000 = ¥1);表单输入的是 ¥
+        let q_cny = f_quota
             .peek()
             .trim()
             .parse::<f64>()
             .unwrap_or(10.0)
             .max(0.0);
-        let days = f_expire_days.peek().trim().parse::<i64>().unwrap_or(0);
-
-        let mut rd = reds;
-        let base = rd.read().len() as u32;
-        let upper = n.to_uppercase().replace(' ', "-");
-        for k in 0..cnt {
-            let code = (base.wrapping_add(k).wrapping_mul(2654435761) >> 4) % 65536;
-            rd.write().push(RedRow {
-                name: n.clone(),
-                key: format!("{upper}-{code:04X}"),
-                quota: q,
-                status: 1,
-                created: "2026-09-01".into(),
-                expired: if days > 0 {
-                    format!("{days} 天后")
-                } else {
-                    "永不过期".into()
-                },
-            });
+        let quota_units = (q_cny * 500_000.0) as i64;
+        if quota_units <= 0 {
+            return;
         }
-        modal_state.set(RedModalState::Closed);
+
+        let mut modal_state = modal_state;
+        let mut err = err;
+        let mut reload = reload;
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match generate_redemptions_api(&client, quota_units, cnt).await {
+                Ok(codes) => {
+                    reload.set(reload() + 1);
+                    modal_state.set(RedModalState::Codes(codes));
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                }
+            }
+        });
     };
 
     rsx! {
             div { class: "flex flex-col gap-6",
                 // 1. 概览统计区
-                section { id: "reds-sec-stats", class: "scroll-mt-8 space-y-3",
+                section { id: "reds-sec-stats", "data-testid": "redemptions-panel", class: "scroll-mt-8 space-y-3",
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                         for (value, label) in stats {
@@ -170,11 +208,15 @@ pub fn RedemptionsPage() -> Element {
                     div { class: "flex items-center justify-between gap-3",
                         div { class: "flex items-center gap-2",
                             h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                            span { class: "text-xs text-zinc-500", "按状态分级或活动标签筛选" }
+                            span { class: "text-xs text-zinc-500", "按状态分级筛选;停用后不可重新启用" }
                         }
                         button {
                             class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
-                            onclick: open_generate,
+                            onclick: move |_| {
+                                f_count.set("1".to_string());
+                                f_quota.set("50".to_string());
+                                modal_state.set(RedModalState::Generate);
+                            },
                             "✚ 生成兑换码"
                         }
                     }
@@ -182,7 +224,7 @@ pub fn RedemptionsPage() -> Element {
                     input {
                         class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                         r#type: "text",
-                        placeholder: "搜索兑换码密文 (如 BETA-3F2A) 或活动名称...",
+                        placeholder: "搜索兑换码预览 (如 fx-086c****) ...",
                         value: "{search}",
                         oninput: move |e| search.set(e.value()),
                     }
@@ -199,32 +241,47 @@ pub fn RedemptionsPage() -> Element {
                 section { id: "reds-sec-list", class: "scroll-mt-8 space-y-4",
                     div { class: "flex items-center justify-between",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
-                        span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                            "{filtered_indices.len()} 张"
+                        if loading() {
+                            span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "加载中…" }
+                        } else {
+                            span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
+                                "{filtered_rows.len()} 张"
+                            }
                         }
                     }
 
-                    if filtered_indices.is_empty() {
+                    if let Some(e) = err() {
+                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                            p { class: "text-sm text-red-300", "加载兑换码失败" }
+                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                            button {
+                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "重试"
+                            }
+                        }
+                    } else if loading() {
+                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                            p { class: "text-zinc-400", "正在加载兑换码…" }
+                        }
+                    } else if filtered_rows.is_empty() {
                         div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
                             p { class: "text-zinc-400", "没有匹配的兑换码" }
                         }
                     } else {
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for idx in filtered_indices {
+                            for r in filtered_rows {
                                 {
-                                    let r = reds.read()[idx].clone();
                                     let is_just_copied = copied_key() == Some(r.key.clone());
                                     rsx! {
                                         RedemptionCard {
-                                            key: "{r.key}_{idx}",
+                                            key: "{r.key}",
                                             item: r,
-                                            index: idx,
                                             is_just_copied: is_just_copied,
                                             on_copy: move |k: String| {
                                                 copied_key.set(Some(k));
                                             },
-                                            on_toggle: toggle_status,
-                                            on_delete: delete_red,
+                                            on_disable: disable_red,
                                         }
                                     }
                                 }
@@ -234,16 +291,22 @@ pub fn RedemptionsPage() -> Element {
                 }
             }
 
-            // 生成弹窗
-            if modal_state() == RedModalState::Generate {
-                RedemptionGenerateModal {
-                    name: f_name,
-                    count: f_count,
-                    quota: f_quota,
-                    expire_days: f_expire_days,
-                    on_cancel: move |_| modal_state.set(RedModalState::Closed),
-                    on_submit: commit_generate,
-                }
+            // 生成弹窗 / 明文码展示
+            match modal_state() {
+                RedModalState::Generate => rsx! {
+                    RedemptionGenerateModal {
+                        count: f_count,
+                        quota: f_quota,
+                        on_cancel: move |_| modal_state.set(RedModalState::Closed),
+                        on_submit: commit_generate,
+                    }
+                },
+                RedModalState::Codes(codes) => rsx! {
+                    GeneratedCodesModal { codes,
+                        on_close: move |_| modal_state.set(RedModalState::Closed),
+                    }
+                },
+                RedModalState::Closed => rsx! {},
             }
     }
 }
@@ -251,20 +314,13 @@ pub fn RedemptionsPage() -> Element {
 /// 兑换码卡片
 #[component]
 fn RedemptionCard(
-    item: RedRow,
-    index: usize,
+    item: RedRowFE,
     is_just_copied: bool,
     on_copy: EventHandler<String>,
-    on_toggle: EventHandler<usize>,
-    on_delete: EventHandler<usize>,
+    on_disable: EventHandler<String>,
 ) -> Element {
-    let initial = item
-        .name
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_uppercase()
-        .to_string();
+    let preview = item.code_preview.clone();
+    let _ = preview;
 
     let (status_text, status_tone, bar_tone, bar_pct) = match item.status {
         1 => (
@@ -288,6 +344,7 @@ fn RedemptionCard(
     };
 
     let key_clone = item.key.clone();
+    let disable_key = item.key.clone();
 
     rsx! {
         div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
@@ -295,31 +352,27 @@ fn RedemptionCard(
                 // 头部
                 div { class: "flex items-start gap-3",
                     div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
-                        "{initial}"
+                        "¥"
                     }
                     div { class: "min-w-0 flex-1",
                         div { class: "flex items-center justify-between gap-2",
-                            h3 { class: "truncate font-mono text-sm font-medium text-zinc-100", "{item.key}" }
-                            span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                                "#{index + 1}"
-                            }
+                            h3 { class: "truncate font-mono text-sm font-medium text-zinc-100", "{item.code_preview}" }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{item.name}" }
+                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400 font-mono", "{item.key}" }
                     }
                 }
 
                 // 徽标行
                 div { class: "flex flex-wrap gap-1.5",
                     Badge { text: status_text.to_string(), tone: status_tone }
-                    Badge { text: format!("面值 ¥{:.2}", item.quota), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-200 font-mono" }
-                    Badge { text: item.expired.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-400" }
+                    Badge { text: format!("面值 ¥{:.2}", item.quota_cny), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-200 font-mono" }
                 }
 
                 // 额度有效条
                 div { class: "space-y-1.5",
                     div { class: "flex justify-between gap-2 text-[11px]",
                         span { class: "text-zinc-400", "可用面额" }
-                        span { class: "whitespace-nowrap font-medium text-zinc-200 font-mono", "¥ {item.quota:.2}" }
+                        span { class: "whitespace-nowrap font-medium text-zinc-200 font-mono", "¥ {item.quota_cny:.2}" }
                     }
                     div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                         div { class: "h-full rounded-full {bar_tone} transition-all duration-300", style: "width: {bar_pct}%" }
@@ -329,21 +382,25 @@ fn RedemptionCard(
                 // 详情指标行
                 div { class: "space-y-1.5 text-xs pt-1",
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "所属活动" }
-                        span { class: "font-medium text-zinc-200", "{item.name}" }
-                    }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "生成日期" }
+                        span { class: "shrink-0 text-zinc-400", "生成时间" }
                         span { class: "font-mono text-zinc-400", "{item.created}" }
                     }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "有效期" }
-                        span { class: "font-medium text-zinc-300", "{item.expired}" }
+                    if let Some(by) = &item.redeemed_by {
+                        div { class: "flex justify-between gap-2",
+                            span { class: "shrink-0 text-zinc-400", "兑换人" }
+                            span { class: "font-medium text-zinc-200", "{by}" }
+                        }
+                    }
+                    if !item.redeemed_at.is_empty() {
+                        div { class: "flex justify-between gap-2",
+                            span { class: "shrink-0 text-zinc-400", "核销时间" }
+                            span { class: "font-mono text-zinc-300", "{item.redeemed_at}" }
+                        }
                     }
                 }
             }
 
-            // 底部操作区 (标准三键布局: [复制卡密] [停用/启用] [删除])
+            // 底部操作区: [复制预览] [停用] — 后端仅支持停用(无硬删/无重新启用)
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
                     class: if is_just_copied {
@@ -352,17 +409,19 @@ fn RedemptionCard(
                         "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
                     },
                     onclick: move |_| on_copy.call(key_clone.clone()),
-                    if is_just_copied { "已复制" } else { "复制卡密" }
+                    if is_just_copied { "已复制" } else { "复制预览" }
                 }
-                if item.status != 3 {
+                if item.status == 1 {
                     button {
-                        class: if item.status == 1 {
-                            "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300"
-                        } else {
-                            "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300"
-                        },
-                        onclick: move |_| on_toggle.call(index),
-                        if item.status == 1 { "停用" } else { "启用" }
+                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
+                        onclick: move |_| on_disable.call(disable_key.clone()),
+                        "停用"
+                    }
+                } else if item.status == 2 {
+                    button {
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        disabled: true,
+                        "已停用"
                     }
                 } else {
                     button {
@@ -371,24 +430,16 @@ fn RedemptionCard(
                         "已核销"
                     }
                 }
-                button {
-                    class: "w-7 rounded-lg border border-zinc-800 bg-zinc-800/40 py-1.5 text-xs text-zinc-500 hover:text-red-400 hover:border-red-900/60 transition-colors flex items-center justify-center",
-                    title: "删除兑换码",
-                    onclick: move |_| on_delete.call(index),
-                    "✕"
-                }
             }
         }
     }
 }
 
-/// 批量生成兑换码弹窗
+/// 批量生成兑换码弹窗(后端仅支持 面额 + 数量;无活动名/有效期字段)
 #[component]
 fn RedemptionGenerateModal(
-    name: Signal<String>,
     count: Signal<String>,
     quota: Signal<String>,
-    expire_days: Signal<String>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -404,27 +455,9 @@ fn RedemptionGenerateModal(
         ("¥200", "200"),
     ];
 
-    let preset_expirations = [
-        ("永不过期", ""),
-        ("7 天", "7"),
-        ("30 天", "30"),
-        ("90 天", "90"),
-        ("180 天", "180"),
-    ];
-
     rsx! {
         Modal { title: "生成批量兑换码".to_string(), on_close: move |_| on_cancel.call(()),
             div { class: "space-y-4 max-h-[70vh] overflow-y-auto pr-1",
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "活动/批次名称" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                        placeholder: "例如: 暑期充值赠送, 新人礼包",
-                        value: "{name}",
-                        oninput: move |e| name.set(e.value()),
-                    }
-                }
-
                 div { class: "grid grid-cols-2 gap-3",
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "生成数量 (1-100)" }
@@ -472,40 +505,6 @@ fn RedemptionGenerateModal(
                     }
                 }
 
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "有效天数 (留空为永不过期)" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                        placeholder: "例如: 30",
-                        value: "{expire_days}",
-                        oninput: move |e| expire_days.set(e.value()),
-                    }
-                }
-
-                // 快捷有效期按钮
-                div { class: "space-y-1.5",
-                    p { class: "text-[11px] text-zinc-500", "快捷有效期预设" }
-                    div { class: "flex flex-wrap gap-1.5",
-                        for (lbl, val) in preset_expirations {
-                            {
-                                let is_active = expire_days() == val;
-                                let btn_tone = if is_active {
-                                    "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
-                                } else {
-                                    "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
-                                };
-                                rsx! {
-                                    button {
-                                        class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
-                                        onclick: move |_| expire_days.set(val.to_string()),
-                                        "{lbl}"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 // 测算卡片
                 div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1.5",
                     div { class: "flex justify-between text-zinc-400",
@@ -519,6 +518,10 @@ fn RedemptionGenerateModal(
                         }
                     }
                 }
+
+                p { class: "text-[11px] text-zinc-600",
+                    "提示: 明文卡密只在生成后显示一次,请及时复制保存;后端暂不支持活动名与有效期字段。"
+                }
             }
 
             div { class: "mt-6 flex gap-3",
@@ -531,6 +534,31 @@ fn RedemptionGenerateModal(
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_submit.call(()),
                     "立即批量生成"
+                }
+            }
+        }
+    }
+}
+
+/// 生成成功后的一次性明文码展示(关闭后不再可见)
+#[component]
+fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> Element {
+    let joined = codes.join("\n");
+    rsx! {
+        Modal { title: format!("生成成功 · {} 张明文卡密(仅此一次)", codes.len()), on_close: move |_| on_close.call(()),
+            div { class: "space-y-3",
+                p { class: "text-xs text-amber-400",
+                    "以下明文卡密关闭本窗口后无法再次查看,请立即复制保存。"
+                }
+                pre { class: "max-h-72 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 select-all",
+                    "{joined}"
+                }
+            }
+            div { class: "mt-6 flex",
+                button {
+                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                    onclick: move |_| on_close.call(()),
+                    "我已保存,关闭"
                 }
             }
         }

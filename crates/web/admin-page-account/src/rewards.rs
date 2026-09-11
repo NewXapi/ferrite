@@ -3,6 +3,10 @@ use gloo_timers::future::TimeoutFuture;
 
 use crate::api::{self, Invitee, Recharge, RewardStat};
 
+// NOTE: 邀请奖励面板无对应后端端点,数据保持 mock(`api::fetch_wallet` /
+// `fetch_recharges` / `fetch_reward_stats` / `fetch_invitees` / `fetch_invite_link`)。
+// 接真实后端时,需后端先提供钱包 / 邀请分成端点,再参照 KeysPanel / UsageLogsPanel
+// 的 `use_effect` + `spawn` + `ApiClient::shared()` 模式改写本面板。
 #[component]
 pub fn RewardsPanel() -> Element {
     let mut show_copied = use_signal(|| false);

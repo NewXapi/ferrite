@@ -1,6 +1,6 @@
 //! 用户页的展示格式化助手。数据本身来自 `api`。
 
-use crate::api::{self, User};
+use crate::api;
 
 /// new-api 约定:500000 quota = ¥1
 const QUOTA_PER_CNY: f64 = 500_000.0;
@@ -46,11 +46,11 @@ pub fn role_label(role: u16) -> &'static str {
 }
 
 /// 用量百分比,0..=100
-pub fn used_pct(u: &User) -> u32 {
-    if u.quota <= 0 {
+pub fn used_pct(quota: i64, used_quota: i64) -> u32 {
+    if quota <= 0 {
         return 0;
     }
-    ((u.used_quota as f64 / u.quota as f64) * 100.0)
+    ((used_quota as f64 / quota as f64) * 100.0)
         .round()
         .min(100.0) as u32
 }
