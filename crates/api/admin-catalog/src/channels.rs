@@ -114,6 +114,11 @@ impl ChannelService {
         remark: &str,
     ) -> Result<ChannelView, AuthError> {
         validate(name, channel_type, base_url, &keys, &models)?;
+        // groups 为空 → snapshot 展开零路由单元，渠道上线即"永不通"。
+        // 写侧必须拦（ocr：validate 此前未覆盖 groups）。
+        if groups.is_empty() || groups.iter().any(|g| g.trim().is_empty()) {
+            return Err(AuthError::BadRequest("groups: 至少一个非空分组名".into()));
+        }
         let key = Uuid::new_v4();
         let res = sqlx::query(
             r#"INSERT INTO api_channels
