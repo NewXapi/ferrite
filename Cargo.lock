@@ -90,8 +90,10 @@ dependencies = [
  "chrono",
  "db-bootstrap",
  "gateway-proxy",
+ "meow-config",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
@@ -2601,6 +2603,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "async-trait",
+ "base64 0.22.1",
  "memchr",
  "meow-common",
  "meow-config",

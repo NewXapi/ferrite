@@ -2,7 +2,7 @@
 //!
 //! 表 `proxy_nodes` 与 gateway `ProxyNode` 一一对应：URL 解析、协议装配
 //! （meow-config `parse_proxy`）都在 `gateway-proxy` 域；本 crate 只做
-//! CRUD + 校验 + 测速端点。数据面消费见 M1 后续 PR（ProxyManager 热更新）。
+//! CRUD + 校验 + 测速端点 + 批量导入（见 [`subscription`]）。
 //!
 //! 安全：`url` 含凭据（userinfo / ss-vless query），**日志一律走掩码**；
 //! DB 明文存储（与 `api_channels.keys` 的「密文或明文由 store 层决定」同语义，
@@ -21,6 +21,8 @@ use auth::routes::bearer_user;
 use auth::service::AuthService;
 use gateway_proxy::ProxySnapshot;
 use gateway_proxy::node::ProxyNode;
+
+pub mod subscription;
 
 #[derive(Debug, Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -339,6 +341,8 @@ pub fn router(state: ProxyNodeAppState) -> axum::Router {
             axum::routing::put(update).delete(remove),
         )
         .route("/api/proxy_nodes/{key}/probe", post(probe))
+        .route("/api/proxy_nodes/subscription", post(import_subscription))
+        .route("/api/proxy_nodes/batch", post(import_share_links))
         .with_state(state)
 }
 
@@ -448,4 +452,26 @@ async fn probe(
         Ok(kind) => Ok(Json(json!({ "ok": true, "adapterType": kind }))),
         Err(e) => Ok(Json(json!({ "ok": false, "message": e }))),
     }
+}
+
+/// 订阅导入：拉订阅 URL 或吃粘贴的 YAML，批量入库并热更新。
+async fn import_subscription(
+    State(s): State<ProxyNodeAppState>,
+    h: HeaderMap,
+    Json(req): Json<subscription::ImportRequest>,
+) -> Result<Json<Value>, ErrResp> {
+    require_admin(&s.auth, &h).await.map_err(err_json)?;
+    let _ = (&s, &req);
+    todo!("TODO(#111): 调 subscription::import_subscription 后 reload_into 并回 ImportReport")
+}
+
+/// 分享链接批量导入：粘贴多行 `vless://` / `vmess://` / `ss://`…
+async fn import_share_links(
+    State(s): State<ProxyNodeAppState>,
+    h: HeaderMap,
+    Json(req): Json<subscription::ImportRequest>,
+) -> Result<Json<Value>, ErrResp> {
+    require_admin(&s.auth, &h).await.map_err(err_json)?;
+    let _ = (&s, &req);
+    todo!("TODO(#111): 调 subscription::import_share_links 后 reload_into 并回 ImportReport")
 }
