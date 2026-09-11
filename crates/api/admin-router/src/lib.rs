@@ -11,8 +11,6 @@ pub async fn router(
     proxies: std::sync::Arc<gateway_proxy::ProxyManager>,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     // 建表唯一入口：db/migrations（ensure_table 补丁式建表已退役）。
-    // route_units 不在迁移内（已废弃，随路由数据面重构一起删除），
-    // 其管理 CRUD 暂留但新库不再建表。
     db_bootstrap::run_migrations(&pool).await?;
     tracing::info!("db migrations applied");
 
@@ -47,10 +45,6 @@ pub async fn router(
         svc: std::sync::Arc::new(billing::RedeemService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
-    let route_unit_router = catalog::routes::router(catalog::routes::RouteUnitAppState {
-        svc: std::sync::Arc::new(catalog::routes::RouteUnitService::new(pool.clone())),
-        auth: auth_svc.clone(),
-    });
     let options_router = ops::router(ops::OptionsAppState {
         svc: std::sync::Arc::new(ops::OptionsService::new(pool.clone())),
         auth: auth_svc.clone(),
@@ -83,7 +77,6 @@ pub async fn router(
         .merge(model_router)
         .merge(redeem_router)
         .merge(options_router)
-        .merge(route_unit_router)
         .merge(log_router)
         .merge(monitor_router)
         .merge(system_info_router)

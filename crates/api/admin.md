@@ -77,15 +77,6 @@ apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
 |------|------|------|
 | GET | `/api/system-info` | admin 诊断综合指标：运行时环境（OS/arch/hostname）、Uptime、内存（RSS/virt/meminfo）、CPU（核数/loadavg）、数据库连接池状态与核心业务计数 |
 
-### 已完成 — `catalog/` route_unit (路由单元，5 端点)
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET/POST | `/api/route_unit` | 列表（group/model 过滤 + 分页）/ 创建（写前校验渠道启用 + key_index 越界） |
-| GET/PUT/DELETE | `/api/route_unit/{key}` | 单查 / 编辑 / 删除 |
-
-表 `route_units`（(group, public_model) → channel/key_index/upstream_model）；
-gateway dispatch 按此建候选集；渠道删除 → `invalidate_by_channel` 级联失效。
-
 ### 已完成 — `billing/` redeem (兑换码，4 端点)
 | 方法 | 路径 | 说明 |
 |------|------|------|

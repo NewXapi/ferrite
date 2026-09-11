@@ -13,7 +13,7 @@
 - 读取 `config/config.toml`。
 - 初始化 PostgreSQL。
 - 初始化日志。
-- 加载渠道、Token、RouteUnit 到 gateway 内存快照。
+- 加载渠道、Token 到 gateway 内存快照（路由单元从渠道 models × groups 内存展开）。
 - 执行 store migration。
 - 组装 `/v1/*`、`/admin/*`、`/tavern/*` 路由。
 

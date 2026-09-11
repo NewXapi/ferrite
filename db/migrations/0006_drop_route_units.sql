@@ -1,0 +1,11 @@
+-- =====================================================================
+-- 0006 删除 route_units 表
+-- ---------------------------------------------------------------------
+-- 动因：route_units 是 one-api abilities 表的物化笛卡尔积（group × model ×
+--   channel），PR #63 交付了 CRUD 但读侧从未查询过它（dispatch 的快照从
+--   api_channels.models JSONB 派生，见 apps/api/src/snapshot.rs）。
+--   分组 × 模型的展开现已在内存完成（#110 起 groups TEXT[] 笛卡尔积），
+--   该表与其管理 CRUD（admin-catalog/src/routes.rs）一并退役。
+-- 幂等：DROP TABLE IF EXISTS；新库无此表（从未进过 sqlx 迁移）。
+-- =====================================================================
+DROP TABLE IF EXISTS route_units;

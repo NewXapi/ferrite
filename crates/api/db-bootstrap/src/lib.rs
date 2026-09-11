@@ -2,7 +2,7 @@
 //!
 //! 生产装配（admin-router::router）与集成测试的建表一律走本 crate：
 //! `db/migrations/` 是唯一的 schema 事实源，各 crate 的 `ensure_table`
-//! 补丁式建表已退役（route_units 除外——该表随路由数据面重构一起删除）。
+//! 补丁式建表已退役。
 //!
 //! 迁移文件全部幂等（IF NOT EXISTS / ON CONFLICT / DROP IF EXISTS），
 //! 对"已被旧版 ensure_table 建过表的存量库"与全新库都能安全执行；
