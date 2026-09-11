@@ -90,9 +90,7 @@ pub struct ShareLinkBatch {
 pub fn parse_share_link(link: &str) -> Result<ProxyNode, ParseError> {
     // 实现时按 scheme 分派到下面三个 helper；此处的引用同时固定了骨架期的调用图。
     let _ = (link, parse_vmess_dialect, parse_ss_dialect, mask_link);
-    todo!(
-        "TODO(#111): 按 scheme 分派：vmess → parse_vmess_dialect，ss → parse_ss_dialect，其余委托 ProxyNode::parse_url"
-    )
+    todo!("TODO(#111): 按 scheme 分派 vmess/ss 方言，其余委托 ProxyNode::parse_url")
 }
 
 /// 多行批量解析（一行一条，忽略空行与 `#` 注释行）。单行失败不影响整批。
