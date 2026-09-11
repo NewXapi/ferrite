@@ -109,18 +109,19 @@ fn reorder_in_zone_stable_swap_and_clamp() {
     reorder_in_zone(&mut layout, Zone::RightTop, 2, 0);
 
     // 序列 [a,b,c] 中 index2(c) 移到 index0 → [c,a,b]，order 重写 0,1,2。
-    let ord = |id: &str| layout.items.iter().find(|i| i.id == id).unwrap().order;
-    assert_eq!(ord("c"), 0);
-    assert_eq!(ord("a"), 1);
-    assert_eq!(ord("b"), 2);
+    // 显式传 layout 而非闭包捕获，否则后续 &mut layout 调用与闭包的生命周期冲突（E0502）。
+    let ord = |l: &DockLayout, id: &str| l.items.iter().find(|i| i.id == id).unwrap().order;
+    assert_eq!(ord(&layout, "c"), 0);
+    assert_eq!(ord(&layout, "a"), 1);
+    assert_eq!(ord(&layout, "b"), 2);
     // 其他区不受影响。
-    assert_eq!(ord("d"), 0);
+    assert_eq!(ord(&layout, "d"), 0);
 
     // to_index 越界（99）clamp 到 n-1=2：把 a（index1）移到末尾 → [b,c,a]。
     reorder_in_zone(&mut layout, Zone::RightTop, 1, 99);
-    assert_eq!(ord("b"), 0);
-    assert_eq!(ord("c"), 1);
-    assert_eq!(ord("a"), 2);
+    assert_eq!(ord(&layout, "b"), 0);
+    assert_eq!(ord(&layout, "c"), 1);
+    assert_eq!(ord(&layout, "a"), 2);
 
     // from_index 越界（5 >= n=3）no-op，order 不变。
     let before = layout.items.clone();

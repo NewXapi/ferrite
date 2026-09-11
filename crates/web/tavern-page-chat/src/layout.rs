@@ -126,7 +126,7 @@ fn render_zone(
             },
         };
         let item_origin = dock::item_origin(item_name).unwrap_or((zone_c, 0));
-        let mut drag_c = panel_drag.clone();
+        let mut drag_c = *panel_drag;
         let el_c = el.clone();
         let item_key = item_name.to_string();
         children.push(rsx! {
@@ -221,8 +221,8 @@ pub fn DockFrame(
             let c = e.client_coordinates();
 
             // 分割线拖拽中：按列内 y 比例改 split，被压区 <120px 自动收起
-            if let Some((side, _start)) = split_drag.read().clone() {
-                let Some(r) = rect.read().clone() else {
+            if let Some((side, _start)) = *split_drag.read() {
+                let Some(r) = *rect.read() else {
                     return;
                 };
                 let col_h = r.height;
@@ -256,7 +256,7 @@ pub fn DockFrame(
         move |e: MouseEvent| {
             split_drag.set(None);
 
-            let pd = panel_drag.read().clone();
+            let pd = *panel_drag.read();
             let Some(pd) = pd else {
                 return;
             };
@@ -265,7 +265,7 @@ pub fn DockFrame(
             }
 
             let c = e.client_coordinates();
-            let Some(r) = rect.read().clone() else {
+            let Some(r) = *rect.read() else {
                 return;
             };
             if let Some((target, target_index)) = hit_zone(&r, c.x, c.y) {
