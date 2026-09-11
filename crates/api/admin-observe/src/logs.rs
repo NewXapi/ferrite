@@ -15,37 +15,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    const DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS usage_logs (
-    id                BIGSERIAL PRIMARY KEY,
-    log_type          SMALLINT NOT NULL DEFAULT 2,
-    user_key          UUID NOT NULL,
-    username          TEXT NOT NULL DEFAULT '',
-    token_key         UUID,
-    token_name        TEXT NOT NULL DEFAULT '',
-    channel_key       UUID,
-    channel_name      TEXT NOT NULL DEFAULT '',
-    model_name        TEXT NOT NULL DEFAULT '',
-    prompt_tokens     INT NOT NULL DEFAULT 0,
-    completion_tokens INT NOT NULL DEFAULT 0,
-    quota             BIGINT NOT NULL DEFAULT 0,
-    use_time_ms       INT NOT NULL DEFAULT 0,
-    is_stream         BOOLEAN NOT NULL DEFAULT false,
-    ip                TEXT NOT NULL DEFAULT '',
-    request_id        TEXT NOT NULL DEFAULT '',
-    content           TEXT NOT NULL DEFAULT '',
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_usage_logs_created ON usage_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_usage_logs_user ON usage_logs(user_key, created_at);
-CREATE INDEX IF NOT EXISTS idx_usage_logs_token_name ON usage_logs(token_name);
-CREATE INDEX IF NOT EXISTS idx_usage_logs_model_name ON usage_logs(model_name);
-"#;
-    sqlx::raw_sql(DDL).execute(pool).await?;
-    Ok(())
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageEvent {

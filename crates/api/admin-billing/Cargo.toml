@@ -24,4 +24,5 @@ tracing  = { workspace = true }
 auth     = { path = "../auth" }
 
 [dev-dependencies]
+db-bootstrap = { path = "../db-bootstrap" }
 tokio = { workspace = true }

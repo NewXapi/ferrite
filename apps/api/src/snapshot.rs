@@ -75,7 +75,7 @@ async fn load_channels_and_units(
 ) -> anyhow::Result<(Vec<ChannelRecord>, Vec<RouteUnitRecord>)> {
     let rows = sqlx::query(
         r#"
-        SELECT key, name, channel_type, base_url, keys, models, group_name, priority, weight, status
+        SELECT key, name, channel_type, base_url, keys, models, groups, priority, weight, status
         FROM api_channels
         WHERE status = 1
         "#,
@@ -94,7 +94,8 @@ async fn load_channels_and_units(
         let base_url: String = row.try_get("base_url")?;
         let keys_json: Value = row.try_get("keys")?;
         let models_json: Value = row.try_get("models")?;
-        let group_name: String = row.try_get("group_name")?;
+        // groups TEXT[]：一个渠道可服务多个分组（#105 迁移后 group_name 列已删）
+        let groups: Vec<String> = row.try_get("groups")?;
         let priority: i32 = row.try_get("priority")?;
         let weight: i32 = row.try_get("weight")?;
         let status: i16 = row.try_get("status")?;
@@ -132,20 +133,14 @@ async fn load_channels_and_units(
             keys: channel_keys,
             max_concurrency: 8, // ponytail: 固定值，避免额外配置开销
             status: status as u8,
-            groups: vec![group_name.clone()],
+            groups: groups.clone(),
             settings: Value::Null,
         };
 
         channels.push(channel);
 
         // Expand models JSONB to RouteUnitRecord
-        let units = expand_models_json(
-            &models_json,
-            &channel_key_str,
-            &group_name,
-            priority,
-            weight,
-        );
+        let units = expand_models_json(&models_json, &channel_key_str, &groups, priority, weight);
         route_units.extend(units);
     }
 
@@ -156,14 +151,24 @@ async fn load_channels_and_units(
 /// - 字符串数组 ["m1"] → public_model=upstream_model="m1"
 /// - 对象数组 [{"alias":"public","upstream":"upstream"}] → 映射对
 /// - 其他形状 → warn! + 跳过
+/// - 笛卡尔积 groups × models 在内存展开（PG 不存派生路由）；
+///   空 groups 的渠道不产生任何路由单元（不服务任何分组）
 fn expand_models_json(
     models_json: &Value,
     channel_key: &str,
-    group_name: &str,
+    groups: &[String],
     priority: i32,
     weight: i32,
 ) -> Vec<RouteUnitRecord> {
     let mut units = Vec::new();
+
+    if groups.is_empty() {
+        tracing::warn!(
+            channel = channel_key,
+            "channel has no groups; no route units"
+        );
+        return units;
+    }
 
     if let Some(arr) = models_json.as_array() {
         for (idx, item) in arr.iter().enumerate() {
@@ -187,26 +192,28 @@ fn expand_models_json(
                 }
             };
 
-            let unit_key = format!("{}:{}", channel_key, public_model);
-            let unit_meta = contract::records::SyncMeta {
-                key: unit_key,
-                schema_version: SCHEMA_VERSION,
-                logical_version: 1,
-                origin: "admin".into(),
-                updated_at: Utc::now(),
-            };
+            for group in groups {
+                let unit_key = format!("{}:{}:{}", channel_key, group, public_model);
+                let unit_meta = contract::records::SyncMeta {
+                    key: unit_key,
+                    schema_version: SCHEMA_VERSION,
+                    logical_version: 1,
+                    origin: "admin".into(),
+                    updated_at: Utc::now(),
+                };
 
-            units.push(RouteUnitRecord {
-                meta: unit_meta,
-                group: group_name.to_string(),
-                public_model,
-                channel_key: channel_key.to_string(),
-                key_index: 0,
-                upstream_model,
-                priority,
-                weight: weight as u32,
-                status: 1,
-            });
+                units.push(RouteUnitRecord {
+                    meta: unit_meta,
+                    group: group.clone(),
+                    public_model: public_model.clone(),
+                    channel_key: channel_key.to_string(),
+                    key_index: 0,
+                    upstream_model: upstream_model.clone(),
+                    priority,
+                    weight: weight as u32,
+                    status: 1,
+                });
+            }
         }
     }
 

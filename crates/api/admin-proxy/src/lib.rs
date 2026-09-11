@@ -22,26 +22,6 @@ use auth::service::AuthService;
 use gateway_proxy::ProxySnapshot;
 use gateway_proxy::node::ProxyNode;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::raw_sql(
-        r#"CREATE TABLE IF NOT EXISTS proxy_nodes (
-    key            UUID PRIMARY KEY,
-    name           TEXT NOT NULL DEFAULT '',
-    url            TEXT NOT NULL,
-    channel_keys   JSONB NOT NULL DEFAULT '[]',
-    priority       INT  NOT NULL DEFAULT 0,
-    enabled        BOOL NOT NULL DEFAULT true,
-    remark         TEXT NOT NULL DEFAULT '',
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_proxy_nodes_enabled ON proxy_nodes (enabled);"#,
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 #[derive(Debug, Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyNodeView {

@@ -24,7 +24,9 @@ async fn make_svc() -> TokenService {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    catalog::tokens::ensure_table(&pool).await.expect("ddl");
+    db_bootstrap::run_migrations(&pool)
+        .await
+        .expect("migrations");
     TokenService::new(pool)
 }
 

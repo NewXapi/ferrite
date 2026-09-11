@@ -21,33 +21,6 @@ use uuid::Uuid;
 use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    const DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS api_channels (
-    key           UUID PRIMARY KEY,
-    name          TEXT UNIQUE NOT NULL,
-    channel_type  TEXT NOT NULL DEFAULT 'openai',
-    base_url      TEXT NOT NULL DEFAULT '',
-    keys          JSONB NOT NULL DEFAULT '[]',
-    models        JSONB NOT NULL DEFAULT '[]',
-    group_name    TEXT NOT NULL DEFAULT 'default',
-    priority      INT  NOT NULL DEFAULT 0,
-    weight        INT  NOT NULL DEFAULT 0,
-    status        SMALLINT NOT NULL DEFAULT 1,
-    tags          JSONB NOT NULL DEFAULT '[]',
-    test_model    TEXT,
-    remark        TEXT NOT NULL DEFAULT '',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
--- 旧库迁移：CREATE TABLE IF NOT EXISTS 对已存在的表不加列，这里补 tags；
--- 必须在 CREATE TABLE 之后（新库首次启动时表还不存在，ALTER 会失败）、CREATE INDEX 之前。
-ALTER TABLE api_channels ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]';
-CREATE INDEX IF NOT EXISTS idx_api_channels_tags ON api_channels USING GIN (tags);
-"#;
-    sqlx::raw_sql(DDL).execute(pool).await?;
-    Ok(())
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

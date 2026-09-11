@@ -25,3 +25,6 @@ hex          = { workspace = true }
 hmac         = "0.12"
 argon2       = "0.5"
 jsonwebtoken = "9"
+
+[dev-dependencies]
+db-bootstrap = { path = "../db-bootstrap" }

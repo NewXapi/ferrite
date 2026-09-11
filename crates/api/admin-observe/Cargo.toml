@@ -21,4 +21,5 @@ uuid     = { workspace = true }
 
 
 [dev-dependencies]
+db-bootstrap = { path = "../db-bootstrap" }
 tokio = { workspace = true }

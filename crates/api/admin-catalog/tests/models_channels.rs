@@ -25,12 +25,9 @@ async fn make_svcs() -> (ModelService, ChannelService) {
         .connect(&db_url())
         .await
         .expect("connect PG");
-    catalog::models::ensure_table(&pool)
+    db_bootstrap::run_migrations(&pool)
         .await
-        .expect("ensure models table");
-    catalog::channels::ensure_table(&pool)
-        .await
-        .expect("ensure channels table");
+        .expect("migrations");
     (ModelService::new(pool.clone()), ChannelService::new(pool))
 }
 
@@ -230,9 +227,9 @@ async fn channel_tag_batch_operations() {
 async fn channel_probe_writes_history() {
     let (_, channel_svc) = make_svcs().await;
     let pool = sqlx::PgPool::connect(&db_url()).await.expect("pool2");
-    observe::monitor::ensure_table(&pool)
+    db_bootstrap::run_migrations(&pool)
         .await
-        .expect("ensure monitor_history");
+        .expect("migrations");
     let monitor = observe::monitor::MonitorDeps::new(pool.clone());
 
     let name = uniq("ch-empty");

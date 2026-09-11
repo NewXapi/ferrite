@@ -19,29 +19,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    const DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS api_tokens (
-    key             UUID PRIMARY KEY,
-    user_key        UUID NOT NULL,
-    name            TEXT NOT NULL,
-    key_hash        TEXT UNIQUE NOT NULL,
-    key_preview     TEXT NOT NULL DEFAULT '',
-    group_id        TEXT,
-    quota           BIGINT NOT NULL DEFAULT 0,
-    unlimited_quota BOOLEAN NOT NULL DEFAULT false,
-    used_quota      BIGINT NOT NULL DEFAULT 0,
-    expires_at      TIMESTAMPTZ,
-    status          SMALLINT NOT NULL DEFAULT 1,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_api_tokens_user_key ON api_tokens(user_key);
-"#;
-    sqlx::raw_sql(DDL).execute(pool).await?;
-    Ok(())
-}
-
 #[derive(Debug, Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenView {

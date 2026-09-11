@@ -16,27 +16,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    const DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS monitor_history (
-    id            BIGSERIAL PRIMARY KEY,
-    channel_key   UUID NOT NULL,
-    channel_name  TEXT NOT NULL DEFAULT '',
-    model         TEXT NOT NULL DEFAULT '',
-    ok            BOOLEAN NOT NULL,
-    status_code   INT,
-    latency_ms    INT NOT NULL DEFAULT 0,
-    error_kind    TEXT NOT NULL DEFAULT '',
-    message       TEXT NOT NULL DEFAULT '',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_monitor_history_channel
-    ON monitor_history(channel_key, created_at);
-"#;
-    sqlx::raw_sql(DDL).execute(pool).await?;
-    Ok(())
-}
-
 /// 一次探活结果 — 探活执行方构造，落一行历史。
 #[derive(Debug, Clone)]
 pub struct ProbeOutcome {
