@@ -39,7 +39,9 @@ cargo check -p contract --target wasm32-unknown-unknown
 DTO 的唯一事实来源是**各 admin-api crate 的 `*View` 结构体**（如
 `admin-catalog::tokens::TokenView`、`admin-observe::logs::LogView`、
 `auth::service::UserView`）。改后端序列化时必须同步本 crate，反之亦然。
-以下规则全部来自真实抓包回归测试，改动前先读对应测试：
+以下规则全部来自真实抓包回归测试，改动前先读对应测试。
+（注：总览/账户的 DTO 在 #104/#109 合流时以 main 版为准——同结论的并行实现
+在 merge 中被裁决收敛,本表描述的是 **main 现行设计**,历史备选写法见 PR #89 讨论。）
 
 ### 1. 字段名与信封形状
 
@@ -53,9 +55,9 @@ DTO 的唯一事实来源是**各 admin-api crate 的 `*View` 结构体**（如
 
 | 位置 | 后端真实形状 | 契约写法 |
 |---|---|---|
-| `UserDto.role` | 整数 `1/10/100` | `de_role` 兼容 int 与 `"user"/"admin"/"root"` 字符串 |
-| `UserDto.requestCount` | **后端不下发** | `#[serde(default)]` |
-| `TokenDto` 列表 | `keyPreview`（无 `maskedKey`/`plainKey`） | `masked_key` + `serde(alias = "keyPreview")` |
+| `UserDto.role` | 整数 `1/10/100` | `role: u16` 原样承载,语义化走 `role_label()`;消费方不得假设它是字符串 |
+| `UserDto.requestCount` | **后端不下发** | `Option<u64>`(None = 后端未统计) |
+| `TokenDto` 列表 | 字段直名 `key_preview`(无 `maskedKey`/`plainKey`) | 契约字段就叫 `key_preview`;列表包装用 `TokenList` |
 | 创建 token 响应 | 嵌套 `{plaintext, token}` | `CreateTokenResult`，明文只出现一次 |
 | `UsageLogDto` | LogView 形状：`modelName`/`createdAt`(RFC3339 字符串)/`quota`/`useTimeMs`/`logType`，**无** success/cost/cached/firstToken 列 | 前端从 `logType==2` 派生成功态、`quota/500000` 换算费用 |
 | 兑换码 | `{codePreview, quota, status}`，`DELETE = 停用`（无硬删、无启用） | 前端不提供"重新启用" |
