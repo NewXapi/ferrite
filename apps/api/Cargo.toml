@@ -35,6 +35,9 @@ tower     = { workspace = true }
 hex = "0.4"
 sha2 = { workspace = true }
 
+gateway-proxy    = { path = "../../crates/gateway/proxy" }
+admin-proxy      = { path = "../../crates/api/admin-proxy" }
+
 tavern-storage    = { path = "../../crates/api/tavern-storage" }
 tavern-auth       = { path = "../../crates/api/tavern-auth" }
 tavern-characters = { path = "../../crates/api/tavern-characters" }

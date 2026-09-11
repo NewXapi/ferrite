@@ -56,8 +56,13 @@ async fn assemble(
     pool: PgPool,
     egress: Arc<dyn forward::egress::Egress>,
 ) -> anyhow::Result<Router> {
+    // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
+    // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
+    let proxies = Arc::new(gateway_proxy::ProxyManager::new());
+    proxies.install(admin_proxy::load_proxy_snapshot(&pool).await?);
+
     // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）
-    let admin = admin_router::router(pool.clone())
+    let admin = admin_router::router(pool.clone(), proxies.clone())
         .await
         .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
 
@@ -90,11 +95,12 @@ async fn assemble(
         )));
 
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
             .push(DispatchStage::new(dispatcher))
-            .push(ForwardStage::new(egress, adaptors.clone()))
+            .push(ForwardStage::new(egress, adaptors.clone()).with_proxies(proxies.clone()))
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 
