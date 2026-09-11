@@ -1,4 +1,9 @@
 @import "tailwindcss";
+/* shadcn 语义 token 桥：assets/ -> tavern-web -> apps -> 根目录 */
+@import "../../../crates/web/ui-components/assets/tokens.css";
+/* 桥接冒烟：v4 按需生成，源码尚无引用时语义类不会产出；
+ * 预挂最小代表类，保证 token 桥端到端可用性始终被产物覆盖。 */
+@source inline("bg-primary text-muted-foreground border-border");
 
 @source "../src";
 @source "../../../crates/web";
