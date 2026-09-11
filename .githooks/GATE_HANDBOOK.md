@@ -35,8 +35,14 @@ gate 是仓库自带的质量门禁：读 `.githooks/spec/*.yaml` 规则 → 调
 | `duplication` | l2 | merge | WARN | 跨文件 4+ 连续行重复块 |
 | `crg_impact` | l2 | merge | WARN | diff 跨 3+ crate 改动，提示耦合 |
 | `ferrite_oversize` | l3 | merge | INFO | 大文件/大函数参考分（wildtoken `fast-l`，带 `score`/`confidence`，不阻断） |
+| `pr_labels` | l1 | merge | **FAIL** | PR 至少挂 1 个 type label（`bug`/`feature`/`chore`/`refactor`/`tests`/`documentation`/`epic`）；标题命中域关键词（proxy/channel/catalog/admin/tavern）但缺对应域 label 时给出建议。gh api 取数，取数失败输出"跳过、请人工核对"（不静默假绿） |
+| `pr_crg_review` | l1 | merge | **FAIL** | PR 讨论区需留有 CRG（code-review-graph）审查结论；若记录提到过问题/风险，需附修复/回应记录（Fix/采纳/驳回 + commit 或验证结论）。只统计 PR 创建后的评论。gh api 取数，取数失败输出"跳过、请人工核对" |
+| `doc_sync` | l1 | pre-commit/push/merge | **FAIL** | 有 Cargo.toml 的功能 crate 必须配 README.md；域目录（crates/<domain>/）必须有 README；根 README.md 必须存在 |
+| `code_doc` | l1 | pre-commit/push/merge | WARN | 公共 API 缺 `///` rust doc、模块头缺 `//!`（只查本次 PR diff 触碰的 .rs，不追责存量） |
 
 ## 怎么跑
+
+**二进制**：仓库内置 `.githooks/gate`（已 upx 压缩，~0.7MB）。hook 先找 PATH 里的 `gate`，再回退到 `.githooks/gate`，新克隆的人 `git config core.hooksPath .githooks/hooks` 即可跑，不必单独安装。
 
 **自动**（已挂在钩子上，本机 `core.hooksPath=.githooks/hooks`）：`git commit` → pre-commit；`git push` → pre-push；`gate merge <repo> <pr>` → merge（含 checklist 全量）。
 `RESULT: FAIL` 且存在 FAIL 级 finding → 退出码 1 → 对应 git 操作被拦截。
