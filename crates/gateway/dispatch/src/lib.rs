@@ -32,6 +32,17 @@ pub trait Dispatch: Send + Sync {
         exclude: &[String],
     ) -> Result<Candidate, DispatchError>;
     fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>);
+
+    /// 查渠道展示名（快照 channels map，key = 渠道 UUID）。
+    ///
+    /// DispatchStage 选中路由后用它给 ctx 补渠道归因名；快照未就绪或渠道
+    /// 已被移除时返回 None（调用方降级为只带 key）。
+    /// 默认 None：`Candidate`/`SelectedRoute` 不携带渠道名（见 ctx.rs），
+    /// 名字只能由持快照的实现者回查；非 `Dispatcher` 实现者不承担该职责。
+    fn channel_name(&self, channel_key: &str) -> Option<String> {
+        let _ = channel_key;
+        None
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -202,5 +213,14 @@ impl Dispatch for Dispatcher {
 
     fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>) {
         self.health.record(unit_key, outcome);
+    }
+
+    fn channel_name(&self, channel_key: &str) -> Option<String> {
+        self.snapshot
+            .load()
+            .as_ref()
+            .as_ref()
+            .and_then(|s| s.channels.get(channel_key))
+            .map(|c| c.name.clone())
     }
 }

@@ -9,7 +9,9 @@
 //! 6. 副作用：api_tokens.used_quota += cost，quota_snapshot 扣除 cost
 //!
 //! 仅记录 2xx 响应；失败请求 TODO(#N) 占位。
-//! channel_name/channel_key 在 pipeline 内部选定，本 PR 拿不到 → ponytail 注释说明。
+//! channel_key/channel_name 从 pipeline 响应 extensions 里的
+//! `RouteAttribution` 读取（Dispatch 选中渠道后由 `Pipeline::run` 在响应
+//! 返回前写入；流式分支 ctx 被 body 接管，这是中间件能拿到的唯一通道）。
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -19,6 +21,7 @@ use axum::extract::{Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
+use gateway_pipeline::RouteAttribution;
 
 use crate::PgPool;
 use crate::snapshot::Snapshots;
@@ -88,6 +91,13 @@ pub async fn usage_middleware(
     let new_request = Request::from_parts(parts, body_bytes.clone().into());
     let response = next.run(new_request).await;
 
+    // 5a. 从响应 extensions 读 pipeline 带回的渠道归因（Dispatch 在 pipeline
+    //     内部选定，中间件在链外只能走这个通道；流式/非流式都在 run 返回前写入）。
+    let attribution = response.extensions().get::<RouteAttribution>().cloned();
+    let (channel_key, channel_name) = attribution
+        .map(|a| (Some(a.channel_key), a.channel_name))
+        .unwrap_or((None, String::new()));
+
     if !response.status().is_success() {
         return Ok(response);
     }
@@ -105,6 +115,8 @@ pub async fn usage_middleware(
                     token_uuid,
                     token_name,
                     model_name,
+                    channel_key,
+                    channel_name,
                     prompt_tokens: 0,
                     completion_tokens: 0,
                     cost: 0,
@@ -131,6 +143,8 @@ pub async fn usage_middleware(
             token_uuid,
             token_name,
             model_name,
+            channel_key,
+            channel_name,
             prompt_tokens,
             completion_tokens,
             cost,
@@ -152,6 +166,11 @@ pub struct RecordJob {
     pub token_uuid: uuid::Uuid,
     pub token_name: String,
     pub model_name: String,
+    /// 本请求实际命中的渠道（UUID 字符串）；pipeline 未带回（dispatch 前短路 /
+    /// 响应体读失败前无 extensions）时为 None，落库为 NULL。
+    pub channel_key: Option<String>,
+    /// 命中渠道的展示名冗余；无归因时为空串，与列默认值一致。
+    pub channel_name: String,
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub cost: i64,
@@ -168,14 +187,22 @@ pub struct RecordJob {
 /// `log_type: 1`（1=充值，见 `db/migrations/0002_usage_logs.sql`），
 /// 导致每条真实消费都被记成充值并从两个总览查询里整体消失。
 ///
-/// `channel_key` / `channel_name` 沿用构造器默认的空值：渠道在 pipeline 内部选定，
-/// 中间件这一层拿不到（ponytail，待 pipeline 回传选中渠道后补）。
+/// `channel_key` / `channel_name` 来自 pipeline 响应 extensions 里的
+/// [`RouteAttribution`]（`DispatchStage` 选中渠道 → `Pipeline::run` 返回前写入，
+/// 流式/非流式均覆盖）；归因缺失（dispatch 前短路等）时留空，与列默认值一致。
+/// `channel_key` 落库前解析成 UUID（`usage_logs.channel_key` 是 UUID 列），
+/// 解析失败按缺失处理而不是让整条 INSERT 报类型错。
 /// `ip` / `request_id` / `content` 同理留空。
 pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
     let mut event =
         observe::logs::UsageEvent::consume(job.user_uuid, &job.username, &job.model_name);
     event.token_key = Some(job.token_uuid);
     event.token_name = job.token_name.clone();
+    event.channel_key = job
+        .channel_key
+        .as_deref()
+        .and_then(|k| uuid::Uuid::parse_str(k).ok());
+    event.channel_name = job.channel_name.clone();
     // usage_logs 的 token 列是 i32（0002 迁移）；clamp 而非裸 as，异常大的计数
     // 截到 i32::MAX 而不是回绕成负数污染 sum 聚合。
     event.prompt_tokens = job.prompt_tokens.clamp(0, i32::MAX as i64) as i32;

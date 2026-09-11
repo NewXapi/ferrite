@@ -663,3 +663,70 @@ fn dispatcher_fails_closed_before_snapshot() {
         Err(dispatch::DispatchError::SnapshotNotReady)
     ));
 }
+
+// ---------- dispatch stage 渠道归因 ----------
+
+/// DispatchStage 选中路由后必须把渠道归因写进 ctx：channel_key 来自 unit，
+/// channel_name 回查 Dispatcher 快照。usage 落库靠这两个字段做渠道维度
+/// 统计——stage 漏写会让 pipeline 打包出空归因，报表渠道列全空（本 PR 修复
+/// 的原始 bug）。
+#[test]
+fn dispatch_stage_fills_selected_channel_fields() {
+    use dispatch::stage::DispatchStage;
+    use gateway_pipeline::Stage;
+    use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta};
+
+    let units = vec![unit("g", "m", "ch1", 10, 10, 1)];
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("ch1".to_string(), channel("ch1", "s1", "https://u1"));
+    let dispatcher = dispatch::Dispatcher::new(
+        Some(Arc::new(dispatch::Snapshot { units, channels })),
+        Arc::new(MemoryHealthTable::new()),
+    );
+
+    let ctx = &mut gateway_pipeline::RequestCtx::new(RequestMeta {
+        method: "POST".to_string(),
+        path: "/v1/chat/completions".to_string(),
+        headers: http::HeaderMap::new(),
+        body: BodySource::InMemory(bytes::Bytes::new()),
+        client_ip: "127.0.0.1".parse().unwrap(),
+        request_id: uuid::Uuid::now_v7(),
+        inbound_protocol: ProtocolKind::OpenAI,
+    });
+    ctx.token = Some(gateway_pipeline::TokenInfo {
+        id: "tok-1".into(),
+        group: "g".into(),
+        enabled: true,
+        allowed_models: None,
+        auth_version: 1,
+    });
+    ctx.requested_model = Some("m".into());
+
+    let stage = DispatchStage::new(Arc::new(dispatcher));
+    let outcome = rt().block_on(stage.handle(ctx)).unwrap();
+    assert!(matches!(outcome, gateway_pipeline::StageOutcome::Continue));
+    assert_eq!(
+        ctx.selected_channel_key.as_deref(),
+        Some("ch1"),
+        "归因键 = route.unit.channel_key"
+    );
+    // channel() helper 里 name = key，回查快照后应同名
+    assert_eq!(ctx.selected_channel_name.as_deref(), Some("ch1"));
+}
+
+/// channel_name 对快照外的 key 返回 None（降级为只带 key 的语义基础）。
+#[test]
+fn dispatcher_channel_name_unknown_key_is_none() {
+    let dispatcher = dispatch::Dispatcher::new(None, Arc::new(MemoryHealthTable::new()));
+    assert!(dispatcher.channel_name("nope").is_none());
+
+    let units = vec![unit("g", "m", "ch1", 10, 10, 1)];
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("ch1".to_string(), channel("ch1", "s1", "https://u1"));
+    let dispatcher = dispatch::Dispatcher::new(
+        Some(Arc::new(dispatch::Snapshot { units, channels })),
+        Arc::new(MemoryHealthTable::new()),
+    );
+    assert!(dispatcher.channel_name("ch1").is_some());
+    assert!(dispatcher.channel_name("nope").is_none());
+}

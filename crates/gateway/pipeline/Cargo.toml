@@ -26,3 +26,5 @@ futures-util = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+# 仅 tests/pipeline.rs 构造 SyncMeta(updated_at) 用
+chrono = { workspace = true }

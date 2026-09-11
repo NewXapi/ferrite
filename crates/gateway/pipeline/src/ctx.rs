@@ -91,6 +91,22 @@ pub struct SelectedRoute {
     pub settings: serde_json::Value,
 }
 
+/// 本次请求命中的渠道归因（usage 落库用）。
+///
+/// 由 `Pipeline::run` 在响应返回前从 `RequestCtx` 打包并写入
+/// `response.extensions()`：ctx 在 run 内被消费（流式分支尤其如此——body 被
+/// SsePipe 接管后调用方拿不回 ctx），响应 extensions 是中间件能读到的唯一通道。
+///
+/// `channel_key` = `ChannelRecord.meta.key`（UUID 字符串，→ `usage_logs.channel_key`）；
+/// `channel_name` 为展示名冗余，快照查不到时是空串；
+/// `model` 是公开别名（`requested_model`），与 `usage_logs.model_name` 同口径。
+#[derive(Debug, Clone)]
+pub struct RouteAttribution {
+    pub channel_key: String,
+    pub channel_name: String,
+    pub model: String,
+}
+
 /// 上游响应（非流式，Forward 写入）
 #[derive(Debug)]
 pub struct UpstreamResponse {
@@ -156,6 +172,13 @@ pub struct RequestCtx {
     /// Dispatch 写入：选中的路由
     pub route: Option<SelectedRoute>,
 
+    /// Dispatch 写入：选中渠道的归因键（= `route.unit.channel_key`，冗余一份
+    /// 便于不解构 route 的读方）。`Pipeline::run` 据此打包 [`RouteAttribution`]。
+    pub selected_channel_key: Option<String>,
+
+    /// Dispatch 写入：选中渠道的展示名（Dispatcher 快照查得；查不到为 None）。
+    pub selected_channel_name: Option<String>,
+
     /// Gate::model 写入：请求体解析出的模型名 (dispatch 用它 lookup)。
     pub requested_model: Option<String>,
 
@@ -175,6 +198,8 @@ impl RequestCtx {
             request,
             token: None,
             route: None,
+            selected_channel_key: None,
+            selected_channel_name: None,
             requested_model: None,
             upstream: None,
             streamed: StreamedAccum::default(),
