@@ -351,9 +351,20 @@ impl ForwardStage {
             Err(e) => Err(match e {
                 DispatchError::RateLimited { .. } => StageError::RateLimited,
                 DispatchError::RetriesExhausted { .. } => {
-                    StageError::Upstream(gateway_pipeline::UpstreamError::Status {
-                        code: 502,
-                        body_preview: b"retry budget exhausted".to_vec(),
+                    // 带上最后一个上游错误诊断 (ocr: 静态串丢失真实状态码, 排障困难)。
+                    StageError::Upstream(match lock(&error_slot).take() {
+                        Some(last) => gateway_pipeline::UpstreamError::Status {
+                            code: last.status,
+                            body_preview: format!(
+                                "retry budget exhausted; last upstream: {}",
+                                last.message
+                            )
+                            .into_bytes(),
+                        },
+                        None => gateway_pipeline::UpstreamError::Status {
+                            code: 502,
+                            body_preview: b"retry budget exhausted".to_vec(),
+                        },
                     })
                 }
                 DispatchError::NoCandidate { .. } => StageError::NoRoute,

@@ -307,7 +307,12 @@ async fn all_retryable_failures_exhaust_budget_to_502() {
     match err {
         StageError::Upstream(UpstreamError::Status { code, body_preview }) => {
             assert_eq!(code, 502, "RetriesExhausted 映射 502");
-            assert_eq!(body_preview, b"retry budget exhausted".to_vec());
+            // 预算耗尽时带上最后一个上游错误诊断 (ocr 采纳)，不再是纯静态串。
+            let msg = String::from_utf8_lossy(&body_preview);
+            assert!(
+                msg.starts_with("retry budget exhausted") && msg.contains("upstream 502"),
+                "body 应含耗尽说明与最后上游诊断, got {msg}"
+            );
         }
         other => panic!("期望 Upstream 502, got {other:?}"),
     }
