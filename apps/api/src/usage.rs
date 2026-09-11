@@ -243,9 +243,9 @@ async fn record_usage(
         }
         Err(e) => tracing::warn!(error = %e, token_key = %token_key, "token key is not a uuid"),
     }
-    // DB 用 UUID 主键，内存 quota 快照用 gate 口径（见 snapshot::build_quota_snapshot）
-    let gate_id = token_key.parse::<i64>().unwrap_or(0).to_string();
-    quota_snapshot.load().add(&gate_id, -cost);
+    // DB 用 UUID 主键，内存 quota 快照桶键同样是 token 的 UUID 字符串
+    // （与 QuotaGate 查询键 TokenInfo.id 一致，见 snapshot::build_quota_snapshot）
+    quota_snapshot.load().add(&token_key, -cost);
 }
 
 // ---- 辅助函数 ----
