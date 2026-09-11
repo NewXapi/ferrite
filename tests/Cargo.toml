@@ -10,6 +10,8 @@ publish.workspace = true
 contract      = { path = "../crates/contract" }
 auth          = { path = "../crates/api/auth" }
 api           = { path = "../apps/api" }
+observe       = { path = "../crates/api/admin-observe" }
+db-bootstrap  = { path = "../crates/api/db-bootstrap" }
 ui-components = { path = "../crates/web/ui-components" }
 
 # Gateway crates
@@ -54,3 +56,7 @@ path = "auth_flow.rs"
 [[test]]
 name = "admin_gateway_flow"
 path = "admin_gateway_flow.rs"
+
+[[test]]
+name = "usage_log_type"
+path = "usage_log_type.rs"

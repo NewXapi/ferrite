@@ -15,6 +15,17 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
+/// 充值流水：`usage_logs.log_type = 1`（对齐 new-api，见 `db/migrations/0002_usage_logs.sql`）。
+pub const LOG_TYPE_TOPUP: i16 = 1;
+
+/// 消费流水：`usage_logs.log_type = 2`。网关每转发一次请求落一条，
+/// [`LogService::top_usage`] 与 [`LogService::trend`] 只聚合这一类。
+///
+/// 写侧（网关中间件构造 [`UsageEvent`]）与读侧（聚合查询的 `WHERE log_type = ...`）
+/// 必须引用同一个常量。历史事故：网关手写 `log_type: 1`（= 充值）而查询过滤 `= 2`，
+/// 真实消费全部被当成充值，从 `/api/log/top` 与 `/api/log/trend` 里整体消失。
+pub const LOG_TYPE_CONSUME: i16 = 2;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageEvent {
@@ -37,9 +48,25 @@ pub struct UsageEvent {
 }
 
 impl UsageEvent {
+    /// 构造一条消费流水的骨架（`log_type = 2`），量化字段留 0 由调用方填。
+    ///
+    /// 网关中间件必须走这里而不是手写 `log_type` 字面量：这是 `log_type` 在写侧
+    /// 的唯一定义点，与读侧 [`LOG_TYPE_CONSUME`] 同源。
+    ///
+    /// # 参数
+    /// - `user_key`：`auth_users.key`（UUID）
+    /// - `username`：冗余用户名，改名不回溯历史日志
+    /// - `model_name`：客户端请求的公开模型别名（趋势/排行按它分组，空串会被聚合过滤掉）
+    ///
+    /// # 示例
+    /// ```
+    /// let mut e = observe::logs::UsageEvent::consume(uuid::Uuid::nil(), "alice", "gpt-4o");
+    /// e.prompt_tokens = 10;
+    /// assert_eq!(e.log_type, observe::logs::LOG_TYPE_CONSUME);
+    /// ```
     pub fn consume(user_key: Uuid, username: &str, model_name: &str) -> Self {
         Self {
-            log_type: 2,
+            log_type: LOG_TYPE_CONSUME,
             user_key,
             username: username.into(),
             token_key: None,
@@ -319,13 +346,16 @@ impl LogService {
             _ => "username",
         };
         let limit = limit.clamp(1, 50);
+        // log_type 过滤取常量而非字面量：与写侧 UsageEvent::consume 同源，
+        // 任一侧漂移都会让真实消费从榜单里静默消失。
+        let consume = LOG_TYPE_CONSUME;
         let sql = format!(
             r#"SELECT {group_col} AS name,
                       sum(prompt_tokens + completion_tokens)::bigint AS tokens,
                       sum(quota)::bigint AS quota,
                       count(*)::bigint AS calls
                FROM usage_logs
-               WHERE log_type = 2
+               WHERE log_type = {consume}
                  AND ({group_col} <> '')
                  AND ($1::timestamptz IS NULL OR created_at >= $1)
                  AND ($2::timestamptz IS NULL OR created_at < $2)
@@ -363,6 +393,8 @@ impl LogService {
             "month" => "month",
             _ => "hour",
         };
+        // 同 top_usage：log_type 取常量，避免读写两侧各写一份字面量。
+        let consume = LOG_TYPE_CONSUME;
         let sql = format!(
             r#"SELECT date_trunc('{unit}', created_at)::timestamptz AS bucket,
                       model_name,
@@ -370,7 +402,7 @@ impl LogService {
                       sum(quota)::bigint AS quota,
                       count(*)::bigint AS calls
                FROM usage_logs
-               WHERE log_type = 2
+               WHERE log_type = {consume}
                  AND model_name <> ''
                  AND ($1::timestamptz IS NULL OR created_at >= $1)
                  AND ($2::timestamptz IS NULL OR created_at < $2)
