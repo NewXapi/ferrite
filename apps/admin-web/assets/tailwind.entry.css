@@ -1,5 +1,10 @@
 /* Tailwind v4 entry. */
 @import "tailwindcss";
+/* shadcn 语义 token 桥：assets/ (1) -> apps/admin-web (2) -> apps (3) -> 根目录 */
+@import "../../../crates/web/ui-components/assets/tokens.css";
+/* 桥接冒烟：v4 按需生成，源码尚无引用时语义类不会产出；
+ * 预挂最小代表类，保证 token 桥端到端可用性始终被产物覆盖。 */
+@source inline("bg-primary text-muted-foreground border-border");
 
 /* 显式把 .rs 源加入扫描(v4 CLI 默认仅扫 html/js/ts/jsx/tsx/vue/svelte/astro)。*/
 /* 从 assets/ 到根目录: assets/ (1) -> apps/admin-web (2) -> apps (3) -> 根目录 */
