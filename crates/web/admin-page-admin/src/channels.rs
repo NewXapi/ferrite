@@ -396,6 +396,7 @@ fn ChannelCard(
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
                     onclick: move |_| on_edit.call(()),
+                    "data-testid": "edit-channel",
                     "编辑"
                 }
                 button {
@@ -405,11 +406,13 @@ fn ChannelCard(
                         "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300"
                     },
                     onclick: move |_| on_toggle.call(()),
+                    "data-testid": "toggle-channel",
                     if is_enabled { "停用" } else { "启用" }
                 }
                 button {
                     class: "w-7 rounded-lg border border-zinc-800 bg-zinc-800/40 py-1.5 text-xs text-zinc-500 hover:text-red-400 hover:border-red-900/60 transition-colors flex items-center justify-center",
                     title: "删除渠道",
+                    "data-testid": "delete-channel",
                     onclick: move |_| on_delete.call(()),
                     "✕"
                 }

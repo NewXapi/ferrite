@@ -239,11 +239,6 @@ pub fn pivot_trend(rows: Vec<UsageTrendRow>, timeframe: &str) -> (Vec<TrendBucke
     order.sort_by_key(|(_, v)| -*v);
     order.truncate(10);
     let model_order: Vec<String> = order.into_iter().map(|(m, _)| m).collect();
-    let rank: HashMap<&String, usize> = model_order
-        .iter()
-        .enumerate()
-        .map(|(i, m)| (m, i))
-        .collect();
 
     let mut buckets = Vec::with_capacity(n);
     for i in 0..n {
@@ -263,6 +258,5 @@ pub fn pivot_trend(rows: Vec<UsageTrendRow>, timeframe: &str) -> (Vec<TrendBucke
             per_model,
         });
     }
-    let _ = rank;
     (buckets, model_order)
 }

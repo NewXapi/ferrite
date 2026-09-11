@@ -361,10 +361,6 @@ fn KeyCard(
 
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    "编辑"
-                }
-                button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
                     onclick: move |_| on_toggle.call((toggle_key.clone(), toggle_to)),
                     if enabled { "停用" } else { "启用" }

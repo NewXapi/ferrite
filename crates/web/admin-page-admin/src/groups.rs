@@ -456,6 +456,7 @@ fn GroupCard(
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
                     onclick: move |_| on_edit.call(()),
+                    "data-testid": "edit-group",
                     "编辑"
                 }
                 if is_default {
@@ -468,6 +469,7 @@ fn GroupCard(
                 } else {
                     button {
                         class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
+                        "data-testid": "delete-group",
                         onclick: move |_| on_delete.call(()),
                         "删除"
                     }

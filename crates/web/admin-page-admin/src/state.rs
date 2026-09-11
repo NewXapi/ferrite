@@ -414,7 +414,10 @@ impl EntityStore {
         }
         let r: Items<GroupDto> = match client.get("/api/group").await {
             Ok(r) => r,
-            Err(_) => return, // 未登录/后端不可达:保持空
+            Err(e) => {
+                log_hydrate_error("group", &e);
+                return; // 未登录/后端不可达:保持空
+            }
         };
         let groups = r.items;
         store.groups.write().extend(groups.into_iter().map(|g| {
@@ -448,7 +451,10 @@ impl EntityStore {
         }
         let r: Items<ChannelDto> = match client.get("/api/channel").await {
             Ok(r) => r,
-            Err(_) => return,
+            Err(e) => {
+                log_hydrate_error("channel", &e);
+                return;
+            }
         };
         let channels = r.items;
 
@@ -463,7 +469,10 @@ impl EntityStore {
         }
         let r: Items<RouteUnitDto> = match client.get("/api/route_unit?size=100").await {
             Ok(r) => r,
-            Err(_) => Items { items: Vec::new() },
+            Err(e) => {
+                log_hydrate_error("route_unit", &e);
+                Items { items: Vec::new() }
+            }
         };
         let route_units = r.items;
 
@@ -522,7 +531,10 @@ impl EntityStore {
         }
         let r: Items<ModelDto> = match client.get("/api/models?size=100").await {
             Ok(r) => r,
-            Err(_) => Items { items: Vec::new() },
+            Err(e) => {
+                log_hydrate_error("models", &e);
+                Items { items: Vec::new() }
+            }
         };
         let models = r.items;
         let mut aliases: Vec<AliasRow> = models
@@ -538,4 +550,13 @@ impl EntityStore {
         aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
         store.aliases.write().extend(aliases);
     }
+}
+
+/// hydrate 失败的可见化：浏览器 console.warn（wasm 下 std eprintln 不可见）。
+fn log_hydrate_error(what: &str, e: &client::ApiError) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::warn_1(&format!("EntityStore hydrate {what} failed: {e}").into());
+    #[cfg(not(target_arch = "wasm32"))]
+    eprintln!("EntityStore hydrate {what} failed: {e}");
+    let _ = (what, e);
 }

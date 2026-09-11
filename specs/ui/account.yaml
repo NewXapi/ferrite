@@ -35,10 +35,8 @@ elements:
     name: "密钥 <name>"
     testid: "key-card"
     min_rows: 0
-    # 每个 key-card 内应含 编辑 / 启用或停用 / 删除 三个动作
+    # 每个 key-card 内应含 启用或停用 / 删除 两个动作(后端无编辑端点,无编辑按钮)
     children:
-      - role: button
-        name: "编辑"
       - role: button
         name: "启用"
         # 或 "停用",取决于该密钥当前 status

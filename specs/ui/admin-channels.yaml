@@ -35,11 +35,14 @@ elements:
     children:
       - role: button
         name: "编辑"
+        testid: "edit-channel"
       - role: button
         name: "启用"
+        testid: "toggle-channel"
         # 或 "停用",取决于该渠道当前 status
       - role: button
         name: "删除"
+        testid: "delete-channel"
 
   # —— 分组列表 ——
   - role: region
@@ -67,6 +70,8 @@ elements:
     children:
       - role: button
         name: "编辑"
+        testid: "edit-channel"
       - role: button
         name: "删除"
+        testid: "delete-channel"
         # 或 "内置"(默认分组不可删除)
