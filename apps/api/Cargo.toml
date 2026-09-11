@@ -55,5 +55,7 @@ forward = { path = "../../crates/gateway/forward" }
 gateway-gate = { path = "../../crates/gateway/gate" }
 dispatch = { path = "../../crates/gateway/dispatch" }
 contract = { path = "../../crates/contract" }
+# base_url → host:port 解析（探测目标）
+url = "2"
 anyhow = "1"
 uuid = { workspace = true }
