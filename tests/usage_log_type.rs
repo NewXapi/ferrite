@@ -18,7 +18,10 @@ async fn pg_pool() -> Option<sqlx::PgPool> {
     let url = std::env::var("FERRITE_E2E_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite_e2e".into());
     let pool = sqlx::PgPool::connect_lazy(&url).ok()?;
-    match sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&pool).await {
+    match sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&pool)
+        .await
+    {
         Ok(_) => Some(pool),
         Err(e) => {
             eprintln!("skipping e2e: postgres unreachable at {url}: {e}");
@@ -94,10 +97,9 @@ async fn consume_event_recorded_is_visible_to_top_and_trend() {
         .top_usage("model", None, None, 50)
         .await
         .expect("top_usage");
-    let row = top
-        .iter()
-        .find(|r| r.name == model)
-        .expect("recorded consume must appear in top_usage — 若缺失，写侧 log_type 已漂离读侧过滤值");
+    let row = top.iter().find(|r| r.name == model).expect(
+        "recorded consume must appear in top_usage — 若缺失，写侧 log_type 已漂离读侧过滤值",
+    );
     assert_eq!(row.calls, 1);
     assert_eq!(row.tokens, 18, "tokens = prompt + completion");
 
