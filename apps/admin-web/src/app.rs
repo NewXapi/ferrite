@@ -13,6 +13,32 @@ pub fn RootApp() -> Element {
     let mut retro = use_signal(|| current_hash() == "#retro");
     let mut is_auth = use_signal(|| is_auth_hash(&current_hash()));
 
+    // 启动恢复 + 401 静默刷新，挂在整个 app 入口（auth 页之外的任何路由都能恢复）：
+    // 1) storage 里有 access token → 注入 shared client，刷新页面不掉登录；
+    // 2) 注册 refresher：access 过期(15min)时用 refreshToken 换新并重试原请求。
+    use_hook(move || {
+        let c = client::ApiClient::shared().clone();
+        if let Some(token) = ui::get_cached_token() {
+            c.set_token(Some(token));
+        }
+        c.set_refresher(move || {
+            let c = client::ApiClient::shared().clone();
+            Box::pin(async move {
+                match ui::refresh_access_token().await {
+                    Some(t) => {
+                        c.set_token(Some(t.clone()));
+                        Some(t)
+                    }
+                    None => {
+                        // refresh 也失效：清 storage，让下个 401 跳回登录页
+                        ui::clear_cached_session();
+                        None
+                    }
+                }
+            })
+        });
+    });
+
     use_hook(move || {
         let cb = Closure::<dyn FnMut()>::new(move || {
             let h = current_hash();

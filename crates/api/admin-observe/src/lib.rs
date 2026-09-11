@@ -4,7 +4,7 @@
 //!
 //! | 模块 | 聚合物 | 参考 |
 //! |------|--------|------|
-//! | [`logs`]    | 请求用量日志查询与今日统计 | new-api store_usedata.go |
+//! | [`logs`]    | 请求用量日志查询、今日统计、消耗排行与时间桶趋势 | new-api store_usedata.go |
 //! | [`monitor`] | 探活历史 + 日聚合 (monitor_rollup) | sub2api channel_monitor |
 //!
 //! 查询响应统一携带 as_of 新鲜度标记, 不伪造实时 (设计文档原则 7)。

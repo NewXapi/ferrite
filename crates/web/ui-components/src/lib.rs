@@ -32,6 +32,6 @@ pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
 pub use session::{
     api_login, api_register, clear_cached_session, copy_text_to_clipboard, get_cached_token,
-    get_cached_user, get_storage_item, remove_storage_item, set_cached_session, set_storage_item,
-    set_storage_scoped, token_is_persistent,
+    get_cached_user, get_storage_item, refresh_access_token, remove_storage_item,
+    set_cached_session, set_storage_item, set_storage_scoped, token_is_persistent,
 };

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AuthError;
 
-/// 15 min
+/// 15 min (可用 FERRITE_JWT_ACCESS_TTL_SECS 覆盖, 见 service::new)
 pub const ACCESS_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 /// 7 d
@@ -27,18 +27,20 @@ pub struct Claims {
     pub exp: i64,
 }
 
+/// `ttl_secs` 与 AuthService.access_ttl 同源, 保证 expires_in 与 exp 一致。
 pub fn issue(
     secret: &[u8],
     user_key: &str,
     role: u16,
     auth_version: i64,
     sid: &str,
+    ttl_secs: u64,
 ) -> Result<(String, i64), AuthError> {
     let exp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| AuthError::Crypto(e.to_string()))?
         .as_secs() as i64
-        + ACCESS_TOKEN_TTL_SECS as i64;
+        + ttl_secs as i64;
     let claims = Claims {
         sub: user_key.to_string(),
         role,

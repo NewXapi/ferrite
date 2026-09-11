@@ -167,11 +167,19 @@ impl AuthService {
         mac.update(b"refresh");
         let refresh_secret = mac.finalize().into_bytes().to_vec();
 
+        // access TTL 可用环境变量覆盖 (本地 dev 拉长避免频繁过期):
+        // FERRITE_JWT_ACCESS_TTL_SECS, 默认 15 min; 非法值回退默认。
+        let access_ttl = std::env::var("FERRITE_JWT_ACCESS_TTL_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&s| s >= 60)
+            .unwrap_or(jwt::ACCESS_TOKEN_TTL_SECS);
+
         Ok(Self {
             pool,
             jwt_secret,
             refresh_secret,
-            access_ttl: Duration::from_secs(jwt::ACCESS_TOKEN_TTL_SECS),
+            access_ttl: Duration::from_secs(access_ttl),
             refresh_ttl: Duration::from_secs(jwt::REFRESH_TOKEN_TTL_SECS),
         })
     }
@@ -839,6 +847,7 @@ impl AuthService {
             user.role as u16,
             user.auth_version,
             &sid.to_string(),
+            self.access_ttl(),
         )?;
 
         Ok(LoginResult {
