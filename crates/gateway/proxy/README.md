@@ -12,6 +12,8 @@
 ## 出口怎么走
 
 `ProxyManager::acquire(channel_key)` 选出节点，用 `to_reqwest_proxy()` 构造 `reqwest::Client`。
+层内并列最闲时软亲和：距上次使用 ≤10s 优先粘住上次选中的节点（省 ws/grpc/TLS 重复握手），
+亲和节点冷却或负载拉开落出并列组后自动随机接替（rebalance）；行为测试见 `tests/affinity.rs`。
 HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，不自写 dialer。
 无节点或全部冷却 → `node_id = 0` 直连。
 `ForwardStage::with_proxies` 在每次模型请求上租约、转发、按状态反馈。
