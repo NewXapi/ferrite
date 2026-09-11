@@ -13,14 +13,17 @@ just dev-backend start  # 起共享后端 (127.0.0.1:3211)
 dev 管理员账号: `admin_dev / DevPassw0rd!12345` (role=100)。
 各 worktree 的 admin-web (`dx serve`) 代理默认已指向 3211，直接起前端即可。
 
-## seed.sql 是什么
+## seed.sql 不入库
 
-由 `generate_seed.py` 生成（**不要手改**，改生成器后 `just db-seed-regen`）：
+由 `generate_seed.py` **现场生成、管道直通 psql**（不落盘，`.gitignore` 已忽略）。
+生成器的数据源是 **`texture.json.gz`（57KB，已入库）** —— new-api 运行库
+consume 日志的压缩纹理，**不要手改纹理与生成器**：
 
-- **真实纹理**：取自 `~/projects/new-api-runtime/data/new-api.db` 的 3312 条
-  真实 consume 日志（真实模型名 glm-5.3-flash/claude-opus-5/…、真实 token 量级、
-  quota、耗时、流式比例、昼夜节奏）。
-- **随机分布**：seed=42 的确定性 RNG 做时间重映射与用户分配，可复现。
+- **真实纹理**：`texture.json.gz` 收录 3312 条真实 consume 日志（真实模型名
+  glm-5.3-flash/claude-opus-5/…、真实 token 量级、quota、耗时、流式比例、昼夜节奏），
+  由外部 new-api 运行库一次性提炼入库（重新提炼方法见本文件末尾）。
+- **随机分布**：seed=42 的确定性 RNG 做时间重映射与用户分配，可复现——
+  57KB 纹理生成的 SQL 与原 14MB 产物逐字节一致（diff=0）。
 - **时间相对化**：时间戳全部是 `now() - interval` 表达式，提交到仓库后
   任何时间执行，今天/本周/本月/今年四个窗口都有数据，永不过期。
 - **覆盖四张表**：`auth_users`（1 管理员 + 10 用户）、`api_groups`（default/vip）、
@@ -70,5 +73,7 @@ just dev-backend stop
 
 - PG 容器 `uf-local-postgres`（库 `ferrite_smoke`），可在 justfile 顶部改
   `PG_CONTAINER`/`PG_DB`；
-- 重新生成种子需要 `python3` + `sqlite3`（读 new-api.db）与真实数据源文件；
-  只执行种子则只需要 `psql`（经 docker exec，宿主机无需装 psql）。
+- 执行种子只需要 `python3` + `psql`（经 docker exec，宿主机无需装 psql）；
+  纹理 `texture.json.gz` 已入库，无需外部 new-api.db。重新提炼纹理（罕见）：
+  `python3 -c` 读外部库按 `generate_seed.py` 历史中的 `load_real_rows` 查询
+  压缩回写 `texture.json.gz`，或参考 git 历史中的提取脚本。

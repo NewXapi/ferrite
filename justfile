@@ -41,17 +41,14 @@ PG_CONTAINER := "uf-local-postgres"
 PG_USER := "ferrite"
 PG_DB := "ferrite_smoke"
 
-# 灌入 dev 种子数据 (幂等, 可重复执行)
+# 灌入 dev 种子数据 (幂等, 可重复执行; 生成器现场生成, 管道直通 psql)
 db-seed:
-    docker exec -i {{PG_CONTAINER}} psql -U {{PG_USER}} -d {{PG_DB}} -v ON_ERROR_STOP=1 < db/dev/seed.sql
+    python3 db/dev/generate_seed.py | docker exec -i {{PG_CONTAINER}} psql -U {{PG_USER}} -d {{PG_DB}} -v ON_ERROR_STOP=1
 
 # 只清理种子行, 不碰真实数据
 db-reset:
     docker exec -i {{PG_CONTAINER}} psql -U {{PG_USER}} -d {{PG_DB}} -v ON_ERROR_STOP=1 < db/dev/reset.sql
 
-# 重新生成 seed.sql (真实数据源 NEW_API_DB, 默认 ~/projects/new-api-runtime/data/new-api.db)
-db-seed-regen:
-    python3 db/dev/generate_seed.py > db/dev/seed.sql
 
 # 共享 dev 后端: start | update | stop | status
 dev-backend *args:
