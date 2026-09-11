@@ -35,7 +35,8 @@ pub use stage::{Stage, StageOutcome};
 /// Token 鉴权后产物（Admission 写入 RequestCtx.token）
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
-    pub id: i64,
+    /// token 身份主键：`TokenRecord.meta.key`（UUID 字符串）
+    pub id: String,
     pub group: String,
     pub enabled: bool,
     pub allowed_models: Option<Vec<String>>,

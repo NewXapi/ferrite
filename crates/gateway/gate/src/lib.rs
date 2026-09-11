@@ -56,7 +56,8 @@ pub use snapshot::{
 /// 鉴权产出的 token 元数据（chain 内部填充，最终提升到 RequestCtx.token）
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
-    pub id: i64,
+    /// token 身份主键：`TokenRecord.meta.key`（UUID 字符串），quota/限流桶直接按它分桶
+    pub id: String,
     pub user_id: i64,
     pub id_hash: [u8; 32], // sha256(raw_key)
     pub group: String,
