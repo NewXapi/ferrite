@@ -125,6 +125,7 @@ async fn test_system_info_admin_auth_guard() {
         1,
         1,
         &Uuid::new_v4().to_string(),
+        3600,
     )
     .unwrap();
 
@@ -146,6 +147,7 @@ async fn test_system_info_admin_auth_guard() {
         10,
         1,
         &Uuid::new_v4().to_string(),
+        3600,
     )
     .unwrap();
 

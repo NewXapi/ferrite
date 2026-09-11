@@ -56,8 +56,9 @@ fn e2e_security_password_and_jwt_lifecycle() {
     let auth_version = 1i64;
     let sid = "sess_uuid_999";
 
+    // TTL 显式传入 (与生产 issue_session 同构): 1h
     let (token, exp) =
-        auth::jwt::issue(secret, user_id, role, auth_version, sid).expect("issue jwt token");
+        auth::jwt::issue(secret, user_id, role, auth_version, sid, 3600).expect("issue jwt token");
     assert!(!token.is_empty(), "颁发的 JWT 不能为空");
     assert!(exp > 0, "过期时间必须为未来时间戳");
 
