@@ -180,8 +180,7 @@ async fn no_store_ui_json(
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let scoped =
-        req.uri().path().starts_with("/api") || req.uri().path().starts_with("/tavern");
+    let scoped = req.uri().path().starts_with("/api") || req.uri().path().starts_with("/tavern");
     let mut resp = next.run(req).await;
     if scoped {
         resp.headers_mut().insert(
