@@ -70,20 +70,21 @@ crates/web/
   - 现状：稳定
 - **admin-session**（内部依赖：client；src：lib.rs / login.rs / manage_session.rs / refresh_token.rs）
   - 登录、2FA 验证（`verify_2fa`）、token 刷新、全局会话（`SESSION` GlobalSignal：init / clear_session / logout）
-  - 现状：稳定
+  - 现状：**孤儿 crate（2026-09-11 实测零引用）**——认证页实际走 `ui-components/session.rs` 的令牌存取；refresh 流程接入时再启用（admin-page-auth/src/view.rs:123 注释）
 - **admin-mock**（无内部依赖；src：lib.rs / models.rs / account.rs / overview.rs / users.rs）
   - 页面开发的 mock 数据；**overview / account / users 三个页面仍在用**（grep `mock::` 核实），真实 API 接完后移除引用（见 admin.md）
 - **admin-page-auth**（内部依赖：client, contract, ui；src：lib.rs / api.rs / form.rs / state.rs / view.rs）
-  - 认证页：登录、注册、二次验证、密码重置；现状：真实 API
+  - 认证页：登录、注册（已接真实 API）；2FA / 密码重置未实现（api 侧 `verify_2fa` 亦为占位，crates/api/auth/src/service.rs:793）
 - **admin-page-overview**（内部依赖：client, contract, mock；src：lib.rs / api.rs / overview.rs / models.rs / leaderboard/ / health.rs）
-  - 总览：请求量/成功率/成本统计卡、模型分布、用户·模型·渠道日排行；现状：**部分 mock**
+  - 总览：OverviewPanel 已接真实 API；ModelsPanel 仍 mock；LeaderboardPanel 静态数据
   - 注意：本 crate **未用 ui-components**（全域唯一不用共享组件的页面 crate），待统一
 - **admin-page-account**（内部依赖：client, contract, mock, ui；src：lib.rs / api.rs / keys.rs / usage_logs.rs / usage_support.rs / sessions.rs / settings.rs / rewards.rs）
   - 个人中心：API Key 列表增删、用量日志、会话、奖励；现状：**部分 mock**
 - **admin-page-admin**（内部依赖：client, contract, ui；src：lib.rs / api.rs / entities.rs / channels.rs / pages.rs / groups.rs / redemptions.rs / network.rs / system.rs / state.rs / aliases.rs）
-  - 管理操作：渠道 CRUD（凭据掩码、测试按钮）、模型+分组到渠道的路由映射、令牌、分组倍率、兑换码、网络、系统；现状：真实 API
+  - 管理操作：渠道 CRUD（凭据掩码、测试按钮）、模型+分组到渠道的路由映射、令牌、分组倍率、兑换码、网络、系统
+  - 现状：**UI 就绪、未接线**——api.rs 已实现真实调用，但 channels/groups/aliases/redemptions/system/network 各页面零消费（页面用内联演示数据）
 - **admin-page-users**（内部依赖：client, contract, mock, ui；src：lib.rs / api.rs / data.rs / panel.rs）
-  - 用户管理：列表与操作；现状：**部分 mock**
+  - 用户管理：列表与操作；现状：**mock（页面未接线，api.rs 已备）**
 
 ### 酒馆端（消费 `/tavern/*` API，含 SSE 流式）
 
@@ -155,9 +156,20 @@ Cargo.toml 里的改名依赖（读代码时按 key 认依赖，浅解析 Cargo.
 - worktree：`.wt/<name>` ↔ 分支尾段同名（`.wt/web-readme` ↔ `chore/web-readme`）；仓库根只读。创建 worktree 的防嵌套规则见根 `AGENTS.md`。
 - 域独占：接手 `crates/web/<crate>` 即独占该 crate；跨 crate/跨域需在 PR 报备。
 - 各子域 MVP 顺序、文件级任务清单、验收命令：**admin.md / tavern.md 是 source of truth**，本 README 只做地图。
-- 外部借鉴调查（new-api、shadcn dashboard-01）在根 `todo/web-ui-reference/`（gitignored，仅仓库根工作副本可见，worktree 内用绝对路径 `/home/hathaway/projects/ferrite/todo/web-ui-reference/` 访问）。
+- 页面级结构与结构问题详录：`todo/web-ui-reference/ferrite-pages-tree.md`；外部借鉴调查（new-api、shadcn dashboard-01）在根 `todo/web-ui-reference/`（gitignored，仅仓库根工作副本可见，worktree 内用绝对路径 `/home/hathaway/projects/ferrite/todo/web-ui-reference/` 访问）。
 
-## 7. 变更记录
+## 7. 已知结构问题（2026-09-11 页面树实测）
+
+- 路由机制不统一：admin-web 用 URL hash（刷新可恢复），tavern-web 用内存 Signal（刷新丢页面、无深链）。
+- admin-session 是孤儿 crate（见 §2）；认证页会话实际走 ui-components/session.rs。
+- mock/真实边界：page-admin 整域未接线、users 纯 mock、rewards「立即充值」是假成功——页面均 UI 就绪等数据。
+- 渠道/分组/别名双轨 UI：NetworkPanel 拓扑画布与三个卡片页共享同一 EntityStore，并存待收敛。
+- tavern 剧本库用本地静态 seed，聊天用真实 API；「进入故事」不携带剧本。
+- 主题基座不一致：tavern-web 未挂 dx-components-theme.css（§4）。
+- 死交互若干：SectionPill / SwipePicker / 首页 nav。逐页细节见 `todo/web-ui-reference/ferrite-pages-tree.md`。
+
+## 8. 变更记录
 
 - 2026-09-11：chore/web-readme 初版，重写为全域心智模型；依赖图经 Cargo.toml / codegraph / grep 三源校验。
 - 2026-09-11：crate 清单与改名映射由表格改为树+列表（agent 阅读友好）。
+- 2026-09-11：按 ferrite-pages-tree.md 实测修正现状（admin-session 孤儿、page-admin 整域未接线、2FA 未实现），新增「已知结构问题」节。
