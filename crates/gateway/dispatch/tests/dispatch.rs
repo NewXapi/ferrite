@@ -290,11 +290,17 @@ fn retry_loop_succeeds_after_one_failover() {
         },
         |_k, _o| {},
     ));
-    // 第二次尝试命中另一候选 → Done, run_retry_loop 返回 Ok。
+    // 第二次尝试命中另一候选 → Done, run_retry_loop 返回 Ok((获胜尝试, outcome))。
+    let (attempt, outcome) = result.expect("可重试失败后换候选应最终成功");
     assert!(
-        matches!(result, Ok(AttemptOutcome::Done { status: 200 })),
-        "可重试失败后换候选应最终成功, got: {result:?}"
+        matches!(outcome, AttemptOutcome::Done { status: 200 }),
+        "换候选后应成功收尾, got: {outcome:?}"
     );
+    assert_eq!(
+        attempt.candidate.unit.meta.key, "ch2",
+        "获胜上下文应携带第二次尝试选中的候选 (ch2)"
+    );
+    assert_eq!(attempt.attempt_no, 2, "获胜的是第 2 次尝试");
     assert_eq!(attempts, 2, "第一次可重试失败后应换候选重试");
 }
 
@@ -355,7 +361,14 @@ fn retry_loop_fatal_stops_immediately() {
         |_k, _o| {},
     ));
     assert_eq!(attempts, 1, "Fatal 不应重试");
-    assert!(matches!(outcome, Ok(AttemptOutcome::Fatal(_))));
+    // Fatal 终止也算"循环成功结束": 返回携带终止那次尝试的上下文。
+    let (attempt, outcome) = outcome.expect("Fatal 应作为 Ok((Attempt, outcome)) 返回");
+    assert!(matches!(outcome, AttemptOutcome::Fatal(_)));
+    assert_eq!(
+        attempt.candidate.unit.meta.key, "ch1",
+        "Fatal 终止时也应带出终止候选"
+    );
+    assert_eq!(attempt.attempt_no, 1);
 }
 
 #[test]
