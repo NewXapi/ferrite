@@ -40,6 +40,8 @@ gate 是仓库自带的质量门禁：读 `.githooks/spec/*.yaml` 规则 → 调
 
 ## 怎么跑
 
+**二进制**：仓库内置 `.githooks/gate`（已 upx 压缩，~0.7MB）。hook 先找 PATH 里的 `gate`，再回退到 `.githooks/gate`，新克隆的人 `git config core.hooksPath .githooks/hooks` 即可跑，不必单独安装。
+
 **自动**（已挂在钩子上，本机 `core.hooksPath=.githooks/hooks`）：`git commit` → pre-commit；`git push` → pre-push；`gate merge <repo> <pr>` → merge（含 checklist 全量）。
 `RESULT: FAIL` 且存在 FAIL 级 finding → 退出码 1 → 对应 git 操作被拦截。
 
