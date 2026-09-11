@@ -701,6 +701,9 @@ fn CopyKeyButton(text: String) -> Element {
             onclick: move |_| {
                 let ok = ui::copy_text_to_clipboard(text.as_str());
                 copied.set(ok);
+                if ok {
+                    ui::components::toast::toast("密钥已复制到剪贴板");
+                }
                 let mut c = copied;
                 spawn(async move {
                     gloo_timers::future::TimeoutFuture::new(1500).await;
