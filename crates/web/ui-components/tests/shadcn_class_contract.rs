@@ -5,8 +5,8 @@
 //! 用户可见的样式回归。改 class 串的唯一合法理由是「同步 shadcn 上游新版本」，
 //! 此时本测试的期望值应随上游 diff 一起更新，并在 PR 里贴出上游对照。
 
-use ui_components::components::badge::{variant_parts as badge_variant_parts, BadgeVariant};
-use ui_components::components::button::{size_parts, variant_parts, ButtonSize, ButtonVariant};
+use ui_components::components::badge::{BadgeVariant, variant_parts as badge_variant_parts};
+use ui_components::components::button::{ButtonSize, ButtonVariant, size_parts, variant_parts};
 
 #[test]
 fn button_variant_classes_match_shadcn() {
@@ -62,7 +62,11 @@ fn button_size_classes_match_shadcn() {
             "sm",
             "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
         ),
-        (ButtonSize::Default, "default", "h-9 px-4 py-2 has-[>svg]:px-3"),
+        (
+            ButtonSize::Default,
+            "default",
+            "h-9 px-4 py-2 has-[>svg]:px-3",
+        ),
         (ButtonSize::Lg, "lg", "h-10 rounded-md px-6 has-[>svg]:px-4"),
         (ButtonSize::Icon, "icon", "size-9"),
         (
