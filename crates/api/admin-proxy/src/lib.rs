@@ -106,7 +106,7 @@ fn mask_url(url: &str) -> String {
 /// `build_proxy_snapshot` 同语义）；id 按行序连续编号（≥1，0 是直连哨兵）。
 pub async fn load_proxy_snapshot(pool: &PgPool) -> Result<ProxySnapshot, sqlx::Error> {
     let rows: Vec<ProxyNodeRow> = sqlx::query_as(&format!(
-        "{COLS} FROM proxy_nodes WHERE enabled = true ORDER BY priority DESC, created_at"
+        "SELECT {COLS} FROM proxy_nodes WHERE enabled = true ORDER BY priority DESC, created_at"
     ))
     .fetch_all(pool)
     .await?;
@@ -163,10 +163,10 @@ impl ProxyNodeService {
     pub async fn list(&self, enabled_only: bool) -> Result<Vec<ProxyNodeView>, sqlx::Error> {
         let sql = if enabled_only {
             format!(
-                "{COLS} FROM proxy_nodes WHERE enabled = true ORDER BY priority DESC, created_at"
+                "SELECT {COLS} FROM proxy_nodes WHERE enabled = true ORDER BY priority DESC, created_at"
             )
         } else {
-            format!("{COLS} FROM proxy_nodes ORDER BY priority DESC, created_at")
+            format!("SELECT {COLS} FROM proxy_nodes ORDER BY priority DESC, created_at")
         };
         let rows: Vec<ProxyNodeRow> = sqlx::query_as(&sql).fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(row_to_view).collect())
