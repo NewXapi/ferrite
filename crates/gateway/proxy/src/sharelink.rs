@@ -18,11 +18,11 @@
 //! - `id` → `auth.user`（UUID）
 //! - `scy` → `auth.pass`（VMess security）；`auto` / 空 留空让 meow 取缺省
 //! - `add` → `host`，`port` → 端口（数字或字符串两种形态都吃）
-//! - `net=ws`：`path` → [`VlessOpts::ws_path`]，`host` → `ws_host`
-//! - `sni` → `VlessOpts::sni`；`tls=true` 而无 `sni` 时用 `add` 兜底（TLS 必须有 SNI）
-//! - `fp` → `VlessOpts::fingerprint`
+//! - `net=ws`：`path` → [`NodeOpts::ws_path`]，`host` → `ws_host`
+//! - `sni` → `NodeOpts::sni`；`tls=true` 而无 `sni` 时用 `add` 兜底（TLS 必须有 SNI）
+//! - `fp` → `NodeOpts::fingerprint`
 //! - `aid`（alterId）：VMess AEAD 之后已废弃，meow-config 不吃这个键，解析后丢弃
-//! - `net=grpc`/`h2`/`httpupgrade`：[`VlessOpts`] 没有这些传输层字段，**报错而非静默
+//! - `net=grpc`/`h2`/`httpupgrade`：[`NodeOpts`] 没有这些传输层字段，**报错而非静默
 //!   降级**——降级成 tcp 会拨号成功但走错传输，排查成本远高于导入时报错
 
 use base64::Engine;
@@ -30,7 +30,7 @@ use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 
-use crate::node::{BasicAuth, ParseError, ProxyNode, ProxyScheme, VlessOpts};
+use crate::node::{BasicAuth, NodeOpts, ParseError, ProxyNode, ProxyScheme};
 
 /// v2rayN `vmess://` base64 载荷的 JSON 结构。
 ///
@@ -80,7 +80,7 @@ pub struct VmessShareLink {
     /// uTLS 指纹。
     #[serde(rename = "fp", default)]
     pub fp: Option<String>,
-    /// ALPN 列表，当前不参与映射（`VlessOpts` 无此字段）。
+    /// ALPN 列表，当前不参与映射（`NodeOpts` 无此字段）。
     #[serde(rename = "alpn", default)]
     pub alpn: Option<JsonValue>,
 }
@@ -191,7 +191,7 @@ fn parse_vmess_dialect(link: &str) -> Result<ProxyNode, ParseError> {
     let net = if net.is_empty() { "tcp" } else { net.as_str() };
     let tls = json_truthy(v.tls.as_ref());
 
-    let mut opts = VlessOpts::default();
+    let mut opts = NodeOpts::default();
     match net {
         "tcp" => {}
         "ws" => {
@@ -213,7 +213,7 @@ fn parse_vmess_dialect(link: &str) -> Result<ProxyNode, ParseError> {
         }
         other => {
             return Err(invalid(&format!(
-                "vmess 传输层 `{other}` 暂不支持（VlessOpts 无对应字段，静默降级会走错传输）"
+                "vmess 传输层 `{other}` 暂不支持（NodeOpts 无对应字段，静默降级会走错传输）"
             )));
         }
     }
@@ -250,7 +250,7 @@ fn parse_vmess_dialect(link: &str) -> Result<ProxyNode, ParseError> {
             user: v.id.trim().to_string(),
             pass: cipher,
         }),
-        vless: Some(opts),
+        opts: Some(opts),
         channel_keys: vec![],
         priority: 0,
     })
@@ -301,7 +301,7 @@ fn ss_node(cipher: &str, password: &str, host: &str, port: u16) -> ProxyNode {
             user: cipher.to_string(),
             pass: password.to_string(),
         }),
-        vless: None,
+        opts: None,
         channel_keys: vec![],
         priority: 0,
     }

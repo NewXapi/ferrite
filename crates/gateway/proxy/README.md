@@ -28,7 +28,7 @@ HTTP CONNECT / SOCKS5 握手由 reqwest（workspace `socks` feature）完成，�
 旧 `src/proto/`（shoes 手抄客户端链，PR1-3）已删除：那条 `ProxyConnector`
 路径从未接进 forward（恒 502），由 meow 实现整体替代。
 
-### VLESS 的 query 参数
+### 传输层 query 参数（`NodeOpts`，vless/vmess/hysteria2/anytls/snell 共用）
 
 `vless://<uuid>@host:port?flow=&sni=&pbk=&sid=&fp=` —— 与常见分享链接同名：
 
@@ -62,6 +62,14 @@ cargo build -p gateway-proxy --features utls
 - 开启后：`fp=chrome` → BoringSSL 真实 uTLS 仿冒
 - 未开启：`fp=chrome` 落入 `TlsConfig.fingerprint`，**仅触发一次性 warn**（meow 内部 stub 实现），**依然使用 rustls**，不阻断节点构造
 - Trojan 协议暂不支持 fingerprint（meow `TrojanAdapter` 无 fingerprint 参数），仅 VLESS TLS/REALITY 路径生效
+- CI 覆盖：`.github/workflows/ci.yml` 的 `proxy-feature-matrix` job 同时编 `--features utls`（apt 装 cmake）与 `--no-default-features`（协议 feature 全关，验证 feature 门没漏）
+
+## 依赖
+
+`meow-config` 以 `default-features = false` + 按需协议 feature 引入，挡掉的是
+`mux` / `vless-encryption` / `ech-tls-tunnel` 等默认 feature。注意
+`maxminddb` / `meow-rules` 在 meow-config 0.21.x 是**无条件硬依赖**（不在任何
+feature 之后），无法通过 feature 门移除；想减体积得等上游 gating，或换解析入口。
 
 ## SSRF
 

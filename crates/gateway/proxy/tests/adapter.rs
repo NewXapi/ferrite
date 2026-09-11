@@ -28,7 +28,7 @@ fn test_adapter_for_reqwest_schemes_have_no_adapter() {
                 pass: "pass".to_string(),
             }),
             channel_keys: vec!["test-channel".to_string()],
-            vless: None,
+            opts: None,
             priority: 0,
         };
         assert!(
@@ -50,7 +50,7 @@ fn test_adapter_for_vless_invalid_uuid() {
             pass: "".to_string(),
         }),
         channel_keys: vec!["test-channel".to_string()],
-        vless: None,
+        opts: None,
         priority: 0,
     };
     let adapter_opt = adapter_for(&node);
@@ -70,7 +70,7 @@ fn test_adapter_for_vless_valid_uuid() {
             user: "11111111-2222-3333-4444-555555555555".to_string(),
             pass: String::new(),
         }),
-        vless: None,
+        opts: None,
         channel_keys: vec!["test-channel".to_string()],
         priority: 0,
     };
@@ -88,7 +88,7 @@ fn test_adapter_for_direct() {
         port: 0,
         auth: None,
         channel_keys: vec!["test-channel".to_string()],
-        vless: None,
+        opts: None,
         priority: 0,
     };
     let adapter_opt = adapter_for(&node);

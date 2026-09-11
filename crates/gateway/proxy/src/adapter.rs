@@ -121,7 +121,7 @@ fn clash_config(node: &ProxyNode, proxy_type: &str) -> HashMap<String, Yaml> {
         }
     }
 
-    let Some(o) = node.vless.as_ref() else {
+    let Some(o) = node.opts.as_ref() else {
         return c;
     };
 

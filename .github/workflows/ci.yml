@@ -80,3 +80,21 @@ jobs:
 
       - name: Test all
         run: cargo test --all
+
+  # gateway-proxy 的 feature 门编译验证：
+  # - utls：uTLS 走 meow-config/boring-tls，需要 BoringSSL（系统 cmake 编译），
+  #   平时 CI 不覆盖，改到 TLS 接线时靠这个 job 兜底。
+  # - no-default-features：协议 feature 全关的极端配置，验证 feature 门没漏。
+  proxy-feature-matrix:
+    name: Proxy Feature Matrix (utls / minimal)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cmake (BoringSSL build requirement)
+        run: sudo apt-get update && sudo apt-get install -y cmake
+      - name: Check with utls feature
+        run: cargo check -p gateway-proxy --features utls
+      - name: Check with no default features
+        run: cargo check -p gateway-proxy --no-default-features

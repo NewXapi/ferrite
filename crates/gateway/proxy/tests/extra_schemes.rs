@@ -5,7 +5,7 @@
 //! Uses env-like nodes but no real dial (adapter_for only).
 
 use gateway_proxy::adapter::adapter_for;
-use gateway_proxy::node::{ProxyNode, ProxyScheme, VlessOpts};
+use gateway_proxy::node::{NodeOpts, ProxyNode, ProxyScheme};
 
 #[test]
 fn test_parse_hysteria2() {
@@ -15,7 +15,7 @@ fn test_parse_hysteria2() {
     assert_eq!(node.host, "example.com");
     assert_eq!(node.port, 443);
     assert!(node.auth.is_some());
-    let opts = node.vless.expect("hysteria2 must populate vless opts");
+    let opts = node.opts.expect("hysteria2 must populate vless opts");
     assert_eq!(opts.sni.as_deref(), Some("cdn.example.com"));
     assert!(opts.insecure);
 }
@@ -26,7 +26,7 @@ fn test_parse_anytls() {
     let node = ProxyNode::parse_url(url).expect("anytls URL must parse");
     assert_eq!(node.scheme, ProxyScheme::AnyTls);
     assert_eq!(node.port, 8443);
-    let opts = node.vless.expect("anytls must populate opts");
+    let opts = node.opts.expect("anytls must populate opts");
     assert_eq!(opts.sni.as_deref(), Some("example.com"));
     assert!(!opts.insecure);
 }
@@ -37,7 +37,7 @@ fn test_parse_snell() {
     let node = ProxyNode::parse_url(url).expect("snell URL must parse");
     assert_eq!(node.scheme, ProxyScheme::Snell);
     assert_eq!(node.port, 443);
-    let opts = node.vless.expect("snell must populate opts");
+    let opts = node.opts.expect("snell must populate opts");
     assert_eq!(opts.version.as_deref(), Some("v5"));
     assert_eq!(opts.obfs.as_deref(), Some("http"));
     assert_eq!(opts.obfs_uri.as_deref(), Some("/obfs"));
@@ -69,7 +69,7 @@ fn test_adapter_for_hysteria2_happy_path() {
             user: "unused".to_string(),
             pass: "validpass".to_string(),
         }),
-        vless: Some(VlessOpts::default()),
+        opts: Some(NodeOpts::default()),
         channel_keys: vec!["test".to_string()],
         priority: 0,
     };
@@ -93,7 +93,7 @@ fn test_adapter_for_bad_params() {
         host: "example.com".to_string(),
         port: 443,
         auth: None, // missing auth -> fallback
-        vless: None,
+        opts: None,
         channel_keys: vec!["test".to_string()],
         priority: 0,
     };
