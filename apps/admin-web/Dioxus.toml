@@ -5,11 +5,6 @@ asset_dir = "assets"
 [web.app]
 title = "Ferrite Admin"
 
+# 共享 dev 后端 (scripts/dev-backend.sh) 监听 127.0.0.1:3211；所有 .wt 会话前端代理统一指向它。
 [[web.proxy]]
-backend = "http://127.0.0.1:3000/api"
-
-[[web.proxy]]
-backend = "http://localhost:3000/mj"
-
-[[web.proxy]]
-backend = "http://localhost:3000/pg"
+backend = "http://127.0.0.1:3211/api"

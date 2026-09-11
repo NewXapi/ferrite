@@ -341,6 +341,7 @@ pub fn router(state: ProxyNodeAppState) -> axum::Router {
             axum::routing::put(update).delete(remove),
         )
         .route("/api/proxy_nodes/{key}/probe", post(probe))
+        .route("/api/proxy_nodes/report", get(report))
         .route("/api/proxy_nodes/subscription", post(import_subscription))
         .route("/api/proxy_nodes/batch", post(import_share_links))
         .with_state(state)
@@ -482,4 +483,55 @@ async fn import_share_links(
         .map_err(svc_err)?;
     s.svc.reload_into(&s.proxies).await;
     Ok(Json(json!(report)))
+}
+
+/// 节点状态报告：DB 全量行（含 disabled，管理台要看全貌）join 数据面运行时状态。
+///
+/// **id 对应规则**（与 [`load_proxy_snapshot`] 的耦合，改动行序规则必须两处同步）：
+/// 数据面快照按 `(priority DESC, created_at)` 给 **enabled** 行连续编 id（≥1）。
+/// report 用同一条 ORDER BY 遍历全表，只对 enabled 行递增计数器——计数器即快照 id，
+/// `node_stats()` 的键。disabled 行没有运行时身份，`stats` 恒为 `null`。
+///
+/// `stats` 里 `lastDelayMs` 为 `null` 表示"从未探测/未装配"，不要拿 0 冒充。
+async fn report(State(s): State<ProxyNodeAppState>, h: HeaderMap) -> Result<Json<Value>, ErrResp> {
+    use gateway_proxy::manager::NodeStats;
+    require_admin(&s.auth, &h).await.map_err(err_json)?;
+    let rows: Vec<ProxyNodeRow> = sqlx::query_as(&format!(
+        "SELECT {COLS} FROM proxy_nodes ORDER BY priority DESC, created_at"
+    ))
+    .fetch_all(&s.svc.pool)
+    .await
+    .map_err(|e| svc_err(ServiceError::Db(e)))?;
+    let stats: std::collections::HashMap<i64, NodeStats> = s
+        .proxies
+        .node_stats()
+        .into_iter()
+        .map(|st| (st.node_id, st))
+        .collect();
+    let mut id_counter = 0i64;
+    let items: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            let node_id = if r.enabled {
+                id_counter += 1;
+                id_counter
+            } else {
+                0
+            };
+            let mut v = serde_json::to_value(row_to_view(r)).unwrap_or(Value::Null);
+            v["stats"] = stats
+                .get(&node_id)
+                .filter(|_| node_id > 0)
+                .map_or(Value::Null, |st| {
+                    json!({
+                        "inflight": st.inflight,
+                        "failureCount": st.failure_count,
+                        "cooldownRemainingSecs": st.cooldown_remaining_secs,
+                        "lastDelayMs": st.last_delay_ms,
+                    })
+                });
+            v
+        })
+        .collect();
+    Ok(Json(json!({ "items": items })))
 }

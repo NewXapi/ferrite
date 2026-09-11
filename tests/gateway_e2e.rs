@@ -323,7 +323,7 @@ async fn e2e_build_app_with_proxy_node_returns_502() {
             host: "127.0.0.1".into(),
             port: 1,
             auth: None,
-            vless: None,
+            opts: None,
             channel_keys: vec!["ch1".into()],
             priority: 10,
         }],

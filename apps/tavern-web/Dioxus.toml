@@ -5,8 +5,9 @@ asset_dir = "assets"
 [web.app]
 title = "Tavern"
 
+# 共享 dev 后端 (scripts/dev-backend.sh) 监听 127.0.0.1:3211；所有 .wt 会话前端代理统一指向它。
 [[web.proxy]]
-backend = "http://localhost:3000/tavern"
+backend = "http://127.0.0.1:3211/tavern"
 
 [[web.proxy]]
-backend = "http://localhost:3000/v1"
+backend = "http://127.0.0.1:3211/v1"

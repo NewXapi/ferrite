@@ -17,7 +17,11 @@
 
 use std::sync::Arc;
 
+use axum::Json;
 use axum::Router;
+use axum::extract::State;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use sqlx::PgPool;
 
 use crate::config::Config;
@@ -45,31 +49,54 @@ use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 /// 组装完整应用 Router：admin-api + tavern + pipeline gateway + 用量中间件 + reload。
 pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
     let egress: Arc<dyn forward::egress::Egress> = Arc::new(ReqwestEgress::new());
-    assemble(pool, egress).await
+    assemble(pool, egress, true).await
 }
 
 /// 组装完整应用 Router 的公共实现。
 ///
 /// `egress` 可注入（e2e 传 mock），生产路径由 [`build_app`] 传入 `ReqwestEgress`。
+///
+/// `wire_proxy_pool`：生产 true — 模型请求经 [`gateway_proxy::ProxyManager`]
+/// 租出口 Client（直连/代理）。测试 false — ForwardStage 不接代理池，上游
+/// 一律走注入的 `egress`：`build_app_with_egress` 的文档契约是"不发起真实
+/// 上游请求"，而代理池对无节点渠道也返回直连 reqwest Client，会绕过 mock
+/// 去拨 base_url 真实地址（e2e 里是不可达的假地址 → 502）。
 async fn assemble(
     pool: PgPool,
     egress: Arc<dyn forward::egress::Egress>,
+    wire_proxy_pool: bool,
 ) -> anyhow::Result<Router> {
-    // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
-    // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
+    // 建表必须先于任何查询：admin_router::router 内部跑 db_bootstrap::run_migrations，
+    // 而 load_proxy_snapshot 查 proxy_nodes（迁移 0005 才建）。顺序颠倒则空库首启失败。
     let proxies = Arc::new(gateway_proxy::ProxyManager::new());
-    proxies.install(admin_proxy::load_proxy_snapshot(&pool).await?);
 
-    // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）
-    let admin = admin_router::router(pool.clone(), proxies.clone())
+    // JWT secret 属组装关注点：admin-router 只接收现成的 AuthService，不读环境变量。
+    let secret = match std::env::var("FERRITE_JWT_SECRET") {
+        Ok(s) => s,
+        Err(_) => anyhow::bail!("FERRITE_JWT_SECRET env var required"),
+    };
+    let auth_svc = Arc::new(auth::AuthService::new(pool.clone(), secret.into_bytes())?);
+
+    // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）；
+    // auth_svc 同时留给 reload 路由的 bearer 鉴权（见 ReloadState）。
+    let admin = admin_router::router(pool.clone(), auth_svc.clone(), proxies.clone())
         .await
         .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
+
+    // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
+    // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
+    proxies.install(admin_proxy::load_proxy_snapshot(&pool).await?);
+    // 主动探测循环（M3-B）：默认关闭，options 表 proxy.probe_enabled=true 才开。
+    // 与上一行同因依赖迁移建的表，必须在 run_migrations 之后。
+    spawn_probe_loop(pool.clone(), proxies.clone());
 
     // 酒馆域路由
     let tavern = tavern::router(&tavern::TavernConfig::default())?;
 
     // 从 PG 加载快照 → Dispatcher + gates → Pipeline
-    let snapshots = snapshot::load_snapshots(&pool).await?;
+    // Arc 包装是 reload 的前提：ReloadState 与 usage 中间件必须共享同一批
+    // Shared* 实例，reload 时 store 新值双方才自动可见。
+    let snapshots = Arc::new(snapshot::load_snapshots(&pool).await?);
     let health = Arc::new(MemoryHealthTable::new());
     let dispatcher = Arc::new(Dispatcher::new(
         Some(Arc::new(snapshots.dispatch.clone())),
@@ -95,28 +122,48 @@ async fn assemble(
 
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
 
+    // 出口接线：生产接代理池（租约 Client 优先），测试保持 mock egress 直通。
+    let forward_stage = ForwardStage::new(egress, adaptors.clone());
+    let forward_stage = if wire_proxy_pool {
+        forward_stage.with_proxies(proxies.clone())
+    } else {
+        forward_stage
+    };
+
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
-            .push(
-                ForwardStage::new(egress, adaptors.clone())
-                    .with_proxies(proxies.clone())
-                    .with_retry(dispatcher, dispatch::RetryPolicy::default()),
-            )
+            // dispatcher 同时被 reload 路由（ReloadState）与重试循环持有，clone 一份给 stage；
+            // with_retry 后 ForwardStage 自己驱动选路，不再需要 DispatchStage（避免双次 select/限流计数）
+            .push(forward_stage.with_retry(dispatcher.clone(), dispatch::RetryPolicy::default()))
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 
-    // 用量中间件包 pipeline router
+    // 用量中间件包 pipeline router；再叠路径守卫：pipeline 只接数据面路径
+    // （/v1* 与 /healthz），其余未匹配路径一律 404，不让 admin/tavern 之外
+    // 的杂路径掉进 pipeline 被 AuthGate 判 401（恢复 scoped fallback 语义）。
     let usage_state = usage::UsageMiddlewareState {
         pool: pool.clone(),
-        snapshots: Arc::new(snapshots),
+        snapshots: snapshots.clone(),
     };
-    let pipeline_router = gateway_pipeline::router::build_router(pipeline).layer(
-        axum::middleware::from_fn_with_state(usage_state, usage::usage_middleware),
-    );
+    let pipeline_router = gateway_pipeline::router::build_router(pipeline)
+        .layer(axum::middleware::from_fn_with_state(
+            usage_state,
+            usage::usage_middleware,
+        ))
+        .layer(axum::middleware::from_fn(gateway_path_guard));
 
-    // reload 端点（501 占位；真实实现需 admin 守卫 + 热更快照）
-    let reload = Router::new().route("/api/gateway/reload", axum::routing::post(reload_handler));
+    // reload 端点：bearer 鉴权 + admin 守卫 + 热更快照（Shared* store + set_snapshot）
+    let reload_state = ReloadState {
+        pool: pool.clone(),
+        dispatcher: dispatcher.clone(),
+        snapshots: snapshots.clone(),
+        auth_svc,
+    };
+    let reload = Router::new().route(
+        "/api/gateway/reload",
+        axum::routing::post(reload_handler).with_state(reload_state),
+    );
 
     // 合并：具体路由优先，pipeline 作为 fallback 兜底 /v1/*
     Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
@@ -127,17 +174,200 @@ pub async fn build_app_with_egress(
     pool: PgPool,
     egress: std::sync::Arc<dyn forward::egress::Egress>,
 ) -> anyhow::Result<Router> {
-    assemble(pool, egress).await
+    assemble(pool, egress, false).await
 }
 
-async fn reload_handler() -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
-    // ponytail: 热重载快照；真实实现需要 admin 守卫 + 重建 gates/Dispatcher 后 store。
-    // 本 PR 先用重启替代，返回 501 占位。
-    (
-        axum::http::StatusCode::NOT_IMPLEMENTED,
-        axum::Json(serde_json::json!({
-            "code": 501,
-            "message": "reload not implemented; restart process to refresh snapshots"
-        })),
+/// pipeline 数据面路径守卫：只放行 `/healthz`、`/v1`、`/v1/*`、`/v1beta*`。
+///
+/// 合并后的 Router 里 pipeline 提供 fallback；不守卫则任意未匹配路径
+/// （如拼错的 /api/*）会掉进 pipeline 被 AuthGate 判 401，把"路径不存在"
+/// 误报成"未认证"。守卫返回纯文本 404（对齐 e2e 契约 `not found`）。
+async fn gateway_path_guard(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let path = req.uri().path();
+    let scoped = path == "/healthz"
+        || path == "/v1"
+        || path.starts_with("/v1/")
+        || path.starts_with("/v1beta");
+    if scoped {
+        next.run(req).await
+    } else {
+        (axum::http::StatusCode::NOT_FOUND, "not found").into_response()
+    }
+}
+
+/// POST /api/gateway/reload 的路由 state：热更目标 + 鉴权服务。
+///
+/// `snapshots` 必须与 usage 中间件 / gate 持有的是同一个 `Arc<Snapshots>`
+/// （boot 时 clone 同源），否则 store 新值后中间件看不到。
+/// `dispatcher` 同理：与 DispatchStage 共享同一 `Arc<Dispatcher>`。
+/// axum state 要求 Clone，全部字段都是廉价 Arc/pool 句柄克隆。
+#[derive(Clone)]
+struct ReloadState {
+    pool: PgPool,
+    dispatcher: Arc<Dispatcher>,
+    snapshots: Arc<snapshot::Snapshots>,
+    auth_svc: Arc<auth::AuthService>,
+}
+
+/// reload 失败响应形状（对齐 admin-catalog 的 err_json 模式）。
+type ReloadErrResp = (StatusCode, Json<serde_json::Value>);
+
+/// POST /api/gateway/reload — 热重载管理面快照（channels / route_units / tokens / users）。
+///
+/// 鉴权与守卫先于任何查库/热更：
+/// - 无 Authorization 头或 token 无效/过期 → 401（`bearer_user` 的 `AuthError` 状态码映射）
+/// - role < [`auth::routes::ADMIN_ROLE_THRESHOLD`] → 403（对齐 admin-catalog `require_admin`）
+///
+/// 成功 → 200 `{"success": true, "data": {channels, route_units, tokens, users}}`；
+/// 加载/store 失败（DB 错误等）→ 500 `{"success": false, "message": ...}`，运行时
+/// 快照保持原样（store 只在加载全部成功后发生）。
+async fn reload_handler(
+    State(state): State<ReloadState>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<serde_json::Value>), ReloadErrResp> {
+    // 1. bearer 鉴权：无头/坏 token → 401（不查管理表，先拒绝）
+    let user = auth::routes::bearer_user(&state.auth_svc, &headers)
+        .await
+        .map_err(|e| {
+            (
+                e.status(),
+                Json(serde_json::json!({ "code": e.code(), "message": e.to_string() })),
+            )
+        })?;
+
+    // 2. admin 守卫：role >= 10（10=admin, 100=root）
+    if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                serde_json::json!({ "code": "FORBIDDEN", "message": "forbidden: admin required" }),
+            ),
+        ));
+    }
+
+    // 3. 热更：加载最新管理表数据 → store 进 Shared* 与 Dispatcher（非原子四次
+    // store，见 snapshot::reload_snapshots 文档）
+    let counts = snapshot::reload_snapshots(&state.pool, &state.snapshots, &state.dispatcher)
+        .await
+        .map_err(|e| {
+            tracing::error!("gateway snapshot reload failed: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "success": false, "message": e.to_string() })),
+            )
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "success": true, "data": counts })),
+    ))
+}
+
+// ---------- M3-B 主动探测循环 ----------
+
+/// options 表的探测相关键。默认都没有 → 探测关闭。
+mod probe_keys {
+    pub const ENABLED: &str = "proxy.probe_enabled";
+    pub const INTERVAL_SECS: &str = "proxy.probe_interval_secs";
+}
+
+/// options 行的探测配置（纯数据，便于单测 JSONB 解析缺省逻辑）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbeOptions {
+    pub enabled: bool,
+    pub interval_secs: u64,
+}
+
+impl Default for ProbeOptions {
+    fn default() -> Self {
+        // 缺省关闭 + 5 分钟。探测会给机场带真实流量，必须显式开启。
+        Self {
+            enabled: false,
+            interval_secs: 300,
+        }
+    }
+}
+
+/// 从 options 行解析探测配置：缺键/解析失败一律落缺省（配置坏了不能炸循环）。
+///
+/// `rows` 是 `(key, value)`，value 为原始 JSONB（反序列化成 [`serde_json::Value`]）。
+pub fn parse_probe_options(rows: &[(String, serde_json::Value)]) -> ProbeOptions {
+    let mut opts = ProbeOptions::default();
+    for (key, value) in rows {
+        match key.as_str() {
+            probe_keys::ENABLED => {
+                opts.enabled = value.as_bool().unwrap_or(false);
+            }
+            probe_keys::INTERVAL_SECS => {
+                // 下限 60s：误配成 1s 会变成对机场的持续打压。
+                opts.interval_secs = value.as_u64().unwrap_or(300).max(60);
+            }
+            _ => {}
+        }
+    }
+    opts
+}
+
+/// 读 options 表 → [`ProbeOptions`]。表不存在/查询失败按缺省（关闭）处理——
+/// 探测是可选增强，读取失败不该在日志里刷屏。
+async fn read_probe_options(pool: &PgPool) -> ProbeOptions {
+    let rows: Vec<(String, serde_json::Value)> =
+        sqlx::query_as("SELECT key, value FROM options WHERE key IN ($1, $2)")
+            .bind(probe_keys::ENABLED)
+            .bind(probe_keys::INTERVAL_SECS)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+    parse_probe_options(&rows)
+}
+
+/// 探测目标：第一个 enabled 渠道 base_url 的 host + 443。
+///
+/// 粗略近似——多渠道走不同上游时只探得到第一个；每渠道独立目标是 M3-C 的事。
+/// 无 enabled 渠道或 base_url 解析不出 host 时返回 None（本轮跳过）。
+async fn probe_target(pool: &PgPool) -> Option<String> {
+    let (base_url,): (String,) = sqlx::query_as(
+        "SELECT base_url FROM api_channels WHERE status = 1 AND base_url <> '' ORDER BY priority DESC NULLS LAST LIMIT 1",
     )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+    let parsed = url::Url::parse(&base_url).ok()?;
+    let host = parsed.host_str()?;
+    Some(format!("{host}:443"))
+}
+
+/// 启动定时探测循环（生命周期 = 进程生命周期，不做优雅关闭）。
+///
+/// 每轮都重新读 options——管理台改配置下一轮即生效，不需要 reload。
+/// 间隔下限 60s 见 [`parse_probe_options`]。
+fn spawn_probe_loop(pool: PgPool, proxies: Arc<gateway_proxy::ProxyManager>) {
+    tokio::spawn(async move {
+        loop {
+            let opts = read_probe_options(&pool).await;
+            if opts.enabled {
+                match probe_target(&pool).await {
+                    Some(target) => {
+                        // ponytail: timeout 固定 5s；要可配再加 options 项。
+                        let results = proxies
+                            .probe_all(&target, std::time::Duration::from_secs(5))
+                            .await;
+                        let alive = results.iter().filter(|r| r.is_alive()).count();
+                        tracing::info!(
+                            target = %target,
+                            alive,
+                            total = results.len(),
+                            "proxy probe round finished"
+                        );
+                    }
+                    None => tracing::debug!("probe enabled but no channel base_url to target"),
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(opts.interval_secs)).await;
+        }
+    });
 }

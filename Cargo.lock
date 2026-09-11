@@ -283,6 +283,7 @@ dependencies = [
  "tracing-appender",
  "tracing-log",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
@@ -5226,18 +5227,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "session"
-version = "0.1.0"
-dependencies = [
- "client",
- "dioxus",
- "gloo-net",
- "http",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6039,6 +6028,7 @@ dependencies = [
  "bytes",
  "chrono",
  "contract",
+ "db-bootstrap",
  "dispatch",
  "forward",
  "futures-util",
@@ -6051,6 +6041,7 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "metering",
+ "observe",
  "rand 0.8.8",
  "serde",
  "serde_json",
