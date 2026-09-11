@@ -23,7 +23,7 @@ async fn make_svc() -> (RedeemService, sqlx::PgPool) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    billing::ensure_table(&pool).await.expect("ddl");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     (RedeemService::new(pool.clone()), pool)
 }
 

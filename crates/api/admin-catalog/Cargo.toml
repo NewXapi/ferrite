@@ -25,4 +25,5 @@ hex      = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+db-bootstrap = { path = "../db-bootstrap" }
 tokio = { workspace = true }

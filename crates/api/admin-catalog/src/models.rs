@@ -13,35 +13,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    const DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS api_models (
-    key           UUID PRIMARY KEY,
-    name          TEXT UNIQUE NOT NULL,
-    owner         TEXT NOT NULL DEFAULT '',
-    model_type    TEXT NOT NULL DEFAULT 'chat',
-    base_url      TEXT NOT NULL DEFAULT '',
-    api_key       TEXT NOT NULL DEFAULT '',
-    capabilities  JSONB NOT NULL DEFAULT '[]',
-    speed         INT NOT NULL DEFAULT 0,
-    rating        JSONB NOT NULL DEFAULT '{}',
-    usage_count   BIGINT NOT NULL DEFAULT 0,
-    max_tokens    INT NOT NULL DEFAULT 0,
-    is_vision     BOOLEAN NOT NULL DEFAULT false,
-    is_tool       BOOLEAN NOT NULL DEFAULT false,
-    status        SMALLINT NOT NULL DEFAULT 1,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_api_models_name ON api_models(name);
-CREATE INDEX IF NOT EXISTS idx_api_models_owner ON api_models(owner);
-CREATE INDEX IF NOT EXISTS idx_api_models_model_type ON api_models(model_type);
-CREATE INDEX IF NOT EXISTS idx_api_models_status ON api_models(status);
-CREATE INDEX IF NOT EXISTS idx_api_models_created_at ON api_models(created_at DESC);
-"#;
-    sqlx::raw_sql(DDL).execute(pool).await?;
-    Ok(())
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

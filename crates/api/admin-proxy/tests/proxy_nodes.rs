@@ -28,13 +28,9 @@ async fn make_svc() -> (ProxyNodeService, sqlx::PgPool) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    admin_proxy::ensure_table(&pool)
-        .await
-        .expect("proxy_nodes ddl");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     // 渠道表是 channel_keys 引用完整性的校验对象，一并建
-    catalog::channels::ensure_table(&pool)
-        .await
-        .expect("channels ddl");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     (ProxyNodeService::new(pool.clone()), pool)
 }
 

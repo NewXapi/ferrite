@@ -17,7 +17,7 @@
 pub mod options;
 pub mod system_info;
 
-pub use options::{OptionsAppState, OptionsService, ensure_table, router};
+pub use options::{OptionsAppState, OptionsService, router};
 pub use system_info::{
     CpuInfo, DatabaseInfo, EntityCounts, MemoryInfo, ProcessTimeTracker, SystemInfoAppState,
     SystemInfoService, SystemInfoView, router as system_info_router,

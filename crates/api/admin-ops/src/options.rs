@@ -15,23 +15,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::raw_sql(
-        r#"CREATE TABLE IF NOT EXISTS options (
-    key        TEXT PRIMARY KEY,
-    value      JSONB NOT NULL,
-    updated_by UUID,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-INSERT INTO options (key, value) VALUES ('site.registration_enabled', 'true')
-    ON CONFLICT (key) DO NOTHING;
-INSERT INTO options (key, value) VALUES ('site.quota_new_user', '0')
-    ON CONFLICT (key) DO NOTHING;"#,
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}
 
 /// 选项定义（注册表条目）。
 pub struct OptionSpec {

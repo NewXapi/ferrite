@@ -22,24 +22,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::raw_sql(
-        r#"CREATE TABLE IF NOT EXISTS billing_redemptions (
-    key         UUID PRIMARY KEY,
-    code_hash   TEXT UNIQUE NOT NULL,
-    code_preview TEXT NOT NULL DEFAULT '',
-    quota       BIGINT NOT NULL,
-    status      SMALLINT NOT NULL DEFAULT 1,
-    redeemed_by UUID,
-    redeemed_at TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_billing_redemptions_status ON billing_redemptions(status);"#,
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

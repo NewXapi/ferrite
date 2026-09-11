@@ -21,5 +21,6 @@ auth     = { path = "../auth" }
 chrono   = { workspace = true }
 
 [dev-dependencies]
+db-bootstrap = { path = "../db-bootstrap" }
 tokio = { workspace = true }
 tower = { workspace = true }

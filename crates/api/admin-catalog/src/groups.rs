@@ -16,25 +16,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
-    const DDL: &str = r#"
-CREATE TABLE IF NOT EXISTS api_groups (
-    key             UUID PRIMARY KEY,
-    name            TEXT UNIQUE NOT NULL,
-    ratio           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
-    model_whitelist JSONB NOT NULL DEFAULT '[]',
-    remark          TEXT NOT NULL DEFAULT '',
-    status          SMALLINT NOT NULL DEFAULT 1,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-INSERT INTO api_groups (key, name, ratio)
-VALUES ('00000000-0000-0000-0000-0000000000d1', 'default', 1.0)
-ON CONFLICT (name) DO NOTHING;
-"#;
-    sqlx::raw_sql(DDL).execute(pool).await?;
-    Ok(())
-}
 
 #[derive(Debug, Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]

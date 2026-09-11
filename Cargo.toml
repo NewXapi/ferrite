@@ -21,6 +21,7 @@ members = [
     "crates/api/admin-observe",
     "crates/api/admin-ops",
     "crates/api/admin-router",
+    "crates/api/db-bootstrap",
     "crates/api/tavern-storage",
     "crates/api/tavern-auth",
     "crates/api/tavern-characters",

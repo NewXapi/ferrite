@@ -24,9 +24,7 @@ async fn make_svcs() -> (RouteUnitService, ChannelService, sqlx::PgPool) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    catalog::channels::ensure_table(&pool)
-        .await
-        .expect("channels ddl");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     catalog::routes::ensure_table(&pool)
         .await
         .expect("routes ddl");

@@ -22,7 +22,7 @@ async fn make_service() -> AuthService {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    auth::ddl::run(&pool).await.expect("ddl");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec()).unwrap()
 }
 

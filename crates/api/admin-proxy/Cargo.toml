@@ -22,5 +22,6 @@ auth     = { path = "../auth" }
 gateway-proxy = { path = "../../gateway/proxy" }
 
 [dev-dependencies]
+db-bootstrap = { path = "../db-bootstrap" }
 tokio = { workspace = true }
 catalog = { path = "../admin-catalog" }

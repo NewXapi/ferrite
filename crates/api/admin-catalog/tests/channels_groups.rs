@@ -24,12 +24,8 @@ async fn make_svcs() -> (ChannelService, GroupService) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    catalog::channels::ensure_table(&pool)
-        .await
-        .expect("channels ddl");
-    catalog::groups::ensure_table(&pool)
-        .await
-        .expect("groups ddl");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     (ChannelService::new(pool.clone()), GroupService::new(pool))
 }
 
@@ -260,8 +256,8 @@ async fn probe_records_history_and_availability() {
     //   网络路径的格式错误分支（非法 URL）由 test_channel 对 error_kind 的归类覆盖。）
     let (_ch, _g) = make_svcs().await;
     let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
-    catalog::channels::ensure_table(&pool).await.unwrap();
-    observe::monitor::ensure_table(&pool).await.unwrap();
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     let monitor = observe::monitor::MonitorDeps::new(pool.clone());
     let key = uuid::Uuid::new_v4();
 
@@ -314,7 +310,7 @@ async fn test_channel_rejects_bad_config() {
     // 无 keys / 无 model 的渠道探活 → BadRequest（不走网络）
     let (svc, _g) = make_svcs().await;
     let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
-    observe::monitor::ensure_table(&pool).await.unwrap();
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     let monitor = observe::monitor::MonitorDeps::new(pool.clone());
 
     // 直接插一个无 keys 渠道（create 校验会拦，这里绕过以测 test_channel 分支）
@@ -352,7 +348,7 @@ async fn token_regenerate_key_rotates() {
         .connect(&db_url())
         .await
         .unwrap();
-    catalog::tokens::ensure_table(&pool).await.unwrap();
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     let svc = TokenService::new(pool);
 
     let owner = uuid::Uuid::new_v4();
@@ -392,7 +388,7 @@ async fn user_get_and_search() {
         .connect(&db_url())
         .await
         .unwrap();
-    auth::ddl::run(&pool).await.unwrap();
+    db_bootstrap::run_migrations(&pool).await.expect("migrations");
     let svc = AuthService::new(pool, b"test-secret-must-be-long-enough-32!".to_vec()).unwrap();
 
     let username = format!("usr_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);

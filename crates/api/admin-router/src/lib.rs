@@ -10,18 +10,11 @@ pub async fn router(
     pool: PgPool,
     proxies: std::sync::Arc<gateway_proxy::ProxyManager>,
 ) -> Result<Router, Box<dyn std::error::Error>> {
-    auth::ddl::run(&pool).await?;
-    catalog::tokens::ensure_table(&pool).await?;
-    catalog::channels::ensure_table(&pool).await?;
-    catalog::groups::ensure_table(&pool).await?;
-    catalog::models::ensure_table(&pool).await?;
-    observe::logs::ensure_table(&pool).await?;
-    observe::monitor::ensure_table(&pool).await?;
-    billing::ensure_table(&pool).await?;
-    ops::ensure_table(&pool).await?;
-    catalog::routes::ensure_table(&pool).await?;
-    admin_proxy::ensure_table(&pool).await?;
-    tracing::info!("admin-api tables ensured");
+    // 建表唯一入口：db/migrations（ensure_table 补丁式建表已退役）。
+    // route_units 不在迁移内（已废弃，随路由数据面重构一起删除），
+    // 其管理 CRUD 暂留但新库不再建表。
+    db_bootstrap::run_migrations(&pool).await?;
+    tracing::info!("db migrations applied");
 
     let secret =
         std::env::var("FERRITE_JWT_SECRET").map_err(|_| "FERRITE_JWT_SECRET env var required")?;
