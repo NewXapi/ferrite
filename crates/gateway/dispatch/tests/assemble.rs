@@ -63,7 +63,7 @@ fn mk_ctx() -> gateway_pipeline::RequestCtx {
     gateway_pipeline::RequestCtx {
         request: meta,
         token: Some(gateway_pipeline::TokenInfo {
-            id: 1,
+            id: "tok-1".into(),
             group: "default".to_string(),
             enabled: true,
             allowed_models: None,

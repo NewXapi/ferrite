@@ -44,8 +44,8 @@ impl Gate for QuotaGate {
             .as_deref()
             .ok_or(Rejection::ModelNotSpecified)?;
 
-        // 1. 查余额（按 token_id；key 来自 TokenInfo.id）
-        let remaining = self.quotas.load().remaining(&token.id.to_string());
+        // 1. 查余额（按 token 身份主键；key 即 TokenInfo.id == meta.key UUID 字符串）
+        let remaining = self.quotas.load().remaining(&token.id);
         if remaining <= 0 {
             return Err(Rejection::InsufficientQuota { remaining, cost: 0 });
         }

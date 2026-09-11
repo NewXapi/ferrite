@@ -337,11 +337,8 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<SharedUserSnapshot> {
 
 /// 构建 quota 快照。
 ///
-/// key 口径必须与 `QuotaGate` 一致：它查 `TokenInfo.id.to_string()`，而 `AuthGate`
-/// 的 `id_from_meta` 是 `meta.key.parse::<i64>().unwrap_or(0)`。契约层 token key 是
-/// UUID 字符串，parse 成 i64 必然失败 → 全部落到 "0"。
-/// TODO(#211): gate 的 TokenInfo.id 应改为 String（与 contract 的 UUID key 对齐），
-/// 届时这里同步改回 `meta.key.clone()`；当前先与 gate 口径保持一致，否则恒 402。
+/// 桶键 = token 的 UUID meta.key，与 `QuotaGate` 查询键（`TokenInfo.id`，
+/// 现为 String，承载 contract 的 UUID key）一致。
 fn build_quota_snapshot(token_records: &[TokenRecord]) -> SharedQuota {
     let quota_snapshot = QuotaSnapshot::default();
 
@@ -351,8 +348,7 @@ fn build_quota_snapshot(token_records: &[TokenRecord]) -> SharedQuota {
         } else {
             (token.quota - token.used_quota).max(0)
         };
-        let gate_id = token.meta.key.parse::<i64>().unwrap_or(0);
-        quota_snapshot.upsert(gate_id.to_string(), remaining);
+        quota_snapshot.upsert(token.meta.key.clone(), remaining);
     }
 
     Arc::new(arc_swap::ArcSwap::from_pointee(quota_snapshot))

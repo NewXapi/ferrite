@@ -125,7 +125,7 @@ impl Stage for GateChain {
                 .filter(|g| !g.is_empty())
                 .unwrap_or_else(|| token.group.clone());
             ctx.token = Some(gateway_pipeline::TokenInfo {
-                id: token.id,
+                id: token.id.clone(),
                 group: effective_group,
                 enabled: token.enabled,
                 allowed_models: token.allowed_models.clone(),

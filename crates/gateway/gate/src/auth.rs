@@ -45,7 +45,7 @@ impl Gate for AuthGate {
         // 3. 写入 user_key（state gate 用）+ token 信息
         ctx.user_key = Some(token_record.user_key().to_string());
         ctx.token = Some(TokenInfo {
-            id: id_from_meta(&token_record.meta.key),
+            id: token_record.meta.key.clone(),
             user_id: 0, // 真实值由 state gate 用 user_key 查回再补
             id_hash: hash,
             group: token_record.group().unwrap_or("").to_string(),
@@ -89,9 +89,4 @@ pub fn sha256(input: &str) -> [u8; 32] {
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&out);
     arr
-}
-
-/// `meta.key` 字符串约定的数字解析；解析失败 → 0（保守；sync 层负责给合法 id）。
-fn id_from_meta(key: &str) -> i64 {
-    key.parse().unwrap_or(0)
 }
