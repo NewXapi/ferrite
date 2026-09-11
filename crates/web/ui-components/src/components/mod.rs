@@ -3,3 +3,13 @@ pub mod badge;
 pub mod button;
 pub mod card;
 pub mod input;
+
+// PR2 adopting 组件（feat/ui-shadcn-gap）
+pub mod avatar;
+pub mod dropdown_menu;
+pub mod select;
+pub mod sheet;
+pub mod sidebar;
+pub mod skeleton;
+pub mod switch;
+pub mod toast;

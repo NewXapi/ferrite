@@ -6639,6 +6639,7 @@ dependencies = [
  "contract",
  "dioxus",
  "gloo-net",
+ "gloo-timers",
  "serde",
  "serde_json",
  "web-sys",
