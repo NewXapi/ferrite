@@ -56,17 +56,21 @@ async fn assemble(
     pool: PgPool,
     egress: Arc<dyn forward::egress::Egress>,
 ) -> anyhow::Result<Router> {
-    // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
-    // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
+    // 建表必须先于任何查询：admin_router::router 内部跑 db_bootstrap::run_migrations，
+    // 而 load_proxy_snapshot 查 proxy_nodes（迁移 0005 才建）。顺序颠倒则空库首启失败。
     let proxies = Arc::new(gateway_proxy::ProxyManager::new());
-    proxies.install(admin_proxy::load_proxy_snapshot(&pool).await?);
-    // 主动探测循环（M3-B）：默认关闭，options 表 proxy.probe_enabled=true 才开。
-    spawn_probe_loop(pool.clone(), proxies.clone());
 
     // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）
     let admin = admin_router::router(pool.clone(), proxies.clone())
         .await
         .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
+
+    // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
+    // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
+    proxies.install(admin_proxy::load_proxy_snapshot(&pool).await?);
+    // 主动探测循环（M3-B）：默认关闭，options 表 proxy.probe_enabled=true 才开。
+    // 与上一行同因依赖迁移建的表，必须在 run_migrations 之后。
+    spawn_probe_loop(pool.clone(), proxies.clone());
 
     // 酒馆域路由
     let tavern = tavern::router(&tavern::TavernConfig::default())?;
