@@ -47,7 +47,7 @@ ProxySnapshot ──install──▶ ProxyPool  (ArcSwap<HashMap<channel_key, Ve
 | inflight 计数与 `Lease::drop` 自动释放 | `manager.rs` + `Lease` | #74 |
 | 配置错误一律 warn + 回落直连（不 panic 网关，不返 502） | `manager.rs::client_for` / `adapter.rs::adapter_for` | #84 |
 | SSRF 防护（IP 字面量 + DNS 解析结果双重校验） | `proxy/src/ssrf.rs` | 早期 |
-| `proxy_nodes` 表 + CRUD + 掩码回传 + 渠道引用完整性 + probe 端点 | `crates/api/admin-proxy/src/lib.rs` | #106 |
+| `proxy_nodes` 表 + CRUD + 掩码回传 + 渠道引用完整性 + probe 端点 | `crates/api/admin-proxy/src/lib.rs`（DDL 已迁 `db/migrations/0005_ops_billing_proxy.sql`） | #106 |
 | CRUD 变更后原地热更新（`reload_into` → `install`），apps/api 启动装载 | `admin-proxy` + `apps/api/src/lib.rs` | #108 |
 | 真节点拨号验证（env 门控，三层降级） | `forward/tests/protocol_live.rs` | #98 |
 | 管理台「出口代理节点」编辑器（前端态 + URL 校验） | `web/admin-page-admin/src/system.rs` | #96 |
