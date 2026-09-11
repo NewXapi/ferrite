@@ -38,7 +38,20 @@ impl Stage for DispatchStage {
             Ok(candidate) => {
                 // 候选本身就是 SelectedRoute：secret / upstream_model /
                 // provider_type / settings 全部随之进入 ctx，forward 不再自造。
+                let channel_key = candidate.unit.channel_key.clone();
                 ctx.route = Some(candidate);
+                // 渠道归因：key 来自 unit；展示名回查 Dispatcher 快照。
+                // SelectedRoute 不携带名字（不改 dispatch 的类型），查不到
+                // （快照刚热更移除该渠道等竞态）就降级为只带 key。
+                let channel_name = self.dispatch.channel_name(&channel_key);
+                if channel_name.is_none() {
+                    tracing::debug!(
+                        channel_key = %channel_key,
+                        "channel name not found in dispatch snapshot; usage attribution carries key only"
+                    );
+                }
+                ctx.selected_channel_key = Some(channel_key);
+                ctx.selected_channel_name = channel_name;
                 Ok(StageOutcome::Continue)
             }
             Err(DispatchError::SnapshotNotReady) => Err(StageError::NotReady),

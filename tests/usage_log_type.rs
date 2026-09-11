@@ -31,6 +31,7 @@ async fn pg_pool() -> Option<sqlx::PgPool> {
 }
 
 /// 一个够真的用量载荷：字段值本身不重要，重要的是它们被原样带进事件。
+/// channel_key 用合法 UUID 字符串（usage_logs.channel_key 是 UUID 列）。
 fn sample_job(model: &str) -> RecordJob {
     RecordJob {
         user_uuid: Uuid::new_v4(),
@@ -38,6 +39,8 @@ fn sample_job(model: &str) -> RecordJob {
         token_uuid: Uuid::new_v4(),
         token_name: "tk-usage-log-type".into(),
         model_name: model.into(),
+        channel_key: Some(Uuid::new_v4().to_string()),
+        channel_name: "ch_usage_log_type".into(),
         prompt_tokens: 11,
         completion_tokens: 7,
         cost: 18,
@@ -62,7 +65,9 @@ fn build_consume_event_pins_log_type_to_consume() {
 /// 翻译不得吞字段：量化字段要原样带到事件上（报表按它们求和）。
 #[test]
 fn build_consume_event_carries_quantified_fields() {
-    let event = build_consume_event(&sample_job("m-pin"));
+    let job = sample_job("m-pin");
+    let channel_key = job.channel_key.clone().unwrap();
+    let event = build_consume_event(&job);
     assert_eq!(event.prompt_tokens, 11);
     assert_eq!(event.completion_tokens, 7);
     assert_eq!(event.quota, 18);
@@ -70,8 +75,38 @@ fn build_consume_event_carries_quantified_fields() {
     assert!(event.is_stream);
     assert!(event.token_key.is_some(), "token 维度统计依赖 token_key");
     assert_eq!(event.model_name, "m-pin");
-    // channel 维度中间件拿不到（pipeline 内部选定），留空是已知现状而非回归。
+    // channel 维度归因来自 pipeline 响应 extensions（RouteAttribution）：
+    // 字符串键落库前解析成 UUID；解析失败按缺失处理（NULL），不得让
+    // INSERT 报类型错。
+    assert!(
+        event.channel_key.is_some(),
+        "渠道维度统计依赖 channel_key，归因链断了会退回全 NULL"
+    );
+    assert_eq!(event.channel_key.unwrap().to_string(), channel_key);
+    assert_eq!(event.channel_name, "ch_usage_log_type");
+
+    // 非 UUID 的 channel_key 降级为 None（不炸整条记录）
+    let bad = RecordJob {
+        channel_key: Some("not-a-uuid".into()),
+        ..sample_job("m-pin")
+    };
+    let bad_event = build_consume_event(&bad);
+    assert!(bad_event.channel_key.is_none(), "非法 UUID 应按缺失处理");
+    assert_eq!(bad_event.channel_name, "ch_usage_log_type");
+}
+
+/// 无归因（dispatch 前短路等）时事件与列默认值一致：channel_key NULL、
+/// channel_name 空串——不允许出现"键在而名空"的半归因状态污染聚合。
+#[test]
+fn build_consume_event_without_attribution_leaves_channel_empty() {
+    let job = RecordJob {
+        channel_key: None,
+        channel_name: String::new(),
+        ..sample_job("m-pin")
+    };
+    let event = build_consume_event(&job);
     assert_eq!(event.channel_key, None);
+    assert_eq!(event.channel_name, "");
 }
 
 /// 全链路：write 侧构造 → 落库 → 读侧 top_usage 与 trend 都必须看到这条消费。

@@ -109,7 +109,8 @@ async fn insert_test_user(pool: &sqlx::PgPool) -> uuid::Uuid {
     user_key
 }
 
-async fn insert_channel(pool: &sqlx::PgPool) {
+/// 插入渠道；返回 (key_uuid, name)，供用量归因断言比对。
+async fn insert_channel(pool: &sqlx::PgPool) -> (uuid::Uuid, String) {
     let key = uuid::Uuid::new_v4();
     let name = format!("ch_{}", &key.to_string()[..8]);
     sqlx::query(
@@ -121,6 +122,7 @@ async fn insert_channel(pool: &sqlx::PgPool) {
     .execute(pool)
     .await
     .unwrap();
+    (key, name)
 }
 
 /// 创建 token；返回 (key_uuid, plaintext)
@@ -150,7 +152,7 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
     let _app = build_test_app(&pool).await;
 
     let user_key = insert_test_user(&pool).await;
-    insert_channel(&pool).await;
+    let (channel_key, channel_name) = insert_channel(&pool).await;
     let (_token_key, plaintext) = insert_token(&pool, user_key).await;
 
     let app = build_test_app(&pool).await;
@@ -180,6 +182,24 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
         .await
         .unwrap();
     assert!(count >= 1, "usage_logs rows: {}", count);
+
+    // 渠道归因回归闸：最新一行必须是本请求的，且带着 Dispatch 实际命中的渠道
+    // （pipeline 响应 extensions → usage 中间件 → usage_logs）。历史上这两列
+    // 恒为 NULL/空（中间件在 pipeline 外拿不到选中路由），渠道维度分析全废。
+    let (row_channel_key, row_channel_name): (Option<uuid::Uuid>, String) =
+        sqlx::query_as("SELECT channel_key, channel_name FROM usage_logs ORDER BY id DESC LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        row_channel_key,
+        Some(channel_key),
+        "usage_logs 最新一行应携带本请求命中渠道的 UUID"
+    );
+    assert_eq!(
+        row_channel_name, channel_name,
+        "usage_logs 最新一行应携带本请求命中渠道的名称"
+    );
 
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM api_tokens WHERE key = $1")
         .bind(_token_key)

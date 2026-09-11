@@ -71,6 +71,8 @@ fn mk_ctx() -> gateway_pipeline::RequestCtx {
         }),
         requested_model: Some("gpt-4o".to_string()),
         route: None,
+        selected_channel_key: None,
+        selected_channel_name: None,
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
@@ -149,6 +151,16 @@ async fn full_chain_runs_to_protocol_bridge() {
     let result = pipe.run(ctx).await;
     let resp = result.expect("full chain should produce a response");
     assert_eq!(resp.status(), 200, "mock upstream 200 应透传");
+
+    // run 必须在响应返回前把 Dispatch 的选中渠道打包进 extensions（流式/非流式
+    // 两个出口都覆盖）——链外 usage 中间件从这里读渠道归因落库。
+    let attr = resp
+        .extensions()
+        .get::<gateway_pipeline::RouteAttribution>()
+        .expect("run 应在响应 extensions 带回渠道归因");
+    assert_eq!(attr.channel_key, "ch1", "归因键 = 命中渠道的 UUID");
+    assert_eq!(attr.channel_name, "ch1", "归因名 = 快照中的渠道展示名");
+    assert_eq!(attr.model, "gpt-4o", "归因 model = 公开别名");
 }
 
 #[tokio::test]

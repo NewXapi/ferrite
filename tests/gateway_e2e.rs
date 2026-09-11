@@ -131,6 +131,8 @@ fn make_ctx() -> gateway_pipeline::RequestCtx {
         }),
         requested_model: Some("gpt-4o".into()),
         route: None,
+        selected_channel_key: None,
+        selected_channel_name: None,
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,

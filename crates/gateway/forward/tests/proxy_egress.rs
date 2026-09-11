@@ -80,6 +80,8 @@ fn make_ctx(route: Option<SelectedRoute>) -> gateway_pipeline::RequestCtx {
         }),
         requested_model: Some("gpt-4o".to_string()),
         route,
+        selected_channel_key: None,
+        selected_channel_name: None,
         upstream: None,
         streamed: STREAM,
         error: None,

@@ -18,6 +18,7 @@ arc-swap = { workspace = true }
 async-trait = "0.1"
 rand     = { workspace = true }
 chrono   = { workspace = true }
+tracing  = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 gateway-gate = { path = "../gate" }

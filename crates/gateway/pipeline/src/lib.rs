@@ -6,7 +6,7 @@
 //!
 //! ## 文件分工
 //!
-//! - [`ctx`] —— 请求上下文: `RequestCtx` / `RequestMeta` / `BodySource` / `PipeStream` / `ProtocolKind`
+//! - [`ctx`] —— 请求上下文: `RequestCtx` / `RequestMeta` / `BodySource` / `PipeStream` / `ProtocolKind` / `RouteAttribution`
 //! - [`stage`] —— `Stage` trait + `StageOutcome` + `StageError` / `UpstreamError`
 //! - [`pipeline`] —— 链式 `Pipeline` 编排器
 //! - [`router`] —— axum 集成 (`build_router` + `error_to_response`)
@@ -26,7 +26,9 @@ pub mod pipeline;
 pub mod router;
 pub mod stage;
 
-pub use ctx::{BodySource, PipeStream, ProtocolKind, RequestCtx, RequestMeta, SelectedRoute};
+pub use ctx::{
+    BodySource, PipeStream, ProtocolKind, RequestCtx, RequestMeta, RouteAttribution, SelectedRoute,
+};
 pub use error::{StageError, UpstreamError};
 pub use pipeline::Pipeline;
 pub use router::{build_router, error_to_response};

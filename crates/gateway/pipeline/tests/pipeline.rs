@@ -137,6 +137,91 @@ fn pipeline_stream_terminates_immediately() {
     assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
 }
 
+// ---------- 渠道归因打包 ----------
+
+/// 模拟 DispatchStage 的写入契约：写 route + selected_channel_* 后返回 Stream。
+struct AttributionStreamStage;
+
+#[async_trait::async_trait]
+impl Stage for AttributionStreamStage {
+    fn name(&self) -> &'static str {
+        "attribution-stream"
+    }
+    async fn handle(&self, ctx: &mut RequestCtx) -> Result<StageOutcome, StageError> {
+        ctx.route = Some(gateway_pipeline::SelectedRoute {
+            unit: contract::records::RouteUnitRecord {
+                meta: contract::records::SyncMeta {
+                    key: "u1".into(),
+                    schema_version: 1,
+                    logical_version: 1,
+                    origin: "test".into(),
+                    updated_at: chrono::Utc::now(),
+                },
+                group: "g".into(),
+                public_model: "m".into(),
+                channel_key: "ch-uuid".into(),
+                key_index: 0,
+                upstream_model: "m".into(),
+                priority: 10,
+                weight: 10,
+                status: 1,
+            },
+            secret: "s".into(),
+            base_url: "https://u".into(),
+            upstream_model: "m".into(),
+            provider_type: "openai".into(),
+            settings: serde_json::Value::Null,
+        });
+        ctx.selected_channel_key = Some("ch-uuid".into());
+        ctx.selected_channel_name = Some("渠道甲".into());
+        ctx.requested_model = Some("m".into());
+        Ok(StageOutcome::Stream(PipeStream::new(Body::empty())))
+    }
+}
+
+/// 流式出口也必须带回渠道归因：ctx 在 run 内被消费（body 被 SsePipe 接管后
+/// handler 拿不回 ctx），打包只能发生在 run 返回前。usage 中间件按此从
+/// extensions 读落库字段——流式请求丢归因会让渠道维度的用量统计缺一半。
+#[test]
+fn run_attaches_attribution_to_stream_response() {
+    let pipe = Pipeline::new().push(AttributionStreamStage);
+    let ctx = RequestCtx::new(meta("/v1/chat/completions"));
+    let resp = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(pipe.run(ctx))
+        .expect("Stream 应返回 Ok");
+    let attr = resp
+        .extensions()
+        .get::<gateway_pipeline::RouteAttribution>()
+        .expect("流式响应应带回 RouteAttribution");
+    assert_eq!(attr.channel_key, "ch-uuid");
+    assert_eq!(attr.channel_name, "渠道甲");
+    assert_eq!(attr.model, "m");
+}
+
+/// 路由未选中（dispatch 前短路，如鉴权拒绝）不插入归因：没有"实际命中的
+/// 渠道"，usage 侧按缺失处理而不是落一条空渠道的账。
+#[test]
+fn short_circuit_without_route_has_no_attribution() {
+    let calls = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let pipe = Pipeline::new().push(SpyStage {
+        name: "reject",
+        behavior: Behavior::ShortCircuit(401),
+        calls,
+    });
+    let ctx = RequestCtx::new(meta("/v1/chat/completions"));
+    let resp = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(pipe.run(ctx))
+        .expect("ShortCircuit 应返回 Ok");
+    assert!(
+        resp.extensions()
+            .get::<gateway_pipeline::RouteAttribution>()
+            .is_none(),
+        "未选中路由不得插入归因"
+    );
+}
+
 /// 流式响应必须带 `content-type`。
 ///
 /// SSE 客户端（OpenAI / Anthropic SDK）靠 `text/event-stream` 判定要按事件流读；
