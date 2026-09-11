@@ -6,7 +6,10 @@ use sqlx::PgPool;
 /// 启动时建表 + 聚合 admin-api 子域 Router。
 /// apps/api main.rs: `let admin = admin_api_router::router(pool).await?;`
 /// DDL 失败或 FERRITE_JWT_SECRET 缺失返回 Err，由调用方决定日志/退出策略。
-pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> {
+pub async fn router(
+    pool: PgPool,
+    proxies: std::sync::Arc<gateway_proxy::ProxyManager>,
+) -> Result<Router, Box<dyn std::error::Error>> {
     auth::ddl::run(&pool).await?;
     catalog::tokens::ensure_table(&pool).await?;
     catalog::channels::ensure_table(&pool).await?;
@@ -17,6 +20,7 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
     billing::ensure_table(&pool).await?;
     ops::ensure_table(&pool).await?;
     catalog::routes::ensure_table(&pool).await?;
+    admin_proxy::ensure_table(&pool).await?;
     tracing::info!("admin-api tables ensured");
 
     let secret =
@@ -69,6 +73,11 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         )),
         auth: auth_svc.clone(),
     });
+    let proxy_node_router = admin_proxy::router(admin_proxy::ProxyNodeAppState {
+        svc: std::sync::Arc::new(admin_proxy::ProxyNodeService::new(pool.clone())),
+        auth: auth_svc.clone(),
+        proxies,
+    });
 
     // auth 子路由自身不带前缀（/login /register ...），必须 nest 到 /api/user
     // 与前端 admin-client 约定的 /api/user/{login,register,...} 对齐。
@@ -84,5 +93,6 @@ pub async fn router(pool: PgPool) -> Result<Router, Box<dyn std::error::Error>> 
         .merge(route_unit_router)
         .merge(log_router)
         .merge(monitor_router)
-        .merge(system_info_router))
+        .merge(system_info_router)
+        .merge(proxy_node_router))
 }

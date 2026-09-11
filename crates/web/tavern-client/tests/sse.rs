@@ -58,12 +58,14 @@ fn test_parse_sse_line_multiple_delta_messages() {
 
 #[test]
 fn test_parse_sse_line_json_without_content() {
-    let line = "data: {\"foo\": \"bar\"}";
-    let event = parse_sse_line(line);
-    assert_eq!(
-        event,
-        Some(SseEvent::Message("{\"foo\": \"bar\"}".to_string()))
-    );
+    // 合法 JSON chunk 但没有 delta.content(典型 role-only 头帧):
+    // 必须丢弃而不是把 JSON 原文当成正文泄漏给用户。
+    let line = "data: {\"choices\": [{\"index\": 0, \"delta\": {\"role\": \"assistant\"}}]}";
+    assert_eq!(parse_sse_line(line), None);
+
+    // 任意非 OpenAI 形状的合法 JSON 同样丢弃(未知结构不猜)
+    let line2 = "data: {\"foo\": \"bar\"}";
+    assert_eq!(parse_sse_line(line2), None);
 }
 
 #[test]

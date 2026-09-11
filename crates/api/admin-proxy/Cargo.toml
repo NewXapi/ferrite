@@ -1,0 +1,26 @@
+[package]
+name = "admin-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 出口代理节点管理域 — `[[proxy_nodes]]` 的 DB 化写侧（CRUD/校验/测速）。
+# 协议装配与 URL 语义在 gateway-proxy；本 crate 只管存储与 API 面。
+
+[dependencies]
+axum     = { workspace = true }
+sqlx     = { workspace = true }
+serde    = { workspace = true }
+serde_json = { workspace = true }
+uuid     = { workspace = true }
+chrono   = { workspace = true }
+tracing  = { workspace = true }
+thiserror = { workspace = true }
+url      = "2"
+auth     = { path = "../auth" }
+gateway-proxy = { path = "../../gateway/proxy" }
+
+[dev-dependencies]
+tokio = { workspace = true }
+catalog = { path = "../admin-catalog" }

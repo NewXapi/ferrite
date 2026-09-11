@@ -32,6 +32,7 @@ fn empty_config_uses_defaults() {
     assert_eq!(cfg.dispatch.cooldown_max_seconds, 60);
     assert_eq!(cfg.retry.max_attempts, 3);
     assert!(cfg.metering.prices.is_empty());
+    assert!(cfg.proxy_nodes.is_empty());
 }
 
 /// `[dispatch].cooldown_threshold` 必须真的改变熔断时机。

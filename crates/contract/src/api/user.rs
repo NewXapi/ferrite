@@ -4,34 +4,12 @@
 use crate::records::UserRecord;
 use serde::{Deserialize, Serialize};
 
-/// role 兼容反序列化：后端 UserView 以整数 (1/10/100) 返回，历史前端契约
-/// 是语义字符串 ("user"/"admin"/"root")，两种都接受并归一为字符串。
-fn de_role<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct RoleVisitor;
-    impl serde::de::Visitor<'_> for RoleVisitor {
-        type Value = String;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("role as integer 1/10/100 or string")
-        }
-        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
-            Ok(match v {
-                100 => "root".into(),
-                10 => "admin".into(),
-                _ => "user".into(),
-            })
-        }
-        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
-            Ok(v.to_string())
-        }
-    }
-    deserializer.deserialize_any(RoleVisitor)
-}
-
-/// GET /api/user/self → data
-/// 用户在前端的投影: 不含密码哈希等存储细节, role 转语义化字符串。
+/// GET /api/user/self → 用户在前端的投影。
+///
+/// 字段与后端 `auth::service::UserView` 的 wire 形状一一对齐 (camelCase)：
+/// 不含密码哈希等存储细节。`role` 是 wire 上的 u16 位值 (1/10/100)，
+/// 语义化标签走 [`role_label`]；`request_count` 真实 `/self` 不返回故可选；
+/// `auth_version` 改密自增, Record→Dto 路径不填充 (默认 0)。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserDto {
@@ -41,24 +19,21 @@ pub struct UserDto {
     pub email: String,
     pub quota: i64,
     pub used_quota: i64,
-    /// 后端 UserView 暂无此列,缺省 0 (2026-09-09 curl 实测)。
+    /// 请求计数。真实 `/self` (UserView) 不带此字段, 故 `Option` + `#[serde(default)]`。
     #[serde(default)]
-    pub request_count: u64,
+    pub request_count: Option<u64>,
     pub group: String,
-    /// "user" | "admin" | "root";后端回整数 1/10/100 时自动归一。
-    #[serde(deserialize_with = "de_role")]
-    pub role: String,
+    /// 1=user | 10=admin | 100=root (wire 位值, 语义化用 [`role_label`])。
+    pub role: u16,
     pub status: u8,
+    /// 改密自增, 用于让旧 access/refresh 失效。Record→Dto 路径默认 0。
+    #[serde(default)]
+    pub auth_version: i64,
     pub created_at: String,
 }
 
 impl From<&UserRecord> for UserDto {
     fn from(r: &UserRecord) -> Self {
-        let role = match r.role {
-            100 => "root",
-            10 => "admin",
-            _ => "user",
-        };
         Self {
             key: r.meta.key.clone(),
             username: r.username.clone(),
@@ -66,13 +41,53 @@ impl From<&UserRecord> for UserDto {
             email: r.email.clone(),
             quota: r.quota,
             used_quota: r.used_quota,
-            request_count: r.request_count,
+            request_count: Some(r.request_count),
             group: r.group.clone(),
-            role: role.into(),
+            role: r.role,
             status: r.status,
+            auth_version: 0,
             created_at: r.created_at.format("%Y-%m-%d").to_string(),
         }
     }
+}
+
+/// role 位值 → 语义化标签: 100→root, 10→admin, 其余→user。
+pub fn role_label(role: u16) -> &'static str {
+    match role {
+        100 => "root",
+        10 => "admin",
+        _ => "user",
+    }
+}
+
+/// GET /api/user/self/sessions → 单条会话。
+///
+/// 后端 `auth::service::SessionView` 的 wire 形状；时间字段由后端序列化为
+/// RFC3339 字符串, 前端 wire 用 `String` 承载, 避免 wasm 侧引入 chrono。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDto {
+    pub sid: String,
+    pub user_agent: String,
+    pub ip: String,
+    pub login_method: String,
+    pub created_at: String,
+    pub last_active: String,
+    pub expires_at: String,
+    /// 是否当前设备会话 (后端按 access token 里的 sid 标注)。
+    pub current: bool,
+}
+
+/// PUT /api/user/self — 改显示名 / 改密码 (改密须原密码 + 新密码成对提供)。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSelfRequest {
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub original_password: Option<String>,
+    #[serde(default)]
+    pub new_password: Option<String>,
 }
 
 /// PUT /api/user/self — 用户自改资料 (显示名/邮箱; 密码走独立端点)。

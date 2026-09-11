@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use client::ApiClient;
 use contract::api::usage::DashboardSummaryDto;
 
-use crate::api::{self, TrendBucketFE, UsageTrendRow};
+use crate::api::{self, TrendBucketFE};
 
 // Layout convention (共享给所有面板组件, 详见仓库 README.md):
 //   页面网格  `grid-cols-1 md:grid-cols-3 lg:grid-cols-5`  —— 手机 1 栏 / 平板 3 栏 / Web 5 栏。
@@ -25,8 +25,6 @@ pub fn OverviewPanel() -> Element {
     let mut reload = use_signal(|| 0u32);
 
     // 趋势 + Top10 共用的窗口数据源：timeframe/reload 变化即重拉。
-    let mut trend_rows = use_signal(Vec::<UsageTrendRow>::new);
-    let mut data_empty = use_signal(|| false);
     let mut top_users = use_signal(Vec::<(String, String, f64)>::new);
     let mut top_models = use_signal(Vec::<(String, String, f64)>::new);
     let mut buckets = use_signal(Vec::<TrendBucketFE>::new);
@@ -54,11 +52,7 @@ pub fn OverviewPanel() -> Element {
             );
             match (trend_r, users_r, models_r) {
                 (Ok(rows), Ok(users), Ok(models)) => {
-                    let empty = rows.iter().all(|r| r.tokens == 0);
-                    let (b, order) = api::pivot_trend(rows.clone(), tf);
-                    trend_rows.set(rows);
-                    // 记录窗口是否全零（诚实空态判定）
-                    data_empty.set(empty);
+                    let (b, order) = api::pivot_trend(rows, tf);
                     buckets.set(b);
                     model_order.set(order);
                     // 用户榜按消耗(quota→¥)排,模型榜按 tokens 排;百分比各自占总和
@@ -129,7 +123,10 @@ pub fn OverviewPanel() -> Element {
     let stats_opt: Option<Vec<(String, &'static str)>> = summary().as_ref().map(dashboard_stats);
     let trend_loading = data_loading();
     let trend_err = data_err();
-    let empty_window = !trend_loading && trend_err.is_none() && data_empty();
+    // 用计算后的 buckets 判空 (单一数据源): pivot 后如果每桶 total 都是 0,
+    // 则以渲染为准 — 与 setter 里的行判零语义一致, 但不会错位。
+    let empty_window =
+        !trend_loading && trend_err.is_none() && buckets().iter().all(|b| b.total <= 0.0);
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
@@ -185,7 +182,7 @@ pub fn OverviewPanel() -> Element {
                         if top_models().is_empty() {
                             p { class: "py-6 text-center text-xs text-zinc-500", "该时间窗内暂无调用" }
                         }
-                        for (i, &(ref name, ref amount, pct)) in top_models().iter().enumerate() {
+                        for (i, (name, amount, pct)) in top_models().iter().enumerate() {
                             div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
                                 div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
@@ -209,7 +206,7 @@ pub fn OverviewPanel() -> Element {
                         if top_users().is_empty() {
                             p { class: "py-6 text-center text-xs text-zinc-500", "该时间窗内暂无调用" }
                         }
-                        for (i, &(ref name, ref amount, pct)) in top_users().iter().enumerate() {
+                        for (i, (name, amount, pct)) in top_users().iter().enumerate() {
                             div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
                                 div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
@@ -313,6 +310,9 @@ fn TrendPanel(
         .map(|b| b.total)
         .fold(0.0f64, f64::max)
         .max(1.0);
+    // Y 轴封顶: step = ⌈max/4 的最高位⌉, 轴顶 = 4×step — 最高柱恒低于顶格,
+    // 5 条虚线 (含 0) 等间隔且刻度整齐 (参照 new-api VChart 的 nice ticks)。
+    let axis_max = api::nice_axis_max(max_total);
     let avg = total_all / all_buckets.len().max(1) as f64;
     let peak = all_buckets
         .iter()
@@ -328,7 +328,7 @@ fn TrendPanel(
     }
     let mut order: Vec<usize> = (0..names.len()).collect();
     order.sort_by(|&a, &b| per_model_tot[b].partial_cmp(&per_model_tot[a]).unwrap());
-    order.truncate(3);
+    order.truncate(5);
 
     // 共享悬浮卡: 整列模式列明细, 色块模式列单模型。fixed 定位不受滚动影响。
     let mut tip = use_signal(|| None::<TrendTip>);
@@ -378,9 +378,10 @@ fn TrendPanel(
                         onmouseleave: move |_| tip.set(None),
                         div { class: "relative",
                             div { class: "pointer-events-none absolute inset-0 flex flex-col justify-between py-0", aria_hidden: "true",
-                                for frac in [1.0f64, 0.75, 0.5, 0.25] {
+                                // 顶格是封顶线 (axis_max), 其下三条是 step 等分, 最后是 0 基线
+                                for i in [4, 3, 2, 1] {
                                     div { class: "relative w-full border-t border-dashed border-zinc-800",
-                                        span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((max_total * frac) as i64)}" }
+                                        span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((axis_max * i as f64 / 4.0) as i64)}" }
                                     }
                                 }
                                 div { class: "relative w-full border-t border-dashed border-zinc-800",
@@ -390,7 +391,7 @@ fn TrendPanel(
                             div { class: "relative flex h-56 items-end", style: "gap: 3px",
                                 for b in all_buckets.iter() {
                                     {
-                                        let hpct = (b.total / max_total * 100.0).max(3.0);
+                                        let hpct = (b.total / axis_max * 100.0).max(3.0);
                                         let label = b.label.clone();
                                         // 列模式明细: 非零模型按量降序
                                         let mut col_rows: Vec<(String, &'static str, f64)> = b
@@ -430,9 +431,10 @@ fn TrendPanel(
                                                     },
                                                 }
 
-                                                // 直方图有色堆叠容器
+                                                // 直方图有色堆叠容器 (堆叠段连续无间隙, 参照 new-api 堆叠图;
+                                                // 之前 gap 1.5px 让亚像素小片段看起来像"间隙", 视觉不一致)
                                                 div {
-                                                    class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200 gap-[1.5px]",
+                                                    class: "relative flex w-full flex-col-reverse overflow-hidden rounded-[3px] transition-all duration-200",
                                                     style: "height: {hpct:.1}%",
                                                     for (i, v) in b.per_model.iter().enumerate() {
                                                         {
@@ -445,7 +447,7 @@ fn TrendPanel(
                                                             let denom = if b.total > 0.0 { b.total } else { 1.0 };
                                                             rsx! {
                                                                 div {
-                                                                    class: "pointer-events-auto w-full cursor-pointer hover:brightness-125 transition-all rounded-[1px]",
+                                                                    class: "pointer-events-auto w-full cursor-pointer hover:brightness-125 transition-all",
                                                                     style: "height: {(v / denom * 100.0):.1}%; background: {seg_color}",
                                                                     onmouseenter: move |evt| {
                                                                         evt.stop_propagation();
@@ -476,7 +478,7 @@ fn TrendPanel(
                             }
                         }
                     }
-                    // 右: 数据位 + Top3 图例 (标准深灰弱边框)
+                    // 右: 数据位 + Top5 图例 (标准深灰弱边框)
                     div { class: "flex flex-col justify-between gap-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5",
                         div { class: "grid grid-cols-2 gap-3",
                             div {
@@ -501,7 +503,7 @@ fn TrendPanel(
                             }
                         }
                         div { class: "border-t border-zinc-800/80 pt-3",
-                            p { class: "mb-2 text-[11px] font-medium text-zinc-500", "主力模型 Top3" }
+                            p { class: "mb-2 text-[11px] font-medium text-zinc-500", "主力模型 Top5" }
                             for &i in order.iter() {
                                 div { class: "flex items-center gap-2 py-1 text-xs",
                                     span { class: "h-2 w-2 shrink-0 rounded-sm", style: "background: {MODEL_COLORS[i % MODEL_COLORS.len()]}" }

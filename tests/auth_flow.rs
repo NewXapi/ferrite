@@ -56,8 +56,9 @@ fn e2e_security_password_and_jwt_lifecycle() {
     let auth_version = 1i64;
     let sid = "sess_uuid_999";
 
+    // TTL 显式传入 (与生产 issue_session 同构): 1h
     let (token, exp) =
-        auth::jwt::issue(secret, user_id, role, auth_version, sid).expect("issue jwt token");
+        auth::jwt::issue(secret, user_id, role, auth_version, sid, 3600).expect("issue jwt token");
     assert!(!token.is_empty(), "颁发的 JWT 不能为空");
     assert!(exp > 0, "过期时间必须为未来时间戳");
 
@@ -84,11 +85,12 @@ fn e2e_web_session_storage_and_dto_interop() {
         email: "alice@ferrite.dev".into(),
         quota: 100000,
         used_quota: 500,
-        request_count: 12,
+        request_count: Some(12),
         group: "default".into(),
-        role: "user".into(),
+        role: 1, // wire 位值: 1=user
         status: 1,
         created_at: "2026-09-05".into(),
+        auth_version: 0,
     };
 
     let token_str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_jwt_payload";

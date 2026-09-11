@@ -337,6 +337,7 @@ impl LogService {
 
     /// 消耗排行聚合（总览 Top10）：按用户或模型 GROUP BY 汇总 tokens/quota/调用数。
     /// `by` = "user" → 按 username 分组；"model" → 按 model_name 分组。
+    /// `group_col` 只来自白名单枚举,不拼接外部输入。
     pub async fn top_usage(
         &self,
         by: &str,
@@ -380,8 +381,8 @@ impl LogService {
             .collect())
     }
 
-    /// 用量趋势聚合：把窗口内消费按时间桶 × 模型 GROUP BY（date_trunc），
-    /// 前端据 pivot 出堆叠序列。`granularity` = hour | day | month（枚举内联,无注入面）。
+    /// 用量趋势聚合：把窗口内消费按时间桶 × 模型 GROUP BY（date_trunc）。
+    /// `granularity` = hour | day | month（枚举内联,无注入面）。
     pub async fn trend(
         &self,
         granularity: &str,
@@ -426,7 +427,7 @@ impl LogService {
 }
 
 /// Top 榜单行（按用户或模型聚合）。
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTopRow {
     pub name: String,

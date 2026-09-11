@@ -17,3 +17,5 @@ auth    = { path = "../auth" }
 sqlx    = { workspace = true }
 axum    = { workspace = true }
 tracing = { workspace = true }
+admin-proxy = { path = "../admin-proxy" }
+gateway-proxy = { path = "../../gateway/proxy" }

@@ -65,6 +65,15 @@ pub struct CharacterSummary {
     pub description: String,
 }
 
+/// 聊天列表 DTO，与 tavern-api/chats 的 ChatSummary 字段完全对齐
+/// （file_name + 首条消息预览；没有 name/description）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatSummary {
+    pub file_name: String,
+    #[serde(default)]
+    pub preview: String,
+}
+
 /// 消息 DTO，与 tavern-api/chats 字段完全对齐
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -104,18 +113,18 @@ pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
 
         // 尝试提取 choices[0].delta.content
         if let Ok(json) = serde_json::from_str::<Value>(&data) {
-            let content = json
+            // 合法 JSON chunk:有 content 就吐;role-only/function 头帧
+            // 没有 content,直接丢弃(不能回退为原文,否则 JSON 串进用户消息)。
+            return json
                 .get("choices")
                 .and_then(|c| c.get(0))
                 .and_then(|c| c.get("delta"))
                 .and_then(|d| d.get("content"))
-                .and_then(|v| v.as_str());
-            if let Some(c) = content {
-                return Some(SseEvent::Message(c.to_string()));
-            }
+                .and_then(|v| v.as_str())
+                .map(|c| SseEvent::Message(c.to_string()));
         }
 
-        // 如果 JSON 解析失败或缺少 content 字段，直接返回文本
+        // 非 JSON 的裸文本行才透传(兼容非 OpenAI 上游)
         return Some(SseEvent::Message(data));
     }
     None
@@ -176,12 +185,12 @@ pub async fn delete_character(name: String) -> Result<(), ApiError> {
 }
 
 /// 聊天操作接口
-/// 获取最近的聊天列表
-pub async fn recent_chats(character: String) -> Result<Vec<CharacterSummary>, ApiError> {
+/// 获取最近的聊天列表（返回聊天文件 stem + 首条预览）
+pub async fn recent_chats(character: String) -> Result<Vec<ChatSummary>, ApiError> {
     let url = format!("/tavern/chats/{character}");
     let request = Request::get(&url).build().map_err(ApiError::from)?;
     let text = send_request(request).await?;
-    let summaries: Vec<CharacterSummary> = serde_json::from_str(&text)?;
+    let summaries: Vec<ChatSummary> = serde_json::from_str(&text)?;
     Ok(summaries)
 }
 
