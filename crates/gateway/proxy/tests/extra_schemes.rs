@@ -15,7 +15,7 @@ fn test_parse_hysteria2() {
     assert_eq!(node.host, "example.com");
     assert_eq!(node.port, 443);
     assert!(node.auth.is_some());
-    let opts = node.opts.expect("hysteria2 must populate vless opts");
+    let opts = node.opts.expect("hysteria2 must populate opts");
     assert_eq!(opts.sni.as_deref(), Some("cdn.example.com"));
     assert!(opts.insecure);
 }

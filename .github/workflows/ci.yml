@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 最小权限：全部 job 只需读 checkout（构建/测试不写仓库，评论由本地 gate 工具发）
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -88,6 +92,7 @@ jobs:
   proxy-feature-matrix:
     name: Proxy Feature Matrix (utls / minimal)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
