@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use tavern_state::dock::{
-    deserialize, dock_tab, move_item, reorder_in_zone, serialize, set_split, set_zone_collapsed,
-    DockItem, DockLayout, Side, SplitRatio, Zone,
+    DockItem, DockLayout, Side, SplitRatio, Zone, deserialize, dock_tab, move_item,
+    reorder_in_zone, serialize, set_split, set_zone_collapsed,
 };
 
 fn item(id: &str, zone: Zone, order: u32, enabled: bool) -> DockItem {
@@ -67,7 +67,10 @@ fn move_item_switches_active_to_last_remaining() {
     move_item(&mut layout, "y", Zone::RightBottom);
 
     // 源区 LeftBottom 激活原为 y，y 被移走后剩 x（order 0 且唯一）→ 激活切 x。
-    assert_eq!(layout.active_by_zone[&Zone::LeftBottom].as_deref(), Some("x"));
+    assert_eq!(
+        layout.active_by_zone[&Zone::LeftBottom].as_deref(),
+        Some("x")
+    );
     // 目标区激活不受影响（原本无激活 → 仍无激活）。
     assert_eq!(layout.active_by_zone.get(&Zone::RightBottom), Some(&None));
 
@@ -142,10 +145,7 @@ fn dock_tab_dedupes_and_resolves_order_conflict() {
     assert_eq!(model.zone, Zone::RightTop);
     assert_eq!(model.order, 2);
     // 区内不产生重复 id。
-    assert_eq!(
-        layout.items.iter().filter(|i| i.id == "model").count(),
-        1
-    );
+    assert_eq!(layout.items.iter().filter(|i| i.id == "model").count(), 1);
 
     // 新 id 直接插入（zone/order 按传入值）。
     dock_tab(&mut layout, item("sessions", Zone::LeftBottom, 0, true));
@@ -191,7 +191,11 @@ fn set_zone_collapsed_toggles_enabled() {
         .map(|i| (i.id.as_str(), i.enabled))
         .collect();
     assert_eq!(ids, vec![("a", false), ("b", false)], "收起 = 该区全部禁用");
-    assert_eq!(layout.active_by_zone[&Zone::LeftTop], None, "收起时激活置 None");
+    assert_eq!(
+        layout.active_by_zone[&Zone::LeftTop],
+        None,
+        "收起时激活置 None"
+    );
     // 其他区不受影响。
     assert!(layout.items.iter().find(|i| i.id == "c").unwrap().enabled);
 
@@ -226,10 +230,12 @@ fn deserialize_rejects_corrupt_input() {
     // items 不是数组。
     assert!(deserialize(&serde_json::json!({"items": 42})).is_err());
     // item zone 未知。
-    assert!(deserialize(&serde_json::json!({
-        "items": [{"id": "a", "zone": "nowhere", "order": 0, "enabled": true}]
-    }))
-    .is_err());
+    assert!(
+        deserialize(&serde_json::json!({
+            "items": [{"id": "a", "zone": "nowhere", "order": 0, "enabled": true}]
+        }))
+        .is_err()
+    );
     // 完全非对象输入。
     assert!(deserialize(&serde_json::json!(123)).is_err());
 

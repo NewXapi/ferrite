@@ -165,12 +165,7 @@ pub fn move_item(layout: &mut DockLayout, item_id: &str, target: Zone) {
 /// - `from_index` 越界：无操作。
 /// - `to_index` 越界：clamp 到 `[0, n]`（n = 区内启用项数）。
 /// - 重写只对区内启用项生效（禁用项保持原位不动）。
-pub fn reorder_in_zone(
-    layout: &mut DockLayout,
-    zone: Zone,
-    from_index: usize,
-    to_index: usize,
-) {
+pub fn reorder_in_zone(layout: &mut DockLayout, zone: Zone, from_index: usize, to_index: usize) {
     // 区内启用项按 order 升序的 id 序列。
     let mut ids: Vec<(u32, String)> = layout
         .items
@@ -315,10 +310,19 @@ pub fn deserialize(v: &serde_json::Value) -> Result<DockLayout, String> {
             .get("zone")
             .and_then(|x| x.as_str())
             .ok_or_else(|| "item missing `zone`".to_string())
-            .and_then(|name| zone_from_name(name).ok_or_else(|| format!("unknown zone `{name}`")))?;
+            .and_then(|name| {
+                zone_from_name(name).ok_or_else(|| format!("unknown zone `{name}`"))
+            })?;
         let order = item.get("order").and_then(|x| x.as_u64()).unwrap_or(0) as u32;
-        let enabled = item.get("enabled").and_then(|x| x.as_bool()).unwrap_or(true);
-        let title = item.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let enabled = item
+            .get("enabled")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(true);
+        let title = item
+            .get("title")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
         layout.items.push(DockItem {
             id,
             zone,
@@ -358,7 +362,9 @@ fn parse_split(v: Option<&serde_json::Value>) -> Result<SplitRatio, String> {
     match v {
         None | Some(serde_json::Value::Null) => Ok(SplitRatio::DEFAULT),
         Some(x) => {
-            let value = x.as_f64().ok_or_else(|| "field `split_*` is not a number".to_string())?;
+            let value = x
+                .as_f64()
+                .ok_or_else(|| "field `split_*` is not a number".to_string())?;
             let value = value as f32;
             if !value.is_finite() {
                 return Err("field `split_*` is not finite".to_string());
