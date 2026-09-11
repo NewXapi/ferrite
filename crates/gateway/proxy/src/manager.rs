@@ -188,7 +188,7 @@ impl ProxyManager {
         // 不持锁跨候选构建，也不与后续 inflight 自增嵌套。
         let selected = {
             let mut affinity = self.affinity.lock().unwrap_or_else(|e| e.into_inner());
-            let chosen = if eligible.len() > 1 {
+            if eligible.len() > 1 {
                 let sticky = affinity
                     .get(channel_key)
                     .filter(|(_, last_used)| last_used.elapsed() <= AFFINITY_TTL)
@@ -211,8 +211,7 @@ impl ProxyManager {
                 chosen
             } else {
                 eligible[0].clone()
-            };
-            chosen
+            }
         };
         let node_id = selected.id;
 
