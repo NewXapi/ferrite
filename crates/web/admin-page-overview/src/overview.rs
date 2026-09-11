@@ -125,9 +125,8 @@ pub fn OverviewPanel() -> Element {
     let trend_err = data_err();
     // 用计算后的 buckets 判空 (单一数据源): pivot 后如果每桶 total 都是 0,
     // 则以渲染为准 — 与 setter 里的行判零语义一致, 但不会错位。
-    let empty_window = !trend_loading
-        && trend_err.is_none()
-        && buckets().iter().all(|b| b.total <= 0.0);
+    let empty_window =
+        !trend_loading && trend_err.is_none() && buckets().iter().all(|b| b.total <= 0.0);
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",

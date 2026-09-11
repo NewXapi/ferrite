@@ -148,10 +148,18 @@ async fn top_usage_and_trend_aggregate_consume_rows() {
     assert_eq!(a_row.calls, 1);
 
     let users = svc.top_usage("user", None, None, 10).await.unwrap();
-    assert!(users.iter().any(|r| r.name == "alice_agg" && r.tokens == 150));
+    assert!(
+        users
+            .iter()
+            .any(|r| r.name == "alice_agg" && r.tokens == 150)
+    );
 
     let trend = svc.trend("hour", None, None).await.unwrap();
-    assert!(trend.iter().any(|r| r.model_name == marker_a && r.tokens == 150));
+    assert!(
+        trend
+            .iter()
+            .any(|r| r.model_name == marker_a && r.tokens == 150)
+    );
 
     sqlx::query("DELETE FROM usage_logs WHERE model_name IN ($1, $2)")
         .bind(&marker_a)

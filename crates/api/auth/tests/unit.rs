@@ -13,8 +13,7 @@ fn password_hash_and_verify_round_trip() {
 fn jwt_round_trip() {
     let secret = b"super-secret-test-key";
     // ttl=3600 与生产路径同构: exp 由调用方传入的 TTL 决定
-    let (token, exp) =
-        auth::jwt::issue(secret, "user-uuid-1", 1, 1, "sid-1", 3600).expect("issue");
+    let (token, exp) = auth::jwt::issue(secret, "user-uuid-1", 1, 1, "sid-1", 3600).expect("issue");
     assert!(exp > 0);
     let claims = auth::jwt::parse(secret, &token).expect("parse");
     assert_eq!(claims.sub, "user-uuid-1");
