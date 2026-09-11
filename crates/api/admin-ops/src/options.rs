@@ -15,7 +15,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-
 /// 选项定义（注册表条目）。
 pub struct OptionSpec {
     pub key: &'static str,

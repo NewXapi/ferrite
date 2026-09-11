@@ -16,5 +16,8 @@ use sqlx::PgPool;
 /// 迁移按文件名版本号顺序在事务中执行；失败即返回
 /// [`sqlx::migrate::MigrateError`]，调用方决定日志/退出策略。
 pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
-    sqlx::migrate!("../../../db/migrations").run(pool).await.map(|_| ())
+    sqlx::migrate!("../../../db/migrations")
+        .run(pool)
+        .await
+        .map(|_| ())
 }

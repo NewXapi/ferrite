@@ -163,7 +163,10 @@ fn expand_models_json(
     let mut units = Vec::new();
 
     if groups.is_empty() {
-        tracing::warn!(channel = channel_key, "channel has no groups; no route units");
+        tracing::warn!(
+            channel = channel_key,
+            "channel has no groups; no route units"
+        );
         return units;
     }
 

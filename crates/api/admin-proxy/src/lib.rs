@@ -22,7 +22,6 @@ use auth::service::AuthService;
 use gateway_proxy::ProxySnapshot;
 use gateway_proxy::node::ProxyNode;
 
-
 #[derive(Debug, Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyNodeView {

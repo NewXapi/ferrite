@@ -15,7 +15,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageEvent {

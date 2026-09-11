@@ -31,7 +31,9 @@ async fn setup_env() -> (sqlx::PgPool, Arc<AuthService>, Arc<SystemInfoService>)
         .await
         .expect("PG connect");
 
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
+    db_bootstrap::run_migrations(&pool)
+        .await
+        .expect("migrations");
 
     let secret = b"system_info_test_jwt_secret_32bytes_long!".to_vec();
     let auth_svc = Arc::new(AuthService::new(pool.clone(), secret).expect("auth svc"));

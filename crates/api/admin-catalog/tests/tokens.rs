@@ -24,7 +24,9 @@ async fn make_svc() -> TokenService {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
+    db_bootstrap::run_migrations(&pool)
+        .await
+        .expect("migrations");
     TokenService::new(pool)
 }
 

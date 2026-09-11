@@ -23,7 +23,9 @@ async fn make_svc() -> LogService {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
+    db_bootstrap::run_migrations(&pool)
+        .await
+        .expect("migrations");
     LogService::new(pool)
 }
 

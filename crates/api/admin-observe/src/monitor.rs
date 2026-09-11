@@ -16,7 +16,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-
 /// 一次探活结果 — 探活执行方构造，落一行历史。
 #[derive(Debug, Clone)]
 pub struct ProbeOutcome {

@@ -28,7 +28,9 @@ async fn make_svc() -> (ProxyNodeService, sqlx::PgPool) {
         .connect(&db_url())
         .await
         .expect("PG connect");
-    db_bootstrap::run_migrations(&pool).await.expect("migrations");
+    db_bootstrap::run_migrations(&pool)
+        .await
+        .expect("migrations");
     (ProxyNodeService::new(pool.clone()), pool)
 }
 

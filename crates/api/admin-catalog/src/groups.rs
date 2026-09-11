@@ -16,7 +16,6 @@ use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
 
-
 #[derive(Debug, Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupView {
