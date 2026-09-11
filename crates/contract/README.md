@@ -10,7 +10,7 @@
 - `src/api/usage.rs` — 用量日志和统计查询。
 - `src/api/user.rs` — 用户资料、配额和角色。
 - `src/records.rs` — 领域记录模块。
-- `src/records/channel.rs` — Channel、RouteUnit 和凭据元数据。
+- `src/records/channel.rs` — Channel 和凭据元数据。
 - `src/records/identity.rs` — 用户、Token、会话和授权。
 - `src/records/routing.rs` — 模型、组和路由选择配置。
 - `src/records/usage.rs` — 请求 token、成本、延迟和状态。

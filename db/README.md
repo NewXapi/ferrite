@@ -42,3 +42,14 @@ sqlx 默认把每个迁移文件包在事务里执行；本目录禁止
 - 转换前的保险 dump 在 `~/pg-backups/`（ferrite / ferrite_smoke / ferrite_e2e）。
 - 其余 16 个库（其他项目）未创建扩展、未做任何变更；TS 预加载对未启用扩展的库
   只有约 MB 级内存开销。
+
+## 演进摘要
+
+| 文件 | 内容 |
+|------|------|
+| 0001 | 核心配置表（channels/groups/tokens/users）+ `group_name` → `groups TEXT[]` |
+| 0002 | usage_logs（PK `(id, created_at)`，与 hypertable 对齐） |
+| 0003 | model_prices |
+| 0004 | api_models + monitor_history |
+| 0005 | options + billing_redemptions + proxy_nodes |
+| 0006 | `DROP TABLE route_units`（笛卡尔积物化表退役，展开改内存） |

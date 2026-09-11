@@ -46,7 +46,7 @@ cargo check --target wasm32-unknown-unknown -p client -p session
 
 ### `page-admin/src/entities.rs`
 
-- 渠道、Token、RouteUnit 的表单字段和 DTO 映射。
+- 渠道、Token 的表单字段和 DTO 映射。
 
 ### `page-admin/src/pages.rs`
 

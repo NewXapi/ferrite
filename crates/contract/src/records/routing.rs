@@ -1,7 +1,9 @@
 //! 路由记录 — 分组与调度单元。
 //!
-//! route_units 是 one-api `abilities` 表 (group, model, channel, enabled) 的演进:
-//! 采纳"索引随渠道变更重建"语义; 额外引入 key_index 与 upstream_model 显式化。
+//! `RouteUnitRecord` 是内存调度单元（不落库）：由 `apps/api` 的 snapshot 从
+//! `api_channels.models` JSONB × `groups TEXT[]` 笛卡尔积展开。
+//! 采纳 one-api abilities 的"索引随渠道变更重建"语义，但重建发生在内存
+//! 而非物化表（route_units 表已于迁移 0006 删除）。
 
 use super::SyncMeta;
 use serde::{Deserialize, Serialize};

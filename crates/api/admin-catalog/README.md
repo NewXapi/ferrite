@@ -2,7 +2,7 @@
 
 ## 文件
 
-- `src/lib.rs` — 模块地图（channels/groups/models/routes/tokens；平表直连 sqlx，
+- `src/lib.rs` — 模块地图（channels/groups/models/tokens；平表直连 sqlx，
   无 store trait 抽象）。
 - `src/channels.rs` — 渠道 CRUD/search/启停 + **探活**（`test_channel`/`test_all`，
   reqwest 真调 chat/completions，结果落 observe::monitor）+ axum 路由（9 端点）。
@@ -10,13 +10,14 @@
 - `src/tokens.rs` — API Key 创建（明文一次性/sha256 入库）、CRUD/search、
   `regenerate_key`（重取=重新生成）+ 路由（6 端点）。
 - `src/models.rs` — 模型 CRUD / missing / search + 路由。
-- `src/routes.rs` — 模型到渠道 RouteUnit 映射 + 写前校验 + 路由（5 端点）。
   （用户管理不在本 crate，由 `auth::service::manage_user` 覆盖。）
+  路由单元不落库：由 `apps/api` 的 snapshot 从 `api_channels.models` JSONB
+  × `groups TEXT[]` 在内存展开（见 `apps/api/src/snapshot.rs`）。
 
 ## 表（loose，无 FK）
 
 - `api_tokens` — key/user_key/name/key_hash(sha256)/key_preview/group_id/quota/…
-- `api_channels` — key/name/channel_type/base_url/keys(JSONB)/models(JSONB)/group_name/priority/weight/status/test_model
+- `api_channels` — key/name/channel_type/base_url/keys(JSONB)/models(JSONB)/groups(TEXT[])/priority/weight/status/test_model
 - `api_groups` — key/name/ratio/model_whitelist(JSONB)/…（default 组 seed 保护）
 
 ## 路由
