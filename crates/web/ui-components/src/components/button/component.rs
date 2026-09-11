@@ -67,7 +67,10 @@ impl ButtonSize {
 }
 
 /// 变体对应的 shadcn `data-variant` 键名与 class 串（ui/button.tsx:11-20，逐字）。
-fn variant_parts(variant: ButtonVariant) -> (&'static str, &'static str) {
+///
+/// 公开为组件视觉契约的一部分（等价于 shadcn 导出的 `buttonVariants`），
+/// 供 `tests/` 契约测试与需要按变体取样的调用方使用。
+pub fn variant_parts(variant: ButtonVariant) -> (&'static str, &'static str) {
     match variant {
         ButtonVariant::Primary => (
             "default",
@@ -94,7 +97,9 @@ fn variant_parts(variant: ButtonVariant) -> (&'static str, &'static str) {
 }
 
 /// 尺寸对应的 shadcn `data-size` 键名与 class 串（ui/button.tsx:23-30，逐字）。
-fn size_parts(size: ButtonSize) -> (&'static str, &'static str) {
+///
+/// 公开理由同 [`variant_parts`]。
+pub fn size_parts(size: ButtonSize) -> (&'static str, &'static str) {
     match size {
         ButtonSize::Xs => (
             "xs",

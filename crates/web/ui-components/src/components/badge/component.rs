@@ -34,7 +34,9 @@ impl BadgeVariant {
 }
 
 /// 变体对应的 shadcn `data-variant` 键名与 class 串（ui/badge.tsx:9-19，逐字）。
-fn variant_parts(variant: BadgeVariant) -> (&'static str, &'static str) {
+///
+/// 公开为组件视觉契约的一部分，供 `tests/` 契约测试使用。
+pub fn variant_parts(variant: BadgeVariant) -> (&'static str, &'static str) {
     match variant {
         BadgeVariant::Primary => (
             "default",
