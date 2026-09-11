@@ -16,7 +16,8 @@ fn node(id: i64, channels: &[&str], priority: i32) -> ProxyNode {
         host: format!("n{id}.example"),
         port: 8080,
         auth: None,
-        vless: None,
+        // NodeOpts 改名（#137）后通用传输层选项字段为 opts；Http 节点无传输层选项。
+        opts: None,
         channel_keys: channels.iter().map(|c| c.to_string()).collect(),
         priority,
     }
