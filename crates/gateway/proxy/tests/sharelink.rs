@@ -66,8 +66,8 @@ fn vmess_ws_transport_maps_path_host_sni_fp() {
     );
     let opts = parse_share_link(&link)
         .expect("应解析成功")
-        .vless
-        .expect("ws 节点应有 VlessOpts");
+        .opts
+        .expect("ws 节点应有 NodeOpts");
     assert_eq!(opts.ws_path.as_deref(), Some("/vm"));
     assert_eq!(opts.ws_host.as_deref(), Some("cdn.example.com"));
     assert_eq!(opts.sni.as_deref(), Some("sni.example.com"));
@@ -79,8 +79,8 @@ fn vmess_ws_transport_maps_path_host_sni_fp() {
 fn vmess_ws_without_path_defaults_to_slash() {
     let opts = parse_share_link(&vmess_link(r#","net":"ws""#))
         .expect("应解析成功")
-        .vless
-        .expect("应有 VlessOpts");
+        .opts
+        .expect("应有 NodeOpts");
     assert_eq!(opts.ws_path.as_deref(), Some("/"));
 }
 
@@ -89,14 +89,14 @@ fn vmess_ws_without_path_defaults_to_slash() {
 fn vmess_tls_without_sni_falls_back_to_server_address() {
     let opts = parse_share_link(&vmess_link(r#","net":"tcp","tls":"tls""#))
         .expect("应解析成功")
-        .vless
-        .expect("应有 VlessOpts");
+        .opts
+        .expect("应有 NodeOpts");
     assert_eq!(opts.sni.as_deref(), Some("example.com"));
 }
 
 /// `net=grpc` 报错而非静默降级。
 ///
-/// `VlessOpts` 没有 grpc 字段，降级成 tcp 会拨号成功但走错传输层——那种失败
+/// `NodeOpts` 没有 grpc 字段，降级成 tcp 会拨号成功但走错传输层——那种失败
 /// 在运行时表现为"连上了但收不到响应"，比导入时报错难查得多。
 #[test]
 fn vmess_unsupported_transport_errors() {
@@ -219,7 +219,7 @@ fn non_dialect_scheme_delegates_to_parse_url() {
     ))
     .expect("vless 应由 parse_url 处理");
     assert_eq!(node.scheme, ProxyScheme::Vless);
-    let opts = node.vless.expect("vless 应有 opts");
+    let opts = node.opts.expect("vless 应有 opts");
     assert_eq!(opts.sni.as_deref(), Some("a.example.com"));
     assert_eq!(opts.ws_path.as_deref(), Some("/x"));
 }

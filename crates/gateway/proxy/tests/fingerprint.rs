@@ -1,7 +1,7 @@
 //! 指纹测试：`fingerprint=` / `fp=` query 解析与 TLS Config 传递。
 //!
 //! 验证：
-//! 1. query 解析正确落入 `VlessOpts.fingerprint`
+//! 1. query 解析正确落入 `NodeOpts.fingerprint`
 //! 2. adapter_for 在 VLESS + TLS/REALITY 路径把 fingerprint 传给 `TlsConfig`
 //! 3. feature 关时构造不报错（仅 warn，由 meow 内部处理）
 
@@ -17,11 +17,11 @@ fn vless_node(query: &str) -> ProxyNode {
     node
 }
 
-/// `fingerprint=chrome` 解析落入 VlessOpts
+/// `fingerprint=chrome` 解析落入 NodeOpts
 #[test]
 fn fingerprint_query_parsed() {
     let node = vless_node("?fingerprint=chrome&sni=cdn.example.com");
-    let opts = node.vless.expect("vless 节点必须带 VlessOpts");
+    let opts = node.opts.expect("vless 节点必须带 NodeOpts");
     assert_eq!(opts.fingerprint.as_deref(), Some("chrome"));
 }
 
@@ -29,7 +29,7 @@ fn fingerprint_query_parsed() {
 #[test]
 fn fp_short_alias_parsed() {
     let node = vless_node("?fp=firefox&sni=cdn.example.com");
-    let opts = node.vless.expect("vless 节点必须带 VlessOpts");
+    let opts = node.opts.expect("vless 节点必须带 NodeOpts");
     assert_eq!(opts.fingerprint.as_deref(), Some("firefox"));
 }
 
@@ -39,7 +39,7 @@ fn fingerprint_with_other_params() {
     let node = vless_node(
         "?flow=xtls-rprx-vision&sni=cdn.example.com&pbk=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&sid=01ab&fp=safari",
     );
-    let opts = node.vless.expect("vless 节点必须带 VlessOpts");
+    let opts = node.opts.expect("vless 节点必须带 NodeOpts");
     assert_eq!(opts.flow.as_deref(), Some("xtls-rprx-vision"));
     assert_eq!(opts.sni.as_deref(), Some("cdn.example.com"));
     assert_eq!(opts.fingerprint.as_deref(), Some("safari"));
@@ -74,12 +74,12 @@ fn reality_fingerprint_builds_adapter_without_utls_feature() {
     );
 }
 
-/// 非 VLESS 节点不解析 fingerprint（通过 VlessOpts 共用机制，仅 VLESS/H2/AnyTLS/Snell 有）
+/// 非 VLESS 节点不解析 fingerprint（通过 NodeOpts 共用机制，仅 VLESS/H2/AnyTLS/Snell 有）
 #[test]
 fn non_vless_no_fingerprint() {
     let node =
         ProxyNode::parse_url("socks5://127.0.0.1:7890?fingerprint=chrome&sni=cdn.example.com")
             .unwrap();
     assert_eq!(node.scheme, ProxyScheme::Socks5);
-    assert!(node.vless.is_none());
+    assert!(node.opts.is_none());
 }
