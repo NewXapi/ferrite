@@ -196,6 +196,9 @@ fn ctx_with_route(route: Candidate) -> gateway_pipeline::RequestCtx {
         }),
         requested_model: Some("m".to_string()),
         route: Some(route),
+        // #140 归因字段：本测试只验证 retry 行为，渠道归因留空。
+        selected_channel_key: None,
+        selected_channel_name: None,
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
