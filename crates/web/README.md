@@ -48,6 +48,52 @@ graph LR
     PC & PS --> TC & TS
 ```
 
+### 1.1 应用页面总树（25 页；深层组件树见 `todo/web-ui-reference/ferrite-pages-tree.md`）
+
+```text
+apps/admin-web（main.rs:9 init_auth() 注册 401 静默刷新 → 挂 RootApp）
+├── #auth / #signup / #login  →  AuthPageRoot            # app.rs:54，认证页（登录/注册双 Tab）
+├── #retro  →  RetroPage                                 # app.rs:56，拓扑演示（retro.rs:10）
+└── 其余任意 hash  →  HomePage（console 壳）             # app.rs:58
+    ├── 桌面悬浮顶栏：品牌 + TopNavMeter + 主题切换 + UserMenu   # lib.rs:410
+    ├── ConsolePanel（页签头 + 滚动体）                   # lib.rs:198
+    │   ├── Section::Dashboard（#overview/#models/#leaderboard）
+    │   │   ├── OverviewPanel     总览：趋势/健康度/统计卡/Top10  # overview.rs:17  真实 API
+    │   │   ├── ModelsPanel       模型卡片网格             # models.rs:186  mock
+    │   │   └── LeaderboardPanel  模型实力排行榜           # leaderboard/mod.rs:14  静态数据
+    │   ├── Section::Account（#account/#usage/#rewards/#sessions/#settings）
+    │   │   ├── KeysPanel         密钥·资料                # keys.rs:32  真实 API
+    │   │   ├── UsageLogsPanel    用量·日志                # usage_logs.rs:87  真实 API
+    │   │   ├── RewardsPanel      邀请·奖励                # rewards.rs:7  mock
+    │   │   ├── SessionsPanel     登录会话管理             # sessions.rs:24  真实 API
+    │   │   └── SettingsPanel     偏好设置                 # settings.rs:11  真实 API
+    │   └── Section::Manage（#manage/#network/#users/#groups/#aliases/#channels/#subscriptions/#redemptions/#system）
+    │       ├── NetworkPanel       调度拓扑画布            # network.rs:641  mock
+    │       ├── UsersPanel         用户管理卡片            # (admin-page-users) panel.rs:26  mock
+    │       ├── GroupsPage / AliasesPage / ChannelsPage / SubscriptionsPage / RedemptionsPage / SystemPage
+    │       │                      分组/别名/渠道/订阅/兑换/系统  # (admin-page-admin) 各文件  mock
+    └── SectionPill（左侧圆点导航，已定义未挂载）          # lib.rs:109
+```
+
+路由映射源：`get_initial_route()`（lib.rs:261-286），未知 hash 回落 Dashboard。
+
+```text
+apps/tavern-web（main.rs → TavernApp，内存 Signal 路由，默认 Section::Characters；不挂 dx-components-theme.css）
+├── 桌面悬浮顶栏（非 Chat/Home 时显示）+ 移动端常驻底栏    # lib.rs:59 / lib.rs:149
+├── AuthModal（登录/注册弹窗 → 跳剧本库）                  # lib.rs:183 + ui/auth_modal.rs:11
+└── main 舞台 match section                                # lib.rs:115
+    ├── Section::Home       → HomePage      品牌落地页     # tavern-page-home  纯静态
+    ├── Section::Characters → CharactersPage 剧本库大厅    # tavern-page-characters:312  本地 mock
+    ├── Section::Chat       → ChatPage       互动剧情      # tavern-page-chat:50  真实 API + SSE
+    ├── Section::Studio     → StudioPage     创作中心      # characters:705
+    │   ├── Tab 剧本创作：作品卡网格 + 四步编辑弹窗
+    │   ├── Tab 我的人格：内嵌 tavern-page-personas::PersonasPage
+    │   └── Tab 世界书：  内嵌 tavern-page-lorebook::LorebookPage
+    └── Section::Settings   → SettingsPage   连接/采样设置 # tavern-page-settings:27  壳页无 API
+```
+
+页面跳转全靠 TavernApp 传入的 `on_*` 回调改 section Signal（lib.rs:116-142），无 URL hash、刷新回默认页。
+
 ## 2. crate 清单
 
 ### 管理端（消费 `/admin/*` API）
