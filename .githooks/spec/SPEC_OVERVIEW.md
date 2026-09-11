@@ -36,6 +36,8 @@
 | `dep_hygiene` | l1 | merge | WARN | `cargo-machete` 未使用依赖 |
 | `duplication` | l2 | merge | WARN | 跨文件 4+ 连续行重复块 |
 | `crg_impact` | l2 | merge | WARN | diff 跨 3+ crate 改动，提示耦合 |
+| `pr_labels` | l1 | merge | FAIL | PR 至少挂 1 个 type label（bug/feature/chore/refactor/tests/documentation/epic）；标题命中域关键词但缺域 label 时给出建议（gh api 取数，取数失败输出"跳过、请人工核对"） |
+| `pr_crg_review` | l1 | merge | FAIL | PR 讨论区需留有 CRG（code-review-graph）审查结论；若记录提到过问题/风险，需附修复/回应记录（Fix/采纳/驳回 + commit 或验证结论）。只统计 PR 创建后的评论（gh api 取数，取数失败输出"跳过、请人工核对"） |
 
 ## 路径无关性（重要）
 
