@@ -7,7 +7,9 @@
 - `billing/` — 兑换码生成/核销 + 配额事务入账。
 - `observe/` — 请求用量日志、今日统计、渠道探活监控。
 - `ops/` — 系统选项、系统信息诊断。
+- `admin-proxy/` — 代理节点池 CRUD（供网关出站代理热更消费）。
 - `admin-router/` — 各域路由聚合 + 管理员鉴权守卫。
+- `db-bootstrap/` — 启动期建库/迁移引导。
 
 ## 架构约束（单机平表）
 
@@ -19,7 +21,7 @@
 - 用户管理只在 `auth/`（`/api/user/manage` 覆盖启停/角色/配额调整），
   其他域不重复实现用户写操作。
 
-## API 路线图（单机版）
+## API 现状与路线图
 
 约束：不做 sync/分布式，全部平表（内存建全字段、无关联表/FK），
 等数据聚合点明确后再分析读写路径优化表结构。gateway 逻辑不进 admin-api。
@@ -128,7 +130,22 @@ api_tokens.group_id / api_channels.group_name 按名字引用 (loose)。
 表 `monitor_history` (BIGSERIAL) 由探活执行方 (`catalog::channels::test_channel`) 写入；
 `MonitorDeps` 是落库/查询的封装，ops::probe 后续复用。
 
+### 已完成 — 新增聚合与诊断端点（2026-09）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/log/top` | 消耗 Top 榜（by=user\|model，时间窗聚合） |
+| GET | `/api/log/trend` | 用量趋势（date_trunc hour/day/month 桶 × 模型） |
+| GET | `/api/monitor`、`/api/monitor/{key}` | 渠道探活可用率（7-90 天窗口） |
+| GET | `/api/system-info` | 运行时/内存/CPU/数据库/实体计数诊断 |
+| GET/PUT | `/api/option`、`/api/option/{key}` | 系统选项存储 |
+| GET/POST | `/api/route_unit`、`/api/route_unit/{key}` | 路由单元 CRUD（拓扑/调度配置） |
+| GET/POST | `/api/models`、`/api/models/{key}` 等 | 模型 CRUD/搜索/缺失检测 |
+| POST | `/api/gateway/reload` | 网关快照热更（admin 守卫） |
+
 ### 之后 — 未做
 
 - ops::jobs 后台 runner（探活定时调度，当前探活为手动触发）
-- 小时聚合 / 排行 (usage_hourly / model_rankings) — 数据量起来再做
+- 小时聚合 / 排行 (usage_hourly / model_rankings) — `/api/log/top`、
+  `/api/log/trend` 已按查询时聚合实现；物化预聚合表等数据量起来再做
+- 订阅套餐（admin-web 订阅页暂无后端端点）

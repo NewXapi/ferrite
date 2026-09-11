@@ -137,3 +137,13 @@ cargo test -p gateway --test egress_wiring
 cargo run --release --example adapter_dial_smoke -p forward
 ```
 
+
+## 当前进度（2026-09-11）
+
+- 数据面全链路可用：gates（认证/配额/分组）→ dispatch（健康度+加权随机+
+  failover）→ forward（SSE 流式透传）→ metering（写 usage_logs 平表）。
+- 出站代理：VMess / VLESS / Shadowsocks / Trojan 客户端连接器 +
+  WebSocket 传输 + uTLS 指纹可选；节点池（`proxy_nodes`）已接入数据面，
+  支持运行中热更新。
+- `POST /api/gateway/reload` 热更 token/user/quota 快照与渠道路由，
+  无需重启进程。
