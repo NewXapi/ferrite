@@ -103,3 +103,9 @@ cargo check --target wasm32-unknown-unknown -p tavern-page-chat
 ```sh
 cargo check --target wasm32-unknown-unknown -p tavern-page-settings
 ```
+
+
+## 当前进度（2026-09-11）
+
+- home/characters/chat/personas/lorebook/settings 页面与 tavern-client
+  状态层可用；聊天页接 `/tavern/generate`（SSE），模型选择由设置页配置。

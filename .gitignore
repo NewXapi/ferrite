@@ -2,6 +2,8 @@
 **/*.rs.bk
 *.pdb
 todo/
+specs/
+db/dev/seed.sql
 /logs
 
 .codegraph/

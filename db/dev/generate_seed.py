@@ -2,22 +2,24 @@
 """db/dev 种子生成器 — 真实数据纹理 + 可复现随机分布。
 
 数据来源 (两层):
-1. 真实层: new-api 运行库 (NEW_API_DB, 默认 ~/projects/new-api-runtime/data/new-api.db)
-   的 consume 日志 — 真实模型名/token 量级/quota/耗时/流式比, 保留真实昼夜节奏。
+1. 真实层: db/dev/texture.json.gz — new-api 运行库 consume 日志的压缩纹理
+   (真实模型名/token 量级/quota/耗时/流式比/昼夜节奏; 由外部库一次性提炼,
+   重新提炼方法见 db/dev/README.md)。
 2. 随机层: 种子化 RNG (固定 seed=42, 可复现) 做时间重映射与用户分配。
 
-输出: stdout 打印幂等 seed.sql。
-- 时间戳全部用 now() - interval 相对表达式 → 提交到仓库后永不过期。
+输出: stdout 打印幂等 seed.sql (不落盘, 管道直通 psql)。
+- 时间戳全部用 now() - interval 相对表达式 → 任何时间执行, 今天/本周/
+  本月/今年四个窗口都有数据, 永不过期。
 - 清理标记: usage_logs.request_id LIKE 'seed-%'; 账号/渠道/令牌用固定 UUID。
 """
 
-import os
+import gzip
+import json
 import random
-import sqlite3
 import sys
 from pathlib import Path
 
-DEFAULT_DB = Path.home() / "projects/new-api-runtime/data/new-api.db"
+TEXTURE = Path(__file__).parent / "texture.json.gz"
 
 SEED_MARK = "seed-"
 YEAR_ROWS = 30_000
@@ -70,36 +72,11 @@ def q(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-def load_real_rows(db_path: Path):
-    """真实 consume 行: (模型, prompt, completion, quota, use_time_s, is_stream, channel_id, 时刻偏移h)"""
-    con = sqlite3.connect(db_path)
-    try:
-        rows = con.execute(
-            """SELECT model_name, prompt_tokens, completion_tokens, quota,
-                      use_time, is_stream, channel_id, created_at
-               FROM logs WHERE type = 2 AND model_name <> ''
-                 AND prompt_tokens + completion_tokens > 0"""
-        ).fetchall()
-        lo = min(r[7] for r in rows)
-        hi = max(r[7] for r in rows)
-        span = max(hi - lo, 1)
-        return [
-            {
-                "model": r[0],
-                "prompt": r[1],
-                "completion": r[2],
-                "quota": r[3],
-                "use_time_s": max(r[4], 1),
-                "stream": bool(r[5]),
-                "channel_id": r[6],
-                # 窗口内相对位置 0..1 + 真实小时 (保留昼夜节奏)
-                "frac": (r[7] - lo) / span,
-                "hour": (r[7] // 3600) % 24,
-            }
-            for r in rows
-        ]
-    finally:
-        con.close()
+def load_texture(path: Path):
+    """压缩纹理行: 与提炼时同构的 dict 列表 (模型/prompt/completion/quota/
+    use_time_s/stream/channel_id/frac/hour)。"""
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def ts_abs(day_int: int, hour: int, minute: int, sec: int) -> str:
@@ -158,15 +135,14 @@ def build_usage_layer(real, rng, count, day_base, day_span, idx0):
 
 
 def main():
-    db_path = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("NEW_API_DB", DEFAULT_DB))
-    real = load_real_rows(db_path)
+    real = load_texture(TEXTURE)
     if not real:
-        sys.exit(f"no consume logs in {db_path}")
+        sys.exit(f"empty texture: {TEXTURE}")
     rng = random.Random(42)
 
     emit = sys.stdout.write
     emit("-- 自动生成: python3 db/dev/generate_seed.py — 不要手改, 改生成器后重新生成。\n")
-    emit(f"-- 真实纹理来源: {db_path.name} ({len(real)} 条 consume) + seed=42 随机分布。\n")
+    emit(f"-- 真实纹理来源: texture.json.gz ({len(real)} 条 consume) + seed=42 随机分布。\n")
     emit(f"-- dev 账号: {DEV_PASSWORD_NOTE}\n")
     emit("\\set ON_ERROR_STOP on\nBEGIN;\n\n")
 
@@ -190,10 +166,10 @@ def main():
     emit("INSERT INTO api_groups (key, name, ratio, model_whitelist, remark, status) VALUES\n")
     emit(f"  ({q(GROUP_KEYS['default'])}, 'default', 1.0, '[]', 'dev 种子: 基准分组', 1),\n")
     emit(f"  ({q(GROUP_KEYS['vip'])}, 'vip', 0.8, '[]', 'dev 种子: 优惠分组', 1);\n\n")
-    emit("INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name, priority, weight, status, tags, remark) VALUES\n")
+    emit("INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, groups, priority, weight, status, tags, settings, remark) VALUES\n")
     for i, (name, base) in enumerate(zip(CHANNEL_NAMES, CHANNEL_BASES)):
         models = '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]' if i < 3 else '["gpt-5.6-sol","kimi-k3"]'
-        emit(f"  ({q(CHANNEL_KEYS[i])}, {q(name)}, 'openai', {q(base)}, '[]', {q(models)}, 'default', {10 - i}, {10 - i}, 1, '[]', 'dev 种子'){',' if i < len(CHANNEL_NAMES) - 1 else ';\n'}\n")
+        emit(f"  ({q(CHANNEL_KEYS[i])}, {q(name)}, 'openai', {q(base)}, '[]', {q(models)}, ARRAY['default'], {10 - i}, {10 - i}, 1, '[]', '{{}}', 'dev 种子'){',' if i < len(CHANNEL_NAMES) - 1 else ';\n'}\n")
     emit("\nINSERT INTO api_tokens (key, user_key, name, key_hash, key_preview, group_id, quota, unlimited_quota, used_quota, status) VALUES\n")
     tok_names = ["默认密钥", "测试密钥", "生产环境"]
     for i, (k, n) in enumerate(zip(TOKEN_KEYS, tok_names)):
