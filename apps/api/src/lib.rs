@@ -27,7 +27,6 @@ pub mod snapshot;
 pub mod tavern;
 pub mod usage;
 
-use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable};
 use forward::egress::ReqwestEgress;
 use forward::stage::ForwardStage;
@@ -99,8 +98,11 @@ async fn assemble(
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
-            .push(DispatchStage::new(dispatcher))
-            .push(ForwardStage::new(egress, adaptors.clone()).with_proxies(proxies.clone()))
+            .push(
+                ForwardStage::new(egress, adaptors.clone())
+                    .with_proxies(proxies.clone())
+                    .with_retry(dispatcher, dispatch::RetryPolicy::default()),
+            )
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 

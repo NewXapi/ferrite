@@ -6,7 +6,6 @@ pub mod observability;
 use crate::config::GatewayConfig;
 use crate::config::{build_proxy_snapshot, build_route_snapshot, build_token_snapshot};
 use dispatch::health::HealthSetting;
-use dispatch::stage::DispatchStage;
 use dispatch::{Dispatcher, MemoryHealthTable, Snapshot};
 use forward::egress::ReqwestEgress;
 use forward::stage::ForwardStage;
@@ -47,8 +46,11 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
-            .push(DispatchStage::new(dispatcher))
-            .push(ForwardStage::new(egress, adaptors.clone()).with_proxies(proxies))
+            .push(
+                ForwardStage::new(egress, adaptors.clone())
+                    .with_proxies(proxies)
+                    .with_retry(dispatcher.clone(), build_retry_policy(cfg)),
+            )
             .push(ProtocolBridgeStage::new(adaptors)),
     );
     gateway_pipeline::router::build_router(pipeline)
