@@ -162,8 +162,8 @@ pub struct RecordJob {
 
 /// 把一次请求的用量载荷翻译成 observe 的 [`observe::logs::UsageEvent`]。
 ///
-/// `log_type` 一律由 [`observe::logs::UsageEvent::consume`] 决定
-/// （`= observe::logs::LOG_TYPE_CONSUME = 2`），此处不得手写字面量：观测侧的排行榜
+/// `log_type` 由 [`observe::logs::UsageEvent::consume`] 构造函数内部设为
+/// [`observe::logs::LOG_TYPE_CONSUME`]（= 2），本函数不得手写字面量：观测侧的排行榜
 /// `/api/log/top` 与趋势 `/api/log/trend` 都按 `log_type = 2` 过滤，这里曾手写
 /// `log_type: 1`（1=充值，见 `db/migrations/0002_usage_logs.sql`），
 /// 导致每条真实消费都被记成充值并从两个总览查询里整体消失。
@@ -176,8 +176,10 @@ pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
         observe::logs::UsageEvent::consume(job.user_uuid, &job.username, &job.model_name);
     event.token_key = Some(job.token_uuid);
     event.token_name = job.token_name.clone();
-    event.prompt_tokens = job.prompt_tokens as i32;
-    event.completion_tokens = job.completion_tokens as i32;
+    // usage_logs 的 token 列是 i32（0002 迁移）；clamp 而非裸 as，异常大的计数
+    // 截到 i32::MAX 而不是回绕成负数污染 sum 聚合。
+    event.prompt_tokens = job.prompt_tokens.clamp(0, i32::MAX as i64) as i32;
+    event.completion_tokens = job.completion_tokens.clamp(0, i32::MAX as i64) as i32;
     event.quota = job.cost;
     event.use_time_ms = job.use_time_ms;
     event.is_stream = job.is_stream;
