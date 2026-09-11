@@ -11,3 +11,4 @@ tavern-state  = { path = "../tavern-state" }
 tavern-ui     = { package = "ui-components", path = "../ui-components" }
 
 dioxus = { workspace = true }
+serde_json = { workspace = true }

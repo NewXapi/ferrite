@@ -5907,6 +5907,7 @@ name = "tavern-page-chat"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "serde_json",
  "tavern-client",
  "tavern-state",
  "ui-components",
