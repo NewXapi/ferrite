@@ -166,10 +166,10 @@ def main():
     emit("INSERT INTO api_groups (key, name, ratio, model_whitelist, remark, status) VALUES\n")
     emit(f"  ({q(GROUP_KEYS['default'])}, 'default', 1.0, '[]', 'dev 种子: 基准分组', 1),\n")
     emit(f"  ({q(GROUP_KEYS['vip'])}, 'vip', 0.8, '[]', 'dev 种子: 优惠分组', 1);\n\n")
-    emit("INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, group_name, priority, weight, status, tags, remark) VALUES\n")
+    emit("INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, groups, priority, weight, status, tags, settings, remark) VALUES\n")
     for i, (name, base) in enumerate(zip(CHANNEL_NAMES, CHANNEL_BASES)):
         models = '["gpt-5.6-sol","claude-fable-5","kimi-k3","glm-5.3-flash","deepseek-v4"]' if i < 3 else '["gpt-5.6-sol","kimi-k3"]'
-        emit(f"  ({q(CHANNEL_KEYS[i])}, {q(name)}, 'openai', {q(base)}, '[]', {q(models)}, 'default', {10 - i}, {10 - i}, 1, '[]', 'dev 种子'){',' if i < len(CHANNEL_NAMES) - 1 else ';\n'}\n")
+        emit(f"  ({q(CHANNEL_KEYS[i])}, {q(name)}, 'openai', {q(base)}, '[]', {q(models)}, ARRAY['default'], {10 - i}, {10 - i}, 1, '[]', '{{}}', 'dev 种子'){',' if i < len(CHANNEL_NAMES) - 1 else ';\n'}\n")
     emit("\nINSERT INTO api_tokens (key, user_key, name, key_hash, key_preview, group_id, quota, unlimited_quota, used_quota, status) VALUES\n")
     tok_names = ["默认密钥", "测试密钥", "生产环境"]
     for i, (k, n) in enumerate(zip(TOKEN_KEYS, tok_names)):
