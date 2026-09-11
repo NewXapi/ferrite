@@ -1,7 +1,15 @@
-use dioxus::prelude::*;
-#[css_module("/src/components/input/style.css")]
-struct Styles;
+//! Input — shadcn new-york-v4 风格输入框基元。
+//!
+//! 样式不再走 dxc 的 css_module，而是把 shadcn ui/input.tsx 的 Tailwind base 串
+//! 逐字写进 `class`（含 focus-visible:ring 三段、aria-invalid、file:、dark: 变体）；
+//! 输入相关的全部事件 handler 与其余属性原样透传给底层 `<input>`。
 
+use dioxus::prelude::*;
+
+/// shadcn new-york-v4 Input 基础 class（ui/input.tsx:10-12 三段串按序拼接，逐字）。
+const INPUT_BASE_CLASS: &str = "h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40";
+
+/// shadcn new-york-v4 风格输入框：事件 handler 与属性全部原样透传。
 #[component]
 pub fn Input(
     oninput: Option<EventHandler<FormEvent>>,
@@ -30,7 +38,8 @@ pub fn Input(
 ) -> Element {
     rsx! {
         input {
-            class: Styles::dx_input,
+            class: INPUT_BASE_CLASS,
+            "data-slot": "input",
             oninput: move |e| _ = oninput.map(|callback| callback(e)),
             onchange: move |e| _ = onchange.map(|callback| callback(e)),
             oninvalid: move |e| _ = oninvalid.map(|callback| callback(e)),
