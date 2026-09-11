@@ -2,6 +2,7 @@
 **/*.rs.bk
 *.pdb
 todo/
+specs/
 /logs
 
 .codegraph/

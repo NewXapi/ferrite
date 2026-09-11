@@ -67,3 +67,9 @@
 ## 之后 — 未做
 
 - media（图片资源托管）：单机中转网关不托管图片，`tavern-media` crate 已删除。
+
+
+## 当前进度（2026-09-11）
+
+- storage/auth/characters/chats/settings/presets/secrets/generate 各域
+  端点已实现；聊天经 `/tavern/generate` 接 harness runtime 走上游模型。

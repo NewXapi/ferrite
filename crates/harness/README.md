@@ -78,3 +78,11 @@ cargo test -p harness-runtime
 
 - `tavern-web/page-chat` 把角色卡、历史传给 `harness-prompt`。
 - `apps/api` 用 `harness-runtime` 请求 gateway。
+
+
+## 当前进度（2026-09-11）
+
+- core run 状态机、prompt 组装与截断、工具调用、事件循环与持久化可用；
+  tokenizer 含本地计数实现。
+- tavern 聊天链路（`/tavern/generate`）经 runtime 接上游模型，事件流
+  SSE 输出；测试 233 项（本域单元测试最密集的 crate）。
