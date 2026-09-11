@@ -123,7 +123,7 @@ fn make_ctx() -> gateway_pipeline::RequestCtx {
             inbound_protocol: ProtocolKind::OpenAI,
         },
         token: Some(TokenInfo {
-            id: 1,
+            id: "tok-e2e".into(),
             group: "default".into(),
             enabled: true,
             allowed_models: None,

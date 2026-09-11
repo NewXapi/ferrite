@@ -339,9 +339,9 @@ pub fn build_route_snapshot(channels: &[ChannelConfig]) -> Snapshot {
 /// 全部 token 共享一条 `UserRecord`（`meta.key` = `"local"`，启用、`default` 组）。
 /// `allowed_models` 为空时存 `None`（= 不限制），与 `ModelGate` 的语义一致。
 ///
-/// `TokenRecord.meta.key` 用配置顺序的数字字符串（`"1"`、`"2"`…）：`gate::auth`
-/// 会把它 `parse::<i64>()` 成 `TokenInfo.id`，非数字会静默变成 0 导致多把 key
-/// 撞同一个 id。TODO(#211): token key 口径待与 contract 统一。
+/// `TokenRecord.meta.key` 用配置顺序的数字字符串（`"1"`、`"2"`…）：
+/// gate 的 `TokenInfo.id` 是 String，直接承载它作为配额/限流分桶键，
+/// 每把 key 稳定独立（不再经 i64 解析）。
 ///
 /// 本地 token 一律 `unlimited_quota = true`：单机模式不计费，额度由
 /// `build_gates` 决定是否挂 `QuotaGate` 来控制，不在记录里假造余额。
