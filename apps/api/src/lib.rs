@@ -166,7 +166,30 @@ async fn assemble(
     );
 
     // 合并：具体路由优先，pipeline 作为 fallback 兜底 /v1/*
-    Ok(admin.merge(tavern).merge(reload).merge(pipeline_router))
+    // UI JSON(/api, /tavern) 统一 no-store：管理台数据不缓存，防止浏览器把
+    // 旧响应（含 dev 代理误配期的错误页）持久化重放。/v1 数据面透传上游语义，不加。
+    Ok(admin
+        .merge(tavern)
+        .merge(reload)
+        .merge(pipeline_router)
+        .layer(axum::middleware::from_fn(no_store_ui_json)))
+}
+
+/// /api、/tavern 前缀响应附加 `Cache-Control: no-store`。
+async fn no_store_ui_json(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let scoped =
+        req.uri().path().starts_with("/api") || req.uri().path().starts_with("/tavern");
+    let mut resp = next.run(req).await;
+    if scoped {
+        resp.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-store"),
+        );
+    }
+    resp
 }
 
 /// 测试用：注入 mock egress 构建 Router（不发起真实上游请求）。
