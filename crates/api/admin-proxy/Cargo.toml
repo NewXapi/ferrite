@@ -23,6 +23,8 @@ gateway-proxy = { path = "../../gateway/proxy" }
 # 订阅拉取/解析（clash YAML）委托 meow-config，本 crate 只做 map → 分享链接映射
 meow-config = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vmess"] }
 serde_yaml = "0.9"
+# 分享链接 #备注 的 percent-decode（与 gateway-proxy 同款依赖）
+percent-encoding = "2"
 
 [dev-dependencies]
 db-bootstrap = { path = "../db-bootstrap" }

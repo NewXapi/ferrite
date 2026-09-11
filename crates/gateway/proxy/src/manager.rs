@@ -288,25 +288,73 @@ impl ProxyManager {
         }
     }
 
-    /// 并发探测当前快照全部节点。
+    /// 并发探测当前快照的全部节点（按 id 去重，绑多渠道的节点只探一次）。
     ///
-    /// 默认关闭（原因见 rustdoc）：主动探测会给机场带流量。只有当用户显式启用时才调用。
-    /// `target` 是探测目标 host:port（缺省建议渠道 base_url 的 host，实现时定）。
-    /// `timeout` 单位秒，默认 5s（实现时可设）。并发度由实现者决定（建议 3-5）。
+    /// **调用方负责决定是否调用**：主动探测会给机场带真实流量，所以不在
+    /// `install` 或 `acquire` 里自动触发，也不设内置定时器。
     ///
-    /// **Note**：probe_all 不修改 nodes 状态；探测失败写回 adapter.health().record_delay()
-    /// 供 `node_stats` 展示 last_delay。
+    /// 并发度固定 4：探测是运维动作而非请求路径，4 条并发足以让几十个节点在几秒内
+    /// 走完，又不会一瞬间对同一机场开几十条连接（那本身像攻击流量）。
+    ///
+    /// 探测**不**改节点冷却状态：`feedback` 的冷却反映真实请求的成败，探测失败不该
+    /// 把正在服务的节点踢下线（探测目标与真实上游可以不同）。成功的延迟写进
+    /// adapter 自己的 `ProxyHealth`，由 [`Self::node_stats`] 读出。
     pub async fn probe_all(&self, target: &str, timeout: Duration) -> Vec<ProbeResult> {
-        let _ = (target, timeout);
-        todo!("TODO(#111): 并发探测当前快照全部节点")
+        const CONCURRENCY: usize = 4;
+        let nodes = self.pool.all_nodes();
+        let mut results = Vec::with_capacity(nodes.len());
+        for chunk in nodes.chunks(CONCURRENCY) {
+            let probes = chunk
+                .iter()
+                .map(|node| crate::probe::probe_node(node, target, timeout));
+            results.extend(futures_util::future::join_all(probes).await);
+        }
+        results
     }
 
     /// 节点运行时状态视图：把进程内私有状态导出给管理面。
     ///
     /// `inflight` / `health` 是私有字段，管理台此前看不到任何运行时信息。
     /// 这是 `GET /api/proxy_nodes/report` 的数据源。
+    ///
+    /// `last_delay_ms` 来自 adapter 的 `ProxyHealth`，因此只对**已装配过**的协议节点
+    /// 有值：没探测过、或走 reqwest 的 http/socks5 节点都是 `None`。这是准确的——
+    /// 没测过就是没数据，不要拿 0 冒充。
     pub fn node_stats(&self) -> Vec<NodeStats> {
-        todo!("TODO(#111): 导出进程内节点状态")
+        let now = Instant::now();
+        let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+        let health = self.health.lock().unwrap_or_else(|e| e.into_inner());
+        let adapters = self
+            .connector_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // 缓存键是 (node_id, fingerprint)，同一节点换指纹会有多条；取任意一条即可
+        // ——延迟是节点级属性，不随指纹变。
+        let delay_by_node: HashMap<i64, u16> = adapters
+            .iter()
+            .filter_map(|((node_id, _fp), adapter)| {
+                let delay = adapter.health().last_delay();
+                (delay > 0).then_some((*node_id, delay))
+            })
+            .collect();
+        drop(adapters);
+
+        self.pool
+            .all_nodes()
+            .iter()
+            .map(|node| {
+                let h = health.get(&node.id);
+                NodeStats {
+                    node_id: node.id,
+                    inflight: inflight.get(&node.id).copied().unwrap_or(0),
+                    failure_count: h.map_or(0, |h| h.failure_count),
+                    cooldown_remaining_secs: h
+                        .and_then(|h| h.cooldown_until)
+                        .map_or(0, |until| until.saturating_duration_since(now).as_secs()),
+                    last_delay_ms: delay_by_node.get(&node.id).copied(),
+                }
+            })
+            .collect()
     }
 }
 

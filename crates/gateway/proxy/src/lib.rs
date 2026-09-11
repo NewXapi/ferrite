@@ -25,7 +25,7 @@ pub mod sharelink;
 pub mod ssrf;
 
 pub use probe::{ProbeResult, probe_node};
-pub use sharelink::{ShareLinkBatch, parse_share_link, parse_share_links};
+pub use sharelink::{ShareLinkBatch, mask_link, parse_share_link, parse_share_links};
 
 pub use manager::{Lease, ProxyManager};
 pub use node::{BasicAuth, ProxyNode, ProxyScheme};

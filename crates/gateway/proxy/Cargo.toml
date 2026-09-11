@@ -16,6 +16,7 @@ base64         = { workspace = true }
 thiserror      = { workspace = true }
 arc-swap       = { workspace = true }
 rand           = { workspace = true }
+futures-util   = { workspace = true }
 tokio          = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "net"] }
 async-trait    = "0.1"
 memchr         = "2"

@@ -455,14 +455,19 @@ async fn probe(
 }
 
 /// 订阅导入：拉订阅 URL 或吃粘贴的 YAML，批量入库并热更新。
+///
+/// 部分成功也要 `reload_into`：入库了几条就生效几条，失败明细由报告交代。
 async fn import_subscription(
     State(s): State<ProxyNodeAppState>,
     h: HeaderMap,
     Json(req): Json<subscription::ImportRequest>,
 ) -> Result<Json<Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
-    let _ = (&s, &req);
-    todo!("TODO(#111): 调 subscription::import_subscription 后 reload_into 并回 ImportReport")
+    let report = subscription::import_subscription(&s.svc, &req)
+        .await
+        .map_err(svc_err)?;
+    s.svc.reload_into(&s.proxies).await;
+    Ok(Json(json!(report)))
 }
 
 /// 分享链接批量导入：粘贴多行 `vless://` / `vmess://` / `ss://`…
@@ -472,6 +477,9 @@ async fn import_share_links(
     Json(req): Json<subscription::ImportRequest>,
 ) -> Result<Json<Value>, ErrResp> {
     require_admin(&s.auth, &h).await.map_err(err_json)?;
-    let _ = (&s, &req);
-    todo!("TODO(#111): 调 subscription::import_share_links 后 reload_into 并回 ImportReport")
+    let report = subscription::import_share_links(&s.svc, &req)
+        .await
+        .map_err(svc_err)?;
+    s.svc.reload_into(&s.proxies).await;
+    Ok(Json(json!(report)))
 }
