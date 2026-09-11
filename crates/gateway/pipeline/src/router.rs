@@ -61,6 +61,11 @@ pub fn error_to_response(e: StageError) -> Response {
             "no_route",
             "no available channel".to_string(),
         ),
+        RateLimited => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "all candidates rate limited".to_string(),
+        ),
         NotReady => (
             StatusCode::SERVICE_UNAVAILABLE,
             "service_not_ready",

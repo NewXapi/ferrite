@@ -58,6 +58,11 @@ pub enum StageError {
     #[error("no available route")]
     NoRoute,
 
+    /// 重试循环内所有候选均被上游限流 (dispatch::DispatchError::RateLimited),
+    /// 与 NoRoute 区分: 客户端稍后重发可能成功, 映射 429。
+    #[error("rate limited")]
+    RateLimited,
+
     /// catalog 快照未就绪 / 服务暂不可用 (fail-closed 503)。
     #[error("service not ready")]
     NotReady,

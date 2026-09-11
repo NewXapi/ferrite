@@ -290,11 +290,17 @@ fn retry_loop_succeeds_after_one_failover() {
         },
         |_k, _o| {},
     ));
-    // 第二次尝试命中另一候选 → Done, run_retry_loop 返回 Ok。
+    // 第二次尝试命中另一候选 → Done, run_retry_loop 返回 Ok((获胜尝试, outcome))。
+    let (attempt, outcome) = result.expect("可重试失败后换候选应最终成功");
     assert!(
-        matches!(result, Ok(AttemptOutcome::Done { status: 200 })),
-        "可重试失败后换候选应最终成功, got: {result:?}"
+        matches!(outcome, AttemptOutcome::Done { status: 200 }),
+        "换候选后应成功收尾, got: {outcome:?}"
     );
+    assert_eq!(
+        attempt.candidate.unit.meta.key, "ch2",
+        "获胜上下文应携带第二次尝试选中的候选 (ch2)"
+    );
+    assert_eq!(attempt.attempt_no, 2, "获胜的是第 2 次尝试");
     assert_eq!(attempts, 2, "第一次可重试失败后应换候选重试");
 }
 
@@ -355,7 +361,14 @@ fn retry_loop_fatal_stops_immediately() {
         |_k, _o| {},
     ));
     assert_eq!(attempts, 1, "Fatal 不应重试");
-    assert!(matches!(outcome, Ok(AttemptOutcome::Fatal(_))));
+    // Fatal 终止也算"循环成功结束": 返回携带终止那次尝试的上下文。
+    let (attempt, outcome) = outcome.expect("Fatal 应作为 Ok((Attempt, outcome)) 返回");
+    assert!(matches!(outcome, AttemptOutcome::Fatal(_)));
+    assert_eq!(
+        attempt.candidate.unit.meta.key, "ch1",
+        "Fatal 终止时也应带出终止候选"
+    );
+    assert_eq!(attempt.attempt_no, 1);
 }
 
 #[test]
@@ -662,4 +675,71 @@ fn dispatcher_fails_closed_before_snapshot() {
         dispatcher.select("g", "m", &[]),
         Err(dispatch::DispatchError::SnapshotNotReady)
     ));
+}
+
+// ---------- dispatch stage 渠道归因 ----------
+
+/// DispatchStage 选中路由后必须把渠道归因写进 ctx：channel_key 来自 unit，
+/// channel_name 回查 Dispatcher 快照。usage 落库靠这两个字段做渠道维度
+/// 统计——stage 漏写会让 pipeline 打包出空归因，报表渠道列全空（本 PR 修复
+/// 的原始 bug）。
+#[test]
+fn dispatch_stage_fills_selected_channel_fields() {
+    use dispatch::stage::DispatchStage;
+    use gateway_pipeline::Stage;
+    use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta};
+
+    let units = vec![unit("g", "m", "ch1", 10, 10, 1)];
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("ch1".to_string(), channel("ch1", "s1", "https://u1"));
+    let dispatcher = dispatch::Dispatcher::new(
+        Some(Arc::new(dispatch::Snapshot { units, channels })),
+        Arc::new(MemoryHealthTable::new()),
+    );
+
+    let ctx = &mut gateway_pipeline::RequestCtx::new(RequestMeta {
+        method: "POST".to_string(),
+        path: "/v1/chat/completions".to_string(),
+        headers: http::HeaderMap::new(),
+        body: BodySource::InMemory(bytes::Bytes::new()),
+        client_ip: "127.0.0.1".parse().unwrap(),
+        request_id: uuid::Uuid::now_v7(),
+        inbound_protocol: ProtocolKind::OpenAI,
+    });
+    ctx.token = Some(gateway_pipeline::TokenInfo {
+        id: "tok-1".into(),
+        group: "g".into(),
+        enabled: true,
+        allowed_models: None,
+        auth_version: 1,
+    });
+    ctx.requested_model = Some("m".into());
+
+    let stage = DispatchStage::new(Arc::new(dispatcher));
+    let outcome = rt().block_on(stage.handle(ctx)).unwrap();
+    assert!(matches!(outcome, gateway_pipeline::StageOutcome::Continue));
+    assert_eq!(
+        ctx.selected_channel_key.as_deref(),
+        Some("ch1"),
+        "归因键 = route.unit.channel_key"
+    );
+    // channel() helper 里 name = key，回查快照后应同名
+    assert_eq!(ctx.selected_channel_name.as_deref(), Some("ch1"));
+}
+
+/// channel_name 对快照外的 key 返回 None（降级为只带 key 的语义基础）。
+#[test]
+fn dispatcher_channel_name_unknown_key_is_none() {
+    let dispatcher = dispatch::Dispatcher::new(None, Arc::new(MemoryHealthTable::new()));
+    assert!(dispatcher.channel_name("nope").is_none());
+
+    let units = vec![unit("g", "m", "ch1", 10, 10, 1)];
+    let mut channels: HashMap<String, ChannelRecord> = HashMap::new();
+    channels.insert("ch1".to_string(), channel("ch1", "s1", "https://u1"));
+    let dispatcher = dispatch::Dispatcher::new(
+        Some(Arc::new(dispatch::Snapshot { units, channels })),
+        Arc::new(MemoryHealthTable::new()),
+    );
+    assert!(dispatcher.channel_name("ch1").is_some());
+    assert!(dispatcher.channel_name("nope").is_none());
 }
