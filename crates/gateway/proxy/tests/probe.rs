@@ -24,7 +24,7 @@ fn ss_node(id: i64, host: &str, port: u16) -> ProxyNode {
             user: "aes-128-gcm".into(),
             pass: "probe-test-pass".into(),
         }),
-        vless: None,
+        opts: None,
         channel_keys: vec!["ch".into()],
         priority: 0,
     }

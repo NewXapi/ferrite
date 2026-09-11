@@ -40,7 +40,7 @@ async fn main() {
             pass: String::new(),
         }),
         channel_keys: vec!["smoke".into()],
-        vless: None,
+        opts: None,
         priority: 10,
     };
     let Some(adapter) = adapter_for(&node) else {

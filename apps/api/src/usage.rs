@@ -144,19 +144,48 @@ pub async fn usage_middleware(
 }
 
 /// 一次用量记录的全部载荷（打包成 struct 避免 13 参数函数）。
-struct RecordJob {
-    user_uuid: uuid::Uuid,
-    username: String,
-    token_uuid: uuid::Uuid,
-    token_name: String,
-    model_name: String,
-    prompt_tokens: i64,
-    completion_tokens: i64,
-    cost: i64,
-    use_time_ms: i32,
-    is_stream: bool,
-    token_key: String,
+///
+/// 对外公开只为让集成测试能直接喂 [`build_consume_event`]，不作为稳定 API。
+pub struct RecordJob {
+    pub user_uuid: uuid::Uuid,
+    pub username: String,
+    pub token_uuid: uuid::Uuid,
+    pub token_name: String,
+    pub model_name: String,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub cost: i64,
+    pub use_time_ms: i32,
+    pub is_stream: bool,
+    pub token_key: String,
 }
+
+/// 把一次请求的用量载荷翻译成 observe 的 [`observe::logs::UsageEvent`]。
+///
+/// `log_type` 由 [`observe::logs::UsageEvent::consume`] 构造函数内部设为
+/// [`observe::logs::LOG_TYPE_CONSUME`]（= 2），本函数不得手写字面量：观测侧的排行榜
+/// `/api/log/top` 与趋势 `/api/log/trend` 都按 `log_type = 2` 过滤，这里曾手写
+/// `log_type: 1`（1=充值，见 `db/migrations/0002_usage_logs.sql`），
+/// 导致每条真实消费都被记成充值并从两个总览查询里整体消失。
+///
+/// `channel_key` / `channel_name` 沿用构造器默认的空值：渠道在 pipeline 内部选定，
+/// 中间件这一层拿不到（ponytail，待 pipeline 回传选中渠道后补）。
+/// `ip` / `request_id` / `content` 同理留空。
+pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
+    let mut event =
+        observe::logs::UsageEvent::consume(job.user_uuid, &job.username, &job.model_name);
+    event.token_key = Some(job.token_uuid);
+    event.token_name = job.token_name.clone();
+    // usage_logs 的 token 列是 i32（0002 迁移）；clamp 而非裸 as，异常大的计数
+    // 截到 i32::MAX 而不是回绕成负数污染 sum 聚合。
+    event.prompt_tokens = job.prompt_tokens.clamp(0, i32::MAX as i64) as i32;
+    event.completion_tokens = job.completion_tokens.clamp(0, i32::MAX as i64) as i32;
+    event.quota = job.cost;
+    event.use_time_ms = job.use_time_ms;
+    event.is_stream = job.is_stream;
+    event
+}
+
 fn spawn_record(
     mut pool: PgPool,
     mut quota_snapshot: gateway_gate::snapshot::SharedQuota,
@@ -192,37 +221,10 @@ async fn record_usage(
     quota_snapshot: &gateway_gate::snapshot::SharedQuota,
     job: RecordJob,
 ) {
+    let event = build_consume_event(&job);
     let RecordJob {
-        user_uuid,
-        username,
-        token_uuid,
-        token_name,
-        model_name,
-        prompt_tokens,
-        completion_tokens,
-        cost,
-        use_time_ms,
-        is_stream,
-        token_key,
+        cost, token_key, ..
     } = job;
-    let event = observe::logs::UsageEvent {
-        log_type: 1, // consume
-        user_key: user_uuid,
-        username: username.clone(),
-        token_key: Some(token_uuid),
-        token_name,
-        channel_key: None, // ponytail: pipeline 内部选定，本 PR 拿不到
-        channel_name: String::new(),
-        model_name,
-        prompt_tokens: prompt_tokens as i32,
-        completion_tokens: completion_tokens as i32,
-        quota: cost,
-        use_time_ms,
-        is_stream,
-        ip: String::new(),
-        request_id: String::new(),
-        content: String::new(),
-    };
     let svc = observe::logs::LogService::new(pool.clone());
     match svc.record(&event).await {
         Ok(id) => tracing::debug!(usage_id = %id, "usage recorded"),
@@ -243,9 +245,9 @@ async fn record_usage(
         }
         Err(e) => tracing::warn!(error = %e, token_key = %token_key, "token key is not a uuid"),
     }
-    // DB 用 UUID 主键，内存 quota 快照用 gate 口径（见 snapshot::build_quota_snapshot）
-    let gate_id = token_key.parse::<i64>().unwrap_or(0).to_string();
-    quota_snapshot.load().add(&gate_id, -cost);
+    // DB 用 UUID 主键，内存 quota 快照桶键同样是 token 的 UUID 字符串
+    // （与 QuotaGate 查询键 TokenInfo.id 一致，见 snapshot::build_quota_snapshot）
+    quota_snapshot.load().add(&token_key, -cost);
 }
 
 // ---- 辅助函数 ----

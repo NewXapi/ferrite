@@ -6,7 +6,7 @@
 //!
 //! 协议节点（Vless/Vmess/Shadowsocks/Trojan）由 `crate::adapter::adapter_for`
 //! 映射成 meow `ProxyAdapter`（缓存于 connector_cache）；映射失败回落直连。
-//! ponytail: 健康表只活在进程内；affinity / DB 持久化等需要时再加。
+//! ponytail: 健康表与软亲和只活在进程内；DB 持久化等需要时再加。
 use super::node::{ProxyNode, ProxyScheme};
 use super::pool::{ProxyPool, ProxySnapshot};
 use super::probe::ProbeResult;
@@ -17,6 +17,12 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// 软亲和 TTL：渠道的亲和记录距上次使用超过此时长即视为过期（换机窗口），
+/// 下次并列时重新随机打散。持续有流量时时间戳随每次选中刷新，活跃节点
+/// 不会因 TTL 过期；流量停摆 >10s（连接大概率已闲置关闭）才允许换机。
+/// ponytail: 固定值；要可配再加 options 项。
+const AFFINITY_TTL: Duration = Duration::from_secs(10);
 
 fn is_supported_scheme(_scheme: ProxyScheme) -> bool {
     // 所有协议已实现（PR3/4 落地 VLESS/VMess + WS 客户端链），临时闸门移除
@@ -104,6 +110,9 @@ pub struct ProxyManager {
     inflight: Arc<Mutex<HashMap<i64, u32>>>,
     client_cache: Mutex<HashMap<(i64, u64), Arc<reqwest::Client>>>,
     health: Mutex<HashMap<i64, NodeHealth>>,
+    /// 软亲和：channel_key → (上次选中的节点 id, 上次选中时间)。
+    /// 仅在并列最闲组 >1 时参与决策；指针始终指向本渠道最近实际承接流量的节点。
+    affinity: Mutex<HashMap<String, (i64, Instant)>>,
 }
 
 impl Default for ProxyManager {
@@ -122,6 +131,7 @@ impl ProxyManager {
             client_cache: Mutex::new(HashMap::new()),
             connector_cache: Mutex::new(HashMap::new()),
             health: Mutex::new(HashMap::new()),
+            affinity: Mutex::new(HashMap::new()),
         }
     }
 
@@ -133,7 +143,7 @@ impl ProxyManager {
     /// 为 `channel_key` 租一个出口。
     ///
     /// 无节点或全部冷却 → `node_id = 0` 的直连 Client。
-    /// 否则：跳过冷却 → 跳过不支持的协议 (Vless/Vmess/Shadowsocks/Trojan) → 最高 priority 层 → 层内 least-inflight → 并列随机。
+    /// 否则：跳过冷却 → 跳过不支持的协议 (Vless/Vmess/Shadowsocks/Trojan) → 最高 priority 层 → 层内 least-inflight → 并列时软亲和（TTL 内粘住上次节点，过期或落选则随机 rebalance）→ 单选直通。
     ///
     /// 协议实现落地前的临时闸门（PR2/3 移除）：未实现的协议节点视同冷却，强制回落直连。
     pub fn acquire(&self, channel_key: &str) -> Lease {
@@ -171,11 +181,38 @@ impl ProxyManager {
         eligible.retain(|n| inflight.get(&n.id).copied().unwrap_or(0) == min_inflight);
         drop(inflight);
 
-        let mut rng = rand::thread_rng();
-        let selected = eligible
-            .choose(&mut rng)
-            .cloned()
-            .expect("eligible non-empty");
+        // 软亲和选点：并列最闲候选 >1 时优先粘住 TTL 内的亲和节点，
+        // 否则组内随机并写回指针；单选直通。亲和节点负载拉开后落出并列组
+        // 即自动 rebalance，无需额外代码。
+        // 锁序：health / inflight 已在此前释放；affinity 锁只覆盖本决策块，
+        // 不持锁跨候选构建，也不与后续 inflight 自增嵌套。
+        let selected = {
+            let mut affinity = self.affinity.lock().unwrap_or_else(|e| e.into_inner());
+            if eligible.len() > 1 {
+                let sticky = affinity
+                    .get(channel_key)
+                    .filter(|(_, last_used)| last_used.elapsed() <= AFFINITY_TTL)
+                    .map(|(id, _)| *id)
+                    .filter(|id| eligible.iter().any(|n| n.id == *id));
+                let chosen = match sticky {
+                    // 亲和未过期且仍在最闲并列组内 → 粘住它，不打随机
+                    Some(id) => eligible
+                        .iter()
+                        .find(|n| n.id == id)
+                        .cloned()
+                        .expect("sticky id present in eligible"),
+                    // 首次 / 已过期 / 亲和节点落选 → 并列组内随机（rebalance）
+                    None => eligible
+                        .choose(&mut rand::thread_rng())
+                        .cloned()
+                        .expect("eligible non-empty"),
+                };
+                affinity.insert(channel_key.to_string(), (chosen.id, now));
+                chosen
+            } else {
+                eligible[0].clone()
+            }
+        };
         let node_id = selected.id;
 
         {

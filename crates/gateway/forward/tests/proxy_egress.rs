@@ -72,7 +72,7 @@ fn make_ctx(route: Option<SelectedRoute>) -> gateway_pipeline::RequestCtx {
             inbound_protocol: ProtocolKind::OpenAI,
         },
         token: Some(TokenInfo {
-            id: 1,
+            id: "tok-1".into(),
             group: "default".to_string(),
             enabled: true,
             allowed_models: None,
@@ -160,7 +160,7 @@ async fn proxies_with_node_uses_leased_client() {
             port: 1,
             auth: None,
             channel_keys: vec!["ch".into()],
-            vless: None,
+            opts: None,
             priority: 10,
         }],
     });

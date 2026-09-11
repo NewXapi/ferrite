@@ -49,7 +49,7 @@ pub struct ChannelRow {
     pub dispatch: Vec<String>,
 }
 
-/// 渠道类型选项,镜像 `apps/api/src/gateway.rs` 的 CHANNEL_TYPES。
+/// 渠道类型选项(与后端 `POST /api/admin/channels` 接受的 `channel_type` 取值一致)。
 pub const CHANNEL_TYPES: &[&str] = &["openai", "openai-compat", "claude", "gemini"];
 
 /// 订阅套餐(对齐 new-api subscriptions 字段)

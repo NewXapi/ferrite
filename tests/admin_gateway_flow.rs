@@ -337,6 +337,67 @@ async fn e2e_reload_picks_up_new_token_without_restart() {
     assert!(count >= 1, "usage_logs rows: {}", count);
 }
 
+/// reload 鉴权负路径：reload 是管理面敏感操作，鉴权必须先于任何查库/热更拒绝。
+/// - 无 Authorization 头 → bearer_user 报 InvalidToken → 401（不能 200/501）
+/// - role=1 普通用户持有合法 access JWT → admin 守卫 → 403（不能 200）
+/// 与核心 reload 测试同文件同 pg_pool skip 模式（app 组装本身需要 PG 迁移）。
+#[tokio::test]
+async fn e2e_reload_without_admin_bearer_is_rejected() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let app = build_test_app(&pool).await;
+
+    // 无 Authorization 头 → 401
+    let anon_req = Request::builder()
+        .method("POST")
+        .uri("/api/gateway/reload")
+        .body(Body::empty())
+        .unwrap();
+    let anon_resp = ServiceExt::oneshot(app.clone(), anon_req).await.unwrap();
+    assert_eq!(
+        anon_resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "无 token 调 reload 应 401 而非 200"
+    );
+
+    // role=1（insert_test_user 默认角色，未做 UPDATE role=10）+ 合法 JWT → 403
+    let user_key = insert_test_user(&pool).await;
+    let login_body = serde_json::json!({
+        "username": format!("user_{}", &user_key.to_string()[..8]),
+        "password": TEST_PASSWORD
+    });
+    let login_req = Request::builder()
+        .method("POST")
+        .uri("/api/user/login")
+        // login handler 用 ConnectInfo 提取 client ip；oneshot 裸 Router 不自带，
+        // 必须手动塞 extension（同 e2e_reload_picks_up_new_token_without_restart）
+        .extension(axum::extract::ConnectInfo(
+            "127.0.0.1:4242".parse::<std::net::SocketAddr>().unwrap(),
+        ))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&login_body).unwrap()))
+        .unwrap();
+    let login_json =
+        response_to_json(ServiceExt::oneshot(app.clone(), login_req).await.unwrap()).await;
+    let access_token = login_json["accessToken"].as_str().unwrap_or_else(|| {
+        panic!("login response missing accessToken: {login_json}");
+    });
+
+    let reload_req = Request::builder()
+        .method("POST")
+        .uri("/api/gateway/reload")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .body(Body::empty())
+        .unwrap();
+    let reload_resp = ServiceExt::oneshot(app, reload_req).await.unwrap();
+    assert_eq!(
+        reload_resp.status(),
+        StatusCode::FORBIDDEN,
+        "role=1 用户调 reload 应 403 而非 200"
+    );
+}
+
 #[tokio::test]
 async fn e2e_unmatched_paths_return_404() {
     let Some(pool) = pg_pool().await else {

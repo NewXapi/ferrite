@@ -4,19 +4,17 @@ use axum::Router;
 use sqlx::PgPool;
 
 /// 启动时建表 + 聚合 admin-api 子域 Router。
-/// apps/api main.rs: `let admin = admin_api_router::router(pool).await?;`
-/// DDL 失败或 FERRITE_JWT_SECRET 缺失返回 Err，由调用方决定日志/退出策略。
+/// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies).await?;`
+/// `auth_svc` 由 app 层组装后注入（FERRITE_JWT_SECRET 是组装关注点，本 crate 不读环境变量）。
+/// DDL 失败返回 Err，由调用方决定日志/退出策略。
 pub async fn router(
     pool: PgPool,
+    auth_svc: std::sync::Arc<auth::AuthService>,
     proxies: std::sync::Arc<gateway_proxy::ProxyManager>,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     // 建表唯一入口：db/migrations（ensure_table 补丁式建表已退役）。
     db_bootstrap::run_migrations(&pool).await?;
     tracing::info!("db migrations applied");
-
-    let secret =
-        std::env::var("FERRITE_JWT_SECRET").map_err(|_| "FERRITE_JWT_SECRET env var required")?;
-    let auth_svc = std::sync::Arc::new(auth::AuthService::new(pool.clone(), secret.into_bytes())?);
 
     let auth_router = auth::routes::router_with_svc(auth_svc.clone())?;
 

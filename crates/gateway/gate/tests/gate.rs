@@ -109,7 +109,7 @@ fn ctx_with_token(raw: &str, user_key: &str, snapshot: &TokenSnapshot) -> GateCt
     ctx.raw_key = Some(raw.into());
     ctx.user_key = Some(user_key.into());
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: token.meta.key.parse().unwrap_or(0),
+        id: token.meta.key.clone(),
         user_id: 0,
         id_hash: hash,
         group: token.group().unwrap_or("").to_string(),
@@ -271,7 +271,7 @@ async fn quota_rejects_insufficient_remaining() {
 
     let mut ctx = make_ctx(make_meta(HeaderMap::new(), b"{}".to_vec()));
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: 1,
+        id: "tok-1".into(),
         user_id: 1,
         id_hash: [0; 32],
         group: "default".into(),
@@ -320,13 +320,13 @@ fn pricing_lookup_falls_back_to_default_group() {
 #[test]
 fn ratelimit_sliding_window_blocks_after_limit() {
     let limiter = RateLimiter::new(2, 1); // 2 req / 1s
-    assert!(limiter.try_acquire(gateway_gate::LimitScope::PerKey, 1));
-    assert!(limiter.try_acquire(gateway_gate::LimitScope::PerKey, 1));
+    assert!(limiter.try_acquire(gateway_gate::LimitScope::PerKey, "1"));
+    assert!(limiter.try_acquire(gateway_gate::LimitScope::PerKey, "1"));
     assert!(
-        !limiter.try_acquire(gateway_gate::LimitScope::PerKey, 1),
+        !limiter.try_acquire(gateway_gate::LimitScope::PerKey, "1"),
         "third should fail"
     );
-    assert!(limiter.try_acquire(gateway_gate::LimitScope::PerKey, 2));
+    assert!(limiter.try_acquire(gateway_gate::LimitScope::PerKey, "2"));
 }
 
 #[tokio::test]
@@ -336,7 +336,7 @@ async fn ratelimit_gate_rejects_with_rejection() {
 
     let mut ctx = make_ctx(make_meta(HeaderMap::new(), b"{}".to_vec()));
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: 1,
+        id: "tok-1".into(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -365,7 +365,7 @@ async fn model_allows_whitelisted_and_blocks_others() {
         br#"{"model":"gpt-4o","max_tokens":1024}"#.to_vec(),
     ));
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: 1,
+        id: "tok-1".into(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -383,7 +383,7 @@ async fn model_allows_whitelisted_and_blocks_others() {
         br#"{"model":"claude-3-haiku","max_tokens":1024}"#.to_vec(),
     ));
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: 1,
+        id: "tok-1".into(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -399,7 +399,7 @@ async fn model_allows_whitelisted_and_blocks_others() {
         br#"{"model":"gemini-1.5","max_tokens":1024}"#.to_vec(),
     ));
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: 1,
+        id: "tok-1".into(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -429,7 +429,7 @@ async fn graylist_blocks_after_streak_threshold() {
 
     let mut ctx = make_ctx(make_meta(HeaderMap::new(), b"{}".to_vec()));
     ctx.token = Some(gateway_gate::TokenInfo {
-        id: 1,
+        id: "tok-1".into(),
         user_id: 1,
         id_hash: hash,
         group: "g".into(),
@@ -493,7 +493,7 @@ async fn chain_full_happy_path_lifts_token_to_ctx() {
     let raw = "sk-chain-1";
     let hash = sha256(raw);
 
-    // token 表（key 是数字字符串 "1"，便于 quota 按 id 查）
+    // token 表（quota 按 token.id == meta.key 查）
     let tokens = Arc::new(ArcSwap::from_pointee(TokenSnapshot::default()));
     tokens.load().upsert(
         hash,
@@ -516,7 +516,7 @@ async fn chain_full_happy_path_lifts_token_to_ctx() {
             cache_per_m: 1.0,
         },
     );
-    // quota key 必须等于 token.id.to_string() == "1"
+    // quota key 必须等于 token.id（== token 的 meta.key）== "1"
     let quotas = Arc::new(ArcSwap::from_pointee(QuotaSnapshot::default()));
     quotas.load().upsert("1".into(), 100_000_000);
 

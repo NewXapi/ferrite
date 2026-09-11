@@ -815,7 +815,10 @@ pub fn NetworkPanel() -> Element {
                     let mut dw = dodge.write();
                     dodge_active = false;
                     for &(u, l, raw) in &pairs {
-                        let (pu, pl) = (ps[&u], ps[&l]);
+                        // 悬空边（端点不在任何层→无 position）跳过, 避免索引 panic。
+                        let (Some(&pu), Some(&pl)) = (ps.get(&u), ps.get(&l)) else {
+                            continue;
+                        };
                         let (a, b) = ((pu.0, pu.1 + NODE_H / 2.0), (pl.0, pl.1 - NODE_H / 2.0));
                         let target = if dragging {
                             0.0
@@ -1778,7 +1781,10 @@ fn physics_step(
     // Rope spring: zero force while the link is slack, tugs only past REST.
     const REST: f64 = 520.0;
     for &(up, low) in edges {
-        let (pu, pl) = (positions[&up], positions[&low]);
+        // 边可能引用不在任何层的悬空节点（数据里的悬空引用）——跳过, 避免 HashMap 索引 panic。
+        let (Some(&pu), Some(&pl)) = (positions.get(&up), positions.get(&low)) else {
+            continue;
+        };
         let (dx, dy) = (pl.0 - pu.0, pl.1 - pu.1);
         let dist = dx.hypot(dy).max(1.0);
         let stretch = dist - REST;

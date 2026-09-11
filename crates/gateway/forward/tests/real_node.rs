@@ -117,7 +117,7 @@ async fn egress_over_real_socks5_node() {
         host: proxy.ip().to_string(),
         port: proxy.port(),
         auth: None,
-        vless: None,
+        opts: None,
         channel_keys: vec!["openai".to_string()],
         priority: 0,
     };

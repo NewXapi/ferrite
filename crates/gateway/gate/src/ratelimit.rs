@@ -26,7 +26,7 @@ pub enum LimitScope {
 ///
 /// 内部每个 `(scope, key)` 维护一个 [`TokenBucket`]。
 pub struct RateLimiter {
-    inner: Mutex<HashMap<(LimitScope, i64), TokenBucket>>,
+    inner: Mutex<HashMap<(LimitScope, String), TokenBucket>>,
     /// 默认上限：N 次请求 / window_secs 秒。简单起见目前所有 scope 共用同一对值。
     pub max_requests: u32,
     pub window_secs: u32,
@@ -42,10 +42,10 @@ impl RateLimiter {
     }
 
     /// 尝试获取一次配额。true = 允许，false = 超限。
-    pub fn try_acquire(&self, scope: LimitScope, key: i64) -> bool {
+    pub fn try_acquire(&self, scope: LimitScope, key: &str) -> bool {
         let now = now_secs();
         let mut map = self.inner.lock();
-        let bucket = map.entry((scope, key)).or_default();
+        let bucket = map.entry((scope, key.to_string())).or_default();
         bucket.try_acquire(now, self.max_requests, self.window_secs)
     }
 }
@@ -102,27 +102,17 @@ impl Gate for RateLimitGate {
         let token: &TokenInfo = ctx.token.as_ref().ok_or(Rejection::AuthSkipped)?;
 
         // per-key 限流
-        if !self.limiter.try_acquire(LimitScope::PerKey, token.id) {
+        if !self.limiter.try_acquire(LimitScope::PerKey, &token.id) {
             return Err(Rejection::RateLimited);
         }
 
-        // 可选：per-group（用 hash(user.group) -> i64）
+        // 可选：per-group（直接用 user.group 字符串作 key）
         if let Some(user) = &ctx.user
-            && !self
-                .limiter
-                .try_acquire(LimitScope::PerGroup, str_hash(&user.group))
+            && !self.limiter.try_acquire(LimitScope::PerGroup, &user.group)
         {
             return Err(Rejection::RateLimited);
         }
 
         Ok(())
     }
-}
-
-/// 稳定字符串 → i64（用于 group 名当 rate-limit key）。
-fn str_hash(s: &str) -> i64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish() as i64
 }
