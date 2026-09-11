@@ -9,6 +9,7 @@
 //! ponytail: 健康表只活在进程内；affinity / DB 持久化等需要时再加。
 use super::node::{ProxyNode, ProxyScheme};
 use super::pool::{ProxyPool, ProxySnapshot};
+use super::probe::ProbeResult;
 use meow_common::ProxyAdapter;
 use rand::seq::SliceRandom;
 use reqwest::redirect::Policy as RedirectPolicy;
@@ -78,6 +79,20 @@ impl Drop for Lease {
 struct NodeHealth {
     failure_count: u32,
     cooldown_until: Option<Instant>,
+}
+
+/// 节点运行时状态视图：把进程内私有状态导出给管理面。
+///
+/// `inflight` / `health` 是私有字段，管理台此前看不到任何运行时信息。
+/// 这是 `GET /api/proxy_nodes/report` 的数据源。
+pub struct NodeStats {
+    pub node_id: i64,
+    pub inflight: u32,
+    pub failure_count: u32,
+    /// 冷却剩余秒数；未冷却为 0
+    pub cooldown_remaining_secs: u64,
+    /// 最近一次探测延迟（来自 adapter 的 ProxyHealth），无记录为 None
+    pub last_delay_ms: Option<u16>,
 }
 
 /// 渠道出口管理器：选节点、缓存 Client、按反馈冷却。
@@ -271,6 +286,27 @@ impl ProxyManager {
                 Arc::new(ProxyClient::Adapter(adapter))
             }
         }
+    }
+
+    /// 并发探测当前快照全部节点。
+    ///
+    /// 默认关闭（原因见 rustdoc）：主动探测会给机场带流量。只有当用户显式启用时才调用。
+    /// `target` 是探测目标 host:port（缺省建议渠道 base_url 的 host，实现时定）。
+    /// `timeout` 单位秒，默认 5s（实现时可设）。并发度由实现者决定（建议 3-5）。
+    ///
+    /// **Note**：probe_all 不修改 nodes 状态；探测失败写回 adapter.health().record_delay()
+    /// 供 `node_stats` 展示 last_delay。
+    pub async fn probe_all(&self, target: &str, timeout: Duration) -> Vec<ProbeResult> {
+        let _ = (target, timeout);
+        todo!("TODO(#111): 并发探测当前快照全部节点")
+    }
+
+    /// 节点运行时状态视图：把进程内私有状态导出给管理面。
+    ///
+    /// `inflight` / `health` 是私有字段，管理台此前看不到任何运行时信息。
+    /// 这是 `GET /api/proxy_nodes/report` 的数据源。
+    pub fn node_stats(&self) -> Vec<NodeStats> {
+        todo!("TODO(#111): 导出进程内节点状态")
     }
 }
 

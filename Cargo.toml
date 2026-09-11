@@ -88,6 +88,7 @@ chrono      = { version = "0.4", features = ["serde"] }
 rand        = "0.8"
 futures-util = "0.3"
 uuid        = { version = "1", features = ["serde", "v4", "v7"] }
+base64      = "0.22"
 
 [profile.release]
 lto           = "fat"

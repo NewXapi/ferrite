@@ -9,6 +9,8 @@
 //!
 //! ## 文件分工
 //!
+//! - [`sharelink`] —— 分享链接方言解析器（vmess base64/ss legacy/SIP002）
+//! - [`probe`] —— 主动探测（TCP 拨号判活，复用 meow ProxyHealth）
 //! - [`node`] —— 代理节点：URL 解析与 `reqwest::Proxy` 映射（含 Vless/Vmess/Shadowsocks/Trojan 标记）
 //! - [`adapter`] —— 节点 → meow `ProxyAdapter` 映射（协议握手在 dial_tcp 内完成）
 //! - [`pool`] —— `ProxyPool`：按 channel_key 索引 + priority 分层选节点
@@ -18,7 +20,12 @@
 pub mod manager;
 pub mod node;
 pub mod pool;
+pub mod probe;
+pub mod sharelink;
 pub mod ssrf;
+
+pub use probe::{ProbeResult, probe_node};
+pub use sharelink::{ShareLinkBatch, parse_share_link, parse_share_links};
 
 pub use manager::{Lease, ProxyManager};
 pub use node::{BasicAuth, ProxyNode, ProxyScheme};

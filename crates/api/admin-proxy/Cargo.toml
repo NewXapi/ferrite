@@ -20,6 +20,9 @@ thiserror = { workspace = true }
 url      = "2"
 auth     = { path = "../auth" }
 gateway-proxy = { path = "../../gateway/proxy" }
+# 订阅拉取/解析（clash YAML）委托 meow-config，本 crate 只做 map → 分享链接映射
+meow-config = { version = "0.21", default-features = false, features = ["ss", "trojan", "vless", "vmess"] }
+serde_yaml = "0.9"
 
 [dev-dependencies]
 db-bootstrap = { path = "../db-bootstrap" }
