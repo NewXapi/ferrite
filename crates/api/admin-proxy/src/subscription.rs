@@ -11,7 +11,8 @@
 //! # `clash_proxy_to_url` 是有损映射
 //!
 //! `proxy_nodes.url` 是分享链接形态的 TEXT，表达力比 clash map 窄：`grpc-opts`、
-//! `mux`、`smux`、`ech-opts`、`plugin`、多值 `alpn` 在我们的 URL query 里**没有对应键**。
+//! `mux`、`smux`、`ech-opts`、`plugin`、非空 `alpn`（单值也带不上）在我们的 URL
+//! query 里**没有对应键**。
 //!
 //! 约定：遇到无法表达的键 → 返回 `Err`，调用方记为 [`ImportFailure`]。宁可导入失败
 //! 让用户知道，不要静默丢配置——一个丢了传输层配置的节点会拨号成功但走错传输，
@@ -141,28 +142,30 @@ pub fn clash_proxy_to_url(proxy: &HashMap<String, Yaml>) -> Result<String, Strin
         Some("ws") | None => {}
         Some(other) => return Err(format!("network={other} 无法用 URL 表达")),
     }
-    // alpn 只要有就拒：我们的 URL query 没有 alpn 键，单值也带不上。
-    if proxy
-        .get("alpn")
-        .is_some_and(|v| v.as_sequence().is_some_and(|s| !s.is_empty()))
-    {
-        return Err("URL 无法表达 `alpn`，拒绝导入".to_string());
+    // alpn 只要非空就拒（我们的 URL query 没有 alpn 键，单值也带不上）。
+    // 非序列形态（订阅写错成字符串）同样视为非空拒掉。
+    let alpn_empty = match proxy.get("alpn") {
+        None | Some(Yaml::Null) => true,
+        Some(Yaml::Sequence(s)) => s.is_empty(),
+        Some(_) => false,
+    };
+    if !alpn_empty {
+        return Err("URL 无法表达 `alpn`（非空，单值也带不上），拒绝导入".to_string());
     }
-    // network=ws 但没有 ws-opts.path：parse_url 靠 `path=` 识别 ws 节点，
-    // 不发 path 会被装配成 tcp——静默换传输层，必须拒。
+    // network=ws 时 path 缺省为 "/"（clash/mihomo 默认，与 sharelink vmess 方言一致）。
+    // parse_url 靠 `path=` 识别 ws，只要发出去就行。
     let ws_path = if proxy.get("network").and_then(|v| v.as_str()) == Some("ws") {
-        let path = proxy
+        proxy
             .get("ws-opts")
             .and_then(|v| v.get("path"))
             .and_then(|v| v.as_str())
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .ok_or("network=ws 但 ws-opts.path 缺失，URL 表达不了 ws 传输")?;
-        Some(path.to_string())
+            .unwrap_or("/")
+            .to_string()
     } else {
-        None
+        String::new()
     };
-
     // userinfo 按协议段落（见函数 rustdoc）。url crate 的 set_username /
     // set_password 会 percent-encode，凭据里的 `@ : / ?` 都能活过 round-trip。
     let mut url = url::Url::parse(&format!("{ty}://{server}:{port}"))
@@ -229,8 +232,8 @@ pub fn clash_proxy_to_url(proxy: &HashMap<String, Yaml>) -> Result<String, Strin
         if let Some(flow) = get_str("flow") {
             q.append_pair("flow", &flow);
         }
-        if let Some(path) = ws_path {
-            q.append_pair("path", &path);
+        if !ws_path.is_empty() {
+            q.append_pair("path", &ws_path);
             if let Some(Yaml::Mapping(hs)) = proxy.get("ws-opts") {
                 let key = Yaml::String("headers".into());
                 if let Some(Yaml::Mapping(headers)) = hs.get(&key) {
@@ -344,10 +347,9 @@ pub async fn import_share_links(
     req: &ImportRequest,
 ) -> Result<ImportReport, ServiceError> {
     validate_request(req)?;
-    let text = req
-        .text
-        .as_deref()
-        .ok_or_else(|| ServiceError::BadRequest("分享链接导入需要 text".into()))?;
+    let text = req.text.as_deref().ok_or_else(|| {
+        ServiceError::BadRequest("分享链接导入需要 text（订阅 URL 请走 /subscription）".into())
+    })?;
 
     let mut report = ImportReport::default();
     for raw in text.lines() {
@@ -372,7 +374,7 @@ pub async fn import_share_links(
             }
             Err(e) => report.failures.push(ImportFailure {
                 source: masked,
-                reason: format!("解析失败: {e}"),
+                reason: e.to_string(),
             }),
         }
     }

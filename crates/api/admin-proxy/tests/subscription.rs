@@ -189,12 +189,12 @@ fn unsupported_scheme_reports_failure() {
     let err = clash_proxy_to_url(&proxy).expect_err("tuic 应被拒");
     assert!(err.contains("tuic"), "原因应点名 tuic: {err}");
 }
-
-/// `network=ws` 而 ws-opts 无 path → 拒。
+/// `network=ws` 而 ws-opts 无 path → 默认 "/"，round-trip 后 `ws_path == "/"`。
 ///
-/// parse_url 靠 `path=` 识别 ws；不发 path 会被装配成 tcp，静默换传输层。
+/// clash/mihomo 的 ws-opts.path 本身缺省 "/"，parse_url 靠 `path=` 识别 ws，
+/// 只要发出去就行。
 #[test]
-fn ws_without_path_is_rejected() {
+fn ws_without_path_defaults_to_root() {
     let proxy = clash_map(vec![
         ("type", s("vless")),
         ("server", s("example.com")),
@@ -202,8 +202,10 @@ fn ws_without_path_is_rejected() {
         ("uuid", s("550e8400-e29b-41d4-a716-446655440000")),
         ("network", s("ws")),
     ]);
-    let err = clash_proxy_to_url(&proxy).expect_err("应拒");
-    assert!(err.contains("path"), "原因应说明 path 问题: {err}");
+    let url = clash_proxy_to_url(&proxy).expect("应构造成功（默认 /）");
+    let node = ProxyNode::parse_url(&url).expect("URL 应能被 parse_url 消费");
+    let opts = node.vless.expect("应有 opts");
+    assert_eq!(opts.ws_path.as_deref(), Some("/"));
 }
 
 /// 非空 `alpn` → 拒：URL query 没有 alpn 键，单值也带不上。

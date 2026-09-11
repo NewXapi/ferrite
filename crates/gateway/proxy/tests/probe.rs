@@ -2,8 +2,7 @@
 //!
 //! 成功拨号需要真实代理服务器，本地造不出来（协议握手无法用 TcpListener 模拟），
 //! 故按 `forward/tests/protocol_live.rs` 的惯例做 env 门控：给了
-//! `FERRITE_PROXY_PROBE_URL` 才跑真拨，否则跳过。其余三条（装配失败、超时、
-//! node_stats 导出）都是可确定验证的真实路径。
+//! `FERRITE_PROXY_PROBE_URL` 才跑真拨，否则跳过。其余都是可确定验证的真实路径。
 
 use std::time::Duration;
 
@@ -78,13 +77,30 @@ async fn probe_rejects_malformed_target() {
     );
 }
 
+/// 括号未配对的目标在拨号前就被拒：`[::1:443`（缺右括号）、`]:443`（缺左括号）。
+///
+/// `split_host_port` 从右找最后一个 `:` 再剥括号，未配对时会把地址切碎或剥出
+/// 空 host——配对校验让这类目标走 "host:port 形式" 错误路径而非产生错误连接。
+#[tokio::test]
+async fn probe_rejects_unbalanced_brackets() {
+    let node = ss_node(4, "example.com", 80);
+    for target in ["[::1:443", "]:443"] {
+        let r = probe_node(&node, target, Duration::from_millis(50)).await;
+        assert!(
+            r.error.as_deref().unwrap_or_default().contains("host:port"),
+            "`{target}` 应报目标格式错误，实际: {:?}",
+            r.error
+        );
+    }
+}
+
 /// 拨不通的地址在 timeout 内被归类为失败。
 ///
 /// 目标用 TEST-NET-1（192.0.2.0/24，RFC 5737 保留给文档用，公网不可路由），
 /// 保证连接不会意外成功；1ms timeout 让用例快速收敛。
 #[tokio::test]
 async fn probe_unreachable_node_fails_within_timeout() {
-    let n = ss_node(4, "192.0.2.1", 8388);
+    let n = ss_node(5, "192.0.2.1", 8388);
     let r = probe_node(&n, "192.0.2.2:443", Duration::from_millis(1)).await;
     assert_eq!(r.delay_ms, None);
     assert!(r.error.is_some());
@@ -139,15 +155,18 @@ async fn node_stats_reports_inflight_and_cooldown() {
 
 /// 一个节点绑多个渠道时，`node_stats` 只出现一次（按 id 去重）。
 ///
-/// 索引是 channel_key → 节点列表，绑 3 个渠道就在 3 个桶里；不去重会让管理台
-/// 看到三行同一节点，探测也会重复拨三次。
+/// 索引是 channel_key → 节点列表，绑 3 个渠道就在 3 个桶里各出现一次；
+/// `all_nodes` 必须去重成 1，否则管理台看到三行同一节点，探测也重复拨三次。
+/// 注意两次 install 是"整体替换快照"，测不了多渠道桶去重——必须单次 install。
 #[tokio::test]
 async fn node_stats_dedupes_multi_channel_node() {
     let mgr = ProxyManager::new();
-    let mut n = ss_node(9, "192.0.2.1", 8388);
-    n.channel_keys = vec!["a".into(), "b".into(), "c".into()];
-    mgr.install(ProxySnapshot { nodes: vec![n] });
-    assert_eq!(mgr.node_stats().len(), 1);
+    let mut node = ss_node(9, "192.0.2.1", 8388);
+    node.channel_keys = vec!["a".into(), "b".into(), "c".into()];
+    mgr.install(ProxySnapshot { nodes: vec![node] });
+    let stats = mgr.node_stats();
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stats[0].node_id, 9);
 }
 
 /// 真节点拨号验证：给 `FERRITE_PROXY_PROBE_URL` 才跑。
@@ -162,7 +181,14 @@ async fn probe_live_node_records_delay() {
     };
     let target =
         std::env::var("FERRITE_PROXY_PROBE_TARGET").unwrap_or_else(|_| "example.com:443".into());
-    let mut n = node::ProxyNode::parse_url(&url).expect("FERRITE_PROXY_PROBE_URL 应可解析");
+    // env 内容不可信：格式错误优雅跳过（与 protocol_live.rs 惯例一致），不 panic。
+    let mut n = match node::ProxyNode::parse_url(&url) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("FERRITE_PROXY_PROBE_URL 格式错误: {e}。跳过");
+            return;
+        }
+    };
     n.id = 1;
     n.channel_keys = vec!["ch".into()];
     let r = probe_node(&n, &target, Duration::from_secs(10)).await;

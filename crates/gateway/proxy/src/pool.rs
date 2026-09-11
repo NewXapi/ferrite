@@ -11,9 +11,8 @@
 pub use super::node::ProxyNode;
 use arc_swap::ArcSwap;
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-
 /// 全量代理节点快照（来自 service::sync）
 #[derive(Default)]
 pub struct ProxySnapshot {
@@ -83,16 +82,19 @@ impl ProxyPool {
     /// 当前快照的全部节点，按 id 去重、按 id 升序。
     ///
     /// 索引是 `channel_key → 节点列表`，一个节点绑多个渠道就在多个桶里出现同一个
-    /// `Arc`。探测与状态导出要的是「节点集合」，故按 `id` 去重——否则绑了 3 个渠道
-    /// 的节点会被探测 3 次。
+    /// `Arc`。探测与状态导出要的是「节点集合」，故按 `id` 去重（`HashSet<i64>`）。
+    /// 同一 `Arc` 绑多渠道时只会保留一份（install 时 clone 自同一份），`HashSet`
+    /// 语义天然等价。
     pub fn all_nodes(&self) -> Vec<Arc<ProxyNode>> {
-        let mut seen: HashMap<i64, Arc<ProxyNode>> = HashMap::new();
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
         for nodes in self.by_channel.load().values() {
             for node in nodes {
-                seen.entry(node.id).or_insert_with(|| Arc::clone(node));
+                if seen.insert(node.id) {
+                    out.push(Arc::clone(node));
+                }
             }
         }
-        let mut out: Vec<Arc<ProxyNode>> = seen.into_values().collect();
         out.sort_by_key(|n| n.id);
         out
     }
