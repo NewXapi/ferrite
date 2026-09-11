@@ -5226,18 +5226,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "session"
-version = "0.1.0"
-dependencies = [
- "client",
- "dioxus",
- "gloo-net",
- "http",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

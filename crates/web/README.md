@@ -15,7 +15,6 @@ graph LR
     end
     subgraph admin["管理端 crates"]
         AC[admin-client]
-        AS[admin-session]
         AM[admin-mock]
         PA[admin-page-auth]
         PO[admin-page-overview]
@@ -101,7 +100,6 @@ apps/tavern-web（main.rs → TavernApp，内存 Signal 路由，默认 Section:
 ```
 crates/web/
 ├── admin-client            管理 API 客户端
-├── admin-session           登录 / 刷新 / 全局会话
 ├── admin-mock              页面开发 mock 数据
 ├── admin-page-auth         认证页
 ├── admin-page-overview     总览与排行榜
@@ -114,9 +112,6 @@ crates/web/
   - 管理 API 客户端：Bearer 注入、`Envelope<T>` 解码、401 时调用 refresher
   - 导出 `ApiClient`（setup_client.rs）、`AuthState` / `Refresher` / `TokenFuture`（manage_auth_token.rs）
   - 现状：稳定
-- **admin-session**（内部依赖：client；src：lib.rs / login.rs / manage_session.rs / refresh_token.rs）
-  - 登录、2FA 验证（`verify_2fa`）、token 刷新、全局会话（`SESSION` GlobalSignal：init / clear_session / logout）
-  - 现状：**孤儿 crate（2026-09-11 实测零引用）**——认证页实际走 `ui-components/session.rs` 的令牌存取；refresh 流程接入时再启用（admin-page-auth/src/view.rs:123 注释）
 - **admin-mock**（无内部依赖；src：lib.rs / models.rs / account.rs / overview.rs / users.rs）
   - 页面开发的 mock 数据；**overview / account / users 三个页面仍在用**（grep `mock::` 核实），真实 API 接完后移除引用（见 admin.md）
 - **admin-page-auth**（内部依赖：client, contract, ui；src：lib.rs / api.rs / form.rs / state.rs / view.rs）
@@ -207,7 +202,6 @@ Cargo.toml 里的改名依赖（读代码时按 key 认依赖，浅解析 Cargo.
 ## 7. 已知结构问题（2026-09-11 页面树实测）
 
 - 路由机制不统一：admin-web 用 URL hash（刷新可恢复），tavern-web 用内存 Signal（刷新丢页面、无深链）。
-- admin-session 是孤儿 crate（见 §2）；认证页会话实际走 ui-components/session.rs。
 - mock/真实边界：page-admin 整域未接线、users 纯 mock、rewards「立即充值」是假成功——页面均 UI 就绪等数据。
 - 渠道/分组/别名双轨 UI：NetworkPanel 拓扑画布与三个卡片页共享同一 EntityStore，并存待收敛。
 - tavern 剧本库用本地静态 seed，聊天用真实 API；「进入故事」不携带剧本。
@@ -219,3 +213,4 @@ Cargo.toml 里的改名依赖（读代码时按 key 认依赖，浅解析 Cargo.
 - 2026-09-11：chore/web-readme 初版，重写为全域心智模型；依赖图经 Cargo.toml / codegraph / grep 三源校验。
 - 2026-09-11：crate 清单与改名映射由表格改为树+列表（agent 阅读友好）。
 - 2026-09-11：按 ferrite-pages-tree.md 实测修正现状（admin-session 孤儿、page-admin 整域未接线、2FA 未实现），新增「已知结构问题」节。
+- 2026-09-11：删除孤儿 crate admin-session（零依赖方、调用路径后端不存在），同步移除图中节点与 §2 条目。

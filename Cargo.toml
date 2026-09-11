@@ -32,7 +32,6 @@ members = [
     "crates/api/tavern-generate",
     "crates/web/ui-components",
     "crates/web/admin-client",
-    "crates/web/admin-session",
     "crates/web/admin-mock",
     "crates/web/admin-page-auth",
     "crates/web/admin-page-overview",
