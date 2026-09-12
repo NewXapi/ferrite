@@ -129,6 +129,12 @@ pub fn set_cols(left: f32, right: f32) {
     persist();
 }
 
+/// 重置为默认布局（菜单「重置布局」入口用）：任何拖乱的状态一键还原。
+pub fn reset() {
+    DOCK.with_mut(|l| *l = default_layout());
+    persist();
+}
+
 /// 某面板当前停靠的区。
 pub fn zone_of_item(item_id: &str) -> Option<Zone> {
     DOCK()

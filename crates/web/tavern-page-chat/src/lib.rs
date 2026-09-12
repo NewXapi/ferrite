@@ -333,6 +333,14 @@ pub fn EditorSlot(
                         button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
                             "导出记录"
                         }
+                        button {
+                            class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
+                            onclick: move |_| {
+                                dock::reset();
+                                menu_open.set(false);
+                            },
+                            "重置布局"
+                        }
                     }
                 }
             }

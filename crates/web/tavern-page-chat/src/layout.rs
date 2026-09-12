@@ -501,7 +501,8 @@ fn VColLine(
     rsx! {
         div {
             class: if collapsed {
-                "h-full w-1.5 shrink-0 cursor-col-resize rounded bg-purple-500/50 hover:bg-purple-400 transition-colors"
+                // 折叠态：平时只有一条淡紫细线（不抢视觉），悬停整条亮起并可点击展开
+                "group h-full w-2 shrink-0 cursor-col-resize bg-purple-500/25 hover:bg-purple-400 transition-colors"
             } else {
                 "h-full w-1.5 shrink-0 cursor-col-resize rounded bg-zinc-800/70 hover:bg-purple-500/40 transition-colors"
             },
@@ -514,7 +515,7 @@ fn VColLine(
                 "折叠或拖宽右列"
             },
             "data-testid": if side == ColSide::Left { "col-split-left" } else { "col-split-right" },
-            title: "拖动调宽；单击折叠/展开",
+            title: if collapsed { "单击展开" } else { "拖动调宽；单击折叠" },
             onmousedown: move |e: MouseEvent| on_mousedown.call(e),
         }
     }
