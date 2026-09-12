@@ -85,6 +85,7 @@ fn make_ctx(route: Option<SelectedRoute>) -> gateway_pipeline::RequestCtx {
         upstream: None,
         streamed: STREAM,
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 

@@ -120,6 +120,7 @@ fn ctx_single_shot() -> gateway_pipeline::RequestCtx {
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 
