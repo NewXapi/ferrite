@@ -153,8 +153,11 @@ pub async fn list_model_aliases_api(client: &ApiClient) -> ApiResult<Vec<ModelAl
 /// 请求体复用 contract `AliasUpsertRequest`:其中与后端 models 域对应的仅
 /// `name`(对外别名);display_name/价格/倍率字段后端无对应列,序列化为 null
 /// 后被 `UpdateModelRequest`(全 Option + 未知字段忽略)读成 None,不会写库。
-/// 注意:后端更新走 COALESCE,只有 name 会生效 — 这是当前形状下唯一诚实的
-/// 更新语义。响应为 `ModelView`,页面只关心成败,此处解成原始 Value。
+/// 注意:后端更新是「COALESCE 合并 → validate_model 整体校验 merged 值」两步 —
+/// name-only 语义仍成立(页面只有 maskedKey,无法也不应回传真实凭据),但若该行
+/// 存量 api_key 为空(无效数据,如绕过 create 校验的种子行),合并后校验不过,
+/// 任何更新都会 400,须先修复存量数据。响应为 `ModelView`,页面只关心成败,
+/// 此处解成原始 Value。
 pub async fn update_model_alias_api(
     client: &ApiClient,
     key: &str,
