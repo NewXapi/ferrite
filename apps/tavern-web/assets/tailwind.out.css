@@ -504,9 +504,6 @@
   .mx-auto {
     margin-inline: auto;
   }
-  .my-0\.5 {
-    margin-block: calc(var(--spacing) * 0.5);
-  }
   .my-1 {
     margin-block: var(--spacing);
   }
@@ -894,9 +891,6 @@
   .w-80 {
     width: calc(var(--spacing) * 80);
   }
-  .w-\[28\%\] {
-    width: 28%;
-  }
   .w-fit {
     width: fit-content;
   }
@@ -1031,6 +1025,9 @@
   .animate-spin {
     animation: var(--animate-spin);
   }
+  .cursor-col-resize {
+    cursor: col-resize;
+  }
   .cursor-crosshair {
     cursor: crosshair;
   }
@@ -1060,9 +1057,6 @@
   }
   .scroll-mt-8 {
     scroll-margin-top: calc(var(--spacing) * 8);
-  }
-  .\[scrollbar-width\:none\] {
-    scrollbar-width: none;
   }
   .auto-rows-min {
     grid-auto-rows: min-content;
@@ -3244,9 +3238,6 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  .\[-ms-overflow-style\:none\] {
-    -ms-overflow-style: none;
-  }
   @media (hover: hover) {
     .group-hover\:translate-x-1:is(:where(.group):hover *) {
       --tw-translate-x: var(--spacing);
@@ -3509,6 +3500,9 @@
     .hover\:bg-blue-500:hover {
       background-color: var(--color-blue-500);
     }
+    .hover\:bg-border:hover {
+      background-color: var(--border);
+    }
     .hover\:bg-destructive\/90:hover {
       background-color: var(--destructive);
     }
@@ -3523,14 +3517,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-primary\/90:hover {
         background-color: color-mix(in oklab, var(--primary) 90%, transparent);
-      }
-    }
-    .hover\:bg-purple-500\/40:hover {
-      background-color: color-mix(in srgb, oklch(62.7% 0.265 303.9) 40%, transparent);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-purple-500\/40:hover {
-        background-color: color-mix(in oklab, var(--color-purple-500) 40%, transparent);
       }
     }
     .hover\:bg-purple-600:hover {
@@ -3604,6 +3590,14 @@
     }
     .hover\:bg-zinc-300:hover {
       background-color: var(--color-zinc-300);
+    }
+    .hover\:bg-zinc-500\/40:hover {
+      background-color: color-mix(in srgb, oklch(55.2% 0.016 285.938) 40%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-zinc-500\/40:hover {
+        background-color: color-mix(in oklab, var(--color-zinc-500) 40%, transparent);
+      }
     }
     .hover\:bg-zinc-700:hover {
       background-color: var(--color-zinc-700);
@@ -4345,9 +4339,6 @@
   }
   .\[\&_svg\:not\(\[class\*\=\'text-\'\]\)\]\:text-muted-foreground svg:not([class*='text-']) {
     color: var(--muted-foreground);
-  }
-  .\[\&\:\:-webkit-scrollbar\]\:hidden::-webkit-scrollbar {
-    display: none;
   }
   .\[\.border-b\]\:pb-6:is(.border-b) {
     padding-bottom: calc(var(--spacing) * 6);
