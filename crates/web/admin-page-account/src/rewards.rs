@@ -75,6 +75,12 @@ pub fn RewardsPanel() -> Element {
                     // 钱包区
                     section { id: "rewards-sec-wallet", class: "scroll-mt-8 space-y-4",
                         h2 { class: "text-lg font-medium text-zinc-100", "钱包" }
+                        // 诚实声明: 钱包/充值记录尚无后端端点, 仍为 mock 演示数据;
+                        // 兑换码入账结果以 topup 成功提示里的真实 quota 为准。
+                        p { class: "mt-1 text-xs text-zinc-500",
+                            "data-testid": "wallet-demo-note",
+                            "以下余额与充值记录为演示数据, 实际余额以后端入账为准"
+                        }
 
                         // 钱包大卡 + 兑换码充值
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
