@@ -54,7 +54,16 @@ pub fn price_of(counts: crate::scanner::TokenCounts, price: &ModelPrice, group_r
     let cache_cost = counts.cached as f64 * price.cache / 1e6;
     let total_dollars =
         (input_cost + output_cost + cache_cost) * price.group_multiplier * group_ratio;
-    (total_dollars * 500_000.0).ceil() as i64
+    let raw = total_dollars * 500_000.0;
+    // 计费向上取整，但浮点噪声会让本该整数（如 2250.0）的和轻微溢出到
+    // 2250.0000000002，直接 ceil 会每笔多收 1 单位。先在极小容差内吸附到最近
+    // 整数，再对真实小数部分 ceil。
+    let snapped = if (raw - raw.round()).abs() < 1e-6 {
+        raw.round()
+    } else {
+        raw.ceil()
+    };
+    snapped as i64
 }
 /// 来自配置的定价表实现。
 #[derive(Debug, Clone)]
