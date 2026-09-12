@@ -1,10 +1,11 @@
 //! Admin page API adapter.
 //!
 //! Provides typed REST API calls using `client::ApiClient` and `contract::api` DTOs
-//! for tokens, channels, and groups.
+//! for tokens, channels, groups, and model aliases.
 
 use client::{ApiClient, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
+use contract::api::billing::AliasUpsertRequest;
 use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,62 @@ pub async fn update_group_api(
 /// 真实调用: DELETE /api/group/{key} (删除)
 pub async fn delete_group_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
     client.delete(&format!("/api/group/{key}")).await
+}
+
+// ---------------------------------------------------------------------------
+// Model aliases (/api/models — admin-catalog models 域)
+// ---------------------------------------------------------------------------
+
+/// models 域列表项视图 — 对齐 admin-catalog `ModelView`(camelCase)。
+///
+/// 别名页只需要两个字段:`key`(UUID,PUT/DELETE 路径定位符)与
+/// `name`(对外别名)。价格/倍率在后端 models 域没有对应列,不在此映射。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelAliasView {
+    pub key: String,
+    pub name: String,
+}
+
+/// 后端列表端点统一包装 `{"items":[...]}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct ModelItems {
+    #[serde(default)]
+    items: Vec<ModelAliasView>,
+}
+
+/// 真实调用: GET /api/models?size=100 (模型别名列表;后端 size clamp 1..=100)。
+///
+/// 响应 items 为 `ModelView`,此处只映射 key+name,其余字段由 serde 忽略。
+/// 错误情况:401(未登录)、网络失败、JSON 不含 items → `ApiError`。
+pub async fn list_model_aliases_api(client: &ApiClient) -> ApiResult<Vec<ModelAliasView>> {
+    let r: ModelItems = client.get("/api/models?size=100").await?;
+    Ok(r.items)
+}
+
+/// 真实调用: PUT /api/models/{key} (更新;`key` 为 ModelView.key 的 UUID)。
+///
+/// 请求体复用 contract `AliasUpsertRequest`:其中与后端 models 域对应的仅
+/// `name`(对外别名);display_name/价格/倍率字段后端无对应列,序列化为 null
+/// 后被 `UpdateModelRequest`(全 Option + 未知字段忽略)读成 None,不会写库。
+/// 注意:后端更新是「COALESCE 合并 → validate_model 整体校验 merged 值」两步 —
+/// name-only 语义仍成立(页面只有 maskedKey,无法也不应回传真实凭据),但若该行
+/// 存量 api_key 为空(无效数据,如绕过 create 校验的种子行),合并后校验不过,
+/// 任何更新都会 400,须先修复存量数据。响应为 `ModelView`,页面只关心成败,
+/// 此处解成原始 Value。
+pub async fn update_model_alias_api(
+    client: &ApiClient,
+    key: &str,
+    req: &AliasUpsertRequest,
+) -> ApiResult<serde_json::Value> {
+    client.put(&format!("/api/models/{key}"), req).await
+}
+
+/// 真实调用: DELETE /api/models/{key} (删除;后端返回 `{"success": true}`)。
+///
+/// 错误情况:key 非 UUID(400)、模型不存在(404)→ `ApiError`。
+pub async fn delete_model_alias_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
+    client.delete(&format!("/api/models/{key}")).await
 }
 
 // ---------- 兑换码 (billing_redemptions) ----------
