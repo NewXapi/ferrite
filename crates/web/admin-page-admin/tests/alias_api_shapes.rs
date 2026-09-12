@@ -31,6 +31,9 @@ fn update_request_serializes_name_with_null_rest() {
 /// 镜像后端 UpdateModelRequest(admin-catalog models.rs,全 Option、
 /// camelCase),验证 update 请求体能被后端反序列化且语义正确:
 /// 仅 name 生效,owner/api_key 等保持 None(COALESCE 保留原值)。
+/// 注意:本断言只锁 wire 形状(反序列化层);后端在 COALESCE 合并后还会
+/// validate_model 整体校验 merged 值 — 存量 api_key 为空的行(无效数据)
+/// 任何更新都会 400,与前端请求体形状无关,须先修复存量数据。
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateModelRequestMirror {
