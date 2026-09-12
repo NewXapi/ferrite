@@ -294,9 +294,13 @@ pub fn HomePage() -> Element {
     use_context_provider(EntityStore::empty);
     // 启动即从真实后端灌入 分组/渠道/路由单元/模型别名(管理页网络拓扑与别名页吃真数据);
     // 未登录时 401 静默保持空,登录成功后 HomePage 重挂载会再次 hydrate。
+    // hydrate 只写传入的 store:必须传 context 里这份共享 store——
+    // 传新造的空店会把数据灌进一个被丢弃的临时对象,context 永远是空
+    // (拓扑画布只画网格和连线、节点卡不渲染的回归即源于此)。
+    let shared_store = use_context::<EntityStore>();
     use_effect(move || {
         spawn(async move {
-            page_admin::state::EntityStore::hydrate(EntityStore::empty()).await;
+            page_admin::state::EntityStore::hydrate(shared_store).await;
         });
     });
 

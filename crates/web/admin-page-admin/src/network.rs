@@ -1,9 +1,12 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use client::ApiClient;
+use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
 use dioxus::prelude::*;
 
+use crate::api::{create_channel_api, delete_channel_api, delete_group_api, update_group_api};
 use crate::entities::EntitiesPanel;
-use crate::state::EntityStore;
+use crate::state::{ChannelRow, EntityStore, GroupRow};
 use ui::ScrollSpyNav;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
@@ -119,7 +122,11 @@ pub fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
 ///   source with a legal edge to the drop target
 /// - 「适配」button: zoom/pan to fit all visible nodes
 ///
-/// Sample data; persistence + real /api/channel + /api/group come later.
+/// 分组/渠道的编辑、新建、删除走真实后端(/api/group + /api/channel,
+/// 与卡片页同一套 Upsert 请求);真实响应成功后才写回 EntityStore,
+/// 失败在抽屉里诚实展示。后端语义:分组名无更新路径(只读展示,可改
+/// 展示备注),渠道名/URL 可改、密钥留空 = 不变。模型别名暂无后端写
+/// 端点,仍为会话内改动。连线与节点摆位是会话级状态,不落库。
 #[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum NodeKey {
@@ -182,6 +189,37 @@ pub const VIEW_H: f64 = 700.0;
 pub const NODE_W: f64 = 104.0;
 #[doc(hidden)]
 pub const NODE_H: f64 = 36.0;
+
+/// 同层无连线节点的确定性横向散开:把 [MARGIN, VIEW_W-MARGIN] 均分为
+/// count 段,第 slot 个节点落在段中心附近(叠加基于 slot 的确定性
+/// jitter)。原先统一落 VIEW_W/2 会让这类节点全叠在画布中心竖线上——
+/// 位置完全重合时分离力在 x/y 两轴同时为零(signum(0)=0),叠死的
+/// 节点永远推不开。任意两个散开位的间距 ≥ 0.75 × 段宽(即
+/// 0.75 × (VIEW_W-2×MARGIN)/count),互不相等;count==1 时落画布 1/4
+/// 处,避开有邻居节点聚集的重心(≈画布中心)。
+#[doc(hidden)]
+pub fn spread_isolated_x(slot: usize, count: usize) -> f64 {
+    let (lo, hi) = (MARGIN, VIEW_W - MARGIN);
+    let span = hi - lo;
+    if count == 0 {
+        return VIEW_W / 2.0;
+    }
+    let seg = span / count as f64;
+    let center = if count == 1 {
+        lo + span * 0.25
+    } else {
+        lo + seg * (slot as f64 + 0.5)
+    };
+    // jitter 幅度 ≤ 段宽的 1/8:打散与重心锚的精确重合,又不侵邻段。
+    (center + (iso_jitter(slot) * 2.0 - 1.0) * seg * 0.125).clamp(lo, hi)
+}
+
+/// slot → [0,1) 的确定性伪随机数(乘法散列;不引 RNG,wasm 与测试均可复现)。
+fn iso_jitter(slot: usize) -> f64 {
+    const GOLDEN: u64 = 0x9E37_79B9_7F4A_7C15;
+    let h = (slot as u64).wrapping_mul(GOLDEN);
+    ((h >> 40) & 0xFF_FFFF) as f64 / 0x100_0000 as f64
+}
 
 /// Deterministic startup layout, computed from the graph — no physics involved:
 /// groups spread evenly; each mapping sits at the average x of the groups it
@@ -637,6 +675,193 @@ const BTN_FIT: &str = "适配";
 const FIELD_DISPLAY: &str = "展示名";
 const EXAMPLE_CHANNEL: &str = "OpenAI 官方";
 
+// —— 写路径:请求构造与 DTO→store 行映射 ——
+// 拓扑抽屉的编辑不再直接写 EntityStore:输入落草稿,点「保存」后先取
+// 服务端现值(拿 key、保留不可编辑字段),真实响应成功才把返回的 DTO
+// 应用回 store。以下纯函数把这条链路上可测的部分拆出来。
+
+/// 多行密钥文本 → 明文 key 列表(按行拆分、去空白、丢空行),
+/// 与渠道卡片页表单同一规则。空文本 → 空 vec(后端约定 = 不改密钥)。
+#[doc(hidden)]
+pub fn parse_key_lines(text: &str) -> Vec<String> {
+    text.split('\n')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// 渠道 `models` JSONB → 对外模型名列表:元素是字符串本身,
+/// 或取 `{"alias": ...}` 的 alias(镜像 state.rs hydrate 的解析)。
+#[doc(hidden)]
+pub fn models_json_to_names(models: &serde_json::Value) -> Vec<String> {
+    models
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| {
+                    m.as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| m.get("alias").and_then(|v| v.as_str()).map(String::from))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// API 分组 DTO → store 行(与 hydrate 同一映射:remark 空 → 展示名回落为标识)。
+#[doc(hidden)]
+pub fn group_row_from_dto(dto: &GroupDto) -> GroupRow {
+    let display = if dto.remark.is_empty() {
+        dto.name.clone()
+    } else {
+        dto.remark.clone()
+    };
+    GroupRow {
+        name: dto.name.clone(),
+        display,
+        multiplier: dto.ratio,
+    }
+}
+
+/// API 渠道 DTO → store 行(与 hydrate 同一映射)。
+/// 列表/更新响应里的 keys 永远是掩码,一律不落地(store 中空 = 未取回明文)。
+#[doc(hidden)]
+pub fn channel_row_from_dto(dto: &ChannelDto) -> ChannelRow {
+    let models = models_json_to_names(&dto.models);
+    ChannelRow {
+        name: dto.name.clone(),
+        ctype: if dto.channel_type.is_empty() {
+            "openai".into()
+        } else {
+            dto.channel_type.clone()
+        },
+        url: dto.base_url.clone(),
+        keys: String::new(),
+        status: if dto.status == 1 { 1 } else { 0 },
+        group: if dto.groups.is_empty() {
+            "default".into()
+        } else {
+            dto.groups.join(",")
+        },
+        latency_ms: None,
+        candidates: models.iter().map(|m| (m.clone(), false)).collect(),
+        dispatch: models,
+    }
+}
+
+/// 分组更新请求:PUT /api/group/{key} 后端只接受 ratio/modelWhitelist/
+/// remark/status 四列,**name 列不可更新**(UPDATE 语句不含 name)。
+/// 因此名称固定取服务端现值(请求体保持干净),真正生效的编辑只有
+/// 展示备注 remark;倍率与白名单抽屉不可编辑,原样保留服务端现值。
+#[doc(hidden)]
+pub fn group_upsert_from_dto(dto: &GroupDto, remark: &str) -> GroupUpsertRequest {
+    GroupUpsertRequest {
+        name: dto.name.clone(),
+        ratio: dto.ratio,
+        model_whitelist: dto.model_whitelist.clone(),
+        remark: remark.trim().to_string(),
+    }
+}
+
+/// 渠道更新请求体(PUT /api/channel/{key} 线格式 `UpdateChannelRequest`,
+/// 各列为 Option)。只发抽屉里可编辑的 `name`/`baseUrl`,外加两点
+/// 后端语义:
+/// - `keys`:字段**缺席 = 保持原密钥**。用户未输入明文行时整体省略——
+///   若按裸契约发空数组,服务端解成 `Some([])`,`validate` 直接以
+///   "at least one key required" 拒绝,不改密钥就存不了名称/URL;
+///   绝不允许把列表响应里的掩码值回传。
+/// - `testModel`:后端 UPDATE 里该列**没有 COALESCE**(直接绑定),
+///   省略等于清 NULL,故必须显式回传服务端现值原样保留。
+#[doc(hidden)]
+pub fn channel_update_body(
+    dto: &ChannelDto,
+    name: &str,
+    base_url: &str,
+    keys_text: &str,
+) -> serde_json::Value {
+    let mut body = serde_json::Map::new();
+    body.insert("name".into(), serde_json::Value::from(name.trim()));
+    body.insert("baseUrl".into(), serde_json::Value::from(base_url.trim()));
+    body.insert(
+        "testModel".into(),
+        match &dto.test_model {
+            Some(m) => serde_json::Value::from(m.clone()),
+            None => serde_json::Value::Null,
+        },
+    );
+    let keys = parse_key_lines(keys_text);
+    if !keys.is_empty() {
+        body.insert("keys".into(), serde_json::Value::from(keys));
+    }
+    serde_json::Value::Object(body)
+}
+
+/// 导入面板的渠道创建请求:URL + Key + 可选名称;类型固定 openai、
+/// 分组默认 default,模型留空待设置页拉取后加入调度。
+#[doc(hidden)]
+pub fn channel_upsert_for_import(
+    raw_name: &str,
+    base_url: &str,
+    keys_text: &str,
+) -> ChannelUpsertRequest {
+    let n = raw_name.trim();
+    ChannelUpsertRequest {
+        name: if n.is_empty() {
+            "新渠道".to_string()
+        } else {
+            n.to_string()
+        },
+        channel_type: "openai".to_string(),
+        base_url: base_url.trim().to_string(),
+        keys: parse_key_lines(keys_text),
+        models: serde_json::json!([]),
+        groups: vec!["default".to_string()],
+        priority: 0,
+        weight: 0,
+        test_model: None,
+        remark: String::new(),
+    }
+}
+
+/// 后端列表端点统一包 `{"items":[...]}` 信封(渠道侧另带 `total`,忽略;
+/// 与 state.rs hydrate / api.rs RedemptionItems 同一剥壳模式)。
+/// api.rs 的 `list_groups_api`/`list_channels_api` 误标为裸 `Vec`,
+/// 直接解会报 "invalid type: map, expected a sequence"——写前定位
+/// key 的预拉取必须用本类型解。
+#[derive(Debug, Default, serde::Deserialize)]
+#[doc(hidden)]
+pub struct Items<T> {
+    #[serde(default)]
+    pub items: Vec<T>,
+}
+
+/// 在服务端最新分组列表里按名称定位实体。EntityStore 行不携带 key,
+/// 而更新/删除端点都按 key 寻址;分组名后端唯一。
+/// 返回完整 DTO,供更新请求以服务端现值为基底。
+/// /api/group 返回 `{items:[...]}` 信封,按 `Items` 剥壳解码。
+async fn fetch_group_by_name(client: &ApiClient, name: &str) -> Result<GroupDto, String> {
+    let r: Items<GroupDto> = client.get("/api/group").await.map_err(|e| e.to_string())?;
+    r.items
+        .into_iter()
+        .find(|g| g.name == name)
+        .ok_or_else(|| format!("分组「{name}」不存在(可能已被删除)"))
+}
+
+/// 在服务端最新渠道列表里按名称定位实体。渠道名不保证唯一,取首个同名
+/// (与列表顺序一致);更新/删除端点按 key 寻址。
+/// /api/channel 同样返回 `{items:[...], total}` 信封,`total` 字段忽略。
+async fn fetch_channel_by_name(client: &ApiClient, name: &str) -> Result<ChannelDto, String> {
+    let r: Items<ChannelDto> = client
+        .get("/api/channel")
+        .await
+        .map_err(|e| e.to_string())?;
+    r.items
+        .into_iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| format!("渠道「{name}」不存在(可能已被删除)"))
+}
+
 #[component]
 pub fn NetworkPanel() -> Element {
     let store = use_context::<EntityStore>();
@@ -683,7 +908,16 @@ pub fn NetworkPanel() -> Element {
     // then sleeps. Dragged nodes are held; live neighbors dodge in real time.
     let mut wake = use_signal(|| 0u32);
     use_effect(move || {
-        let _ = (edges(), drag());
+        // edges/drag 之外,store 三个实体集合的变化也要唤醒物理:
+        // 面板挂载时 store 还是空壳,数据由 hydrate 异步灌入;若 store
+        // 变化不 bump wake,仿真一直睡,新节点永远拿不到位置,渲染回退
+        // 会把它们全画在画布中心竖线上。抽屉保存/导入写回 store 同理。
+        let store_shapes = (
+            store.groups.read().len(),
+            store.aliases.read().len(),
+            store.channels.read().len(),
+        );
+        let _ = (edges(), drag(), store_shapes);
         let next = wake.peek().wrapping_add(1);
         wake.set(next);
     });
@@ -1751,11 +1985,46 @@ fn physics_step(
 ) -> f64 {
     // Late-appearing nodes (e.g. after expanding a channel) spawn beside their
     // wired neighbors so separation can push them into the band organically.
+    // 无连线的节点(以及连线邻居尚未落位的节点)不再统一落 VIEW_W/2:
+    // 完全重合的位置会让分离力在两轴同时为零,节点永久叠死在中心竖线上,
+    // 改为按同层数量横向散开(spread_isolated_x)。
     for (l, row) in layers.iter().enumerate() {
+        // 先给两类节点分配散开槽位:完全没有连线的,与有连线但邻居全在
+        // 更下层(本轮尚未 spawn)的。两个子序列分开编号,互不挤占。
+        let mut iso_slots: Vec<NodeKey> = Vec::new();
+        let mut deferred_slots: Vec<NodeKey> = Vec::new();
         for &k in row.iter() {
             if positions.contains_key(&k) {
                 continue;
             }
+            let has_placed_nbr = edges.iter().any(|&(u, low)| {
+                (u == k || low == k) && positions.contains_key(&if u == k { low } else { u })
+            });
+            if has_placed_nbr {
+                continue;
+            }
+            if edges.iter().any(|&(u, low)| u == k || low == k) {
+                deferred_slots.push(k);
+            } else {
+                iso_slots.push(k);
+            }
+        }
+        for (slot, k) in iso_slots.iter().enumerate() {
+            positions.insert(*k, (spread_isolated_x(slot, iso_slots.len()), ROW_Y[l]));
+            velocities.insert(*k, (0.0, 0.0));
+        }
+        for (slot, k) in deferred_slots.iter().enumerate() {
+            positions.insert(
+                *k,
+                (spread_isolated_x(slot, deferred_slots.len()), ROW_Y[l]),
+            );
+            velocities.insert(*k, (0.0, 0.0));
+        }
+        for &k in row.iter() {
+            if positions.contains_key(&k) {
+                continue;
+            }
+            // 走到这里说明有已落位的连线邻居:取其重心作锚点。
             let xs: Vec<f64> = edges
                 .iter()
                 .filter_map(|&(u, lo)| {
@@ -1768,11 +2037,10 @@ fn physics_step(
                     }
                 })
                 .collect();
-            let x = if xs.is_empty() {
-                VIEW_W / 2.0
-            } else {
-                xs.iter().sum::<f64>() / xs.len() as f64
-            };
+            if xs.is_empty() {
+                continue; // 已被上面的散开槽覆盖,防御悬空边竞态
+            }
+            let x = xs.iter().sum::<f64>() / xs.len() as f64;
             positions.insert(k, (x, ROW_Y[l]));
             velocities.insert(k, (0.0, 0.0));
         }
@@ -1964,9 +2232,37 @@ fn ImportPanel() -> Element {
     let mut key = use_signal(String::new);
     let mut alias = use_signal(String::new);
     let mut done = use_signal(|| false);
+    let mut busy = use_signal(|| false);
+    let mut err = use_signal(|| None::<String>);
     let mut store = use_context::<EntityStore>();
 
     let can_import = !url.read().trim().is_empty() && !key.read().trim().is_empty();
+
+    let do_import = move |_| {
+        // 等真实 POST /api/channel 成功后才把返回的 DTO 落进 store;
+        // 失败在面板里诚实展示,输入不丢(可改完重试)。
+        spawn(async move {
+            busy.set(true);
+            err.set(None);
+            let client = ApiClient::shared().clone();
+            let req = channel_upsert_for_import(
+                alias.peek().trim(),
+                url.peek().trim(),
+                key.peek().trim(),
+            );
+            match create_channel_api(&client, &req).await {
+                Ok(dto) => {
+                    store.channels.write().push(channel_row_from_dto(&dto));
+                    alias.set(String::new());
+                    url.set(String::new());
+                    key.set(String::new());
+                    done.set(true);
+                }
+                Err(e) => err.set(Some(format!("导入失败:{e}"))),
+            }
+            busy.set(false);
+        });
+    };
 
     rsx! {
         div { class: "space-y-3",
@@ -2007,33 +2303,25 @@ fn ImportPanel() -> Element {
             }
             if done() {
                 p { class: "rounded-md border border-emerald-800/40 bg-emerald-950/40 px-3 py-1.5 text-[11px] text-emerald-300",
+                    role: "status",
+                    "data-testid": "import-channel-done",
                     "已加入渠道列表，去设置页拉取模型并加入调度"
+                }
+            }
+            if let Some(e) = err() {
+                p { class: "rounded-md border border-red-800/40 bg-red-950/40 px-3 py-1.5 text-[11px] text-red-300",
+                    role: "alert",
+                    "data-testid": "import-channel-error",
+                    "{e}"
                 }
             }
             button {
                 class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors",
-                class: if can_import { "hover:bg-zinc-300" } else { "cursor-not-allowed opacity-50" },
-                disabled: !can_import,
-                onclick: move |_| {
-                    let n = alias.peek().trim().to_string();
-                    let name = if n.is_empty() { "新渠道".into() } else { n };
-                    store.channels.write().push(crate::state::ChannelRow {
-                        name,
-                        url: url.peek().trim().to_string(),
-                        keys: key.peek().trim().to_string(),
-                        ctype: "openai".into(),
-                        status: 1,
-                        group: "default".into(),
-                        latency_ms: None,
-                        candidates: vec![],
-                        dispatch: vec![],
-                    });
-                    alias.set(String::new());
-                    url.set(String::new());
-                    key.set(String::new());
-                    done.set(true);
-                },
-                "导入渠道"
+                class: if can_import && !busy() { "hover:bg-zinc-300" } else { "cursor-not-allowed opacity-50" },
+                disabled: !can_import || busy(),
+                "data-testid": "import-channel",
+                onclick: do_import,
+                if busy() { "导入中…" } else { "导入渠道" }
             }
         }
     }
@@ -2043,15 +2331,19 @@ fn ImportPanel() -> Element {
 ///
 /// `absolute` 覆盖画布右侧，画布尺寸恒定，开合不引起重排。
 /// 三层的编辑内容不同：
-/// - 分组：名字（可改）
-/// - 模型别名：名字（可改）
+/// - 分组：展示名（草稿 → 「保存」走真实 PUT /api/group/{key}）；
+///   分组名后端无更新路径,只读展示并附诚实小注
+/// - 模型别名：名字（可改，暂无后端写端点，仍为会话内改动）
 /// - 调度模型：模型名**只读**（来自上游，改了就路由不到），
-///   附带展示所属渠道的 URL/Key，渠道本身在设置页改
+///   所属渠道的名称/URL/Key 可编辑，「保存」走真实 PUT /api/channel/{key}
+///
+/// 分组/渠道的「删除」同样先按名称解析服务端 key,成功后才移除本地行
+/// 并关闭抽屉;失败在抽屉里诚实展示错误。
 #[component]
 fn NodeInspector(
     node: NodeKey,
     on_tab: EventHandler<DrawerTab>,
-    on_close: EventHandler<MouseEvent>,
+    on_close: EventHandler<()>,
 ) -> Element {
     let title = node_title_from_store(node);
     let kind_label = match node {
@@ -2069,7 +2361,7 @@ fn NodeInspector(
                 title: title.clone(),
                 subtitle: kind_label.to_string(),
                 on_tab: move |t: DrawerTab| on_tab.call(t),
-                on_close: on_close,
+                on_close: move |_| on_close.call(()),
             }
             // 类型色点行：补上视觉线索，不占正式空间
             div { class: "shrink-0 border-b border-zinc-800 px-3 py-1.5",
@@ -2078,24 +2370,24 @@ fn NodeInspector(
             // 主体
             div { class: "min-h-0 flex-1 space-y-3 overflow-y-auto scroll-subtle p-3",
                 match node {
-                    NodeKey::Group(i) => rsx! { GroupInspect { index: i } },
-                    NodeKey::Mapping(i) => rsx! { AliasInspect { index: i } },
-                    NodeKey::Dispatch(i) => rsx! { DispatchInspect { index: i } },
+                    // key: 切换检视节点时强制重挂,草稿/错误态随节点重置。
+                    NodeKey::Group(i) => rsx! {
+                        GroupInspect { key: "group-{i}", index: i, on_deleted: move |_| on_close.call(()) }
+                    },
+                    NodeKey::Mapping(i) => rsx! { AliasInspect { key: "alias-{i}", index: i } },
+                    NodeKey::Dispatch(i) => rsx! {
+                        DispatchInspect { key: "dispatch-{i}", index: i, on_deleted: move |_| on_close.call(()) }
+                    },
                 }
-            }
-            // 底部操作条
-            div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2",
-                button { class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400", "删除" }
-                span { class: "flex-1" }
-                button { class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300", "保存" }
             }
         }
     }
 }
 
 #[component]
-fn GroupInspect(index: usize) -> Element {
-    // 与「设置」tab 共享 store：这里改名，那边立即可见。
+fn GroupInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
+    // 与「设置」tab 共享 store:输入先落草稿,「保存」等真实 API
+    // 成功后才把响应写回 store,失败诚实展示错误。
     let mut store = use_context::<EntityStore>();
     let row = store.groups.read().get(index).cloned();
     let aliases: Vec<String> = store
@@ -2110,24 +2402,147 @@ fn GroupInspect(index: usize) -> Element {
         })
         .map(|(_, a)| a.alias.clone())
         .collect();
-    let Some(r) = row else {
+    // 钩子先于任何提前 return:行存在性在渲染间可能翻转(保存失败/
+    // 其他面板增删),钩子序列必须稳定。
+    let (r_name, r_display) = match &row {
+        Some(g) => (g.name.clone(), g.display.clone()),
+        None => (String::new(), String::new()),
+    };
+    // anchor:服务端现名,解析 /api/group/{key} 的锚点。分组名后端不可
+    // 更新(UPDATE 无 name 列),名称框只读,anchor 全程不变;草稿只剩
+    // 展示备注,保存成功后同步。
+    let anchor = use_signal(|| r_name.clone());
+    let mut d_display = use_signal(|| r_display.clone());
+    let mut busy = use_signal(|| false);
+    let mut err = use_signal(|| None::<String>);
+    let mut ok = use_signal(|| false);
+    if row.is_none() {
         return rsx! { p { class: "text-xs text-zinc-600", "该分组不存在" } };
+    }
+
+    let do_save = move |_| {
+        spawn(async move {
+            busy.set(true);
+            err.set(None);
+            ok.set(false);
+            let client = ApiClient::shared().clone();
+            let anchor_name = anchor.peek().clone();
+            let display = d_display.peek().trim().to_string();
+            // ① 取服务端现值(拿 key;名称/倍率/白名单以现值原样回传)
+            let res = match fetch_group_by_name(&client, &anchor_name).await {
+                Ok(dto) => {
+                    // ② 抽屉里真正生效的编辑只有展示备注 remark
+                    let req = group_upsert_from_dto(&dto, &display);
+                    update_group_api(&client, &dto.key, &req)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+                Err(e) => Err(e),
+            };
+            match res {
+                Ok(fresh) => {
+                    // 响应成功才写回本地行(索引不变,避免列表重排错位)。
+                    // len 先读出:if 条件里的 read 临时守卫会活到整条 if
+                    // 结束,与块内 write() 冲突(RefCell 双重借用)。
+                    let len = store.groups.read().len();
+                    if index < len {
+                        store.groups.write()[index] = group_row_from_dto(&fresh);
+                    }
+                    d_display.set(fresh.remark.clone());
+                    ok.set(true);
+                }
+                Err(e) => err.set(Some(format!("保存失败:{e}"))),
+            }
+            busy.set(false);
+        });
+    };
+
+    let do_delete = move |_| {
+        spawn(async move {
+            busy.set(true);
+            err.set(None);
+            ok.set(false);
+            let client = ApiClient::shared().clone();
+            let anchor_name = anchor.peek().clone();
+            let res = match fetch_group_by_name(&client, &anchor_name).await {
+                Ok(dto) => delete_group_api(&client, &dto.key)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            };
+            match res {
+                Ok(()) => {
+                    let len = store.groups.read().len();
+                    if index < len {
+                        store.groups.write().remove(index);
+                    }
+                    // 节点已不存在,通知抽屉关闭(索引会随列表收缩漂移)
+                    on_deleted.call(());
+                }
+                Err(e) => err.set(Some(format!("删除失败:{e}"))),
+            }
+            busy.set(false);
+        });
     };
 
     rsx! {
-        BoundField {
-            label: "分组名",
-            value: r.name,
-            placeholder: "vip",
-            on_change: move |v: String| store.groups.write()[index].name = v,
+        // 分组名后端无更新路径:只读展示,不给可编辑的假象。
+        div { class: "space-y-1",
+            span { class: "text-[11px] text-zinc-500", "分组名" }
+            div { class: "w-full truncate rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-400",
+                role: "note",
+                "data-testid": "group-name-locked",
+                "{r_name}"
+            }
+            p { class: "text-[11px] text-zinc-600",
+                "分组名不可修改（后端无对应更新路径）；可修改展示名"
+            }
         }
         BoundField {
             label: FIELD_DISPLAY,
-            value: r.display,
+            value: d_display(),
             placeholder: "默认分组",
-            on_change: move |v: String| store.groups.write()[index].display = v,
+            on_change: move |v: String| {
+                ok.set(false);
+                d_display.set(v);
+            },
         }
         InspectList { title: "包含的模型别名", items: aliases, empty: "拖端口连线以加入别名" }
+        // 操作条:保存/删除都等真实响应,期间禁用并显示进度。
+        div { class: "space-y-2 border-t border-zinc-800 pt-3",
+            if let Some(e) = err() {
+                p { class: "rounded-md border border-red-800/40 bg-red-950/40 px-2.5 py-1.5 text-[11px] text-red-300",
+                    role: "alert",
+                    "data-testid": "group-node-error",
+                    "{e}"
+                }
+            }
+            if ok() {
+                p { class: "rounded-md border border-emerald-800/40 bg-emerald-950/40 px-2.5 py-1.5 text-[11px] text-emerald-300",
+                    role: "status",
+                    "data-testid": "group-node-saved",
+                    "已保存到服务端"
+                }
+            }
+            div { class: "flex items-center gap-2",
+                button {
+                    class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400 disabled:opacity-50",
+                    disabled: busy(),
+                    "data-testid": "delete-group-node",
+                    onclick: do_delete,
+                    if busy() { "处理中…" } else { "删除" }
+                }
+                span { class: "flex-1" }
+                button {
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300 disabled:opacity-50",
+                    disabled: busy(),
+                    "data-testid": "save-group-node",
+                    onclick: do_save,
+                    if busy() { "保存中…" } else { "保存" }
+                }
+            }
+        }
     }
 }
 
@@ -2176,7 +2591,7 @@ fn AliasInspect(index: usize) -> Element {
 }
 
 #[component]
-fn DispatchInspect(index: usize) -> Element {
+fn DispatchInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
     let mut store = use_context::<EntityStore>();
     let view = GraphView::from_store(&store);
     let (ci, model_name) = view
@@ -2197,32 +2612,173 @@ fn DispatchInspect(index: usize) -> Element {
         })
         .map(|(_, a)| a.alias.clone())
         .collect();
+    // 钩子先于任何提前 return:行存在性在渲染间可能翻转,钩子序列
+    // 必须稳定。渠道编辑走草稿 + 「保存」:等 PUT /api/channel/{key}
+    // 成功才写回 store。anchor 是服务端现名(解析 key 的锚点,渠道名
+    // 可改故随响应更新);Key 输入框初始为空,留空提交时请求体整体
+    // 省略 keys 字段 = 保持服务端原密钥(掩码值永不回传)。
+    let (c_name, c_url) = match &row {
+        Some(c) => (c.name.clone(), c.url.clone()),
+        None => (String::new(), String::new()),
+    };
+    let mut anchor = use_signal(|| c_name.clone());
+    let mut d_name = use_signal(|| c_name.clone());
+    let mut d_url = use_signal(|| c_url.clone());
+    let mut d_keys = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut err = use_signal(|| None::<String>);
+    let mut ok = use_signal(|| false);
+    if row.is_none() {
+        return rsx! {
+            div { class: "space-y-1",
+                span { class: "text-[11px] text-zinc-500", "模型名（只读，来自上游）" }
+                div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{model_name}" }
+            }
+            InspectList { title: "被哪些别名路由", items: aliases, empty: "未被任何别名引用" }
+        };
+    }
+
+    let do_save = move |_| {
+        let name = d_name.peek().trim().to_string();
+        if name.is_empty() {
+            err.set(Some("渠道名称不能为空".into()));
+            return;
+        }
+        spawn(async move {
+            busy.set(true);
+            err.set(None);
+            ok.set(false);
+            let client = ApiClient::shared().clone();
+            let anchor_name = anchor.peek().clone();
+            let url_v = d_url.peek().trim().to_string();
+            let keys_v = d_keys.peek().clone();
+            let res = match fetch_channel_by_name(&client, &anchor_name).await {
+                Ok(dto) => {
+                    // 最小 diff 请求体:只带 name/baseUrl(+ 可选 keys,
+                    // 未改密钥时整体省略——裸契约发 [] 会被服务端
+                    // Some([]) 解读并以 "at least one key required"
+                    // 拒绝);testModel 后端无 COALESCE,原样回传防清 NULL。
+                    let body = channel_update_body(&dto, &name, &url_v, &keys_v);
+                    client
+                        .put::<serde_json::Value, ChannelDto>(
+                            &format!("/api/channel/{}", dto.key),
+                            &body,
+                        )
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+                Err(e) => Err(e),
+            };
+            match res {
+                Ok(fresh) => {
+                    let len = store.channels.read().len();
+                    if ci < len {
+                        store.channels.write()[ci] = channel_row_from_dto(&fresh);
+                    }
+                    anchor.set(fresh.name.clone());
+                    d_name.set(fresh.name.clone());
+                    d_url.set(fresh.base_url.clone());
+                    d_keys.set(String::new()); // 掩码响应,清空待下次输入
+                    ok.set(true);
+                }
+                Err(e) => err.set(Some(format!("保存失败:{e}"))),
+            }
+            busy.set(false);
+        });
+    };
+
+    let do_delete = move |_| {
+        spawn(async move {
+            busy.set(true);
+            err.set(None);
+            ok.set(false);
+            let client = ApiClient::shared().clone();
+            let anchor_name = anchor.peek().clone();
+            let res = match fetch_channel_by_name(&client, &anchor_name).await {
+                Ok(dto) => delete_channel_api(&client, &dto.key)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            };
+            match res {
+                Ok(()) => {
+                    let len = store.channels.read().len();
+                    if ci < len {
+                        store.channels.write().remove(ci);
+                    }
+                    // 渠道删掉后 dispatch 索引整体收缩,通知抽屉关闭
+                    on_deleted.call(());
+                }
+                Err(e) => err.set(Some(format!("删除失败:{e}"))),
+            }
+            busy.set(false);
+        });
+    };
 
     rsx! {
         div { class: "space-y-1",
             span { class: "text-[11px] text-zinc-500", "模型名（只读，来自上游）" }
             div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{model_name}" }
         }
-        if let Some(c) = row {
-            div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
-                span { class: "text-[11px] uppercase tracking-wider text-zinc-600", "所属渠道" }
-                BoundField {
-                    label: "渠道名称",
-                    value: c.name,
-                    placeholder: EXAMPLE_CHANNEL,
-                    on_change: move |v: String| store.channels.write()[ci].name = v,
+        div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
+            span { class: "text-[11px] uppercase tracking-wider text-zinc-600", "所属渠道" }
+            BoundField {
+                label: "渠道名称",
+                value: d_name(),
+                placeholder: EXAMPLE_CHANNEL,
+                on_change: move |v: String| {
+                    ok.set(false);
+                    d_name.set(v);
+                },
+            }
+            BoundField {
+                label: "Base URL",
+                value: d_url(),
+                placeholder: "https://…",
+                on_change: move |v: String| {
+                    ok.set(false);
+                    d_url.set(v);
+                },
+            }
+            BoundArea {
+                label: "API Key（多 key 一行一个；留空 = 保持服务端原密钥不变）",
+                value: d_keys(),
+                placeholder: "sk-…\nsk-…",
+                on_change: move |v: String| {
+                    ok.set(false);
+                    d_keys.set(v);
+                },
+            }
+            if let Some(e) = err() {
+                p { class: "rounded-md border border-red-800/40 bg-red-950/40 px-2.5 py-1.5 text-[11px] text-red-300",
+                    role: "alert",
+                    "data-testid": "channel-node-error",
+                    "{e}"
                 }
-                BoundField {
-                    label: "Base URL",
-                    value: c.url,
-                    placeholder: "https://…",
-                    on_change: move |v: String| store.channels.write()[ci].url = v,
+            }
+            if ok() {
+                p { class: "rounded-md border border-emerald-800/40 bg-emerald-950/40 px-2.5 py-1.5 text-[11px] text-emerald-300",
+                    role: "status",
+                    "data-testid": "channel-node-saved",
+                    "已保存到服务端"
                 }
-                BoundArea {
-                    label: "API Key（多 key 一行一个）",
-                    value: c.keys,
-                    placeholder: "sk-…\nsk-…",
-                    on_change: move |v: String| store.channels.write()[ci].keys = v,
+            }
+            div { class: "flex items-center gap-2",
+                button {
+                    class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400 disabled:opacity-50",
+                    disabled: busy(),
+                    "data-testid": "delete-channel-node",
+                    onclick: do_delete,
+                    if busy() { "处理中…" } else { "删除渠道" }
+                }
+                span { class: "flex-1" }
+                button {
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300 disabled:opacity-50",
+                    disabled: busy(),
+                    "data-testid": "save-channel-node",
+                    onclick: do_save,
+                    if busy() { "保存中…" } else { "保存" }
                 }
             }
         }

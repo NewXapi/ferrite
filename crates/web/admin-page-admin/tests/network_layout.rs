@@ -109,3 +109,77 @@ fn fit_view_centers_point_set() {
         "cy={cy} too far from {expect_cy}"
     );
 }
+
+// ---------- 无连线节点 spawn 散开(spread_isolated_x) ----------
+
+use admin_page_admin::network::spread_isolated_x;
+
+/// N 个同层无连线节点 spawn 后 x 互不相等、两两间距 ≥ 段宽的一半,
+/// 且全部落在画布安全区内。这是聚线 bug 的几何断言:原先统一落
+/// VIEW_W/2,完全重合的位置让分离力为零,节点永久叠死在中心竖线上。
+#[test]
+fn spread_isolated_x_unique_and_spaced_for_n_nodes() {
+    let span = VIEW_W - 2.0 * MARGIN;
+    for count in 2..=12usize {
+        let xs: Vec<f64> = (0..count)
+            .map(|slot| spread_isolated_x(slot, count))
+            .collect();
+        // 全部在安全区内
+        for (i, x) in xs.iter().enumerate() {
+            assert!(
+                (MARGIN..=VIEW_W - MARGIN).contains(x),
+                "count={count} slot={i} x={x} 越出画布安全区"
+            );
+        }
+        // 两两间距:≥ 0.5 段宽(jitter 幅度 ≤ 段宽 1/8,理论下界 0.75 段宽)
+        let min_gap = span / count as f64 * 0.5;
+        for (i, a) in xs.iter().enumerate() {
+            for b in &xs[i + 1..] {
+                assert!(
+                    (a - b).abs() >= min_gap,
+                    "count={count} 间距 {:.2} < 下限 {:.2}",
+                    (a - b).abs(),
+                    min_gap
+                );
+            }
+        }
+    }
+}
+
+/// 单个无连线节点不再落在画布中心(有邻居节点的重心锚 ≈ 中心,
+/// 精确重合同样会让分离力归零)。
+#[test]
+fn spread_isolated_x_single_node_avoids_center() {
+    let x = spread_isolated_x(0, 1);
+    let center = VIEW_W / 2.0;
+    assert!(
+        (x - center).abs() > 0.1 * (VIEW_W - 2.0 * MARGIN),
+        "单节点 x={x} 过于贴近中心 {center},仍会与重心锚叠死"
+    );
+}
+
+/// 同参数多次调用结果一致(散列 jitter 不引入 RNG,布局可复现)。
+#[test]
+fn spread_isolated_x_is_deterministic() {
+    for count in [1usize, 3, 7, 11] {
+        for slot in 0..count {
+            assert_eq!(
+                spread_isolated_x(slot, count),
+                spread_isolated_x(slot, count)
+            );
+        }
+    }
+}
+
+/// 槽位序号越大 x 单调不降(散开保持稳定次序,视觉不跳变)。
+#[test]
+fn spread_isolated_x_keeps_slot_order() {
+    for count in [2usize, 5, 9] {
+        let xs: Vec<f64> = (0..count)
+            .map(|slot| spread_isolated_x(slot, count))
+            .collect();
+        for w in xs.windows(2) {
+            assert!(w[0] < w[1], "count={count}: 槽位次序被 jitter 打乱 {xs:?}");
+        }
+    }
+}
