@@ -17,8 +17,8 @@ use crate::dock;
 /// 把同侧某区压到 <120px 时自动收起该区的阈值。
 const COLLAPSE_THRESHOLD_PX: f64 = 120.0;
 
-/// 左右列各占中央区总宽的比例（与 rsx 里的 `w-[28%]` 保持一致，
-/// 命中测试需要同值换算）。
+/// 左右列各占中央区总宽的比例（与 rsx 里的内联 `style: "width: 28%"` 保持
+/// 一致，命中测试需要同值换算；不用 Tailwind 任意值类，预生成 css 不含它）。
 const COLUMN_WIDTH_RATIO: f64 = 0.28;
 
 /// 中央区挂载时缓存的 client rect，拖拽命中测试用。
@@ -155,7 +155,8 @@ fn render_zone(
     let zone_label_c = zone_label(zone_c);
     rsx! {
         div {
-            class: "flex min-h-0 flex-col gap-1",
+            // h-full：撑满上下分割容器，否则分区塌成内容高
+            class: "flex h-full min-h-0 flex-col gap-1",
             "data-testid": "dock-zone-{zone_label_c}",
             { children_v.iter() }
         }
@@ -338,9 +339,11 @@ pub fn DockFrame(
                 split_drag.set(None);
             },
 
-            // 左列：上下二分
+            // 左列：上下二分（列宽走内联 style：Tailwind 任意值类 w-[28%]
+            // 不在预生成 tailwind.out.css 里，会塌成内容宽）
             div {
-                class: "flex h-full shrink-0 flex-col gap-1 py-1 pr-1 w-[28%]",
+                class: "flex h-full shrink-0 flex-col gap-1 py-1 pr-1",
+                style: "width: 28%",
                 role: "group",
                 aria_label: "左列面板",
 
@@ -364,9 +367,10 @@ pub fn DockFrame(
             // 中央 editor 槽
             div { class: "flex h-full min-h-0 min-w-0 flex-1 flex-col", { editor } }
 
-            // 右列：上下二分
+            // 右列：上下二分（列宽内联 style，理由同左列）
             div {
-                class: "flex h-full shrink-0 flex-col gap-1 py-1 pl-1 w-[28%]",
+                class: "flex h-full shrink-0 flex-col gap-1 py-1 pl-1",
+                style: "width: 28%",
                 role: "group",
                 aria_label: "右列面板",
 

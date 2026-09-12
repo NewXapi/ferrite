@@ -51,8 +51,10 @@ fn default_layout() -> DockLayout {
                 title: "模型与轮次".into(),
             },
         ],
-        split_left: SplitRatio::DEFAULT,
-        split_right: SplitRatio::DEFAULT,
+        // 左右列上下分割：角色/prompt 内容短，会话/模型区占比更高，避免顶部
+        // 半区空旷、底部被撑太大。左 35/65，右 40/60。
+        split_left: SplitRatio::new_unchecked(0.35),
+        split_right: SplitRatio::new_unchecked(0.40),
         ..DockLayout::default()
     }
 }

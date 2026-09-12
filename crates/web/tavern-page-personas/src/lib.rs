@@ -196,7 +196,7 @@ fn PersonaEditor(
             button {
                 class: "text-zinc-400 hover:text-zinc-100",
                 onclick: move |_| on_close.call(()),
-                "✕"
+                "关闭"
             }
         }
 

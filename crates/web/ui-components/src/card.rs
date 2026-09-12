@@ -53,7 +53,6 @@ pub fn ChoiceCard(
         div { class: "flex flex-col overflow-hidden rounded-2xl border border-purple-500/40 bg-zinc-900/90 shadow-xl shadow-purple-950/20",
             div { class: "flex items-center justify-between border-b border-purple-500/30 bg-purple-950/60 px-4 py-2.5",
                 div { class: "flex items-center gap-2",
-                    span { class: "text-sm", "🎮" }
                     span { class: "text-xs font-semibold tracking-wide text-purple-200", "{title}" }
                 }
                 span { class: "text-[10px] text-purple-300/60", "点击选择分支行动" }

@@ -74,7 +74,7 @@ pub fn SettingsPage() -> Element {
 
                 div { class: "flex items-center gap-3",
                     if saved_hint() {
-                        span { class: "text-xs text-emerald-400", "✓ 设置已暂存到本地信号" }
+                        span { class: "text-xs text-emerald-400", "设置已暂存到本地信号" }
                     }
                     button {
                         class: "rounded-full bg-zinc-100 px-4 py-1.5 text-xs font-semibold text-zinc-900 hover:bg-zinc-300",

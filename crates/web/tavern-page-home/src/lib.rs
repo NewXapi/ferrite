@@ -49,7 +49,7 @@ pub fn HomePage(
                     button {
                         class: "rounded-full border border-purple-500/40 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50",
                         onclick: move |_| on_start.call(()),
-                        "立即体验 ➜"
+                        "立即体验"
                     }
                 }
             }
@@ -82,11 +82,9 @@ pub fn HomePage(
                             span { "多模型支持" }
                         }
                         div { class: "flex items-center gap-1.5 rounded-full border border-purple-500/20 bg-purple-950/40 px-3 py-1",
-                            span { "🕒" }
                             span { "自由创作" }
                         }
                         div { class: "flex items-center gap-1.5 rounded-full border border-purple-500/20 bg-purple-950/40 px-3 py-1",
-                            span { "↔" }
                             span { "跨设备同步" }
                         }
                     }
@@ -97,7 +95,6 @@ pub fn HomePage(
                             class: "flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 px-6 py-3 text-sm font-bold text-white shadow-xl shadow-purple-600/40 transition-all hover:scale-105 hover:shadow-purple-600/60",
                             onclick: move |_| on_start.call(()),
                             span { "开始体验" }
-                            span { "➜" }
                         }
                         button {
                             class: "rounded-xl border border-zinc-700/80 bg-zinc-900/60 px-6 py-3 text-sm font-semibold text-zinc-200 transition-colors hover:bg-zinc-800",
@@ -107,7 +104,7 @@ pub fn HomePage(
                         button {
                             class: "rounded-xl border border-purple-500/30 bg-purple-950/40 px-5 py-3 text-sm font-semibold text-purple-300 transition-colors hover:bg-purple-900/40",
                             onclick: move |_| on_explore_studio.call(()),
-                            "🛠️ 创作者工作台"
+                            "创作者工作台"
                         }
                     }
 
@@ -146,7 +143,7 @@ pub fn HomePage(
                                 span { "热门" }
                             }
                             div { class: "flex flex-col items-center gap-2",
-                                span { class: "text-6xl filter drop-shadow-xl", "🎭" }
+                                span { class: "font-serif text-3xl tracking-[0.3em] text-purple-300", "DRAMA" }
                                 span { class: "font-serif text-xs font-semibold tracking-wider text-purple-200", "【超真实】明星娱乐圈模拟器" }
                             }
                         }
@@ -158,11 +155,11 @@ pub fn HomePage(
                             }
                             div { class: "flex items-center justify-between text-xs text-zinc-400",
                                 div { class: "flex items-center gap-3",
-                                    span { class: "text-amber-300 font-semibold", "★ 9.7" }
+                                    span { class: "text-amber-300 font-semibold", "9.7 分" }
                                     span { class: "text-zinc-500", "72.1亿" }
                                 }
                                 span { class: "text-purple-400 group-hover:translate-x-1 transition-transform font-medium",
-                                    "点击进入 ➜"
+                                    "点击进入"
                                 }
                             }
                         }
@@ -177,21 +174,18 @@ pub fn HomePage(
                 div { class: "mx-auto w-full max-w-6xl px-6 pb-16",
                     div { class: "grid grid-cols-1 gap-6 md:grid-cols-3",
                         div { class: "flex flex-col gap-2 rounded-2xl border border-purple-900/30 bg-zinc-900/60 p-5",
-                            span { class: "text-2xl", "🎮" }
                             span { class: "text-sm font-bold text-white", "行动选项与分支决策" }
                             p { class: "text-xs leading-5 text-zinc-400",
                                 "彻底摆脱单调的一问一答。系统根据剧情走向动态生成多条推演选项，点击即可主导世界线分支。"
                             }
                         }
                         div { class: "flex flex-col gap-2 rounded-2xl border border-purple-900/30 bg-zinc-900/60 p-5",
-                            span { class: "text-2xl", "🧠" }
                             span { class: "text-sm font-bold text-white", "通告契约与记忆系统" }
                             p { class: "text-xs leading-5 text-zinc-400",
                                 "内置任务对赌协议与娱乐圈线索捕捉备忘录，剧情进展自动记忆沉淀，多轮对话永不遗忘关键脉络。"
                             }
                         }
                         div { class: "flex flex-col gap-2 rounded-2xl border border-purple-900/30 bg-zinc-900/60 p-5",
-                            span { class: "text-2xl", "🛠️" }
                             span { class: "text-sm font-bold text-white", "作者视角创作控制台" }
                             p { class: "text-xs leading-5 text-zinc-400",
                                 "专属 Studio 创作中心：提供世界观、Prompt 矩阵、进场封面名句与行动分支的全面编排与一键调试。"

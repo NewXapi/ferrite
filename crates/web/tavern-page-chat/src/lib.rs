@@ -120,7 +120,7 @@ pub fn EditorSlot(
                         e.stop_propagation();
                         ammi.set(None);
                     },
-                    "📋"
+                    "复制"
                 }
                 IconButton {
                     title: "删除段落",
@@ -129,7 +129,7 @@ pub fn EditorSlot(
                         del_id.set(Some(idx));
                         ammi.set(None);
                     },
-                    "✕"
+                    "删除"
                 }
             };
             let row: Element = rsx! {
@@ -169,14 +169,13 @@ pub fn EditorSlot(
                         title: "剧本会话",
                         name: "btn-sidebar-toggle-top",
                         onclick: move |e| e.stop_propagation(),
-                        span { "📚" }
                         span { class: "font-semibold", "剧本会话" }
                     }
                     button {
                         class: "flex h-8 items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:flex",
                         title: "回到剧本库大厅",
                         onclick: move |_| on_goto_characters.call(()),
-                        "大厅 ➜"
+                        "大厅"
                     }
                 }
                 div { class: "flex items-center gap-2",
@@ -184,29 +183,29 @@ pub fn EditorSlot(
                         class: "flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
                         title: "切换光暗",
                         onclick: move |_| on_toggle_theme.call(()),
-                        if theme_light { "☀️" } else { "🌙" }
+                        if theme_light { "暗" } else { "亮" }
                     }
                     button {
-                        class: "flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
                         title: "快捷菜单",
                         onclick: move |e| {
                             e.stop_propagation();
                             menu_open.set(!menu_open());
                         },
-                        "⚙"
+                        "菜单"
                     }
                 }
             }
 
             div {
                 id: "chat-scroll-viewport",
-                class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 lg:px-24 xl:px-44 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
                 onscroll: move |e| on_scroll.call(e),
                 { msg_rows.iter() }
 
-                // 粘性 composer
+                // 粘性 composer：贴住中央区底部，宽度随中央列（768px 定宽会溢出 28% 列）
                 div {
-                    class: "sticky bottom-0 z-20 mb-4 flex self-center w-11/12 flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
+                    class: "sticky bottom-0 z-20 mb-4 flex w-full flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
                     onclick: move |e| e.stop_propagation(),
                     div { class: "flex flex-wrap items-center gap-1.5",
                         button {
@@ -216,7 +215,7 @@ pub fn EditorSlot(
                                 "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
                             },
                             onclick: move |_| mod_active.set(!mod_active()),
-                            "🎮 Mod"
+                            "Mod"
                         }
                         button {
                             class: if memory_boost() {
@@ -225,7 +224,7 @@ pub fn EditorSlot(
                                 "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
                             },
                             onclick: move |_| memory_boost.set(!memory_boost()),
-                            "🧠 记忆"
+                            "记忆"
                         }
                         button {
                             class: if stream_toggle() {
@@ -234,7 +233,7 @@ pub fn EditorSlot(
                                 "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
                             },
                             onclick: move |_| stream_toggle.set(!stream_toggle()),
-                            "≈ 流式"
+                            "流式"
                         }
                     }
                     div { class: "flex items-end gap-2",
@@ -255,11 +254,11 @@ pub fn EditorSlot(
                         div { class: "flex min-w-0 items-center gap-2 text-[10px]",
                             if STATE.with(|s| s.generating) {
                                 span { class: "flex items-center gap-1 text-cyan-400",
-                                    "⚡ 生成中..."
+                                    "生成中..."
                                     button {
                                         class: "text-zinc-500 hover:text-white",
                                         onclick: move |_| abort(),
-                                        "✕"
+                                        "停止"
                                     }
                                 }
                             }
@@ -269,25 +268,25 @@ pub fn EditorSlot(
                                 class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
                                 disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
                                 onclick: move |_| handle_send.call(()),
-                                if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
+                                if STATE.with(|s| s.generating) { "停止" } else { "行动" }
                             }
                         }
                     }
                 }
             }
 
-            div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800/60 bg-zinc-900/90 px-3 py-1.5 backdrop-blur-2xl z-10 select-none",
-                if STATE.with(|s| s.generating) {
-                    div { class: "flex items-center gap-2 text-[10px] text-cyan-400",
-                        span { "⚡ 生成中..." }
-                        button {
-                            class: "text-zinc-500 hover:text-white",
-                            onclick: move |_| abort(),
-                            "✕"
+                    div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800/60 bg-zinc-900/90 px-3 py-1.5 backdrop-blur-2xl z-10 select-none",
+                        if STATE.with(|s| s.generating) {
+                            div { class: "flex items-center gap-2 text-[10px] text-cyan-400",
+                                span { "生成中..." }
+                                button {
+                                    class: "text-zinc-500 hover:text-white",
+                                    onclick: move |_| abort(),
+                                    "停止"
+                                }
+                            }
                         }
                     }
-                }
-            }
 
             Dialog {
                 title: "删除这条消息?".to_string(),
@@ -372,7 +371,7 @@ pub fn EditorSlot(
                     onclick: move |e| e.stop_propagation(),
                     div { class: "flex flex-col py-1",
                         button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
-                            "📤 导出记录"
+                            "导出记录"
                         }
                     }
                 }

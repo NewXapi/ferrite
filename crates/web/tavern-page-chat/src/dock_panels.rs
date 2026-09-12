@@ -43,7 +43,7 @@ pub fn DockPanel(
                         dock::collapse_zone(z, false);
                     }
                 },
-                span { class: "text-[9px] text-zinc-600", "⠿" }
+                span { class: "text-[9px] text-zinc-600", "·" }
                 span { "{title}" }
                 button {
                     class: "ml-auto text-[10px] text-zinc-500 hover:text-zinc-200",
@@ -51,7 +51,7 @@ pub fn DockPanel(
                     name: "btn-panel-collapse-{item_id}",
                     aria_label: "收起面板 {title}",
                     onclick: move |_| dock::collapse_zone(zone, true),
-                    if collapsed { "⊞" } else { "⊟" }
+                    if collapsed { "展开" } else { "收起" }
                 }
             }
 
@@ -104,40 +104,28 @@ pub fn CharacterPanel(
         })
     });
 
-    let char_monogram = use_memo(move || {
-        STATE.with(|s| {
-            s.character
-                .as_ref()
-                .and_then(|(_, c)| c.name.chars().next())
-                .map(|ch| ch.to_string())
-                .unwrap_or_else(|| "?".to_string())
-        })
-    });
-
     rsx! {
-        div { class: "flex flex-col gap-2",
-            div { class: "flex flex-col gap-1",
-                div { class: "flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 text-sm font-bold text-white shadow-md",
-                    aria_label: "当前角色",
-                    "{char_monogram()}"
+        DockPanel { item_id: "character", title: "角色卡", icon: "角色",
+            content: rsx! {
+            div { class: "flex flex-col gap-2",
+                div { class: "flex flex-col gap-1",
+                    span { class: "truncate text-sm font-bold text-zinc-100", "{character_info()}" }
                 }
-                span { class: "truncate text-xs font-bold text-zinc-100", "{character_info()}" }
+                div { class: "grid grid-cols-2 gap-2",
+                    button {
+                        class: "rounded-xl border border-zinc-800 bg-zinc-800/70 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 active:scale-95",
+                        name: "btn-detail",
+                        onclick: move |_| detail_modal_open.set(true),
+                        "剧本详情"
+                    }
+                    button {
+                        class: "rounded-xl border border-amber-500/30 bg-amber-500/10 py-2 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 active:scale-95",
+                        name: "btn-donate",
+                        onclick: move |_| donate_modal_open.set(true),
+                        "赞赏作品"
+                    }
+                }
             }
-            div { class: "grid grid-cols-2 gap-2",
-                button {
-                    class: "flex items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-800/70 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 active:scale-95",
-                    name: "btn-detail",
-                    onclick: move |_| detail_modal_open.set(true),
-                    span { "📖" }
-                    span { "剧本详情" }
-                }
-                button {
-                    class: "flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 active:scale-95",
-                    name: "btn-donate",
-                    onclick: move |_| donate_modal_open.set(true),
-                    span { "☕" }
-                    span { "赞赏作品" }
-                }
             }
         }
     }
@@ -204,24 +192,28 @@ pub fn SessionsPanel() -> Element {
         })
         .collect();
     rsx! {
-        div { class: "flex flex-col gap-2",
-            button {
-                class: "flex items-center justify-center gap-1 rounded-lg bg-purple-600/80 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-600 transition-colors",
-                title: "新对话",
-                name: "btn-new-chat",
-                onclick: move |_| {
-                    let file_name = STATE
-                        .with(|state| state.character.as_ref().map(|(f, _)| f.clone()));
-                    if let Some(file_name) = file_name {
-                        spawn(async move {
-                            tavern_state::select_character(file_name).await;
-                        });
-                    }
-                },
-                "+ 新对话"
-            }
+        DockPanel { item_id: "sessions", title: "会话时间线", icon: "会话",
+            content: rsx! {
             div { class: "flex flex-col gap-2",
-                { session_items.iter() }
+                button {
+                    class: "flex items-center justify-center gap-1 rounded-lg bg-purple-600/80 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-600 transition-colors",
+                    title: "新对话",
+                    name: "btn-new-chat",
+                    onclick: move |_| {
+                        let file_name = STATE
+                            .with(|state| state.character.as_ref().map(|(f, _)| f.clone()));
+                        if let Some(file_name) = file_name {
+                            spawn(async move {
+                                tavern_state::select_character(file_name).await;
+                            });
+                        }
+                    },
+                    "+ 新对话"
+                }
+                div { class: "flex flex-col gap-2",
+                    { session_items.iter() }
+                }
+            }
             }
         }
     }
@@ -268,10 +260,7 @@ pub fn PromptPanel(
             .unwrap_or(0)
     };
 
-    if prompts.is_empty() {
-        return rsx! { div { class: "text-[11px] text-zinc-600", "（暂无 prompt）" } };
-    }
-
+    // 空态判断放外壳内部处理：提前 return 会绕过 DockPanel 标题栏（丢把手/收起钮）
     let prompts_v: Vec<(usize, String, String)> = prompts();
     let prompts_c = prompts();
     let hovered_c = hovered;
@@ -292,10 +281,12 @@ pub fn PromptPanel(
                 div {
                     key: "prompt-nav-{pi}",
                     class: if is_active {
-                        "h-[3px] w-6 cursor-pointer rounded-full bg-purple-400 shadow-[0_0_8px] shadow-purple-500/70 transition-all"
+                        "w-6 cursor-pointer rounded-full bg-purple-400 shadow-[0_0_8px] shadow-purple-500/70 transition-all"
                     } else {
-                        "h-[3px] w-5 cursor-pointer rounded-full bg-zinc-600 hover:bg-zinc-300 hover:w-6 transition-all"
+                        "w-5 cursor-pointer rounded-full bg-zinc-600 hover:bg-zinc-300 hover:w-6 transition-all"
                     },
+                    // 3px 细线高度走内联 style：h-[3px] 不在预生成 tailwind.out.css
+                    style: "height: 3px",
                     "data-testid": format!("prompt-nav-{}", pi),
                     title: "{tt}",
                     aria_label: "prompt {label}",
@@ -319,13 +310,21 @@ pub fn PromptPanel(
         .unwrap_or_default();
 
     rsx! {
-        div { class: "flex flex-col gap-1.5",
-            { prompt_rows.iter() }
-            if !hover_preview.is_empty() {
-                div {
-                    class: "pointer-events-none mt-1 rounded-lg border border-zinc-700/60 bg-zinc-900/90 p-2 text-[11px] leading-5 text-zinc-200",
-                    "{hover_preview}"
+        DockPanel { item_id: "prompt", title: "prompt 导航", icon: "导航",
+            content: rsx! {
+            if prompts_v.is_empty() {
+                div { class: "text-[11px] text-zinc-600", "（暂无 prompt）" }
+            } else {
+                div { class: "flex flex-col gap-1.5",
+                    { prompt_rows.iter() }
+                    if !hover_preview.is_empty() {
+                        div {
+                            class: "pointer-events-none mt-1 rounded-lg border border-zinc-700/60 bg-zinc-900/90 p-2 text-[11px] leading-5 text-zinc-200",
+                            "{hover_preview}"
+                        }
+                    }
                 }
+            }
             }
         }
     }
@@ -372,7 +371,7 @@ pub fn ModelPanel(
                     },
                     span { "{model_name}" }
                     if current_model_v == model_name {
-                        span { class: "text-[10px] text-emerald-400", "✓" }
+                        span { class: "text-[10px] text-emerald-400", "已选" }
                     }
                 }
             }
@@ -380,28 +379,31 @@ pub fn ModelPanel(
         .collect();
 
     rsx! {
-        div { class: "flex flex-col gap-2",
-            div { class: "flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs",
-                button { class: "hover:text-zinc-200 px-0.5", "‹" }
-                span { class: "text-[10px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 共 3 轮" }
-                button { class: "hover:text-zinc-200 px-0.5", "›" }
-            }
-            div { class: "relative flex flex-col gap-1",
-                button {
-                    class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
-                    name: "btn-model-toggle",
-                    aria_label: "切换模型",
-                    onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
-                    span { "⚡" }
-                    span { "{current_model()}" }
-                    span { class: "text-[10px] text-zinc-400", "⌵" }
+        DockPanel { item_id: "model", title: "模型与轮次", icon: "模型",
+            content: rsx! {
+            div { class: "flex flex-col gap-2",
+                div { class: "flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs",
+                    button { class: "hover:text-zinc-200 px-0.5", "上一轮" }
+                    span { class: "text-[10px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 共 3 轮" }
+                    button { class: "hover:text-zinc-200 px-0.5", "下一轮" }
                 }
-                if model_dropdown_open() {
-                    div {
-                        class: "flex flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1",
-                        { model_items.iter() }
+                div { class: "relative flex flex-col gap-1",
+                    button {
+                        class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
+                        name: "btn-model-toggle",
+                        aria_label: "切换模型",
+                        onclick: move |_| model_dropdown_open.set(!model_dropdown_open()),
+                        span { "{current_model()}" }
+                        span { class: "text-[10px] text-zinc-400", "切换" }
+                    }
+                    if model_dropdown_open() {
+                        div {
+                            class: "flex flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1",
+                            { model_items.iter() }
+                        }
                     }
                 }
+            }
             }
         }
     }

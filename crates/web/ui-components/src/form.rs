@@ -141,7 +141,7 @@ pub fn PasswordField(
     oninput: Option<EventHandler<FormEvent>>,
 ) -> Element {
     let mut visible = use_signal(|| false);
-    let eye = if visible() { "🙈" } else { "👁" };
+    let eye = if visible() { "隐藏" } else { "显示" };
     rsx! {
         label { class: "block space-y-1.5",
             span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
