@@ -15,7 +15,7 @@
 //! 所有输出类型均来自 `contract::records::*` 或 gate 快照类型。
 //!
 //! # 快照结构
-//! ```rust
+//! ```text
 //! pub struct Snapshots {
 //!     pub dispatch: dispatch::Snapshot,
 //!     pub token_snapshot: gateway_gate::snapshot::SharedTokenSnapshot,
