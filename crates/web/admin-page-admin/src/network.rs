@@ -5,8 +5,7 @@ use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpse
 use dioxus::prelude::*;
 
 use crate::api::{
-    create_channel_api, delete_channel_api, delete_group_api, list_channels_api, list_groups_api,
-    update_channel_api, update_group_api,
+    create_channel_api, delete_channel_api, delete_group_api, update_channel_api, update_group_api,
 };
 use crate::entities::EntitiesPanel;
 use crate::state::{ChannelRow, EntityStore, GroupRow};
@@ -815,21 +814,40 @@ pub fn channel_upsert_for_import(
     }
 }
 
+/// 后端列表端点统一包 `{"items":[...]}` 信封(渠道侧另带 `total`,忽略;
+/// 与 state.rs hydrate / api.rs RedemptionItems 同一剥壳模式)。
+/// api.rs 的 `list_groups_api`/`list_channels_api` 误标为裸 `Vec`,
+/// 直接解会报 "invalid type: map, expected a sequence"——写前定位
+/// key 的预拉取必须用本类型解。
+#[derive(Debug, Default, serde::Deserialize)]
+#[doc(hidden)]
+pub struct Items<T> {
+    #[serde(default)]
+    pub items: Vec<T>,
+}
+
 /// 在服务端最新分组列表里按名称定位实体。EntityStore 行不携带 key,
 /// 而更新/删除端点都按 key 寻址;分组名后端唯一。
 /// 返回完整 DTO,供更新请求以服务端现值为基底。
+/// /api/group 返回 `{items:[...]}` 信封,按 `Items` 剥壳解码。
 async fn fetch_group_by_name(client: &ApiClient, name: &str) -> Result<GroupDto, String> {
-    let list = list_groups_api(client).await.map_err(|e| e.to_string())?;
-    list.into_iter()
+    let r: Items<GroupDto> = client.get("/api/group").await.map_err(|e| e.to_string())?;
+    r.items
+        .into_iter()
         .find(|g| g.name == name)
         .ok_or_else(|| format!("分组「{name}」不存在(可能已被删除)"))
 }
 
 /// 在服务端最新渠道列表里按名称定位实体。渠道名不保证唯一,取首个同名
 /// (与列表顺序一致);更新/删除端点按 key 寻址。
+/// /api/channel 同样返回 `{items:[...], total}` 信封,`total` 字段忽略。
 async fn fetch_channel_by_name(client: &ApiClient, name: &str) -> Result<ChannelDto, String> {
-    let list = list_channels_api(client).await.map_err(|e| e.to_string())?;
-    list.into_iter()
+    let r: Items<ChannelDto> = client
+        .get("/api/channel")
+        .await
+        .map_err(|e| e.to_string())?;
+    r.items
+        .into_iter()
         .find(|c| c.name == name)
         .ok_or_else(|| format!("渠道「{name}」不存在(可能已被删除)"))
 }

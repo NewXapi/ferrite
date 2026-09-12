@@ -201,3 +201,49 @@ fn channel_row_from_dto_maps_hydrate_shape() {
     assert_eq!(row.group, "default");
     assert_eq!(row.ctype, "openai");
 }
+
+// ---------- 列表预拉取的信封形状 ----------
+
+use admin_page_admin::network::Items;
+
+/// 写前按名定位 key 的预拉取必须按 `{items:[...]}` 信封解码:
+/// `/api/group` 返回 `{"items":[...]}`、`/api/channel` 额外带 `total`。
+/// 此测试锁定形状,防止误按裸 `Vec` 解码
+/// (CI smoke 实测报 "invalid type: map, expected a sequence")。
+#[test]
+fn list_endpoints_decode_with_items_envelope() {
+    let group_json = r#"{"items":[{"key":"g-uuid-1","name":"claude","ratio":1.2,
+        "modelWhitelist":["claude-sonnet-4"],"remark":"Claude 专用","status":1}]}"#;
+    let parsed: Items<GroupDto> =
+        serde_json::from_str(group_json).expect("分组列表应能按 items 信封解析");
+    assert_eq!(parsed.items.len(), 1);
+    assert_eq!(
+        parsed.items[0].key, "g-uuid-1",
+        "信封剥壳后应能拿到定位用 key"
+    );
+    assert_eq!(parsed.items[0].name, "claude");
+
+    // 渠道信封另带 total,剥壳只认 items,未知字段忽略。
+    let channel_json = r#"{"items":[{"key":"c-uuid-9","name":"OpenAI 官方",
+        "channelType":"openai","baseUrl":"https://api.openai.com/v1","keyCount":2,
+        "models":[],"groups":["default"],"priority":0,"weight":0,"status":1,"remark":""}],
+        "total":1}"#;
+    let parsed: Items<ChannelDto> =
+        serde_json::from_str(channel_json).expect("渠道列表应能按 items 信封解析(忽略 total)");
+    assert_eq!(parsed.items[0].key, "c-uuid-9");
+    assert_eq!(parsed.items[0].name, "OpenAI 官方");
+}
+
+/// 反例锁定:同一响应按裸 `Vec` 解码必须失败——这正是旧的
+/// `list_groups_api`/`list_channels_api` 误标 `Vec<GroupDto>` 的报错现场。
+#[test]
+fn bare_vec_decode_of_envelope_response_fails() {
+    let group_json = r#"{"items":[{"key":"g-uuid-1","name":"claude","ratio":1.2,
+        "modelWhitelist":[],"remark":"","status":1}]}"#;
+    let bare = serde_json::from_str::<Vec<GroupDto>>(group_json);
+    assert!(
+        bare.is_err(),
+        "map 按裸 Vec 解必失败:{}",
+        bare.err().unwrap()
+    );
+}
