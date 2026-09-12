@@ -433,6 +433,8 @@ fn ChannelCard(
 /// 渠道编辑/新建综合弹窗 (含类型、名称、URL、Key、分组、备注;后端暂不支持模型调度候补)。
 /// 编辑分支发 [`UpdateChannelBody`] 最小 diff 体;新建分支仍用全量
 /// [`ChannelUpsertRequest`]（创建语义要求 keys/models 等字段必须给全）。
+/// 保存成功走 `on_submit`（关弹窗+重拉列表），失败弹窗保持打开并内嵌展示
+/// `channel-save-error`（role=alert）供就地重试。
 #[component]
 fn ChannelFormModal(
     editing: bool,
@@ -459,9 +461,13 @@ fn ChannelFormModal(
     };
 
     let submitting = use_signal(|| false);
+    // 保存失败信息（新建/编辑两条路径共用）：非空时弹窗保持打开、
+    // 内嵌展示错误供用户就地重试；弹窗关闭重挂载时自然复位。
+    let submit_err = use_signal(|| None::<String>);
 
     // 工厂式复制,避免把原 signal 移动出闭包(供 rsx 中 submitting() 继续读取)
     let submitting2 = submitting;
+    let submit_err2 = submit_err;
     let on_submit2 = on_submit;
     let channel_key2 = channel_key.clone();
     let do_submit = move |_| {
@@ -486,9 +492,10 @@ fn ChannelFormModal(
             .collect();
         let rm = remark.peek().clone();
         let tm = test_model.peek().clone();
-        let (mut sub, cb) = (submitting2, on_submit2);
+        let (mut sub, mut serr, cb) = (submitting2, submit_err2, on_submit2);
         spawn(async move {
             sub.set(true);
+            serr.set(None); // 新一轮尝试，清掉上一次的失败提示
             let client = ApiClient::shared().clone();
             let res = match key {
                 // 编辑:最小 diff 体——keys 未重输则字段整体缺席(保持现有密钥,
@@ -522,9 +529,13 @@ fn ChannelFormModal(
                     create_channel_api(&client, &req).await
                 }
             };
-            let _ = res;
             sub.set(false);
-            cb.call(());
+            match res {
+                // 成功才走 on_submit（关弹窗 + 重拉列表）；失败保持弹窗打开、
+                // 错误就地展示——此前 `let _ = res;` 把失败吞成静默假成功。
+                Ok(_) => cb.call(()),
+                Err(e) => serr.set(Some(format!("保存失败:{e}"))),
+            }
         });
     };
 
@@ -596,6 +607,17 @@ fn ChannelFormModal(
                         value: "{remark}",
                         oninput: move |e| remark.set(e.value()),
                     }
+                }
+            }
+
+            // 保存失败提示（复用 system.rs 表单错误块样式与 alert 角色），
+            // 紧贴操作按钮上方，用户看到错误后可直接改参重试
+            if let Some(msg) = submit_err() {
+                div {
+                    role: "alert",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
+                    "data-testid": "channel-save-error",
+                    "{msg}"
                 }
             }
 
