@@ -4,10 +4,15 @@
 //! 依据这里的状态与函数驱动界面：
 //! - [`Zone`]：四个 dock 区。
 //! - [`DockItem`]：一个 dock 面板项（id / 区 / 区内序 / 启用 / 标题）。
-//! - [`DockLayout`]：整个 dock 布局状态（项集合、各区激活项、左右列上下分割比例）。
+//! - [`DockLayout`]：整个 dock 布局状态（项集合、各区激活项、左右列上下分割
+//!   比例、左右列像素宽度、右 dock 侧挂/浮层呈现模式）。
 //! - [`move_item`] / [`reorder_in_zone`] / [`dock_tab`] / [`set_split`] /
-//!   [`set_zone_collapsed`] / [`serialize`] / [`deserialize`]：布局变更的纯函数，
+//!   [`set_col_widths`] / [`set_mode`] / [`set_zone_collapsed`] /
+//!   [`serialize`] / [`deserialize`]：布局变更的纯函数，
 //!   无全局状态，便于单测。
+//!
+//! 列宽采用像素定宽 + clamp（对齐 tolaria useLayoutPanels），替代早期的
+//! 占总宽比例制；[`deserialize`] 会自动迁移旧的比例数据。
 
 use std::collections::HashMap;
 
@@ -86,6 +91,37 @@ impl Default for SplitRatio {
     }
 }
 
+/// 列宽像素下限（低于此拖拽即折叠为 0）。
+///
+/// [`set_col_widths`] 对非 0 输入 clamp 到此值；UI 层在拖拽宽度低于本值时
+/// 应主动传 0 表示折叠。
+pub const COL_MIN_PX: u16 = 180;
+
+/// 列宽像素上限。
+///
+/// 超过此值的非 0 输入在 [`set_col_widths`] 中被 clamp 到此值。
+pub const COL_MAX_PX: u16 = 480;
+
+/// 默认列宽（[`DockLayout::default`] 与旧数据缺字段时的兜底值）。
+pub const COL_DEFAULT_PX: u16 = 280;
+
+/// 旧比例数据迁移时的参考视口宽（像素）。
+///
+/// 早期列宽是「占总宽比例」（0.0..=1.0），持久化里只存了比例没存当时的
+/// 视口宽，无法精确还原像素；按一个有代表性的桌面视口宽换算，
+/// 结果再统一 clamp 到 [`COL_MIN_PX`]..=[`COL_MAX_PX`]，误差可接受。
+const LEGACY_RATIO_REF_WIDTH_PX: f64 = 1600.0;
+
+/// 右 dock 呈现模式（tolaria aiWorkspaceSizing 简化版）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DockMode {
+    /// 侧挂：右列占位（默认）。
+    #[default]
+    Side,
+    /// 浮层：右 dock 作为浮动面板盖在聊天区上。
+    Floating,
+}
+
 /// 整个 dock 布局状态。
 #[derive(Debug, Clone, PartialEq)]
 pub struct DockLayout {
@@ -98,10 +134,13 @@ pub struct DockLayout {
     pub split_left: SplitRatio,
     /// 右列上下分割比例。
     pub split_right: SplitRatio,
-    /// 左列宽度占总宽比例（0 = 该列折叠；上限 0.45）。
-    pub col_left: SplitRatio,
-    /// 右列宽度占总宽比例（0 = 该列折叠；上限 0.45）。
-    pub col_right: SplitRatio,
+    /// 左列像素宽度（0 = 该列折叠；非 0 经 [`set_col_widths`] 限制在
+    /// [`COL_MIN_PX`]..=[`COL_MAX_PX`]）。
+    pub col_left: u16,
+    /// 右列像素宽度（语义同 [`DockLayout::col_left`]）。
+    pub col_right: u16,
+    /// 右 dock 呈现模式（侧挂占位 / 浮层盖在聊天区上）。
+    pub mode: DockMode,
 }
 
 impl Default for DockLayout {
@@ -111,8 +150,9 @@ impl Default for DockLayout {
             active_by_zone: Zone::ALL.map(|z| (z, None::<String>)).into_iter().collect(),
             split_left: SplitRatio::DEFAULT,
             split_right: SplitRatio::DEFAULT,
-            col_left: SplitRatio::new_unchecked(0.28),
-            col_right: SplitRatio::new_unchecked(0.28),
+            col_left: COL_DEFAULT_PX,
+            col_right: COL_DEFAULT_PX,
+            mode: DockMode::default(),
         }
     }
 }
@@ -263,29 +303,36 @@ pub fn set_split(layout: &mut DockLayout, side: Side, ratio: SplitRatio) {
     }
 }
 
-/// 设置左右列宽度占总宽的比例（列间水平分割线用）。
+/// 设置左右列的像素宽度（列间水平分割线用，对齐 tolaria useLayoutPanels 的
+/// 像素定宽 + clamp 方案）。
 ///
-/// - 取值 clamp 到 0.0..=0.45：0 表示该列折叠；NaN 归为 0.28。
-/// - 左右之和超过 0.9 时按比例压缩，保证中央区至少 10%。
-pub fn set_col_widths(layout: &mut DockLayout, left: SplitRatio, right: SplitRatio) {
-    let l = if left.value().is_finite() {
-        left.value().clamp(0.0, 0.45)
+/// - `0`：保留为折叠语义（该列不占宽），不做 clamp。
+/// - 非 0：clamp 到 [`COL_MIN_PX`]..=[`COL_MAX_PX`]——低于下限的窄值（不足
+///   [`COL_MIN_PX`]，内容已不可读）抬到下限，高于上限的宽值截到上限。
+///   UI 层若想把「拖到很窄」解释为折叠，应显式传 0 而不是依赖这里向下取整。
+///
+/// 左右两列相互独立，不再像旧比例制那样对「左右之和」做整体压缩；中央聊天
+/// 区吃掉剩余宽度。
+pub fn set_col_widths(layout: &mut DockLayout, left_px: u16, right_px: u16) {
+    layout.col_left = clamp_col_px(left_px);
+    layout.col_right = clamp_col_px(right_px);
+}
+
+/// 单列像素宽的 clamp：0 保持折叠，非 0 限制在 [`COL_MIN_PX`]..=[`COL_MAX_PX`]。
+fn clamp_col_px(px: u16) -> u16 {
+    if px == 0 {
+        0
     } else {
-        0.28
-    };
-    let r = if right.value().is_finite() {
-        right.value().clamp(0.0, 0.45)
-    } else {
-        0.28
-    };
-    let (l, r) = if l + r > 0.9 {
-        let k = 0.9 / (l + r);
-        (l * k, r * k)
-    } else {
-        (l, r)
-    };
-    layout.col_left = SplitRatio::new_unchecked(l);
-    layout.col_right = SplitRatio::new_unchecked(r);
+        px.clamp(COL_MIN_PX, COL_MAX_PX)
+    }
+}
+
+/// 设置右 dock 的呈现模式（侧挂 / 浮层）。
+///
+/// 纯赋值，无非法输入：[`DockMode`] 是封闭枚举，由调用方（UI 切换按钮）
+/// 决定语义。
+pub fn set_mode(layout: &mut DockLayout, mode: DockMode) {
+    layout.mode = mode;
 }
 
 /// 设置某区收起/展开。
@@ -328,8 +375,9 @@ pub fn serialize(layout: &DockLayout) -> serde_json::Value {
         "active_by_zone": active,
         "split_left": layout.split_left.value(),
         "split_right": layout.split_right.value(),
-        "col_left": layout.col_left.value(),
-        "col_right": layout.col_right.value(),
+        "col_left": layout.col_left,
+        "col_right": layout.col_right,
+        "mode": mode_name(layout.mode),
     })
 }
 
@@ -399,15 +447,68 @@ pub fn deserialize(v: &serde_json::Value) -> Result<DockLayout, String> {
 
     layout.split_left = parse_split(v.get("split_left"))?;
     layout.split_right = parse_split(v.get("split_right"))?;
-    // 列宽容忍旧数据缺字段（缺省 0.28），越界 clamp 由 set_col_widths 语义负责
-    let cl = v.get("col_left").and_then(|x| x.as_f64()).unwrap_or(0.28) as f32;
-    let cr = v.get("col_right").and_then(|x| x.as_f64()).unwrap_or(0.28) as f32;
-    set_col_widths(
-        &mut layout,
-        SplitRatio::new_unchecked(cl),
-        SplitRatio::new_unchecked(cr),
-    );
+    // 列宽：新数据是像素整数，旧数据是 0.0..=1.0 比例，二者由 parse_col_px 兼容。
+    // 缺字段兜底为 COL_DEFAULT_PX（非 0，即默认展开）。
+    layout.col_left = parse_col_px(v.get("col_left"))?;
+    layout.col_right = parse_col_px(v.get("col_right"))?;
+    // mode 缺失 → 默认 Side；未知字符串报 Err（与 zone 校验一致的严格度）。
+    layout.mode = parse_mode(v.get("mode"))?;
     Ok(layout)
+}
+
+/// 把 JSON 值解析为列宽像素，兼容两代持久化格式：
+///
+/// - 新数据：像素整数（如 `300`），`0` 为折叠。
+/// - 旧数据：占总宽比例（如 `0.28`，早期 `serialize` 写的 f32 比例）。
+///
+/// 判定用「小数点 / ≤1.0」启发式：只要值满足 `v.fract() != 0.0`（带小数部分）
+/// 或 `0.0 < v <= 1.0`（落在旧比例值域内）就视为比例，按
+/// `v × [`LEGACY_RATIO_REF_WIDTH_PX`]` 换算为像素，再统一 clamp 到合法区间。
+///
+/// 为什么这个启发式安全：新像素语义下，[`COL_MIN_PX`]=180 是最小的合法非 0
+/// 列宽，`1..=179` 本就非法（会被 clamp 到下限），因此「1..=179 的整数」与
+/// 「比例」的整数区间 `[1]` 虽重叠，但 `1` 作为列宽无意义、当作比例（→ 1600
+/// → clamp 480）也不会更糟；真正会误判的只有整数 `1.0`，其像素意图本就非法，
+/// 可接受。而 `v == 0.0`（两代语义都是折叠）保持 0、不迁移；`v > 1` 的整数
+/// 一定是新像素值（旧比例不会 >1.0），原样保留。
+fn parse_col_px(v: Option<&serde_json::Value>) -> Result<u16, String> {
+    let Some(x) = v.filter(|x| !x.is_null()) else {
+        return Ok(COL_DEFAULT_PX);
+    };
+    let value = x
+        .as_f64()
+        .ok_or_else(|| "field `col_*` is not a number".to_string())?;
+    if !value.is_finite() {
+        return Err("field `col_*` is not finite".to_string());
+    }
+    let px = if value == 0.0 {
+        // 两代语义一致：0 = 折叠，不换算。
+        0
+    } else if value.fract() != 0.0 || value <= 1.0 {
+        // 旧比例：带小数点，或落在 (0, 1.0] 比例值域内 → 换算成像素。
+        (value * LEGACY_RATIO_REF_WIDTH_PX)
+            .round()
+            .clamp(0.0, u16::MAX as f64) as u16
+    } else {
+        // 新像素整数：>1.0 且无小数部分，原样取整。
+        value.round().clamp(0.0, u16::MAX as f64) as u16
+    };
+    // 统一走 set_col_widths 的 clamp 语义（0 保留折叠，非 0 限制到 [MIN, MAX]）。
+    Ok(clamp_col_px(px))
+}
+
+/// 把 JSON 值解析为 [`DockMode`]（缺失/`null` 默认 [`DockMode::Side`]；
+/// 非字符串或未知字符串报 Err）。
+fn parse_mode(v: Option<&serde_json::Value>) -> Result<DockMode, String> {
+    match v.filter(|x| !x.is_null()) {
+        None => Ok(DockMode::default()),
+        Some(x) => {
+            let name = x
+                .as_str()
+                .ok_or_else(|| "field `mode` is not a string".to_string())?;
+            mode_from_name(name).ok_or_else(|| format!("unknown mode `{name}`"))
+        }
+    }
 }
 
 /// 把 JSON 值解析为 SplitRatio（缺失时默认 0.5；非数字、非有限值报 Err，越界 clamp）。
@@ -442,6 +543,21 @@ fn zone_from_name(name: &str) -> Option<Zone> {
         "left-bottom" => Some(Zone::LeftBottom),
         "right-top" => Some(Zone::RightTop),
         "right-bottom" => Some(Zone::RightBottom),
+        _ => None,
+    }
+}
+
+fn mode_name(mode: DockMode) -> &'static str {
+    match mode {
+        DockMode::Side => "side",
+        DockMode::Floating => "floating",
+    }
+}
+
+fn mode_from_name(name: &str) -> Option<DockMode> {
+    match name {
+        "side" => Some(DockMode::Side),
+        "floating" => Some(DockMode::Floating),
         _ => None,
     }
 }

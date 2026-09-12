@@ -1,8 +1,11 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
-//! 布局为四区 dock：左列（角色卡 + 会话时间线）/ 中央互动区 / 右列
-//! （prompt 导航 + 模型与轮次），各区上下可分、可跨区拖面板、可收起
-//! 为图标轨；dock 状态经 [`dock::DOCK`] 全局信号驱动并持久化到
+//! 布局为四区 dock：左列（角色卡 + 会话时间线）/ 中央互动区 / 右 dock
+//! （prompt 导航 + 模型与轮次）。列宽为像素定宽（可拖拽调宽、单击折叠），
+//! 列间/列内分割线是 tolaria 式透明悬停显形条；右 dock 支持侧挂
+//! （Side，占位列）与浮层（Floating，盖在聊天区上的绝对定位面板）两种
+//! 呈现模式，顶栏 `btn-dock-mode-top` 切换。各区上下可分、可跨区拖面板；
+//! dock 状态经 [`dock::DOCK`] 全局信号驱动并持久化到
 //! localStorage（key `tavern-dock-layout`）。中央互动区、composer、
 //! 消息流、Dialog 群行为不变。
 //!
@@ -13,7 +16,11 @@ pub mod dock_panels;
 pub mod layout;
 
 use dioxus::prelude::*;
+use tavern_state::dock::DockMode;
 use tavern_state::{STATE, abort, init, select_character, send};
+use tavern_ui::icons::{
+    IconCopy, IconDock, IconMenu, IconMoon, IconPopOut, IconSend, IconStop, IconSun, IconTrash,
+};
 use tavern_ui::{Dialog, IconButton, MessageBubble, SwipePicker};
 
 // tavern_client::save_chat 供删除 Dialog 使用
@@ -114,7 +121,7 @@ pub fn EditorSlot(
                         e.stop_propagation();
                         ammi.set(None);
                     },
-                    "复制"
+                    IconCopy { size: 14 }
                 }
                 IconButton {
                     title: "删除段落",
@@ -123,7 +130,7 @@ pub fn EditorSlot(
                         del_id.set(Some(idx));
                         ammi.set(None);
                     },
-                    "删除"
+                    IconTrash { size: 14 }
                 }
             };
             let row: Element = rsx! {
@@ -226,10 +233,16 @@ pub fn EditorSlot(
                     }
                     div { class: "flex shrink-0 items-center gap-2",
                         button {
-                            class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
+                            class: "flex h-9 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
                             disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
                             onclick: move |_| handle_send.call(()),
-                            if STATE.with(|s| s.generating) { "停止" } else { "行动" }
+                            if STATE.with(|s| s.generating) {
+                                IconStop { size: 14 }
+                                "停止"
+                            } else {
+                                IconSend { size: 14 }
+                                "行动"
+                            }
                         }
                     }
                 }
@@ -386,6 +399,9 @@ pub fn ChatPage(
     let scroll_dirty = use_signal(|| false);
     let scroll_running = use_signal(|| false);
 
+    // 右 dock 呈现模式（读 DOCK 信号，切换钮与 layout 同步渲染）
+    let dock_floating = dock::dock_mode() == DockMode::Floating;
+
     // 发送处理
     let mut handle_send = move || {
         let text = draft().trim().to_string();
@@ -474,19 +490,31 @@ pub fn ChatPage(
                 }
                 div { class: "flex items-center gap-2",
                     button {
-                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
-                        title: "切换光暗",
-                        onclick: move |_| on_toggle_theme.call(()),
-                        if theme_light { "暗" } else { "亮" }
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
+                        title: if dock_floating { "停靠回侧栏" } else { "浮出为面板" },
+                        aria_label: "切换 dock 呈现模式",
+                        name: "btn-dock-mode-top",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            dock::toggle_mode();
+                        },
+                        // 侧挂态显示「浮出」图标，浮层态显示「停靠」图标
+                        if dock_floating { IconDock { size: 16 } } else { IconPopOut { size: 16 } }
                     }
                     button {
-                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-2.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
+                        title: "切换光暗",
+                        onclick: move |_| on_toggle_theme.call(()),
+                        if theme_light { IconMoon { size: 16 } } else { IconSun { size: 16 } }
+                    }
+                    button {
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-2.5 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
                         title: "快捷菜单",
                         onclick: move |e| {
                             e.stop_propagation();
                             menu_open.set(!menu_open());
                         },
-                        "菜单"
+                        IconMenu { size: 16 }
                     }
                 }
             }
