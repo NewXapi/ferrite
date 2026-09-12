@@ -105,3 +105,15 @@ pub struct ChangePasswordRequest {
     pub old_password: String,
     pub new_password: String,
 }
+
+/// POST /api/user/topup — 兑换码充值请求体。
+///
+/// 后端 handler 本地结构 `TopupRequest { key }` (admin-billing redeem.rs, 无
+/// serde rename) 的契约投影: 字段名逐字对齐为单字段 `key`, 值为兑换码明文
+/// (管理员生成时一次性返回的 `fx-` + 32 hex 字符串)。成功响应为裸 JSON
+/// `{quota, success}`, quota 是入账的内部额度单位 (500_000 ≈ $1)。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct UserTopupRequest {
+    /// 兑换码明文 (与后端 `TopupRequest.key` 逐字对齐, 无 rename)。
+    pub key: String,
+}
