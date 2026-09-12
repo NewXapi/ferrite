@@ -1,0 +1,60 @@
+name: Test Release (gateway binary)
+
+# 体验用滚动发布：不打版本号。手动触发后把 release 版（lto=fat 性能编译）
+# 加 upx 压缩后的无头 gateway 二进制挂到 tag `test-latest` 的 pre-release 上，
+# 并附一份 artifact。本地拉下来 chmod +x 就能跑，不需要再本地编译。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-binary:
+    name: Build + UPX (linux x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install upx
+        run: sudo apt-get update && sudo apt-get install -y upx-ucl
+      - name: Build release (lto=fat, codegen-units=1, strip)
+        run: cargo build --release -p gateway
+      - name: UPX compress
+        run: upx --best --lzma target/release/gateway
+      - name: Show size
+        run: ls -lh target/release/gateway
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gateway-test-linux-x86_64
+          path: target/release/gateway
+      - name: Publish rolling test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s\n' \
+            '测试体验版，非正式发布（不打版本号，每次覆盖同一 tag）。' \
+            '' \
+            '无头 gateway：`config/config.toml` 驱动，无数据库、无前端。' \
+            '配置三段：`[[channels]]` 上游渠道（`api_key` 是单数字符串）、' \
+            '`[[keys]]` 入站客户端凭据、`[[proxy_nodes]]` 出口代理（`channel_keys` 绑渠道名）。' \
+            '模板见仓库 `config/config.toml.example`。' \
+            '' \
+            'linux x86_64 · release 性能编译（lto=fat / codegen-units=1 / strip）+ upx --best --lzma。' \
+            '' \
+            '用法：' \
+            '```sh' \
+            'chmod +x ./gateway' \
+            'mkdir -p config && cp config.toml.example config/config.toml  # 按需改' \
+            './gateway            # cwd 必须有 config/config.toml；SIGHUP 热重载' \
+            '```' \
+            > notes.md
+          gh release create test-latest \
+            --title "test build (rolling, no version)" \
+            --prerelease --latest=false \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" 2>/dev/null || gh release edit test-latest --notes-file notes.md
+          cp config/config.toml.example gateway-config.toml.example
+          gh release upload test-latest target/release/gateway gateway-config.toml.example --clobber
