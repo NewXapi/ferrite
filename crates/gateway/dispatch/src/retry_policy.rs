@@ -8,9 +8,7 @@ use crate::retry::RetryPolicy;
 /// 默认档 + 按模型精确覆盖档。
 #[derive(Debug, Clone)]
 pub struct ModelRetryPolicies {
-    #[expect(dead_code, reason = "TODO(#158): policy_for 实现读取")]
     default_policy: RetryPolicy,
-    #[expect(dead_code, reason = "TODO(#158): policy_for 实现读取")]
     per_model: HashMap<String, RetryPolicy>,
 }
 
@@ -24,7 +22,7 @@ impl ModelRetryPolicies {
     }
 
     /// 精确命中 per_model，否则回 default。
-    pub fn policy_for(&self, _model: &str) -> &RetryPolicy {
-        todo!("TODO(#158): 精确命中 per_model，否则 &self.default_policy")
+    pub fn policy_for(&self, model: &str) -> &RetryPolicy {
+        self.per_model.get(model).unwrap_or(&self.default_policy)
     }
 }

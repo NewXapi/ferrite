@@ -13,6 +13,9 @@ pub enum FailureScope {
 
 /// 只吃"渠道相关 4xx"的归类。5xx/429 不走此函数（可重试分类在
 /// `egress::classify_status` 已有）。
-pub fn classify_channel_scope(_status: u16) -> FailureScope {
-    todo!("TODO(#158): 401/403/404 → Channel；其余 4xx → Request")
+pub fn classify_channel_scope(status: u16) -> FailureScope {
+    match status {
+        401 | 403 | 404 => FailureScope::Channel,
+        _ => FailureScope::Request,
+    }
 }

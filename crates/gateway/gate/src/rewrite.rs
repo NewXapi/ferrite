@@ -26,6 +26,8 @@ pub struct InjectSpec {
 ///
 /// body 非 JSON object（空体 / 坏 JSON / 数组）时原样返回——改写是尽力而为的
 /// 渠道适配，不该把不可解析的请求体变成 500。
-pub fn rewrite_body(_body: &Bytes, _spec: &InjectSpec) -> Bytes {
-    todo!("TODO(#158): 注入未显式键 + 摘除 drop_fields；非 JSON 原样返回")
+pub fn rewrite_body(body: &Bytes, _spec: &InjectSpec) -> Bytes {
+    // TODO(#158): 注入未显式键 + 摘除 drop_fields；非 JSON 原样返回（P4 主体实现）。
+    // 骨架期语义：原样返回，不改写（尚未接线，消除 todo! 运行时 panic 坑）。
+    body.clone()
 }
