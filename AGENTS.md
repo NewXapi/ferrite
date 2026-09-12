@@ -96,6 +96,13 @@ crates/web/<prefix-feature>/
 
 - CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
+### 本机 dev 服务与进程卫生（硬约束）
+
+- **长跑服务禁止用 `nohup ... &` 在 Bash 工具调用里启动**：工具调用结束会回收整个进程组，服务静默死亡（典型症状：页面 500 "Connection refused"、dx 日志消失）。dx serve / 共享后端一律用会话的持久后台任务机制启动，启动后必须 `ss -ltn` 验证端口在监听再交付。
+- **禁止宽匹配 `pkill -f cargo` / `pkill -f rustc` 清进程**：多会话并行时这些是别人正在跑的构建（cpulimit 节流下进程任意瞬间都是 T 态，**T 态 ≠ 死进程**），误杀会让对方会话卡在 cargo 全局锁上、构建假死。清理前必须 `readlink /proc/<pid>/cwd` 确认归属；只处理无主残留。
+- **共享 dev 后端（127.0.0.1:3211）生命周期只走 `scripts/dev-backend.sh`**（start / update / stop / status，或 `just dev-backend <args>`）：发现 404/502 先 `just dev-check` 或 `dev-backend.sh status` 判断死活，重启对前端透明（登录态不丢）。
+- **「用户侧报错但 curl / 无缓存浏览器实测全 200」→ 先怀疑浏览器 HTTP 缓存重放**：IAB 有独立缓存，代理误配期毒化的错误响应会被本地重放且**不出网**（dx 代理日志 grep 该路径查无请求 = 实锤）。诊断顺序：dx 日志 → IAB 内直接导航该 API URL 看渲染。服务端无法驱逐已毒化条目（只能用户清缓存/重启 webview）；后端 `/api`、`/tavern` 已加 `Cache-Control: no-store` 防复发。
+
 ### 测试分层与 CI 驱动原则
 
 - **所有测试放 CI**：`cargo test` 一律在 CI 上跑，本地只跑 `cargo check -p <crate>` 验证编译通过。
