@@ -263,7 +263,10 @@ fn retry_loop_succeeds_after_one_failover() {
     let result = rt().block_on(run_retry_loop(
         "g",
         "m",
-        &RetryPolicy { max_attempts: 3 },
+        &RetryPolicy {
+            max_attempts: 3,
+            ..Default::default()
+        },
         |_: &str, _: &str, exclude: &[String]| {
             let key = if exclude.is_empty() { "ch1" } else { "ch2" };
             let mut u = unit("g", "m", key, 10, 10, 1);
@@ -310,7 +313,10 @@ fn retry_loop_exhausts_budget_with_retryable() {
     let err = rt().block_on(run_retry_loop(
         "g",
         "m",
-        &RetryPolicy { max_attempts: 2 },
+        &RetryPolicy {
+            max_attempts: 2,
+            ..Default::default()
+        },
         |_: &str, _: &str, exclude: &[String]| {
             let key = if exclude.is_empty() { "ch1" } else { "ch2" };
             let mut u = unit("g", "m", key, 10, 10, 1);
@@ -342,7 +348,10 @@ fn retry_loop_fatal_stops_immediately() {
     let outcome = rt().block_on(run_retry_loop(
         "g",
         "m",
-        &RetryPolicy { max_attempts: 3 },
+        &RetryPolicy {
+            max_attempts: 3,
+            ..Default::default()
+        },
         |_: &str, _: &str, _: &[String]| {
             let u = unit("g", "m", "ch1", 10, 10, 1);
             Ok(dispatch::candidate::Candidate {
@@ -377,7 +386,10 @@ fn retry_loop_select_error_propagates() {
     let err = rt().block_on(run_retry_loop(
         "g",
         "m",
-        &RetryPolicy { max_attempts: 3 },
+        &RetryPolicy {
+            max_attempts: 3,
+            ..Default::default()
+        },
         |group: &str, model: &str, _: &[String]| {
             Err(dispatch::DispatchError::NoCandidate {
                 group: group.into(),
@@ -543,7 +555,10 @@ fn tier_fallthrough_when_top_tier_all_cooled() {
 
 #[test]
 fn failover_budget_and_tried_set() {
-    let mut f = Failover::new(RetryPolicy { max_attempts: 3 });
+    let mut f = Failover::new(RetryPolicy {
+        max_attempts: 3,
+        ..Default::default()
+    });
     assert_eq!(f.next_attempt(), Some(1));
     assert_eq!(f.next_attempt(), Some(2));
     assert_eq!(f.next_attempt(), Some(3));

@@ -11,6 +11,7 @@
 //! | [`adapter`]  | 上游请求准备: URL/头/鉴权 (new-api adaptor 五方法里的 3 个) |
 //! | [`egress`]   | 出口客户端池: 代理/超时/HTTP2 分片 |
 //! | [`stream`]   | SSE 双向管道: 上游帧 → protocol::SseScanner → metering::StreamScanner → 客户端 |
+//! | [`stream_resilience`] | P2 流式韧性: 缓冲窗口/心跳/断流分类 (token 计数仍走 stream 扫描链) |
 //!
 //! ## 设计要点 (调查结论)
 //!
@@ -25,8 +26,10 @@ pub mod egress;
 pub mod pipeline;
 pub mod stage;
 pub mod stream;
+pub mod stream_resilience;
 
 pub use stage::ForwardStage;
+pub use stream_resilience::{ResilientChunk, StreamPhase, StreamResilience, pipe_resilient};
 
 use bytes::Bytes;
 

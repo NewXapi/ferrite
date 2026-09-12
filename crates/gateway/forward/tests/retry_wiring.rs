@@ -211,7 +211,13 @@ fn stage_with_retry(
     max_attempts: u32,
 ) -> ForwardStage {
     let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
-    ForwardStage::new(egress, adaptors).with_retry(dispatch, RetryPolicy { max_attempts })
+    ForwardStage::new(egress, adaptors).with_retry(
+        dispatch,
+        RetryPolicy {
+            max_attempts,
+            ..RetryPolicy::default()
+        },
+    )
 }
 
 // ---------- 用例 1: c1 可重试失败 → 换 c2 成功 ----------

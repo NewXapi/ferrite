@@ -1,14 +1,18 @@
 pub mod candidate;
+pub mod failure_scope;
 pub mod health;
 pub mod ratelimit;
 pub mod retry;
+pub mod retry_policy;
 pub mod selector;
 pub mod stage;
 
 pub use candidate::{Candidate, STATUS_ENABLED, resolve_candidate};
+pub use failure_scope::{FailureScope, classify_channel_scope};
 pub use health::{FailureClass, HealthState, HealthTable, MemoryHealthTable};
 pub use ratelimit::{RateLimitSpec, SlidingWindow};
 pub use retry::{Attempt, AttemptOutcome, Failover, RetryLoop, RetryPolicy, run_retry_loop};
+pub use retry_policy::ModelRetryPolicies;
 pub use selector::{Selector, WeightedSelector};
 pub use stage::DispatchStage;
 
