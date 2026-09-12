@@ -6,8 +6,10 @@ use contract::api::usage::{DashboardSummaryDto, UsageLogPage, UsageStatDto};
 /// `/api/models` 列表项的页面本地视图:只映射模型页实际展示的后端 `ModelView` 字段子集。
 ///
 /// 后端没有的字段(价格、六维实力、趋势、分组报价)不在此列——页面不造数据。
+/// 容器级 `#[serde(default)]`:后端响应缺任何字段时落 `Default::default()`
+/// (数值 0 / bool false / 空串),整条解析不因缺字段失败,页面诚实降级展示。
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ModelCardView {
     /// 模型名(公开别名,消费日志按它聚合)。
     pub name: String,
