@@ -2218,9 +2218,9 @@ fn ImportPanel() -> Element {
             err.set(None);
             let client = ApiClient::shared().clone();
             let req = channel_upsert_for_import(
-                &alias.peek().trim().to_string(),
-                &url.peek().trim().to_string(),
-                &key.peek().trim().to_string(),
+                alias.peek().trim(),
+                url.peek().trim(),
+                key.peek().trim(),
             );
             match create_channel_api(&client, &req).await {
                 Ok(dto) => {
