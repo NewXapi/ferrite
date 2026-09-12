@@ -33,7 +33,6 @@ chrono    = { workspace = true }
 futures-util = { workspace = true }
 tower     = { workspace = true }
 hex = "0.4"
-sha2 = { workspace = true }
 
 gateway-proxy    = { path = "../../crates/gateway/proxy" }
 admin-proxy      = { path = "../../crates/api/admin-proxy" }
@@ -59,3 +58,7 @@ contract = { path = "../../crates/contract" }
 url = "2"
 anyhow = "1"
 uuid = { workspace = true }
+
+[dev-dependencies]
+# billing_authority 集成测试跑 PG 全链路前要先建表（e2e 库可能是空库）
+db-bootstrap = { path = "../../crates/api/db-bootstrap" }

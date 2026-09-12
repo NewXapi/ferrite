@@ -1,6 +1,7 @@
 //! E2E: 网关消费日志 `log_type` 读写同源回归。
 //!
-//! 历史事故：`apps/api/src/usage.rs` 手写 `log_type: 1`（1=充值，见
+//! 历史事故：`apps/api/src/billing.rs` 的 `build_consume_event`（原属已退役的
+//! `apps/api/src/usage.rs` 中间件）手写 `log_type: 1`（1=充值，见
 //! `db/migrations/0002_usage_logs.sql` 枚举注释），而读侧 `/api/log/top`
 //! 与 `/api/log/trend` 过滤 `log_type = 2`（= 消费）。每条真实消费都被标成
 //! 充值，然后被两个聚合查询整体过滤掉——总览页的排行榜与趋势曲线在有
@@ -9,7 +10,7 @@
 //! 本文件把「写侧构造器 → record 落库 → top_usage/trend 查得到」整条链钉住：
 //! 任何一侧的 log_type 漂移都会让下面的断言失败，而不是报表静默变空。
 
-use api::usage::{RecordJob, build_consume_event};
+use api::billing::{RecordJob, build_consume_event};
 use observe::logs::{LOG_TYPE_CONSUME, LOG_TYPE_TOPUP, LogService};
 use uuid::Uuid;
 
@@ -36,7 +37,7 @@ fn sample_job(model: &str) -> RecordJob {
     RecordJob {
         user_uuid: Uuid::new_v4(),
         username: "usage_log_type_it".into(),
-        token_uuid: Uuid::new_v4(),
+        token_uuid: Some(Uuid::new_v4()),
         token_name: "tk-usage-log-type".into(),
         model_name: model.into(),
         channel_key: Some(Uuid::new_v4().to_string()),
