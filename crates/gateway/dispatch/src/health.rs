@@ -412,14 +412,10 @@ fn cooldown_duration_ms(cfg: &HealthSetting, prior_activations: u32) -> u64 {
 /// - 401/403-run 升级的 Fatal → max 档 (凭据坏是持续态, 短冷却只会空转);
 /// - 429 (Throttled) → base 短冷却 (限流是暂态, 不随 streak 爬向 max);
 /// - 5xx/传输层 streak → phase0 递增曲线。
+///
 /// 时长由当前 cooldown_streak 决定, 激活后 streak+1, 重置请求计数进入 ramp;
 /// 成功进入冷却时把触发 outcome 记入 last_cooling_outcome。
-fn start_cooldown(
-    st: &mut HealthState,
-    cfg: &HealthSetting,
-    now_ms: u64,
-    outcome: ChannelOutcome,
-) {
+fn start_cooldown(st: &mut HealthState, cfg: &HealthSetting, now_ms: u64, outcome: ChannelOutcome) {
     let d = match outcome {
         ChannelOutcome::Fatal if st.unauthorized_run >= UNAUTHORIZED_ESCALATION_THRESHOLD => {
             cfg.cooldown_max_seconds.max(cfg.cooldown_base_seconds) * 1000

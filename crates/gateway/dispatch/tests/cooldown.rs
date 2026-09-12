@@ -77,7 +77,11 @@ fn throttled_cooldown_stays_at_base_across_activations() {
     }
     let st = table.get("throttled");
     assert_eq!(st.cooldown_streak, 2);
-    assert_eq!(cooldown_len_ms(&st, t1), 10_000, "第二轮 429 仍应是 base 短冷却");
+    assert_eq!(
+        cooldown_len_ms(&st, t1),
+        10_000,
+        "第二轮 429 仍应是 base 短冷却"
+    );
 }
 
 #[test]
