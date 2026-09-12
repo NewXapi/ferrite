@@ -114,6 +114,18 @@ impl tokio::io::AsyncWrite for MeowConn {
     }
 }
 
+/// 单次尝试失败的内部载体：[`NormalizedError`] + P1-C 降级标记。
+///
+/// 不进 contract：degraded 是 forward 租约与节点账本的局部事实，只有
+/// `handle_with_retry` 的尝试闭包消费，客户端侧不可见。
+#[derive(Debug)]
+struct AttemptError {
+    error: NormalizedError,
+    /// 本次尝试的租约回落直连（`Lease.node_id == 0`），且该渠道绑定的代理节点
+    /// 全部处于节点冷却——直连是降级兜底而非预期路径（P1-C 双账本桥接）。
+    degraded: bool,
+}
+
 impl ForwardStage {
     /// 使用注入的 [`crate::egress::Egress`]（测试或无代理池）。
     pub fn new(egress: Arc<dyn crate::egress::Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
@@ -181,7 +193,7 @@ impl ForwardStage {
         }
     }
 
-    async fn forward_task(&self, task: &ForwardTask) -> Result<crate::Forwarded, NormalizedError> {
+    async fn forward_task(&self, task: &ForwardTask) -> Result<crate::Forwarded, AttemptError> {
         let Some(proxies) = self.proxies.as_ref() else {
             return crate::pipeline::forward_once(
                 task,
@@ -189,7 +201,11 @@ impl ForwardStage {
                 &self.adaptors,
                 &self.timeouts,
             )
-            .await;
+            .await
+            .map_err(|error| AttemptError {
+                error,
+                degraded: false,
+            });
         };
 
         let lease = proxies.acquire(&task.candidate.unit.channel_key);
@@ -207,12 +223,16 @@ impl ForwardStage {
             crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await
         } else {
             proxies.feedback(node_id, 502, false);
-            return Err(contract::error::NormalizedError {
-                code: contract::error::code::UPSTREAM_ERROR,
-                status: 502,
-                retryable: true,
-                channel_scoped: false,
-                message: "lease produced neither reqwest client nor adapter".into(),
+            return Err(AttemptError {
+                error: contract::error::NormalizedError {
+                    code: contract::error::code::UPSTREAM_ERROR,
+                    status: 502,
+                    retryable: true,
+                    channel_scoped: false,
+                    message: "lease produced neither reqwest client nor adapter".into(),
+                },
+                // 选出了节点却产不出出口 = 节点账本无责（配置/装配错误），不记降级。
+                degraded: false,
             });
         };
         match &result {
@@ -222,7 +242,29 @@ impl ForwardStage {
                 proxies.feedback(node_id, err.status, transport_err);
             }
         }
-        result
+        // P1-C：仅失败路径读两份账本快照（成功直连不记——见规格 P1-C 的挂点）。
+        result.map_err(|error| AttemptError {
+            degraded: node_id == 0 && self.channel_proxy_degraded(&task.candidate.unit.channel_key),
+            error,
+        })
+    }
+
+    /// 渠道绑定的代理节点是否全部处于节点冷却（且非「本就无绑定」）。
+    ///
+    /// 全冷却 ⇒ [`ProxyManager::acquire`] 必然回落直连（`node_id == 0`），
+    /// 此时该渠道的「直连成功/失败」都在掩盖代理账本已判死的事实；调用方
+    /// 据此把失败记到 route unit 健康上（见 `handle_with_retry` 尝试闭包）。
+    fn channel_proxy_degraded(&self, channel_key: &str) -> bool {
+        let Some(proxies) = self.proxies.as_ref() else {
+            return false;
+        };
+        let cooled: std::collections::HashSet<i64> = proxies
+            .node_cooldowns()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let bound = proxies.channel_node_ids(channel_key);
+        !bound.is_empty() && bound.iter().all(|id| cooled.contains(id))
     }
 }
 
@@ -270,10 +312,12 @@ impl Stage for ForwardStage {
 
         let forwarded = match self.forward_task(&task).await {
             Ok(f) => f,
-            Err(e) => {
+            Err(a) => {
                 // 上游已应答/传输失败且有候选：先落一条零成本观测事件再短路。
-                self.submit_failed(ctx, &candidate, &e, stream);
-                return Err(normalized_to_stage_error(e));
+                // （P1-C：AttemptError 载体带 degraded 标记，单次模式不进重试
+                // 闭包，只消费其内层 NormalizedError。）
+                self.submit_failed(ctx, &candidate, &a.error, stream);
+                return Err(normalized_to_stage_error(a.error));
             }
         };
 
@@ -343,7 +387,7 @@ impl ForwardStage {
                             *lock(&slot) = Some(forwarded);
                             AttemptOutcome::Done { status }
                         }
-                        Err(e) => {
+                        Err(AttemptError { error: e, degraded }) => {
                             let retryable = e.retryable;
                             let switchable = e.channel_scoped;
                             // 每次失败尝试各落一条零成本观测事件：预算耗尽 /
@@ -351,7 +395,11 @@ impl ForwardStage {
                             // 必须在 e 移入 error_slot 之前调用。
                             self.submit_failed(ctx_ref, &task.candidate, &e, stream);
                             *lock(&eslot) = Some(e);
-                            if retryable {
+                            if retryable || degraded {
+                                // P1-C 双账本桥: degraded = 渠道绑定的代理节点全在
+                                // 节点冷却、本次实为直连兜底失败。健康按 Retryable 记到
+                                // route unit(驱动失败 streak,连续 N 次后 unit 进冷却,
+                                // select 不再反复选中"代理全挂"的渠道),并强制换候选。
                                 AttemptOutcome::Retryable(FailureClass::Retryable)
                             } else if switchable {
                                 // 渠道相关 4xx (P1-B 降层): 健康载荷走 Fatal ——

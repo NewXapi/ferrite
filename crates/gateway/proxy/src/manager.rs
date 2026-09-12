@@ -425,6 +425,44 @@ impl ProxyManager {
             })
             .collect()
     }
+
+    /// 当前处于冷却中的代理节点：`(node_id, 冷却截止时刻)`，只含 `cooldown_until > now`
+    /// 的条目（已过期视为健康，不返回）；无冷却节点 → 空 Vec。
+    ///
+    /// 用途：P1-C 双健康账本桥接的唯一数据源。forward 的重试尝试闭包在租约
+    /// 回落直连（`Lease.node_id == 0`）时，用本表 + [`Self::channel_node_ids`]
+    /// 判定「该渠道绑定的代理节点全部因失败冷却」——即直连是降级兜底而非
+    /// 预期路径——并把该次失败按 Retryable 记到 route unit 健康上
+    /// （`forward::stage`，桥接点选在 forward 而非 dispatch 轮询，见
+    /// todo/gateway-resilience.md P1-C）。
+    ///
+    /// 调用时机：仅失败路径（attempt 出错后）读取，不在成功热路径上。
+    /// 锁纪律同 [`Self::node_stats`]：只持 health 锁读一份快照，即取即放。
+    pub fn node_cooldowns(&self) -> Vec<(i64, Instant)> {
+        let now = Instant::now();
+        let health = self.health.lock().unwrap_or_else(|e| e.into_inner());
+        health
+            .iter()
+            .filter_map(|(&id, h)| {
+                h.cooldown_until
+                    .filter(|until| *until > now)
+                    .map(|until| (id, until))
+            })
+            .collect()
+    }
+
+    /// 绑定 `channel_key` 的代理节点 id（快照顺序，priority 降序）。无绑定 → 空 Vec。
+    ///
+    /// 与 [`Self::node_cooldowns`] 配合判定「渠道确实绑定了节点且全部在冷却」
+    /// （区别于「本就无绑定、直连是预期路径」）。锁纪律：`pool.candidates` 是
+    /// ArcSwap 无锁读，不碰本结构任何 Mutex。
+    pub fn channel_node_ids(&self, channel_key: &str) -> Vec<i64> {
+        self.pool
+            .candidates(channel_key)
+            .iter()
+            .map(|n| n.id)
+            .collect()
+    }
 }
 
 fn build_client(proxy: Option<reqwest::Proxy>) -> reqwest::Client {
