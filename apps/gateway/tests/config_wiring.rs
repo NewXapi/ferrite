@@ -92,14 +92,14 @@ cache = 1.25
 "#,
     );
     let table = gateway::build_price_table(&priced).expect("prices 非空应装配价格表");
-    let p = table.lookup("gpt-4o").expect("配置里的模型应查得到");
+    let p = table.lookup("gpt-4o", "default").expect("配置里的模型应查得到");
     assert_eq!(p.input, 2.5);
     assert_eq!(p.output, 10.0);
     assert_eq!(p.cache, 1.25);
     // group_multiplier 省略时取默认 1.0，不是 f64::default() 的 0.0
     // ——否则所有费用会被乘成 0。
     assert_eq!(p.group_multiplier, 1.0);
-    assert!(table.lookup("unknown-model").is_none());
+    assert!(table.lookup("unknown-model", "default").is_none());
 }
 
 /// `[retry].max_attempts` 传到 `RetryPolicy`。
