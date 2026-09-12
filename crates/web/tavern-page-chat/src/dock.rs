@@ -148,6 +148,16 @@ pub fn zone_item_ids(zone: Zone) -> Vec<String> {
     ids.into_iter().map(|(_, id)| id.clone()).collect()
 }
 
+/// 某区被禁用的项（区收起态渲染图标轨用）。
+pub fn zone_disabled_items(zone: Zone) -> Vec<DockItem> {
+    DOCK()
+        .items
+        .iter()
+        .filter(|i| i.zone == zone && !i.enabled)
+        .cloned()
+        .collect()
+}
+
 /// 某面板在区内启用项中的（区, 索引）；找不到返回 None。
 pub fn item_origin(item_id: &str) -> Option<(Zone, usize)> {
     for zone in [

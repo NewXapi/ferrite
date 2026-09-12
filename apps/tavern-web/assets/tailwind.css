@@ -7,3 +7,10 @@
 
 @source "../src";
 @source "../../../crates/web";
+
+/* 隐藏滚动条（v4 自定义 utility；源码 scan 不生成无关键名的自定义类） */
+@utility no-scrollbar {
+  &::-webkit-scrollbar { display: none; }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

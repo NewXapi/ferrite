@@ -94,6 +94,7 @@ fn zone_label(zone: Zone) -> &'static str {
 }
 
 /// 渲染某区的启用面板堆（区内 order 升序），每项标题栏可按下发起拖拽。
+/// 区收起时渲染 40px 图标轨（每个禁用项一个恢复按钮），保留展开入口。
 fn render_zone(
     zone: Zone,
     character_panel: &Element,
@@ -151,6 +152,33 @@ fn render_zone(
         });
     }
 
+    // 收起态：该区全部项被禁用 → 渲染图标轨（每项一个恢复按钮），不渲染正常堆
+    let collapsed_items: Vec<Element> = dock::zone_disabled_items(zone)
+        .iter()
+        .map(|it| {
+            let key = it.id.clone();
+            let title_c = it.title.clone();
+            let icon_c = match it.id.as_str() {
+                "character" => "角色",
+                "sessions" => "会话",
+                "prompt" => "导航",
+                "model" => "模型",
+                _ => it.title.as_str(),
+            };
+            rsx! {
+                button {
+                    key: "zone-collapsed-{key}",
+                    class: "flex w-full items-center justify-center rounded-lg border border-zinc-800/60 bg-zinc-900/80 py-2 text-[10px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 select-none",
+                    title: "展开{title_c}",
+                    name: "btn-zone-expand-{key}",
+                    aria_label: "展开 {title_c}",
+                    onclick: move |_| dock::collapse_zone(zone_c, false),
+                    "{icon_c}"
+                }
+            }
+        })
+        .collect();
+
     let children_v = children.clone();
     let zone_label_c = zone_label(zone_c);
     rsx! {
@@ -158,7 +186,13 @@ fn render_zone(
             // h-full：撑满上下分割容器，否则分区塌成内容高
             class: "flex h-full min-h-0 flex-col gap-1",
             "data-testid": "dock-zone-{zone_label_c}",
-            { children_v.iter() }
+            if children.is_empty() && !collapsed_items.is_empty() {
+                div { class: "flex min-h-0 flex-1 flex-col gap-1",
+                    { collapsed_items.iter() }
+                }
+            } else {
+                { children_v.iter() }
+            }
         }
     }
 }

@@ -199,77 +199,78 @@ pub fn EditorSlot(
 
             div {
                 id: "chat-scroll-viewport",
-                class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+                class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 no-scrollbar",
                 onscroll: move |e| on_scroll.call(e),
                 { msg_rows.iter() }
+            }
 
-                // 粘性 composer：贴住中央区底部，宽度随中央列（768px 定宽会溢出 28% 列）
-                div {
-                    class: "sticky bottom-0 z-20 mb-4 flex w-full flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
-                    onclick: move |e| e.stop_propagation(),
-                    div { class: "flex flex-wrap items-center gap-1.5",
-                        button {
-                            class: if mod_active() {
-                                "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
-                            } else {
-                                "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                            },
-                            onclick: move |_| mod_active.set(!mod_active()),
-                            "Mod"
-                        }
-                        button {
-                            class: if memory_boost() {
-                                "rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-200"
-                            } else {
-                                "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                            },
-                            onclick: move |_| memory_boost.set(!memory_boost()),
-                            "记忆"
-                        }
-                        button {
-                            class: if stream_toggle() {
-                                "rounded-full border border-cyan-500/40 bg-cyan-500/20 px-2.5 py-1 text-[11px] font-medium text-cyan-200"
-                            } else {
-                                "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                            },
-                            onclick: move |_| stream_toggle.set(!stream_toggle()),
-                            "流式"
-                        }
+            // composer：独立 flex 兄弟节点贴中央区底部（sticky-in-viewport 在
+            // 消息少时会停在内容顶部而非视口底部），宽度随中央列
+            div {
+                class: "shrink-0 flex w-full flex-col gap-2 border-t border-purple-500/20 bg-zinc-950 p-3",
+                onclick: move |e| e.stop_propagation(),
+                div { class: "flex flex-wrap items-center gap-1.5",
+                    button {
+                        class: if mod_active() {
+                            "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
+                        } else {
+                            "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        },
+                        onclick: move |_| mod_active.set(!mod_active()),
+                        "Mod"
                     }
-                    div { class: "flex items-end gap-2",
-                        textarea {
-                            class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
-                            placeholder: "输入你的决策或行动 (电脑端 Shift+回车换行)",
-                            value: "{draft()}",
-                            oninput: move |e| draft.set(e.value()),
-                            onkeydown: move |e| {
-                                if e.key() == Key::Enter && !e.modifiers().shift() {
-                                    e.prevent_default();
-                                    handle_send.call(());
-                                }
-                            },
-                        }
+                    button {
+                        class: if memory_boost() {
+                            "rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-200"
+                        } else {
+                            "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        },
+                        onclick: move |_| memory_boost.set(!memory_boost()),
+                        "记忆"
                     }
-                    div { class: "flex items-center justify-between gap-2",
-                        div { class: "flex min-w-0 items-center gap-2 text-[10px]",
-                            if STATE.with(|s| s.generating) {
-                                span { class: "flex items-center gap-1 text-cyan-400",
-                                    "生成中..."
-                                    button {
-                                        class: "text-zinc-500 hover:text-white",
-                                        onclick: move |_| abort(),
-                                        "停止"
-                                    }
+                    button {
+                        class: if stream_toggle() {
+                            "rounded-full border border-cyan-500/40 bg-cyan-500/20 px-2.5 py-1 text-[11px] font-medium text-cyan-200"
+                        } else {
+                            "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        },
+                        onclick: move |_| stream_toggle.set(!stream_toggle()),
+                        "流式"
+                    }
+                }
+                div { class: "flex items-end gap-2",
+                    textarea {
+                        class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
+                        placeholder: "输入你的决策或行动 (电脑端 Shift+回车换行)",
+                        value: "{draft()}",
+                        oninput: move |e| draft.set(e.value()),
+                        onkeydown: move |e| {
+                            if e.key() == Key::Enter && !e.modifiers().shift() {
+                                e.prevent_default();
+                                handle_send.call(());
+                            }
+                        },
+                    }
+                }
+                div { class: "flex items-center justify-between gap-2",
+                    div { class: "flex min-w-0 items-center gap-2 text-[10px]",
+                        if STATE.with(|s| s.generating) {
+                            span { class: "flex items-center gap-1 text-cyan-400",
+                                "生成中..."
+                                button {
+                                    class: "text-zinc-500 hover:text-white",
+                                    onclick: move |_| abort(),
+                                    "停止"
                                 }
                             }
                         }
-                        div { class: "flex shrink-0 items-center gap-2",
-                            button {
-                                class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
-                                disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
-                                onclick: move |_| handle_send.call(()),
-                                if STATE.with(|s| s.generating) { "停止" } else { "行动" }
-                            }
+                    }
+                    div { class: "flex shrink-0 items-center gap-2",
+                        button {
+                            class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
+                            disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
+                            onclick: move |_| handle_send.call(()),
+                            if STATE.with(|s| s.generating) { "停止" } else { "行动" }
                         }
                     }
                 }
