@@ -334,33 +334,58 @@ pub fn parse_probe_options(rows: &[(String, serde_json::Value)]) -> ProbeOptions
 }
 
 /// 读 options 表 → [`ProbeOptions`]。表不存在/查询失败按缺省（关闭）处理——
-/// 探测是可选增强，读取失败不该在日志里刷屏。
+/// 探测是可选增强，读失败不该刷屏，但也不能零可观测：debug 级每间隔最多一条。
 async fn read_probe_options(pool: &PgPool) -> ProbeOptions {
     let rows: Vec<(String, serde_json::Value)> =
-        sqlx::query_as("SELECT key, value FROM options WHERE key IN ($1, $2)")
+        match sqlx::query_as("SELECT key, value FROM options WHERE key IN ($1, $2)")
             .bind(probe_keys::ENABLED)
             .bind(probe_keys::INTERVAL_SECS)
             .fetch_all(pool)
             .await
-            .unwrap_or_default();
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!(error = %e, "读取探测 options 失败，本轮按缺省（关闭）");
+                Vec::new()
+            }
+        };
     parse_probe_options(&rows)
 }
 
-/// 探测目标：第一个 enabled 渠道 base_url 的 host + 443。
+/// 每渠道探测目标：输入 enabled 渠道的 `(name, base_url)` 行，输出
+/// `(渠道名, "host:443")`。
 ///
-/// 粗略近似——多渠道走不同上游时只探得到第一个；每渠道独立目标是 M3-C 的事。
-/// 无 enabled 渠道或 base_url 解析不出 host 时返回 None（本轮跳过）。
-async fn probe_target(pool: &PgPool) -> Option<String> {
-    let (base_url,): (String,) = sqlx::query_as(
-        "SELECT base_url FROM api_channels WHERE status = 1 AND base_url <> '' ORDER BY priority DESC NULLS LAST LIMIT 1",
+/// base_url 解析失败 / host 为空的行**跳过**（该行没有可用目标）。端口近似
+/// 维持 M3-B 现状：无显式端口一律 443；显式非 443 端口的行跳过——探测恒拨
+/// 443，给 8443 渠道探 443 是探错目标，跳过好于误报。
+pub fn channel_probe_targets(rows: &[(String, String)]) -> Vec<(String, String)> {
+    rows.iter()
+        .filter_map(|(name, base_url)| {
+            let parsed = url::Url::parse(base_url).ok()?;
+            let host = parsed.host_str().filter(|h| !h.is_empty())?;
+            if parsed.port().is_some_and(|p| p != 443) {
+                return None;
+            }
+            Some((name.clone(), format!("{host}:443")))
+        })
+        .collect()
+}
+
+/// 读全部 enabled 渠道的 `(name, base_url)` 行（供 [`channel_probe_targets`]）。
+/// 查询失败按空处理（与 [`read_probe_options`] 同款 debug 日志，不刷屏但可观测）。
+async fn probe_targets_rows(pool: &PgPool) -> Vec<(String, String)> {
+    match sqlx::query_as(
+        "SELECT name, base_url FROM api_channels WHERE status = 1 AND base_url <> '' ORDER BY priority DESC NULLS LAST",
     )
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
-    .ok()
-    .flatten()?;
-    let parsed = url::Url::parse(&base_url).ok()?;
-    let host = parsed.host_str()?;
-    Some(format!("{host}:443"))
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::debug!(error = %e, "读取探测目标渠道失败，本轮跳过");
+            Vec::new()
+        }
+    }
 }
 
 /// 启动定时探测循环（生命周期 = 进程生命周期，不做优雅关闭）。
@@ -372,21 +397,22 @@ fn spawn_probe_loop(pool: PgPool, proxies: Arc<gateway_proxy::ProxyManager>) {
         loop {
             let opts = read_probe_options(&pool).await;
             if opts.enabled {
-                match probe_target(&pool).await {
-                    Some(target) => {
-                        // ponytail: timeout 固定 5s；要可配再加 options 项。
-                        let results = proxies
-                            .probe_all(&target, std::time::Duration::from_secs(5))
-                            .await;
-                        let alive = results.iter().filter(|r| r.is_alive()).count();
-                        tracing::info!(
-                            target = %target,
-                            alive,
-                            total = results.len(),
-                            "proxy probe round finished"
-                        );
-                    }
-                    None => tracing::debug!("probe enabled but no channel base_url to target"),
+                // 每渠道独立目标（M3-C）：串行遍历渠道，渠道内并发由
+                // probe_channel 的分块管。ponytail: 渠道数十级，串行足够；
+                // 渠道多了再考虑跨渠道重叠。
+                for (channel, target) in channel_probe_targets(&probe_targets_rows(&pool).await) {
+                    // ponytail: timeout 固定 5s；要可配再加 options 项。
+                    let results = proxies
+                        .probe_channel(&channel, &target, std::time::Duration::from_secs(5))
+                        .await;
+                    let alive = results.iter().filter(|r| r.is_alive()).count();
+                    tracing::info!(
+                        channel = %channel,
+                        target = %target,
+                        alive,
+                        total = results.len(),
+                        "proxy probe round finished"
+                    );
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(opts.interval_secs)).await;

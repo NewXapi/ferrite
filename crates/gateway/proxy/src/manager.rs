@@ -337,8 +337,34 @@ impl ProxyManager {
     /// 把正在服务的节点踢下线（探测目标与真实上游可以不同）。成功的延迟写进
     /// adapter 自己的 `ProxyHealth`，由 [`Self::node_stats`] 读出。
     pub async fn probe_all(&self, target: &str, timeout: Duration) -> Vec<ProbeResult> {
+        Self::probe_nodes(&self.pool.all_nodes(), target, timeout).await
+    }
+
+    /// 探测绑定 `channel_key` 的节点（渠道独立目标版探测）。
+    ///
+    /// 与 [`Self::probe_all`] 的区别：候选集 = `pool.candidates(channel_key)`
+    /// （单渠道桶内天然无重复 id，无需再按 id 去重）。
+    ///
+    /// **注意**：一个节点绑多渠道时，每个渠道各探一次，`ProxyHealth` 只有一格
+    /// last_delay——后探的渠道会覆盖先探的（轮询顺序按渠道名排序，结果稳定）。
+    /// 每渠道独立延迟要等 NodeStats 按 (node, channel) 拆键，属 M3-D，不要顺手做。
+    /// 并发度与错误归类与 `probe_all` 同款（共用分块实现）。
+    pub async fn probe_channel(
+        &self,
+        channel_key: &str,
+        target: &str,
+        timeout: Duration,
+    ) -> Vec<ProbeResult> {
+        Self::probe_nodes(&self.pool.candidates(channel_key), target, timeout).await
+    }
+
+    /// 分块并发探测的公共实现（并发度 4，见 [`Self::probe_all`] 的说明）。
+    async fn probe_nodes(
+        nodes: &[Arc<ProxyNode>],
+        target: &str,
+        timeout: Duration,
+    ) -> Vec<ProbeResult> {
         const CONCURRENCY: usize = 4;
-        let nodes = self.pool.all_nodes();
         let mut results = Vec::with_capacity(nodes.len());
         for chunk in nodes.chunks(CONCURRENCY) {
             let probes = chunk

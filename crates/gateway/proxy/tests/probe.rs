@@ -169,6 +169,44 @@ async fn node_stats_dedupes_multi_channel_node() {
     assert_eq!(stats[0].node_id, 9);
 }
 
+/// `probe_channel` 只探绑定给定渠道的节点，且探测目标用传入的 target。
+///
+/// 两节点分别绑渠道 a / b：探 a 只返回节点 a。target `[::1:1]`（括号未配对）
+/// 在拨号前即被归类为格式错误，且错误信息原样携带传入 target——证明目标是
+/// `probe_channel` 的参数而非节点自身 host；用例零外网依赖、毫秒级完成。
+#[tokio::test]
+async fn probe_channel_scopes_candidates_and_uses_given_target() {
+    let mgr = ProxyManager::new();
+    let mut a = ss_node(11, "192.0.2.1", 8388);
+    a.channel_keys = vec!["a".into()];
+    let mut b = ss_node(12, "192.0.2.2", 8388);
+    b.channel_keys = vec!["b".into()];
+    mgr.install(ProxySnapshot { nodes: vec![a, b] });
+
+    let results = mgr
+        .probe_channel("a", "[::1:1]", Duration::from_secs(5))
+        .await;
+    assert_eq!(results.len(), 1, "只应包含渠道 a 绑定的节点");
+    assert_eq!(results[0].node_id, 11);
+    assert!(!results[0].is_alive());
+    assert!(
+        results[0]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("`[::1:1]`"),
+        "错误应指向传入的探测目标而非节点 host，实际: {:?}",
+        results[0].error
+    );
+
+    // 无节点的渠道返回空，不报错。
+    assert!(
+        mgr.probe_channel("c", "[::1:1]", Duration::from_secs(5))
+            .await
+            .is_empty()
+    );
+}
+
 /// 真节点拨号验证：给 `FERRITE_PROXY_PROBE_URL` 才跑。
 ///
 /// 成功路径必须打到真实代理服务端（协议握手无法本地模拟），故 env 门控。
