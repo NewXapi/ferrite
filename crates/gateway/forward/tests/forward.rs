@@ -191,7 +191,7 @@ fn pipe_chunk_passthrough_and_scanner_contract() {
         out.events[0],
         gateway_protocol_bridge::sse::SseEvent::FirstToken
     );
-    let (_end, _counts) = finish(ctx); // 扫描器完成信号必须被消费
+    let (_end, _counts, _event) = finish(ctx, 200, None); // 扫描器完成信号必须被消费
 }
 
 #[test]

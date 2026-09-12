@@ -21,6 +21,11 @@ pub struct SseContext {
     pub channel_key: String,
     pub public_model: String,
     pub upstream_model: String,
+    /// 请求分组名（进 `PriceTable::lookup`），默认空串。
+    pub group: String,
+    /// 分组倍率（GroupRecord.rate_multiplier），库层默认 1.0，
+    /// 真实值由 apps 侧注入。
+    pub group_ratio: f64,
     /// 定价表引用（可选，None = 不计费）。
     pub price_table: Option<std::sync::Arc<dyn metering::pricing::PriceTable>>,
 }
@@ -35,6 +40,8 @@ impl SseContext {
             channel_key: String::new(),
             public_model: String::new(),
             upstream_model: String::new(),
+            group: String::new(),
+            group_ratio: 1.0,
             price_table: None,
         }
     }
@@ -55,25 +62,38 @@ pub fn pipe_chunk(ctx: &mut SseContext, chunk: &Bytes) -> PipedChunk {
     }
 }
 
-/// 终止扫描器，返回 SseEnd + TokenCounts，并在有 price_table 时自动结算。
+/// 终止扫描器，返回 SseEnd + TokenCounts；`price_table` 为 `Some` 时**真正**
+/// 结算并把产物返回给调用方（`None` = 不计费，与未计费时代行为一致）。
+///
+/// `status_code` / `error` 由调用方注入终态：流正常读完传 `200, None`；
+/// 中途出错（上游断流）传 `500, Some(摘要)`，用已累积的计数结算，避免
+/// 泄漏已产生 token 的账单。
 pub fn finish(
     ctx: SseContext,
+    status_code: u16,
+    error: Option<&str>,
 ) -> (
     gateway_protocol_bridge::sse::SseEnd,
     metering::scanner::TokenCounts,
+    Option<contract::records::UsageEventRecord>,
 ) {
     let end = ctx.scanner.finish();
     let counts = ctx.token_scanner.finish(0);
 
-    if let Some(pt) = ctx.price_table.as_ref() {
+    let event = ctx.price_table.as_ref().map(|pt| {
+        // 库层不做预扣（prehold 属 admission 轨），amount=0 表"事后结算非
+        // 预扣"：settle_event 只消费 hold 的归因键 user_key/token_key，cost
+        // 由 counts × 价格计算，amount 字段不参与本次结算。
         let hold = metering::ledger::Hold {
             id: 0,
             amount: 0,
             user_key: ctx.user_key.clone(),
             token_key: ctx.token_key.clone(),
         };
-        let _event = metering::settle_event(
+        metering::settle_event(
             counts,
+            &ctx.group,
+            ctx.group_ratio,
             &hold,
             pt.as_ref(),
             &ctx.channel_key,
@@ -82,12 +102,12 @@ pub fn finish(
             &ctx.upstream_model,
             0,
             0,
-            200,
-            None,
-        );
-    }
+            status_code,
+            error,
+        )
+    });
 
-    (end, counts)
+    (end, counts, event)
 }
 
 #[derive(Debug)]

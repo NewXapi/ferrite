@@ -39,6 +39,12 @@ pub struct ForwardStage {
     dispatch: Option<Arc<dyn Dispatch>>,
     /// 重试预算，仅 `dispatch` 为 `Some` 时生效。
     retry_policy: RetryPolicy,
+    /// `with_price_table` 注入的定价表：`Some` 时 commit 点产出结算事件；
+    /// `None` = 不计费（保持未接计费时代的行为）。
+    price_table: Option<Arc<dyn metering::pricing::PriceTable>>,
+    /// 结算产物落地通道（apps 实现，写 usage_logs / 扣内存 quota）；
+    /// 与 `price_table` 成对注入。
+    sink: Option<Arc<dyn metering::SettleSink>>,
 }
 
 /// meow `ProxyAdapter` → [`StreamDialer`] 适配。
@@ -118,6 +124,8 @@ impl ForwardStage {
             proxies: None,
             dispatch: None,
             retry_policy: RetryPolicy::default(),
+            price_table: None,
+            sink: None,
         }
     }
 
@@ -133,6 +141,22 @@ impl ForwardStage {
     pub fn with_retry(mut self, dispatch: Arc<dyn Dispatch>, policy: RetryPolicy) -> Self {
         self.dispatch = Some(dispatch);
         self.retry_policy = policy;
+        self
+    }
+
+    /// 挂上库层结算通道：`pt` 算价、`sink` 落地 [`contract::records::UsageEventRecord`]。
+    ///
+    /// 两字段成对注入（同一 `commit_forwarded` 结算点消费），`Some` 时流式与
+    /// 非流式响应在提交点产出结算事件；不调用本 builder 则保持不计费行为。
+    /// 权威扣费仍归 apps（usage.rs），本通道只产出事件——是否同时扣本地余额
+    /// 由 sink 实现方裁决，避免双扣。
+    pub fn with_price_table(
+        mut self,
+        pt: Arc<dyn metering::pricing::PriceTable>,
+        sink: Arc<dyn metering::SettleSink>,
+    ) -> Self {
+        self.price_table = Some(pt);
+        self.sink = Some(sink);
         self
     }
 
@@ -248,7 +272,7 @@ impl Stage for ForwardStage {
             .await
             .map_err(normalized_to_stage_error)?;
 
-        self.commit_forwarded(ctx, forwarded, &task.candidate, task.stream)
+        self.commit_forwarded(ctx, forwarded, &task.candidate, task.stream, &task.body)
             .await
     }
 }
@@ -292,6 +316,8 @@ impl ForwardStage {
         let drep = Arc::clone(&dispatch);
         let slot = Arc::clone(&result_slot);
         let eslot = Arc::clone(&error_slot);
+        // 尝试闭包 move 捕获 body；克隆一份留给循环结束后的 commit（结算要用）。
+        let commit_body = body.clone();
 
         let loop_result = run_retry_loop(
             &group,
@@ -330,7 +356,7 @@ impl ForwardStage {
                 let forwarded = lock(&result_slot).take();
                 match (forwarded, outcome) {
                     (Some(f), _) => {
-                        self.commit_forwarded(ctx, f, &attempt.candidate, stream)
+                        self.commit_forwarded(ctx, f, &attempt.candidate, stream, &commit_body)
                             .await
                     }
                     // 理论上只有 Fatal 会走到这里: 循环以客户端错误终止, 没有
@@ -378,12 +404,17 @@ impl ForwardStage {
     /// 非流式 → 收全 body 写入 `ctx.upstream`；流式 → 经 SseScanner +
     /// StreamScanner 扫描链 unfold 成 [`StageOutcome::Stream`] 直接回流。
     /// `candidate` 是获胜候选（流式上下文要它的 channel_key/upstream_model）。
+    ///
+    /// `with_price_table` 挂载了定价表时，两条路径都在本函数（唯一提交点）
+    /// 产出 UsageEvent 交给 sink：流式在流读完 / 中途出错时经
+    /// [`stream::finish`] 结算；非流式收全 body 后走 [`settle_non_stream`]。
     async fn commit_forwarded(
         &self,
         ctx: &mut RequestCtx,
         forwarded: crate::Forwarded,
         candidate: &SelectedRoute,
         stream: bool,
+        req_body: &Bytes,
     ) -> Result<StageOutcome, StageError> {
         if stream {
             // 流式路径经 SseScanner + StreamScanner 扫描链，流结束时自动结算
@@ -400,6 +431,11 @@ impl ForwardStage {
             let channel_key = candidate.unit.channel_key.clone();
             let public_model = candidate.unit.public_model.clone();
             let upstream_model = candidate.upstream_model.clone();
+            let group = ctx
+                .token
+                .as_ref()
+                .map(|t| t.group.clone())
+                .unwrap_or_default();
 
             let mut sse_ctx = stream::SseContext::new();
             sse_ctx.user_key = user_key;
@@ -407,22 +443,50 @@ impl ForwardStage {
             sse_ctx.channel_key = channel_key;
             sse_ctx.public_model = public_model;
             sse_ctx.upstream_model = upstream_model;
+            sse_ctx.group = group;
+            // group ratio 由 apps 注入，库层默认 1.0
+            sse_ctx.group_ratio = 1.0;
+            // 定价表未挂载（None）时 finish 不结算，行为与不计费时代一致。
+            sse_ctx.price_table = self.price_table.clone();
 
             // 上游的 content-type 原样回给客户端: SSE 客户端靠它判定按事件流读。
             let content_type = forwarded.content_type.clone();
+            let sink = self.sink.clone();
+            // 扫描上下文用 Option 承载：流读完或中途出错时 take() 出且仅出
+            // 一次结算，防止错误项之后重入重复计费。
             let mapped = futures_util::stream::unfold(
-                (forwarded.body, sse_ctx),
-                move |(mut s, mut ctx)| async move {
-                    use futures_util::StreamExt;
-                    match s.next().await {
-                        Some(Ok(chunk)) => {
-                            let out = pipe_chunk(&mut ctx, &chunk);
-                            Some((Ok::<Bytes, std::io::Error>(out.passthrough), (s, ctx)))
-                        }
-                        Some(Err(e)) => Some((Err(e), (s, ctx))),
-                        None => {
-                            let _ = stream::finish(ctx);
-                            None
+                (forwarded.body, Some(sse_ctx)),
+                move |(mut s, mut ctx_slot)| {
+                    let sink = sink.clone();
+                    async move {
+                        use futures_util::StreamExt;
+                        match s.next().await {
+                            Some(Ok(chunk)) => {
+                                let out = match ctx_slot.as_mut() {
+                                    Some(c) => pipe_chunk(c, &chunk).passthrough,
+                                    // 已结算丢弃扫描上下文：字节继续原样透传
+                                    None => chunk,
+                                };
+                                Some((Ok::<Bytes, std::io::Error>(out), (s, ctx_slot)))
+                            }
+                            Some(Err(e)) => {
+                                // 上游断流：用已累积计数结算（status=500），
+                                // 否则流中途失败会泄漏已产生的 token 账单；
+                                // 错误项照旧回给客户端。
+                                if let Some(c) = ctx_slot.take() {
+                                    let (_end, _counts, event) =
+                                        stream::finish(c, 500, Some(&e.to_string()));
+                                    submit_event(&sink, event);
+                                }
+                                Some((Err(e), (s, ctx_slot)))
+                            }
+                            None => {
+                                if let Some(c) = ctx_slot.take() {
+                                    let (_end, _counts, event) = stream::finish(c, 200, None);
+                                    submit_event(&sink, event);
+                                }
+                                None
+                            }
                         }
                     }
                 },
@@ -445,12 +509,79 @@ impl ForwardStage {
             {
                 buf.extend_from_slice(&chunk);
             }
+            // 非流式结算点（写入 ctx.upstream 之前；未挂 pt 时直接跳过）。
+            self.settle_non_stream(ctx, req_body, &buf, forwarded.status, candidate);
             ctx.upstream = Some(UpstreamResponse {
                 status: forwarded.status,
                 body: Bytes::from(buf),
             });
             Ok(StageOutcome::Continue)
         }
+    }
+
+    /// 非流式结算 — 从完整响应体提取 usage（缺 usage 则估算兜底），算价后
+    /// 把 UsageEvent 交给 sink。
+    ///
+    /// 定价表或 sink 未挂载（`with_price_table` 未调）时直接返回，保持
+    /// 现有不计费行为。估算口径：prompt 用请求体的 JSON 结构感知估算
+    /// (`metering::estimate::estimate_prompt_tokens`)，completion 按响应体
+    /// 字节数 / 4 粗估（与 `StreamScanner` 无 usage 兜底同量级）。
+    fn settle_non_stream(
+        &self,
+        ctx: &RequestCtx,
+        req_body: &Bytes,
+        resp_body: &[u8],
+        status: u16,
+        candidate: &SelectedRoute,
+    ) {
+        let (Some(pt), Some(sink)) = (self.price_table.as_ref(), self.sink.as_ref()) else {
+            return;
+        };
+        let counts =
+            metering::extract_usage(resp_body).unwrap_or_else(|| metering::scanner::TokenCounts {
+                prompt: metering::estimate::estimate_prompt_tokens(req_body),
+                completion: resp_body.len() as u64 / 4,
+                cached: 0,
+            });
+        let (user_key, token_key, group) = match ctx.token.as_ref() {
+            Some(t) => (t.id.clone(), t.id.clone(), t.group.clone()),
+            None => (String::new(), String::new(), String::new()),
+        };
+        // group ratio 由 apps 注入，库层默认 1.0
+        let group_ratio = 1.0;
+        // 库层不做预扣：amount=0 表"事后结算非预扣"（同 stream::finish 的说明）。
+        let hold = metering::ledger::Hold {
+            id: 0,
+            amount: 0,
+            user_key,
+            token_key,
+        };
+        let event = metering::settle_event(
+            counts,
+            &group,
+            group_ratio,
+            &hold,
+            pt.as_ref(),
+            &candidate.unit.channel_key,
+            &candidate.unit.meta.key,
+            &candidate.unit.public_model,
+            &candidate.upstream_model,
+            0,
+            0,
+            status,
+            None,
+        );
+        sink.submit(event);
+    }
+}
+
+/// 把结算产物交给 sink（sink 未挂载或无事件时静默跳过）。
+fn submit_event(
+    sink: &Option<Arc<dyn metering::SettleSink>>,
+    event: Option<contract::records::UsageEventRecord>,
+) {
+    if let (Some(event), Some(sink)) = (event, sink.as_ref()) {
+        sink.submit(event);
     }
 }
 
