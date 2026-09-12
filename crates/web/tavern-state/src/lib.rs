@@ -9,6 +9,8 @@
 //! 状态只依赖 [`tavern_client`] 做落盘，不直接发 HTTP。
 //! 宏替换由 [`harness_prompt`] 兜底，前端负责主替换。
 
+pub mod dock;
+
 use dioxus::prelude::*;
 use serde_json::{Value, json};
 

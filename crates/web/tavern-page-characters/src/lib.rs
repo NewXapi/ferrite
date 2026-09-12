@@ -405,10 +405,10 @@ pub fn CharactersPage(
                                         },
                                         onclick: move |_| active_rank_tab.set(rank_str.clone()),
                                         match rank {
-                                            "周榜" => "🏆 周榜",
-                                            "日榜" => "🔥 日榜",
-                                            "飙升榜" => "⚡ 飙升榜",
-                                            _ => "✨ 新人榜",
+                                            "周榜" => "周榜",
+                                            "日榜" => "日榜",
+                                            "飙升榜" => "飙升榜",
+                                            _ => "新人榜",
                                         }
                                     }
                                 }
@@ -419,7 +419,6 @@ pub fn CharactersPage(
                     // 搜索框 + 创作按钮 (改名为「创作」，点击跳转到创作中心，对齐需求3)
                     div { class: "flex flex-1 items-center justify-end gap-2.5 max-w-md",
                         div { class: "flex flex-1 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 backdrop-blur-md",
-                            span { class: "text-xs text-zinc-500", "🔍" }
                             input {
                                 class: "w-full bg-transparent text-xs text-zinc-200 outline-none placeholder:text-zinc-600",
                                 placeholder: "搜索作品名称、标签、创作者…",
@@ -431,7 +430,6 @@ pub fn CharactersPage(
                             class: "flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg shadow-purple-600/30 transition-all hover:scale-105",
                             title: "前往创作者中心",
                             onclick: move |_| on_goto_studio.call(()),
-                            span { "✍️" }
                             span { "创作" }
                         }
                     }
@@ -510,7 +508,7 @@ pub fn CharactersPage(
                         button {
                             class: "absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400 hover:text-zinc-100",
                             onclick: move |_| cover_target.set(None),
-                            "✕"
+                            "关闭"
                         }
 
                         div { class: "flex flex-col items-center gap-1 pt-2",
@@ -525,14 +523,8 @@ pub fn CharactersPage(
                         div { class: "flex flex-col items-center gap-5 my-auto",
                             div { class: "relative flex h-36 w-36 items-center justify-center rounded-full border border-zinc-700/60 bg-gradient-to-br from-zinc-800/60 via-zinc-900 to-black shadow-inner shadow-zinc-700/30",
                                 div { class: "absolute inset-1.5 rounded-full border border-zinc-800/80" }
-                                span { class: "text-4xl filter drop-shadow",
-                                    match target.id {
-                                        1 => "🎬",
-                                        2 => "🌌",
-                                        3 => "🔮",
-                                        4 => "🩸",
-                                        _ => "🎙️",
-                                    }
+                                span { class: "font-serif text-3xl font-bold tracking-widest text-zinc-300",
+                                    { target.name.chars().next().map(|c| c.to_string()).unwrap_or_default() }
                                 }
                             }
 
@@ -563,7 +555,6 @@ pub fn CharactersPage(
                                 },
                                 span { class: "font-mono text-[11px] text-zinc-500 group-hover:text-zinc-700", "001" }
                                 span { "进入故事" }
-                                span { "➜" }
                             }
                         }
                     }
@@ -638,7 +629,7 @@ fn CharacterCardItem(
 
                 div { class: "mt-auto flex items-center justify-between border-t border-zinc-800/60 pt-2 text-[10px] text-zinc-500",
                     span { class: "truncate max-w-[100px]", "作者: {char.author}" }
-                    span { class: "font-semibold text-amber-400/90 tabular-nums", "★ {char.rating:.1}" }
+                    span { class: "font-semibold text-amber-400/90 tabular-nums", "{char.rating:.1} 分" }
                 }
 
                 // 底部标签：支持直接点击联动筛选 (对齐图12需求)
@@ -689,7 +680,7 @@ fn CharacterCardItem(
                     }
                     div { class: "flex items-center justify-between text-[10px] text-zinc-500 pt-1",
                         span { "开场: {char.first_mes.chars().take(20).collect::<String>()}…" }
-                        span { class: "text-purple-400 font-semibold", "点击进入 ➜" }
+                        span { class: "text-purple-400 font-semibold", "点击进入" }
                     }
                 }
             }
@@ -720,8 +711,8 @@ pub fn StudioPage() -> Element {
             // 创作中心头部控制台看板
             div { class: "flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-2xl border border-purple-500/30 bg-gradient-to-r from-purple-950/30 via-zinc-900/60 to-zinc-950 p-5 backdrop-blur-xl shadow-lg",
                 div { class: "flex items-center gap-3",
-                    div { class: "flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-900/40 border border-purple-500/40 text-2xl shadow-inner",
-                        "🎨"
+                    div { class: "flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-900/40 border border-purple-500/40 text-xs font-bold text-purple-200 shadow-inner",
+                        "创作"
                     }
                     div { class: "flex flex-col gap-0.5",
                         div { class: "flex items-center gap-2",
@@ -809,13 +800,13 @@ pub fn StudioPage() -> Element {
                                                             class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-purple-300 text-xs transition-colors",
                                                             title: "编辑剧本",
                                                             onclick: move |_| editing_target.set(Some(w_edit.clone())),
-                                                            "✎"
+                                                            "编辑"
                                                         }
                                                         button {
                                                             class: "rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-rose-400 text-xs transition-colors",
                                                             title: "删除剧本",
                                                             onclick: move |_| delete_id.set(Some(work.id)),
-                                                            "✕"
+                                                            "删除"
                                                         }
                                                     }
                                                 }
@@ -834,7 +825,7 @@ pub fn StudioPage() -> Element {
                                                     button {
                                                         class: "font-semibold text-purple-400 hover:text-purple-300 transition-colors",
                                                         onclick: move |_| editing_target.set(Some(w_clone.clone())),
-                                                        "继续编辑 ➜"
+                                                        "继续编辑"
                                                     }
                                                 }
                                             }
@@ -942,7 +933,7 @@ fn CreatorStudioModal(
                     class: "flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors text-sm",
                     title: "关闭弹窗",
                     onclick: move |_| on_close.call(()),
-                    "✕"
+                    "关闭"
                 }
             }
 
@@ -1190,8 +1181,8 @@ fn CreatorStudioModal(
 
                             // 发布须知卡片
                             div { class: "flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3.5",
-                                div { class: "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-950/50 border border-purple-500/30 text-xl",
-                                    "👘"
+                                div { class: "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-950/50 border border-purple-500/30 text-[10px] font-bold text-purple-200",
+                                    "须知"
                                 }
                                 span { class: "text-[11px] text-zinc-400 leading-4",
                                     "已发布的作品将进入周榜与日榜展映。未公开发布的草稿作品仅存放在创作中心，随时可一键发布。"
@@ -1252,7 +1243,7 @@ fn CreatorStudioModal(
                                     updated_at: "刚刚".into(),
                                 });
                             },
-                            "保存并发布 🚀"
+                            "保存并发布"
                         }
                     }
                 }
@@ -1291,7 +1282,7 @@ fn CreatorStudioModal(
                             button {
                                 class: "text-zinc-500 hover:text-zinc-200",
                                 onclick: move |_| model_selector_open.set(false),
-                                "✕"
+                                "关闭"
                             }
                         }
 

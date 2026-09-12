@@ -79,7 +79,6 @@ pub fn AuthModal(
                 // 顶部标题与关闭
                 div { class: "flex items-center justify-between border-b border-zinc-800/80 pb-3",
                     div { class: "flex items-center gap-2",
-                        span { class: "text-base", "🔑" }
                         span { class: "font-serif text-sm font-bold text-white",
                             if is_register() { "加入 Tavern · 账号注册" } else { "登录 Tavern 平台" }
                         }
@@ -87,7 +86,7 @@ pub fn AuthModal(
                     button {
                         class: "text-zinc-500 hover:text-white transition-colors text-sm",
                         onclick: move |_| on_close.call(()),
-                        "✕"
+                        "关闭"
                     }
                 }
 
@@ -122,7 +121,6 @@ pub fn AuthModal(
                 // 错误提示条
                 if let Some(err) = error_msg() {
                     div { class: "flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-950/30 p-2.5 text-[11px] text-rose-300",
-                        span { "⚠️" }
                         span { "{err}" }
                     }
                 }
@@ -172,9 +170,9 @@ pub fn AuthModal(
                         span { class: "h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/20 border-t-white" }
                         span { "验证中…" }
                     } else if is_register() {
-                        span { "立即注册并体验 ➜" }
+                        span { "立即注册并体验" }
                     } else {
-                        span { "安全登录 ➜" }
+                        span { "安全登录" }
                     }
                 }
 
@@ -223,7 +221,6 @@ pub fn UserBadge(
                         button {
                             class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left",
                             onclick: move |_| dropdown_open.set(false),
-                            span { "👤" }
                             span { "个人资料" }
                         }
                         button {
@@ -234,7 +231,6 @@ pub fn UserBadge(
                                 on_logout.call(());
                                 dropdown_open.set(false);
                             },
-                            span { "🚪" }
                             span { "退出登录" }
                         }
                     }
@@ -243,7 +239,6 @@ pub fn UserBadge(
                 button {
                     class: "flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-3.5 py-1 text-xs font-bold text-white shadow-md shadow-purple-600/30 hover:scale-105 active:scale-95 transition-all",
                     onclick: move |_| on_open_login.call(()),
-                    span { "🔑" }
                     span { "登录 / 注册" }
                 }
             }

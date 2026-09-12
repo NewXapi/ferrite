@@ -97,7 +97,7 @@ pub fn TavernApp() -> Element {
                             class: "flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 text-xs",
                             title: "切换光暗模式",
                             onclick: move |_| theme_light.set(!theme_light()),
-                            if theme_light() { "☀️" } else { "🌙" }
+                            if theme_light() { "暗" } else { "亮" }
                         }
                     }
                 }
@@ -150,31 +150,26 @@ pub fn TavernApp() -> Element {
                 button {
                     class: if section() == Section::Home { "flex flex-col items-center gap-0.5 text-purple-400" } else { "flex flex-col items-center gap-0.5 text-zinc-500 hover:text-zinc-300 transition-colors" },
                     onclick: move |_| section.set(Section::Home),
-                    span { class: "text-sm", "🏛️" }
                     span { class: "text-[10px] font-medium", "首页" }
                 }
                 button {
                     class: if section() == Section::Characters { "flex flex-col items-center gap-0.5 text-purple-400" } else { "flex flex-col items-center gap-0.5 text-zinc-500 hover:text-zinc-300 transition-colors" },
                     onclick: move |_| section.set(Section::Characters),
-                    span { class: "text-sm", "📚" }
                     span { class: "text-[10px] font-medium", "剧本库" }
                 }
                 button {
                     class: if section() == Section::Chat { "flex flex-col items-center gap-0.5 text-purple-400" } else { "flex flex-col items-center gap-0.5 text-zinc-500 hover:text-zinc-300 transition-colors" },
                     onclick: move |_| section.set(Section::Chat),
-                    span { class: "text-sm", "💬" }
                     span { class: "text-[10px] font-medium", "剧情" }
                 }
                 button {
                     class: if section() == Section::Studio { "flex flex-col items-center gap-0.5 text-purple-400" } else { "flex flex-col items-center gap-0.5 text-zinc-500 hover:text-zinc-300 transition-colors" },
                     onclick: move |_| section.set(Section::Studio),
-                    span { class: "text-sm", "✍️" }
                     span { class: "text-[10px] font-medium", "创作" }
                 }
                 button {
                     class: if section() == Section::Settings { "flex flex-col items-center gap-0.5 text-purple-400" } else { "flex flex-col items-center gap-0.5 text-zinc-500 hover:text-zinc-300 transition-colors" },
                     onclick: move |_| section.set(Section::Settings),
-                    span { class: "text-sm", "⚙️" }
                     span { class: "text-[10px] font-medium", "设置" }
                 }
             }

@@ -1,18 +1,22 @@
 //! tavern-page-chat — 文游与角色扮演互动界面。
 //!
-//! 深度优化满足需求:
-//! 1. 左侧改为常驻可收缩侧边栏 (Sidebar):展开显示角色/会话全信息,收缩为图标轨,会话以单字符号呈现;中央互动区左侧再接一条垂直居中的 prompt 导航条:以横线表示每一次用户 prompt,随滚动高亮当前 prompt,悬停弹窗预览完整 prompt,点击定位。原右侧「剧情大纲索引」浮层抽屉已移除。
-//! 2. 会话多聊天室真正独立隔离 (每个分支会话维护各自的消息历史，切换时完整重载不同内容)
-//! 3. 消息气泡交互升级: 点击气泡浮出专属操作菜单 (复制/编辑/分支切换/删除)
-//! 4. 侧栏「剧本详情」和「赞赏作品」以景深模糊弹窗 (Modal) 呈现
-//! 5. 平滑滚动 + 隐藏滚动条
+//! 布局为四区 dock：左列（角色卡 + 会话时间线）/ 中央互动区 / 右列
+//! （prompt 导航 + 模型与轮次），各区上下可分、可跨区拖面板、可收起
+//! 为图标轨；dock 状态经 [`dock::DOCK`] 全局信号驱动并持久化到
+//! localStorage（key `tavern-dock-layout`）。中央互动区、composer、
+//! 消息流、Dialog 群行为不变。
 //!
-//! 数据源重绑:从 mock 数据源切换到 tavern_state/tavern-client 的真实状态。
+//! 数据源：从 mock 切换到 tavern_state/tavern-client 的真实状态。
+
+pub mod dock;
+pub mod dock_panels;
+pub mod layout;
 
 use dioxus::prelude::*;
-use tavern_client::recent_chats;
-use tavern_state::{STATE, abort, init, open_chat, select_character, send};
+use tavern_state::{STATE, abort, init, select_character, send};
 use tavern_ui::{Dialog, IconButton, MessageBubble, SwipePicker};
+
+// tavern_client::save_chat 供删除 Dialog 使用
 
 /// 会话项
 #[derive(Clone, PartialEq)]
@@ -21,8 +25,8 @@ pub struct SessionItem {
     pub title: String,
 }
 
-/// 消息气泡用的展示字段;数据源就是 tavern_state 的 Message。
-fn msg_display(msg: &tavern_state::Message) -> (String, bool, usize, Vec<String>) {
+/// 消息气泡用的展示字段；数据源就是 tavern_state 的 Message。
+pub fn msg_display(msg: &tavern_state::Message) -> (String, bool, usize, Vec<String>) {
     let content = msg
         .swipes
         .get(msg.swipe_id.unwrap_or(0))
@@ -36,13 +40,311 @@ fn msg_display(msg: &tavern_state::Message) -> (String, bool, usize, Vec<String>
     )
 }
 
-/// 收缩态会话符号:chat-N -> 取序号 N(如 chat-4 -> "4"),其余取标题前 2 字。
-/// 用作左侧侧栏图标轨上的单字徽标。
-fn session_symbol(title: &str) -> String {
-    if let Some(rest) = title.strip_prefix("chat-") {
-        rest.chars().take(4).collect()
-    } else {
-        title.chars().take(2).collect()
+/// 中央互动区 editor 槽：消息流 + composer + Dialog 群（顶栏在页面层全宽渲染）。
+///
+/// 作为独立组件方便 DockFrame 以 Element 形式接收。
+#[component]
+pub fn EditorSlot(
+    /// 发送输入框草稿。
+    draft: Signal<String>,
+    /// 气泡菜单激活 id。
+    active_bubble_menu_id: Signal<Option<usize>>,
+    /// 删除目标消息 idx。
+    delete_id: Signal<Option<usize>>,
+    /// Mod 开关。
+    mod_active: Signal<bool>,
+    /// 记忆增强开关。
+    memory_boost: Signal<bool>,
+    /// 流式开关。
+    stream_toggle: Signal<bool>,
+    /// 剧本详情弹窗开关。
+    detail_modal_open: Signal<bool>,
+    /// 赞赏作品弹窗开关。
+    donate_modal_open: Signal<bool>,
+    /// 快捷菜单开关。
+    menu_open: Signal<bool>,
+    /// 当前滚动消息索引。
+    active_prompt: Signal<usize>,
+    /// 滚动去抖。
+    scroll_dirty: Signal<bool>,
+    /// 滚动任务进行中。
+    scroll_running: Signal<bool>,
+    /// 模型下拉开关。
+    model_dropdown_open: Signal<bool>,
+    /// 发送回调。
+    handle_send: EventHandler<()>,
+    /// 滚动回调。
+    on_scroll: EventHandler<ScrollEvent>,
+) -> Element {
+    let mut draft = draft;
+    // 气泡菜单 id 只在下方 msg_rows 的行级副本（ammi/del_id）里写入，本体只读
+    let active_bubble_menu_id = active_bubble_menu_id;
+    let mut delete_id = delete_id;
+    let mut mod_active = mod_active;
+    let mut memory_boost = memory_boost;
+    let mut stream_toggle = stream_toggle;
+    let mut detail_modal_open = detail_modal_open;
+    let mut donate_modal_open = donate_modal_open;
+    let mut menu_open = menu_open;
+
+    // 消息行独立构建为 Element，避免外层 rsx! 里 for + 嵌套 rsx! 的解析坑
+    let msgs_v: Vec<tavern_state::Message> = STATE.with(|s| s.messages.clone());
+    let msg_rows: Vec<Element> = msgs_v
+        .iter()
+        .enumerate()
+        .map(|(idx, msg)| {
+            let (content, mine, swipe_idx, swipes) = msg_display(msg);
+            let is_menu_active = active_bubble_menu_id() == Some(idx);
+            let name = msg.name.clone();
+            let time = msg.send_date.clone();
+            let mut ammi = active_bubble_menu_id;
+            let mut del_id = delete_id;
+            let swipe_actions = rsx! {
+                if !mine && swipes.len() > 1 {
+                    SwipePicker {
+                        index: swipe_idx,
+                        total: swipes.len(),
+                        on_prev: move |_| {},
+                        on_next: move |_| {},
+                    }
+                }
+                IconButton {
+                    title: "复制文本",
+                    onclick: move |e: MouseEvent| {
+                        e.stop_propagation();
+                        ammi.set(None);
+                    },
+                    "复制"
+                }
+                IconButton {
+                    title: "删除段落",
+                    onclick: move |e: MouseEvent| {
+                        e.stop_propagation();
+                        del_id.set(Some(idx));
+                        ammi.set(None);
+                    },
+                    "删除"
+                }
+            };
+            let row: Element = rsx! {
+                div {
+                    key: "msg-{idx}",
+                    id: "story-node-{idx}",
+                    class: "scroll-mt-4 flex flex-col gap-4",
+                    MessageBubble {
+                        name: name.clone(),
+                        time: time.clone(),
+                        content: content.clone(),
+                        mine,
+                        is_active_menu: is_menu_active,
+                        on_click: move |e: MouseEvent| {
+                            e.stop_propagation();
+                            if ammi() == Some(idx) {
+                                ammi.set(None);
+                            } else {
+                                ammi.set(Some(idx));
+                            }
+                        },
+                        actions: swipe_actions,
+                    }
+                }
+            };
+            row
+        })
+        .collect();
+
+    rsx! {
+        div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+
+            div {
+                id: "chat-scroll-viewport",
+                class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 no-scrollbar",
+                onscroll: move |e| on_scroll.call(e),
+                { msg_rows.iter() }
+            }
+
+            // composer：独立 flex 兄弟节点贴中央区底部（sticky-in-viewport 在
+            // 消息少时会停在内容顶部而非视口底部），宽度随中央列
+            div {
+                class: "shrink-0 flex w-full flex-col gap-2 border-t border-purple-500/20 bg-zinc-950 p-3",
+                onclick: move |e| e.stop_propagation(),
+                div { class: "flex flex-wrap items-center gap-1.5",
+                    button {
+                        class: if mod_active() {
+                            "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
+                        } else {
+                            "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        },
+                        onclick: move |_| mod_active.set(!mod_active()),
+                        "Mod"
+                    }
+                    button {
+                        class: if memory_boost() {
+                            "rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-200"
+                        } else {
+                            "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        },
+                        onclick: move |_| memory_boost.set(!memory_boost()),
+                        "记忆"
+                    }
+                    button {
+                        class: if stream_toggle() {
+                            "rounded-full border border-cyan-500/40 bg-cyan-500/20 px-2.5 py-1 text-[11px] font-medium text-cyan-200"
+                        } else {
+                            "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        },
+                        onclick: move |_| stream_toggle.set(!stream_toggle()),
+                        "流式"
+                    }
+                }
+                div { class: "flex items-end gap-2",
+                    textarea {
+                        class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
+                        placeholder: "输入你的决策或行动 (电脑端 Shift+回车换行)",
+                        value: "{draft()}",
+                        oninput: move |e| draft.set(e.value()),
+                        onkeydown: move |e| {
+                            if e.key() == Key::Enter && !e.modifiers().shift() {
+                                e.prevent_default();
+                                handle_send.call(());
+                            }
+                        },
+                    }
+                }
+                div { class: "flex items-center justify-between gap-2",
+                    div { class: "flex min-w-0 items-center gap-2 text-[10px]",
+                        if STATE.with(|s| s.generating) {
+                            span { class: "flex items-center gap-1 text-cyan-400",
+                                "生成中..."
+                                button {
+                                    class: "text-zinc-500 hover:text-white",
+                                    onclick: move |_| abort(),
+                                    "停止"
+                                }
+                            }
+                        }
+                    }
+                    div { class: "flex shrink-0 items-center gap-2",
+                        button {
+                            class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
+                            disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
+                            onclick: move |_| handle_send.call(()),
+                            if STATE.with(|s| s.generating) { "停止" } else { "行动" }
+                        }
+                    }
+                }
+            }
+
+                    div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800/60 bg-zinc-900/90 px-3 py-1.5 backdrop-blur-2xl z-10 select-none",
+                        if STATE.with(|s| s.generating) {
+                            div { class: "flex items-center gap-2 text-[10px] text-cyan-400",
+                                span { "生成中..." }
+                                button {
+                                    class: "text-zinc-500 hover:text-white",
+                                    onclick: move |_| abort(),
+                                    "停止"
+                                }
+                            }
+                        }
+                    }
+
+            Dialog {
+                title: "删除这条消息?".to_string(),
+                open: delete_id().is_some(),
+                on_confirm: move |_| {
+                    if let Some(idx) = delete_id() {
+                        let (file_name, chat_name) = STATE.with(|s| {
+                            (
+                                s.character.as_ref().map(|(f, _)| f.clone()),
+                                s.chat.clone(),
+                            )
+                        });
+                        STATE.with_mut(|s| {
+                            if idx < s.messages.len() {
+                                s.messages.remove(idx);
+                            }
+                        });
+                        if let (Some(f), Some(c)) = (file_name, chat_name) {
+                            let msgs = STATE.with(|s| s.messages.clone());
+                            spawn(async move {
+                                if let Err(e) = tavern_client::save_chat(f, c, msgs).await {
+                                    STATE.with_mut(|s| {
+                                        s.last_error = Some(format!("保存删除失败: {e}"));
+                                    });
+                                }
+                            });
+                        }
+                    }
+                    delete_id.set(None);
+                },
+                on_cancel: move |_| delete_id.set(None),
+                p { "删除后将从本聊天历史中移除。" }
+            }
+
+            Dialog {
+                title: STATE.with(|s| {
+                    s.character
+                        .as_ref()
+                        .map(|(_, c)| format!("剧本详情: {}", c.name))
+                        .unwrap_or_else(|| "剧本详情".to_string())
+                }),
+                open: detail_modal_open(),
+                on_confirm: move |_| detail_modal_open.set(false),
+                on_cancel: move |_| detail_modal_open.set(false),
+                p {
+                    { STATE.with(|s| {
+                        s.character
+                            .as_ref()
+                            .map(|(_, c)| {
+                                let desc = if c.description.is_empty() {
+                                    "(无简介)".to_string()
+                                } else {
+                                    c.description.clone()
+                                };
+                                let scenario = if c.scenario.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("\n\n场景: {}", c.scenario)
+                                };
+                                format!("{desc}{scenario}")
+                            })
+                            .unwrap_or_else(|| "未选择角色".to_string())
+                    }) }
+                }
+            }
+
+            Dialog {
+                title: "赞赏作品".to_string(),
+                open: donate_modal_open(),
+                on_confirm: move |_| donate_modal_open.set(false),
+                on_cancel: move |_| donate_modal_open.set(false),
+                p { "感谢支持创作者。赞赏渠道即将上线。" }
+            }
+
+            if menu_open() {
+                div {
+                    class: "absolute inset-0 z-40 bg-black/20",
+                    onclick: move |_| menu_open.set(false),
+                }
+                div {
+                    class: "absolute right-3 top-14 z-50 flex w-48 flex-col divide-y divide-zinc-8 rounded-2xl border border-zinc-8 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs select-none",
+                    onclick: move |e| e.stop_propagation(),
+                    div { class: "flex flex-col py-1",
+                        button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
+                            "导出记录"
+                        }
+                        button {
+                            class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
+                            onclick: move |_| {
+                                dock::reset();
+                                menu_open.set(false);
+                            },
+                            "重置布局"
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -54,7 +356,7 @@ pub fn ChatPage(
     #[props(default)] on_toggle_theme: EventHandler<()>,
     #[props(default = false)] theme_light: bool,
 ) -> Element {
-    // 页面初始化:加载设置与角色列表;有角色则自动选中第一个
+    // 页面初始化：加载设置与角色列表；有角色则自动选中第一个
     use_effect(move || {
         spawn(async move {
             init().await;
@@ -65,64 +367,24 @@ pub fn ChatPage(
         });
     });
 
-    // 会话列表:跟随 STATE.character 变化从后端拉取
-    let mut sessions = use_signal(Vec::<SessionItem>::new);
-    use_effect(move || {
-        let file_name = STATE.with(|s| s.character.as_ref().map(|(f, _)| f.clone()));
-        if let Some(file_name) = file_name {
-            spawn(async move {
-                match recent_chats(file_name).await {
-                    Ok(chats) => {
-                        sessions.set(
-                            chats
-                                .into_iter()
-                                .map(|c| SessionItem { title: c.file_name })
-                                .collect(),
-                        );
-                    }
-                    Err(e) => {
-                        STATE.with_mut(|s| {
-                            s.last_error = Some(format!("加载聊天列表失败: {e}"));
-                        });
-                    }
-                }
-            });
-        }
-    });
-
-    // 页面UI状态
-    let mut active_drawer = use_signal(|| None::<&'static str>); // 仅右侧时间线大纲用浮层抽屉
-    let mut sidebar_collapsed = use_signal(|| false); // 左侧常驻侧边栏:收缩/展开
-    let mut active_bubble_menu_id = use_signal(|| None::<usize>);
-    let mut detail_modal_open = use_signal(|| false);
-    let mut donate_modal_open = use_signal(|| false);
+    // 页面 UI 状态
+    // 以下信号都在 EditorSlot / 面板子组件内经副本写入，本组件只读直传，无需 mut；
+    // draft 与 active_bubble_menu_id 在本组件闭包里有写入，保留 mut。
+    let detail_modal_open = use_signal(|| false);
+    let donate_modal_open = use_signal(|| false);
     let mut menu_open = use_signal(|| false);
-    let mut model_dropdown_open = use_signal(|| false);
-    let mut memory_boost = use_signal(|| true);
-    let mut stream_toggle = use_signal(|| true);
-    let mut mod_active = use_signal(|| false);
+    let model_dropdown_open = use_signal(|| false);
+    let memory_boost = use_signal(|| true);
+    let stream_toggle = use_signal(|| true);
+    let mod_active = use_signal(|| false);
     let mut draft = use_signal(String::new);
-    let mut delete_id = use_signal(|| None::<usize>);
+    let delete_id = use_signal(|| None::<usize>);
+    let mut active_bubble_menu_id = use_signal(|| None::<usize>);
 
-    // 左侧 prompt 导航条相关状态
-    let active_prompt = use_signal(|| 0usize); // 当前滚动到的消息索引(用于高亮对应 prompt)
-    let scroll_dirty = use_signal(|| false); // 滚动去抖:仍有未处理的滚动
-    let scroll_running = use_signal(|| false); // 滚动计算任务是否进行中
-    let hovered_prompt = use_signal(|| None::<usize>); // 悬停预览的 prompt 序号
-
-    // 当前模型显示(来源:设置里的 model;切换入口后续在设置页做)
-    let current_model =
-        use_memo(move || STATE.with(|s| s.model.clone().unwrap_or_else(|| "未设置".to_string())));
-    // 下拉列表:内置可选项(agnes-2.5-flash) + 当前已配置模型。后续接入后端 /v1/models 动态目录。
-    let models = use_memo(move || {
-        let mut v = vec!["agnes-2.5-flash".to_string()];
-        if let Some(m) = STATE.with(|s| s.model.clone())
-            && !v.iter().any(|x| x == &m)
-        {
-            v.push(m);
-        }
-        v
-    });
+    // prompt 导航条相关状态（滚动联动高亮）
+    let active_prompt = use_signal(|| 0usize);
+    let scroll_dirty = use_signal(|| false);
+    let scroll_running = use_signal(|| false);
 
     // 发送处理
     let mut handle_send = move || {
@@ -130,27 +392,21 @@ pub fn ChatPage(
         if text.is_empty() {
             return;
         }
-
-        // 使用 tavern_state 的 send 函数
         spawn(async move {
             let _ = send(text).await;
         });
-
         draft.set(String::new());
-
-        // 滚动 JS 保留
         dioxus::document::eval(
             "setTimeout(() => { const el = document.getElementById('chat-scroll-viewport'); if(el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, 50);",
         );
     };
 
-    // 滚动联动 prompt 导航条:根据视口顶部位置算出"当前消息",再映射到对应 prompt 高亮。
-    // 用 dirty/running 双信号做去抖合并,避免每次 scroll 都起一个 eval 任务。
+    // 滚动联动 prompt 导航条：dirty/running 双信号去抖，避免每次 scroll 都起 eval 任务
     let on_scroll = {
         let mut active_prompt = active_prompt;
         let mut scroll_dirty = scroll_dirty;
         let mut scroll_running = scroll_running;
-        move |_evt| {
+        move |_evt: ScrollEvent| {
             scroll_dirty.set(true);
             if scroll_running() {
                 return;
@@ -189,587 +445,96 @@ pub fn ChatPage(
         }
     };
 
-    // 角色头部信息
-    let character_info = use_memo(move || {
-        STATE.with(|s| {
-            s.character
-                .as_ref()
-                .map(|(_, char)| {
-                    let name = &char.name;
-                    let desc_str = char.description.clone();
-                    format!(
-                        "{} - {}",
-                        name,
-                        desc_str.chars().take(30).collect::<String>()
-                    )
-                })
-                .unwrap_or("未选择角色".to_string())
-        })
-    });
-
-    // 角色单字徽标(收缩态头像用):取角色名首字
-    let char_monogram = use_memo(move || {
-        STATE.with(|s| {
-            s.character
-                .as_ref()
-                .and_then(|(_, c)| c.name.chars().next())
-                .map(|ch| ch.to_string())
-                .unwrap_or_else(|| "?".to_string())
-        })
-    });
+    let handle_send_ev = Callback::new(move |_| handle_send());
+    let on_scroll_ev = Callback::new(on_scroll);
 
     rsx! {
         div {
-            class: "relative flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100 select-none",
+            class: "relative flex h-full w-full flex-col overflow-hidden bg-zinc-950 text-zinc-100 select-none",
             onclick: move |_| {
-                // 点击背景空白处自动收起气泡专属操作菜单
                 active_bubble_menu_id.set(None);
             },
 
-            // 抽屉遮罩背景(仅右侧时间线大纲用浮层)
-            if active_drawer() == Some("right") {
-                div {
-                    class: "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300",
-                    onclick: move |_| active_drawer.set(None),
-                }
-            }
-
-            // 左侧常驻侧边栏(可收缩:展开显全信息,收缩显图标轨与会话符号)
-            div {
-                class: if sidebar_collapsed() {
-                    "flex h-full w-16 shrink-0 flex-col items-center gap-3 border-r border-zinc-800/60 bg-zinc-900/95 backdrop-blur-xl py-3 transition-all duration-300"
-                } else {
-                    "flex h-full w-72 shrink-0 flex-col border-r border-zinc-800/60 bg-zinc-900/95 backdrop-blur-xl transition-all duration-300"
-                },
-                "data-testid": "sidebar-characters",
-                aria_label: "剧本与会话侧栏",
-
-                // 顶栏:折叠/展开开关
-                div { class: if sidebar_collapsed() {
-                        "flex flex-col items-center"
-                    } else {
-                        "flex items-center justify-between gap-2 border-b border-zinc-800/80 px-3 pb-3 pt-3"
-                    },
+            // 顶层 header：全宽，dock 三列都在它下面
+            div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-20 select-none",
+                div { class: "flex items-center gap-2",
                     button {
-                        class: "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
-                        title: if sidebar_collapsed() { "展开侧栏" } else { "收起侧栏" },
-                        name: "btn-sidebar-toggle",
-                        aria_label: if sidebar_collapsed() { "展开侧栏" } else { "收起侧栏" },
-                        onclick: move |_| sidebar_collapsed.set(!sidebar_collapsed()),
-                        if sidebar_collapsed() { "»" } else { "«" }
+                        class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
+                        title: "剧本会话",
+                        name: "btn-sidebar-toggle-top",
+                        onclick: move |e| e.stop_propagation(),
+                        span { class: "font-semibold", "剧本会话" }
                     }
-                    if !sidebar_collapsed() {
-                        span { class: "truncate text-xs font-bold text-zinc-100", { character_info() } }
-                    }
-                }
-
-                // 角色标识:收缩态显示单字徽标,展开态显示标签+简介
-                if sidebar_collapsed() {
-                    div { class: "flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 text-sm font-bold text-white shadow-md",
-                        aria_label: "当前角色",
-                        { char_monogram() }
-                    }
-                } else {
-                    div { class: "flex flex-col gap-1 px-3 pt-2",
-                        span { class: "text-[10px] text-zinc-500", "当代全球演艺资本衍生规则" }
-                        div { class: "rounded-xl border border-zinc-800/60 bg-zinc-950/50 p-3 text-[11px] leading-5 text-zinc-400",
-                            "【细腻UI和美化】【真实数据库与衍生规则】一比一复刻当代娱乐产业生态。这里有冰冷的资本运作与残酷的名利场。"
-                        }
+                    button {
+                        class: "flex h-8 items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:flex",
+                        title: "回到剧本库大厅",
+                        onclick: move |_| on_goto_characters.call(()),
+                        "大厅"
                     }
                 }
-
-                // 快捷按钮:剧本详情/赞赏(收缩态图标,展开态文字)
-                if sidebar_collapsed() {
-                    div { class: "flex flex-col items-center gap-2",
-                        button {
-                            class: "flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-800/70 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors",
-                            title: "剧本详情",
-                            name: "btn-detail",
-                            onclick: move |_| detail_modal_open.set(true),
-                            "📖"
-                        }
-                        button {
-                            class: "flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-300 hover:bg-amber-500/20 transition-colors",
-                            title: "赞赏作品",
-                            name: "btn-donate",
-                            onclick: move |_| donate_modal_open.set(true),
-                            "☕"
-                        }
+                div { class: "flex items-center gap-2",
+                    button {
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
+                        title: "切换光暗",
+                        onclick: move |_| on_toggle_theme.call(()),
+                        if theme_light { "暗" } else { "亮" }
                     }
-                } else {
-                    div { class: "grid grid-cols-2 gap-2.5 px-3 pt-2",
-                        button {
-                            class: "flex items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-800/70 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 active:scale-95",
-                            name: "btn-detail",
-                            onclick: move |_| detail_modal_open.set(true),
-                            span { "📖" }
-                            span { "剧本详情" }
-                        }
-                        button {
-                            class: "flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 active:scale-95",
-                            name: "btn-donate",
-                            onclick: move |_| donate_modal_open.set(true),
-                            span { "☕" }
-                            span { "赞赏作品" }
-                        }
-                    }
-                }
-
-                // 会话区
-                div { class: if sidebar_collapsed() {
-                        "flex min-h-0 flex-1 flex-col items-center gap-2 py-2 no-scrollbar"
-                    } else {
-                        "flex min-h-0 flex-1 flex-col gap-2 px-3 pt-2"
-                    },
-                    div { class: if sidebar_collapsed() {
-                            "flex flex-col items-center gap-2"
-                        } else {
-                            "flex items-center justify-between px-1"
+                    button {
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
+                        title: "快捷菜单",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            menu_open.set(!menu_open());
                         },
-                        if !sidebar_collapsed() {
-                            span { class: "text-xs font-bold text-zinc-400", "会话时间线" }
-                        }
-                        button {
-                            class: if sidebar_collapsed() {
-                                "flex h-9 w-9 items-center justify-center rounded-xl bg-purple-600/80 text-sm font-semibold text-white hover:bg-purple-600 transition-colors"
-                            } else {
-                                "flex items-center gap-1 rounded-lg bg-purple-600/80 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-600 transition-colors"
-                            },
-                            title: "新对话",
-                            name: "btn-new-chat",
-                            onclick: move |_| {
-                                let file_name = STATE
-                                    .with(|state| state.character.as_ref().map(|(f, _)| f.clone()));
-                                if let Some(file_name) = file_name {
-                                    spawn(async move {
-                                        select_character(file_name).await;
-                                    });
-                                }
-                            },
-                            if sidebar_collapsed() { "+" } else { "+ 新对话" }
-                        }
-                    }
-                    div { class: if sidebar_collapsed() {
-                            "flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto py-1 no-scrollbar"
-                        } else {
-                            "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 no-scrollbar"
-                        },
-                        for s in sessions() {
-                            {
-                                let is_active = STATE.with(|st| st.chat.as_deref() == Some(s.title.as_str()));
-                                let title = s.title.clone();
-                                let symbol = session_symbol(&s.title);
-                                let btn_class = if sidebar_collapsed() {
-                                    if is_active {
-                                        "group flex h-9 w-9 items-center justify-center rounded-xl border border-purple-500/60 bg-purple-950/40 text-xs font-bold text-purple-100 ring-1 ring-purple-500/40 transition-colors"
-                                    } else {
-                                        "group flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-950/40 text-xs font-semibold text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60 transition-colors"
-                                    }
-                                } else if is_active {
-                                    "group flex w-full flex-col gap-1 rounded-xl border border-purple-500/50 bg-purple-950/30 p-3 text-left shadow-sm ring-1 ring-purple-500/30"
-                                } else {
-                                    "group flex w-full flex-col gap-1 rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3 text-left text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60"
-                                };
-                                let display = if sidebar_collapsed() { symbol } else { s.title.clone() };
-                                rsx! {
-                                    button {
-                                        key: "{s.title}",
-                                        class: btn_class,
-                                        title: "{s.title}",
-                                        name: "session-{title}",
-                                        aria_label: "会话 {title}",
-                                        onclick: move |_| {
-                                            let chat_name = title.clone();
-                                            spawn(async move {
-                                                open_chat(chat_name).await;
-                                            });
-                                        },
-                                        "{display}"
-                                    }
-                                }
-                            }
-                        }
+                        "菜单"
                     }
                 }
             }
 
-            // (prompt 导航条已移至中央互动区:垂直居中的横线导航,见下方中央区实现)
-
-            // 中央互动剧情主视区
-                div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                    // 左侧 prompt 导航条:垂直居中,以横线(每条=一次用户 prompt)显示,悬停弹窗,点击定位
-                    {
-                        let prompts: Vec<(usize, String, String)> = STATE.read().messages.iter().enumerate()
-                            .filter_map(|(i, m)| {
-                                let (content, mine, _, _) = msg_display(m);
-                                if mine { Some((i, m.name.clone(), content)) } else { None }
-                            }).collect();
-                        let active_msg = active_prompt();
-                        let active_prompt_idx = prompts.iter().rposition(|(mi, _, _)| *mi <= active_msg).unwrap_or(0);
-                        rsx! {
-                            if !prompts.is_empty() {
-                                div { class: "absolute left-2 top-1/2 z-30 flex max-h-[75vh] -translate-y-1/2 flex-col items-center gap-1.5 overflow-y-auto rounded-xl border border-zinc-800/50 bg-zinc-950/70 px-2 py-2 backdrop-blur-xl",
-                                for (pi, (midx, name, content)) in prompts.iter().enumerate() {
-                                    {
-                                        let is_active = active_prompt_idx == pi;
-                                        let name_c = name.clone();
-                                        let content_c = content.clone();
-                                        let midx_c = *midx;
-                                        let tt = format!("{}: {}", name_c, content_c);
-                                        let label = format!("{}", pi + 1);
-                                        let mut hp = hovered_prompt;
-                                        rsx! {
-                                            div {
-                                                class: if is_active {
-                                                    "h-[3px] w-6 cursor-pointer rounded-full bg-purple-400 shadow-[0_0_8px] shadow-purple-500/70 transition-all"
-                                                } else {
-                                                    "h-[3px] w-5 cursor-pointer rounded-full bg-zinc-600 hover:bg-zinc-300 hover:w-6 transition-all"
-                                                },
-                                                "data-testid": format!("prompt-nav-{}", pi),
-                                                title: "{tt}",
-                                                aria_label: "prompt {label}",
-                                                onmouseenter: move |_| hp.set(Some(pi)),
-                                                onmouseleave: move |_| hp.set(None),
-                                                onclick: move |_| {
-                                                    dioxus::document::eval(&format!("document.getElementById('story-node-{midx_c}')?.scrollIntoView({{ behavior: 'smooth', block: 'start' }});"));
-                                                },
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            }
-                            if let Some(pi) = hovered_prompt() {
-                                if let Some((_, name, content)) = prompts.get(pi) {
-                                    div { class: "pointer-events-none absolute left-12 top-1/2 z-40 -translate-y-1/2 w-60 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-2.5 text-[11px] leading-5 text-zinc-200 shadow-2xl backdrop-blur-xl",
-                                        span { class: "mb-1 block text-[10px] font-bold text-purple-300", "{name}" }
-                                        "{content}"
-                                    }
-                                }
-                            }
-                        }
+            // 三列 dock 区（顶栏之下）
+            div { class: "flex min-h-0 flex-1",
+                layout::DockFrame {
+                editor: rsx! {
+                    EditorSlot {
+                        draft: draft,
+                        active_bubble_menu_id: active_bubble_menu_id,
+                        delete_id: delete_id,
+                        mod_active: mod_active,
+                        memory_boost: memory_boost,
+                        stream_toggle: stream_toggle,
+                        detail_modal_open: detail_modal_open,
+                        donate_modal_open: donate_modal_open,
+                        menu_open: menu_open,
+                        active_prompt: active_prompt,
+                        scroll_dirty: scroll_dirty,
+                        scroll_running: scroll_running,
+                        model_dropdown_open: model_dropdown_open,
+                        handle_send: handle_send_ev,
+                        on_scroll: on_scroll_ev,
                     }
-
-                    div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
-                    div { class: "flex items-center gap-2",
-                        button {
-                            class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
-                            title: if sidebar_collapsed() { "展开剧本与会话侧栏" } else { "收起剧本与会话侧栏" },
-                            name: "btn-sidebar-toggle-top",
-                            onclick: move |e| {
-                                e.stop_propagation();
-                                sidebar_collapsed.set(!sidebar_collapsed());
-                            },
-                            span { "📚" }
-                            span { class: "font-semibold", "剧本会话" }
-                        }
-
-                        button {
-                            class: "flex h-8 items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:flex",
-                            title: "回到剧本库大厅",
-                            onclick: move |_| on_goto_characters.call(()),
-                            "大厅 ➜"
-                        }
-
-                        div { class: "flex items-center gap-1 rounded-full border border-zinc-8 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs ml-1",
-                            button { class: "hover:text-zinc-200 px-0.5", "‹" }
-                            span { class: "text-[10px] font-medium tabular-nums text-zinc-200", "第 1 轮 · 共 3 轮" }
-                            button { class: "hover:text-zinc-200 px-0.5", "›" }
-                        }
+                },
+                // 四个面板元素按默认停靠区直传：实际落区由 dock::DOCK 信号在
+                // layout::render_zone 中动态决定，prop 名只对应默认区，不锁定面板位置。
+                left_top: rsx! {
+                    dock_panels::CharacterPanel {
+                        detail_modal_open: detail_modal_open,
+                        donate_modal_open: donate_modal_open,
                     }
-
-                    div { class: "flex items-center gap-2",
-                        button {
-                            class: "flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
-                            title: "切换光暗",
-                            onclick: move |_| on_toggle_theme.call(()),
-                            if theme_light { "☀️" } else { "🌙" }
-                        }
-
-                        button {
-                            class: "flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
-                            title: "快捷菜单",
-                            onclick: move |e| {
-                                e.stop_propagation();
-                                menu_open.set(!menu_open());
-                            },
-                            "⚙"
-                        }
+                },
+                left_bottom: rsx! {
+                    dock_panels::SessionsPanel {}
+                },
+                right_top: rsx! {
+                    dock_panels::PromptPanel {
+                        active_prompt: active_prompt,
+                        hovered_prompt: None,
                     }
-                }
-
-                div {
-                    id: "chat-scroll-viewport",
-                    class: "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden scroll-smooth p-4 sm:p-6 lg:px-24 xl:px-44 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
-                    onscroll: on_scroll,
-                    for (idx, msg) in STATE.read().messages.iter().enumerate() {
-                        {
-                            let (content, mine, swipe_idx, swipes) = msg_display(msg);
-                            let is_menu_active = active_bubble_menu_id() == Some(idx);
-                            let name = msg.name.clone();
-                            let time = msg.send_date.clone();
-                            rsx! {
-                                div {
-                                    id: "story-node-{idx}",
-                                    class: "scroll-mt-4 flex flex-col gap-4",
-                                    MessageBubble {
-                                        key: "msg-{idx}",
-                                        name: name.clone(),
-                                        time: time.clone(),
-                                        content: content.clone(),
-                                        mine,
-                                        is_active_menu: is_menu_active,
-                                        on_click: move |e: MouseEvent| {
-                                            e.stop_propagation();
-                                            if active_bubble_menu_id() == Some(idx) {
-                                                active_bubble_menu_id.set(None);
-                                            } else {
-                                                active_bubble_menu_id.set(Some(idx));
-                                            }
-                                        },
-                                        actions: rsx! {
-                                            if !mine && swipes.len() > 1 {
-                                                SwipePicker {
-                                                    index: swipe_idx,
-                                                    total: swipes.len(),
-                                                    on_prev: move |_| {},
-                                                    on_next: move |_| {},
-                                                }
-                                            }
-                                            IconButton {
-                                                title: "复制文本",
-                                                onclick: move |e: MouseEvent| {
-                                                    e.stop_propagation();
-                                                    active_bubble_menu_id.set(None);
-                                                },
-                                                "📋"
-                                            }
-                                            IconButton {
-                                                title: "删除段落",
-                                                onclick: move |e: MouseEvent| {
-                                                    e.stop_propagation();
-                                                    delete_id.set(Some(idx));
-                                                    active_bubble_menu_id.set(None);
-                                                },
-                                                "✕"
-                                            }
-                                        },
-                                    }
-                                }
-                            }
-                        }
-                        }
+                },
+                right_bottom: rsx! {
+                    dock_panels::ModelPanel {
+                        model_dropdown_open: model_dropdown_open,
                     }
-                    // 悬停输入框:浮于聊天区底部; 输入区上下带快捷按钮, 模型置于右下(悬停展开面板)
-                    div { class: "sticky bottom-0 z-20 mb-4 flex self-center w-11/12 flex-col gap-2 rounded-2xl border border-purple-500/20 bg-zinc-950 p-3 shadow-inner backdrop-blur-xl",
-                        onclick: move |e| e.stop_propagation(),
-                        // 上方快捷按钮
-                        div { class: "flex flex-wrap items-center gap-1.5",
-                            button {
-                                class: if mod_active() {
-                                    "rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-1 text-[11px] font-medium text-purple-200"
-                                } else {
-                                    "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                                },
-                                onclick: move |_| mod_active.set(!mod_active()),
-                                "🎮 Mod"
-                            }
-                            button {
-                                class: if memory_boost() {
-                                    "rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-200"
-                                } else {
-                                    "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                                },
-                                onclick: move |_| memory_boost.set(!memory_boost()),
-                                "🧠 记忆"
-                            }
-                            button {
-                                class: if stream_toggle() {
-                                    "rounded-full border border-cyan-500/40 bg-cyan-500/20 px-2.5 py-1 text-[11px] font-medium text-cyan-200"
-                                } else {
-                                    "rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                                },
-                                onclick: move |_| stream_toggle.set(!stream_toggle()),
-                                "≈ 流式"
-                            }
-                        }
-                        // 输入框
-                        div { class: "flex items-end gap-2",
-                            textarea {
-                                class: "h-11 min-h-11 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0",
-                                placeholder: "输入你的决策或行动 (电脑端 Shift+回车换行)",
-                                value: "{draft()}",
-                                oninput: move |e| draft.set(e.value()),
-                                onkeydown: move |e| {
-                                    if e.key() == Key::Enter && !e.modifiers().shift() {
-                                        e.prevent_default();
-                                        handle_send();
-                                    }
-                                },
-                            }
-                        }
-                        // 下方:左=状态, 右=模型选择 + 发送
-                        div { class: "flex items-center justify-between gap-2",
-                            div { class: "flex min-w-0 items-center gap-2 text-[10px]",
-                                if STATE.with(|s| s.generating) {
-                                    span { class: "flex items-center gap-1 text-cyan-400",
-                                        "⚡ 生成中..."
-                                        button {
-                                            class: "text-zinc-500 hover:text-white",
-                                            onclick: move |_| abort(),
-                                            "✕"
-                                        }
-                                    }
-                                }
-                            }
-                            div { class: "flex shrink-0 items-center gap-2",
-                                // 模型选择器(右下, 悬停展开)
-                                div { class: "relative",
-                                    onmouseenter: move |_| model_dropdown_open.set(true),
-                                    onmouseleave: move |_| model_dropdown_open.set(false),
-                                    button {
-                                        class: "flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-zinc-950/80 px-3 py-1 text-xs font-semibold text-purple-200 shadow-sm transition-all hover:border-purple-400",
-                                        span { "⚡" }
-                                        span { "{current_model()}" }
-                                        span { class: "text-[10px] text-zinc-400", "⌵" }
-                                    }
-                                    if model_dropdown_open() {
-                                        div { class: "absolute bottom-full right-0 z-50 w-56 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1 pt-3 shadow-2xl backdrop-blur-2xl",
-                                            for m in models() {
-                                                {
-                                                    let model_name = m.to_string();
-                                                    rsx! {
-                                                        button {
-                                                            key: "{m}",
-                                                            class: "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100",
-                                                            onclick: move |_| {
-                                                                STATE.with_mut(|s| {
-                                                                    s.model = Some(model_name.clone());
-                                                                });
-                                                                model_dropdown_open.set(false);
-                                                            },
-                                                            span { "{m}" }
-                                                            if current_model() == m {
-                                                                span { class: "text-[10px] text-emerald-400", "✓" }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                button {
-                                    class: "flex h-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105 hover:shadow-purple-600/50 disabled:opacity-40",
-                                    disabled: draft().trim().is_empty() || STATE.with(|s| s.generating),
-                                    onclick: move |_| handle_send(),
-                                    if STATE.with(|s| s.generating) { "⏹ 停止" } else { "行动 ➜" }
-                                }
-                            }
-                        }
-                    }
-
-                div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800/60 bg-zinc-900/90 px-3 py-1.5 backdrop-blur-2xl z-10 select-none",
-                    if STATE.with(|s| s.generating) {
-                        div { class: "flex items-center gap-2 text-[10px] text-cyan-400",
-                            span { "⚡ 生成中..." }
-                            button {
-                                class: "text-zinc-500 hover:text-white",
-                                onclick: move |_| abort(),
-                                "✕"
-                            }
-                        }
-                    }
-                }
-
-                Dialog {
-                    title: "删除这条消息?".to_string(),
-                    open: delete_id().is_some(),
-                    on_confirm: move |_| {
-                        if let Some(idx) = delete_id() {
-                            let (file_name, chat_name) = STATE.with(|s| {
-                                (
-                                    s.character.as_ref().map(|(f, _)| f.clone()),
-                                    s.chat.clone(),
-                                )
-                            });
-                            STATE.with_mut(|s| {
-                                if idx < s.messages.len() {
-                                    s.messages.remove(idx);
-                                }
-                            });
-                            // 已落盘的聊天删除后同步保存,避免刷新复活
-                            if let (Some(f), Some(c)) = (file_name, chat_name) {
-                                let msgs = STATE.with(|s| s.messages.clone());
-                                spawn(async move {
-                                    if let Err(e) = tavern_client::save_chat(f, c, msgs).await {
-                                        STATE.with_mut(|s| {
-                                            s.last_error = Some(format!("保存删除失败: {e}"));
-                                        });
-                                    }
-                                });
-                            }
-                        }
-                        delete_id.set(None);
-                    },
-                    on_cancel: move |_| delete_id.set(None),
-                    p { "删除后将从本聊天历史中移除。" }
-                }
-
-                Dialog {
-                    title: STATE.with(|s| {
-                        s.character
-                            .as_ref()
-                            .map(|(_, c)| format!("剧本详情: {}", c.name))
-                            .unwrap_or_else(|| "剧本详情".to_string())
-                    }),
-                    open: detail_modal_open(),
-                    on_confirm: move |_| detail_modal_open.set(false),
-                    on_cancel: move |_| detail_modal_open.set(false),
-                    p {
-                        {STATE.with(|s| {
-                            s.character
-                                .as_ref()
-                                .map(|(_, c)| {
-                                    let desc = if c.description.is_empty() {
-                                        "(无简介)".to_string()
-                                    } else {
-                                        c.description.clone()
-                                    };
-                                    let scenario = if c.scenario.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!("\n\n场景: {}", c.scenario)
-                                    };
-                                    format!("{desc}{scenario}")
-                                })
-                                .unwrap_or_else(|| "未选择角色".to_string())
-                        })}
-                    }
-                }
-
-                Dialog {
-                    title: "赞赏作品".to_string(),
-                    open: donate_modal_open(),
-                    on_confirm: move |_| donate_modal_open.set(false),
-                    on_cancel: move |_| donate_modal_open.set(false),
-                    p { "感谢支持创作者。赞赏渠道即将上线。" }
-                }
-
-                if menu_open() {
-                    div {
-                        class: "absolute inset-0 z-40 bg-black/20",
-                        onclick: move |_| menu_open.set(false),
-                    }
-                    div {
-                        class: "absolute right-3 top-14 z-50 flex w-48 flex-col divide-y divide-zinc-8 rounded-2xl border border-zinc-8 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs select-none",
-                        onclick: move |e| e.stop_propagation(),
-                        div { class: "flex flex-col py-1",
-                            button { class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-zinc-300 hover:bg-zinc-800",
-                                "📤 导出记录"
-                            }
-                        }
-                    }
+                },
                 }
             }
         }

@@ -65,7 +65,7 @@ linkage_check:
 severity_overrides:
   PR-03: FAIL
   PR-04: FAIL
-  PR-05: WARN
+  PR-05: INFO   # 缺少 Fixes # 关联：draft 阶段不阻塞，合并前补挂 primary issue（#135 采纳 PR-06 降 WARN 同理）
   PR-06: WARN
   PR-07: FAIL
   PR-08: FAIL

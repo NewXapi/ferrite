@@ -140,7 +140,7 @@ pub fn LorebookPage() -> Element {
                                         onclick: move |_| editing.set(Some(b_edit.clone())),
                                         div { class: "flex items-center justify-between",
                                             span { class: "rounded-md bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 text-[9px] font-bold text-purple-300",
-                                                "📖 LOREBOOK"
+                                                "LOREBOOK"
                                             }
                                             span { class: "text-[10px] text-zinc-500", "{b.updated_at}" }
                                         }
@@ -244,7 +244,7 @@ fn LorebookEditor(
                 button {
                     class: "text-zinc-400 hover:text-white",
                     onclick: move |_| on_close.call(()),
-                    "✕"
+                    "关闭"
                 }
             }
 
