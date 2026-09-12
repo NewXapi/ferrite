@@ -210,7 +210,7 @@ fn e2e_streaming_settles_with_usage() {
         let out = forward::stream::pipe_chunk(&mut ctx, chunk);
         all_events.extend_from_slice(&out.events);
     }
-    let (end, counts) = forward::stream::finish(ctx);
+    let (end, counts, _event) = forward::stream::finish(ctx, 200, None);
     assert_eq!(all_events.len(), 2);
     assert_eq!(
         all_events[0],
@@ -229,7 +229,7 @@ fn e2e_settle_generates_usage_event_with_cost() {
 
     struct FixedPriceTable;
     impl PriceTable for FixedPriceTable {
-        fn lookup(&self, _model: &str) -> Option<ModelPrice> {
+        fn lookup(&self, _model: &str, _group: &str) -> Option<ModelPrice> {
             Some(ModelPrice {
                 input: 15.0,
                 output: 60.0,
@@ -252,7 +252,7 @@ fn e2e_settle_generates_usage_event_with_cost() {
     };
     let pt = FixedPriceTable;
     let event = metering::settle_event(
-        counts, &hold, &pt, "ch1", "u1", "gpt-4o", "gpt-4o", 100, 500, 200, None,
+        counts, "default", 1.0, &hold, &pt, "ch1", "u1", "gpt-4o", "gpt-4o", 100, 500, 200, None,
     );
     assert_eq!(event.prompt_tokens, 100);
     assert_eq!(event.completion_tokens, 50);
@@ -284,7 +284,7 @@ fn e2e_truncated_stream_returns_truncated_end() {
     for chunk in &chunks {
         forward::stream::pipe_chunk(&mut ctx, chunk);
     }
-    let (end, _counts) = forward::stream::finish(ctx);
+    let (end, _counts, _event) = forward::stream::finish(ctx, 200, None);
     assert_eq!(end, gateway_protocol_bridge::sse::SseEnd::Truncated);
 }
 /// build_app 不注入 proxies 时，mock egress 返回 200。
