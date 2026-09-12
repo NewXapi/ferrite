@@ -1,24 +1,53 @@
 //! 模型别名管理页:卡片式网格,对齐 GroupsPage 规范。
+//!
+//! 数据接线(对齐 GroupsPage 模式,本地 signal 不触碰 EntityStore):
+//! - 列表:挂载/reload 时 `list_model_aliases_api` 拉 GET /api/models?size=100,
+//!   只映射 ModelView 的 key(写路径定位 UUID)与 name;价格/倍率字段后端无
+//!   对应列,展示为 0/1.0(见页面说明条)。
+//! - 编辑:`update_model_alias_api` PUT /api/models/{key},请求体只携带 name
+//!   (后端 models 域唯一与别名对应的列)。
+//! - 删除:`delete_model_alias_api` DELETE /api/models/{key}。
+//! - 新建:后端 POST /api/models 的 CreateModelRequest 必填 owner 与 api_key,
+//!   表单没有这两个字段的来源 — 提交时诚实提示,不造数据、不假成功。
 
+use client::ApiClient;
+use contract::api::billing::AliasUpsertRequest;
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
+use crate::api::{delete_model_alias_api, list_model_aliases_api, update_model_alias_api};
 use crate::groups::{Badge, Modal, StatCard};
-use crate::state::{AliasRow, EntityStore};
+use crate::state::AliasRow;
 
-/// 弹窗状态
+/// 别名列表项:后端 ModelView 的 key(UUID) + 页面展示行。
+/// key 不并入 AliasRow — AliasRow 被 entities.rs 结构体字面量构造,
+/// 本页独立持有 key 以定位 PUT/DELETE 路径。
+#[derive(Clone, PartialEq)]
+struct AliasItem {
+    key: String,
+    row: AliasRow,
+}
+
+/// 弹窗状态(Edit 携带后端模型 UUID key)
 #[derive(Clone, PartialEq)]
 enum AliasModalState {
     Closed,
     New,
-    Edit(usize),
+    Edit(String),
 }
 
 /// 别名管理页
 #[component]
 pub fn AliasesPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let aliases = store.aliases;
+    // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
+    let mut rows = use_signal(Vec::<AliasItem>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    // 写操作进行中 / 成功提示
+    let busy = use_signal(|| false);
+    let notice = use_signal(|| None::<String>);
+    // reload 计数:触发一次即重拉列表(写操作后刷新)
+    let mut reload = use_signal(|| 0u32);
 
     let mut search = use_signal(String::new);
     let mut filter_tier = use_signal(|| 0usize);
@@ -30,7 +59,47 @@ pub fn AliasesPage() -> Element {
     let mut f_output = use_signal(|| "0.07".to_string());
     let mut f_mult = use_signal(|| "1.0".to_string());
 
-    let alias_list = aliases.read().clone();
+    // 挂载即拉取真实列表;reload 变化时重拉(对齐 GroupsPage)
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match list_model_aliases_api(&client).await {
+                Ok(list) => {
+                    let mut items: Vec<AliasItem> = list
+                        .into_iter()
+                        .map(|m| AliasItem {
+                            key: m.key,
+                            row: AliasRow {
+                                alias: m.name,
+                                display: String::new(),
+                                // 后端 models 域无价格/倍率列:保持展示 0/1.0
+                                input_per_1k: 0.0,
+                                output_per_1k: 0.0,
+                                multiplier: 1.0,
+                            },
+                        })
+                        .collect();
+                    // 与 EntityStore::hydrate 的 /api/models 映射保持一致:按别名排序
+                    items.sort_by(|a, b| a.row.alias.cmp(&b.row.alias));
+                    rows.set(items);
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
+
+    let alias_list = rows
+        .read()
+        .iter()
+        .map(|it| it.row.clone())
+        .collect::<Vec<_>>();
     let total = alias_list.len();
     let free_count = alias_list.iter().filter(|a| a.multiplier == 0.0).count();
     let standard_count = alias_list
@@ -62,13 +131,14 @@ pub fn AliasesPage() -> Element {
         format!("免费通道 ({free_count})"),
     ];
 
-    let filtered_indices: Vec<usize> = {
+    let filtered: Vec<(usize, AliasItem)> = {
         let q = search().trim().to_lowercase();
         let tier = filter_tier();
-        alias_list
+        rows()
             .iter()
             .enumerate()
-            .filter(|(_, a)| {
+            .filter(|(_, it)| {
+                let a = &it.row;
                 if !q.is_empty()
                     && !a.alias.to_lowercase().contains(&q)
                     && !a.display.to_lowercase().contains(&q)
@@ -82,7 +152,7 @@ pub fn AliasesPage() -> Element {
                     _ => true,
                 }
             })
-            .map(|(i, _)| i)
+            .map(|(i, it)| (i, it.clone()))
             .collect()
     };
 
@@ -95,83 +165,56 @@ pub fn AliasesPage() -> Element {
         modal_state.set(AliasModalState::New);
     };
 
-    let open_edit = move |idx: usize| {
-        if let Some(a) = aliases.read().get(idx) {
-            f_name.set(a.alias.clone());
-            f_display.set(a.display.clone());
-            f_input.set(format!("{}", a.input_per_1k));
-            f_output.set(format!("{}", a.output_per_1k));
-            f_mult.set(format!("{}", a.multiplier));
-            modal_state.set(AliasModalState::Edit(idx));
+    let mut open_edit = move |key: String| {
+        if let Some(it) = rows().iter().find(|it| it.key == key) {
+            f_name.set(it.row.alias.clone());
+            f_display.set(it.row.display.clone());
+            f_input.set(format!("{}", it.row.input_per_1k));
+            f_output.set(format!("{}", it.row.output_per_1k));
+            f_mult.set(format!("{}", it.row.multiplier));
+            modal_state.set(AliasModalState::Edit(key));
         }
     };
 
-    let on_delete = move |idx: usize| {
-        let mut a = aliases;
-        if idx < a.read().len() {
-            a.write().remove(idx);
-        }
+    // 删除:走真实 DELETE,成功后 notice + 重拉列表(对齐 GroupsPage 写路径)
+    let write_delete = move |key: String| {
+        let (mut b, mut n, mut r) = (busy, notice, reload);
+        spawn(async move {
+            b.set(true);
+            n.set(None);
+            let client = ApiClient::shared().clone();
+            match delete_model_alias_api(&client, &key).await {
+                Ok(_) => {
+                    n.set(Some("操作成功".to_string()));
+                    r.set(r() + 1);
+                }
+                Err(e) => n.set(Some(format!("操作失败:{e}"))),
+            }
+            b.set(false);
+        });
     };
 
-    let commit_form = move |_| {
-        let n = f_name.peek().trim().to_string();
-        if n.is_empty() {
-            return;
-        }
-        let d = f_display.peek().trim().to_string();
-        let in_rate = f_input.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0);
-        let out_rate = f_output
-            .peek()
-            .trim()
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            .max(0.0);
-        let m = f_mult.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
-
-        let mut a = aliases;
-        match *modal_state.peek() {
-            AliasModalState::New => {
-                let mut w = a.write();
-                if let Some(pos) = w.iter().position(|item| item.alias == n) {
-                    w[pos] = AliasRow {
-                        alias: n,
-                        display: d,
-                        input_per_1k: in_rate,
-                        output_per_1k: out_rate,
-                        multiplier: m,
-                    };
-                } else {
-                    w.push(AliasRow {
-                        alias: n,
-                        display: d,
-                        input_per_1k: in_rate,
-                        output_per_1k: out_rate,
-                        multiplier: m,
-                    });
-                }
-            }
-            AliasModalState::Edit(idx) => {
-                let mut w = a.write();
-                if idx < w.len() {
-                    w[idx] = AliasRow {
-                        alias: n,
-                        display: d,
-                        input_per_1k: in_rate,
-                        output_per_1k: out_rate,
-                        multiplier: m,
-                    };
-                }
-            }
-            _ => {}
-        }
+    // 弹窗关闭并触发重拉(保存后列表以服务端为准)
+    let close_and_reload = move |_| {
         modal_state.set(AliasModalState::Closed);
+        reload.set(reload() + 1);
     };
 
     rsx! {
             div { class: "flex flex-col gap-6",
-                // 价格字段说明(后端 models 端点暂无计费字段)
+                // 通知条(成功/错误/进行中,对齐 GroupsPage)
+                if let Some(msg) = notice() {
+                    div {
+                        role: "status",
+                        class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                        "{msg}"
+                        if busy() { " ···" }
+                    }
+                }
+
+                // 数据与写路径说明(后端 models 端点暂无计费字段)
                 div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
-                    span { "别名来自真实 /api/models;价格字段后端暂未提供,显示为 0" }
+                    span { "别名来自真实 /api/models;编辑与删除已接后端;新建暂未开放(后端需要 owner/api_key 字段);价格字段后端暂未提供,显示为 0" }
                 }
                 // 1. 统计区
                 section { id: "aliases-sec-stats", class: "scroll-mt-8 space-y-3",
@@ -192,10 +235,18 @@ pub fn AliasesPage() -> Element {
                             h2 { class: "text-sm font-medium text-zinc-300", "筛选与操作" }
                             span { class: "text-xs text-zinc-500", "按倍率与资费规则快速筛选" }
                         }
-                        button {
-                            class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
-                            onclick: open_new,
-                            "✚ 新建别名"
+                        div { class: "flex items-center gap-2",
+                            button {
+                                class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
+                                "data-testid": "refresh-aliases",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "刷新"
+                            }
+                            button {
+                                class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                                onclick: open_new,
+                                "✚ 新建别名"
+                            }
                         }
                     }
 
@@ -221,26 +272,44 @@ pub fn AliasesPage() -> Element {
                     div { class: "flex items-center justify-between",
                         h2 { class: "text-lg font-medium text-zinc-100", "别名列表" }
                         span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                            "{filtered_indices.len()} 个"
+                            if loading() { "加载中…" } else { "{filtered.len()} 个" }
                         }
                     }
 
-                    if filtered_indices.is_empty() {
+                    if let Some(e) = err() {
+                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
+                            p { class: "text-sm text-red-300", "加载别名失败" }
+                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                            button {
+                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "重试"
+                            }
+                        }
+                    } else if loading() {
+                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                            p { class: "text-zinc-400", "正在加载模型别名…" }
+                        }
+                    } else if filtered.is_empty() {
                         div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
                             p { class: "text-zinc-400", "没有匹配的模型别名" }
                         }
                     } else {
-                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for idx in filtered_indices {
+                        div {
+                            class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                            role: "list",
+                            "aria-label": "别名列表",
+                            "data-testid": "aliases-list",
+                            for (idx, it) in filtered {
                                 {
-                                    let a = aliases.read()[idx].clone();
                                     rsx! {
                                         AliasCard {
-                                            key: "{a.alias}",
-                                            alias: a,
+                                            key: "{it.key}",
+                                            alias_key: it.key,
+                                            alias: it.row,
                                             index: idx,
-                                            on_edit: open_edit,
-                                            on_delete: on_delete,
+                                            on_edit: move |k| open_edit(k),
+                                            on_delete: move |k| write_delete(k),
                                         }
                                     }
                                 }
@@ -253,13 +322,18 @@ pub fn AliasesPage() -> Element {
             if matches!(modal_state(), AliasModalState::New | AliasModalState::Edit(_)) {
                 AliasFormModal {
                     editing: matches!(modal_state(), AliasModalState::Edit(_)),
+                    alias_key: match modal_state() {
+                        AliasModalState::Edit(k) => Some(k),
+                        _ => None,
+                    },
                     alias: f_name,
                     display: f_display,
                     input_rate: f_input,
                     output_rate: f_output,
                     multiplier: f_mult,
+                    notice,
                     on_cancel: move |_| modal_state.set(AliasModalState::Closed),
-                    on_submit: commit_form,
+                    on_submit: close_and_reload,
                 }
             }
     }
@@ -268,11 +342,15 @@ pub fn AliasesPage() -> Element {
 /// 别名卡片
 #[component]
 fn AliasCard(
+    alias_key: String,
     alias: AliasRow,
     index: usize,
-    on_edit: EventHandler<usize>,
-    on_delete: EventHandler<usize>,
+    on_edit: EventHandler<String>,
+    on_delete: EventHandler<String>,
 ) -> Element {
+    // 回调各持一份克隆,避免单一 String 被两个闭包争用所有权
+    let edit_key = alias_key.clone();
+    let delete_key = alias_key;
     let initial = alias
         .alias
         .chars()
@@ -373,12 +451,14 @@ fn AliasCard(
             div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    onclick: move |_| on_edit.call(index),
+                    "data-testid": "edit-alias",
+                    onclick: move |_| on_edit.call(edit_key.clone()),
                     "编辑"
                 }
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
-                    onclick: move |_| on_delete.call(index),
+                    "data-testid": "delete-alias",
+                    onclick: move |_| on_delete.call(delete_key.clone()),
                     "删除"
                 }
             }
@@ -390,11 +470,13 @@ fn AliasCard(
 #[component]
 fn AliasFormModal(
     editing: bool,
+    alias_key: Option<String>,
     alias: Signal<String>,
     display: Signal<String>,
     input_rate: Signal<String>,
     output_rate: Signal<String>,
     multiplier: Signal<String>,
+    notice: Signal<Option<String>>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -407,6 +489,50 @@ fn AliasFormModal(
         "保存修改"
     } else {
         "创建别名"
+    };
+
+    let submitting = use_signal(|| false);
+
+    // 工厂式复制,避免把原 signal 移动出闭包(供 rsx 中 submitting() 继续读取)
+    let submitting2 = submitting;
+    let on_submit2 = on_submit;
+    let notice2 = notice;
+    let key2 = alias_key.clone();
+    let do_submit = move |_| {
+        let key = key2.clone();
+        let name = alias.peek().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        let (mut sub, cb, mut note) = (submitting2, on_submit2, notice2);
+        match key {
+            // 编辑:PUT /api/models/{key}。请求体只带 name — 后端 models 域
+            // 与别名页对应的列只有 name,display/价格/倍率无对应列,置空后
+            // 由后端 UpdateModelRequest(全 Option)忽略,不写库。
+            Some(k) => {
+                spawn(async move {
+                    sub.set(true);
+                    let client = ApiClient::shared().clone();
+                    let req = AliasUpsertRequest {
+                        name,
+                        ..Default::default()
+                    };
+                    if let Err(e) = update_model_alias_api(&client, &k, &req).await {
+                        note.set(Some(format!("保存失败:{e}")));
+                    }
+                    sub.set(false);
+                    cb.call(()); // 关闭弹窗并重拉列表(以服务端为准)
+                });
+            }
+            // 新建:后端 CreateModelRequest 必填 owner 与 api_key,表单没有
+            // 这两个字段的来源 — 诚实拒绝,不造数据、不假成功。
+            None => {
+                note.set(Some(
+                    "新建未执行:后端创建模型需要 owner 与 api_key 字段,当前表单未提供".to_string(),
+                ));
+                cb.call(());
+            }
+        }
     };
 
     rsx! {
@@ -471,8 +597,9 @@ fn AliasFormModal(
                     "取消"
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                    onclick: move |_| on_submit.call(()),
+                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    disabled: submitting(),
+                    onclick: do_submit,
                     "{submit_label}"
                 }
             }
