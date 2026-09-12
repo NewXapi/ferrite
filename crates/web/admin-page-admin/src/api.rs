@@ -84,13 +84,48 @@ pub async fn create_channel_api(
     client.post("/api/channel", req).await
 }
 
-/// 真实调用: PUT /api/channel/{key} (更新)
+/// 渠道编辑（PUT）的最小 diff 请求体 —— 对齐后端私有结构 `UpdateChannelRequest`
+/// （channels.rs，字段全 `Option`，缺省 = 不改动）。
+///
+/// 设计依据（后端 `ChannelService::update` 实读）：
+/// - 多数列走 `COALESCE($n, col)`：字段缺席 = 保持现值。弹窗不管理的
+///   `models`/`priority`/`weight`/`status` 一律不发——历史上用裸
+///   [`ChannelUpsertRequest`] 全量 PUT 时这些列恒带 `[]`/`0`/`null`，
+///   保存一次就把它们静默清零。
+/// - `keys`：缺席 = 后端保持现有密钥（svc.update 的 `None` 分支）。仅在用户
+///   重新输入明文时携带；恒发 `[]` 会被后端 validate 以
+///   "at least one key required" 拒绝 → 编辑保存必然 400（历史事故，
+///   `tests/channel_update_body.rs` 钉死）。掩码值绝不回传。
+/// - `test_model`：SQL 直绑、**无** COALESCE，缺席即把列清成 NULL——所以
+///   必须恒带现值（None 序列化为显式 `null`，与「现值本就是 NULL」等价）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateChannelBody {
+    /// 渠道名称（弹窗编辑项，恒发）。
+    pub name: String,
+    /// 渠道类型（弹窗 select 恒有值，恒发）。
+    pub channel_type: String,
+    /// API 基址（弹窗编辑项，恒发）。
+    pub base_url: String,
+    /// 绑定分组（弹窗编辑项，恒发）。
+    pub groups: Vec<String>,
+    /// 备注（弹窗编辑项，恒发；空串 = 显式清空备注）。
+    pub remark: String,
+    /// 测速模型——恒发（该列无 COALESCE，缺席即清 NULL）。
+    pub test_model: Option<String>,
+    /// 明文密钥列表——仅用户重输时携带；None = 字段缺席 = 后端保持现有密钥。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<Vec<String>>,
+}
+
+/// 真实调用: PUT /api/channel/{key} (更新) — 最小 diff 体，语义见
+/// [`UpdateChannelBody`]。
 pub async fn update_channel_api(
     client: &ApiClient,
     key: &str,
-    req: &ChannelUpsertRequest,
+    body: &UpdateChannelBody,
 ) -> ApiResult<ChannelDto> {
-    client.put(&format!("/api/channel/{key}"), req).await
+    client.put(&format!("/api/channel/{key}"), body).await
 }
 
 /// 真实调用: POST /api/channel/{key}/status (启停切换)
