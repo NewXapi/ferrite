@@ -9,6 +9,7 @@
 //! - auth_users (status=1) → UserRecord + gate::snapshot::UserSnapshot
 //! - api_groups (status=1) → gate::snapshot::GroupSnapshot
 //!   （model_whitelist JSONB → 组级模型白名单；ratio → 分组倍率）
+//! - model_prices → 计费价格行（billing::PgPriceTable 的数据源）
 //!
 //! # 桥接形状
 //! 所有输出类型均来自 `contract::records::*` 或 gate 快照类型。
@@ -21,14 +22,16 @@
 //!     pub user_snapshot: gateway_gate::snapshot::SharedUserSnapshot,
 //!     pub quota_snapshot: gateway_gate::snapshot::SharedQuota,
 //!     pub group_snapshot: gateway_gate::snapshot::SharedGroupSnapshot,
+//!     pub price_rows: SharedPriceRows,
+//!     pub name_directory: billing::SharedNameDirectory,
 //! }
 //! ```
 //!
 //! # reload 分层
 //! 「加载纯值」（[`load_snapshot_data`]）与「包装 / store」（[`load_snapshots`] /
 //! [`reload_snapshots`]）拆成两层：boot 路径新建 `Shared*` 实例；reload 路径向
-//! **既有同一批** `Shared*` 实例 store 新值（usage 中间件与 gate 持有的正是这些
-//! 实例，store 后自动看到新数据），Dispatcher 侧走 `Dispatcher::set_snapshot`。
+//! **既有同一批** `Shared*` 实例 store 新值（gate、计费 sink 与 reload 路由持有
+//! 的正是这些实例，store 后自动看到新数据），Dispatcher 侧走 `Dispatcher::set_snapshot`。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -48,6 +51,24 @@ use gateway_gate::snapshot::{
 use dispatch::Dispatcher;
 use dispatch::Snapshot as DispatchSnapshot;
 
+use crate::billing::{NameDirectory, SharedNameDirectory};
+
+/// 模型单价行集合的共享句柄（`Arc<ArcSwap<T>>`）：boot 新建、reload 原地
+/// store 换新。行形状 = `(model, input, output, cache)`，单位 $/M tokens。
+pub type SharedPriceRows = Arc<arc_swap::ArcSwap<Vec<(String, f64, f64, f64)>>>;
+
+/// 读模型单价表（迁移 0003）：每行 `(model, input, output, cache)`，$/M tokens。
+///
+/// 计费权威裁决见 [`crate::billing`] 模块文档：这是 pipeline 结算价格表的
+/// 唯一数据源，未知模型（表里没有的行）→ 免费落账。boot 与 reload 共用。
+pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64, f64, f64)>> {
+    let rows: Vec<(String, f64, f64, f64)> =
+        sqlx::query_as("SELECT model, input, output, cache FROM model_prices")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows)
+}
+
 /// 从 admin-catalog 表加载快照（boot 路径：新建 `Shared*` 实例）。
 pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
     let input = load_snapshot_data(pool).await?;
@@ -60,6 +81,8 @@ pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
         user_snapshot: shared(input.user_snapshot),
         quota_snapshot: shared(quota_snapshot),
         group_snapshot: shared(input.group_snapshot),
+        price_rows: shared(input.price_rows),
+        name_directory: shared(input.name_directory),
     })
 }
 
@@ -80,6 +103,11 @@ pub struct ReloadInput {
     /// 本次载入的启用分组数。`GroupSnapshot` 无 len 访问器（内部 HashMap 私有），
     /// 计数只能在加载侧（遍历 PG 行时）一并算出，供 [`ReloadCounts::groups`] 上报。
     pub group_count: usize,
+    /// 模型单价行（`(model, input, output, cache)`，$/M tokens）——
+    /// 计费价格表数据源，见 [`load_model_prices`]。
+    pub price_rows: Vec<(String, f64, f64, f64)>,
+    /// 用户/令牌展示名目录（usage_logs 冗余展示字段用）。
+    pub name_directory: NameDirectory,
 }
 
 /// reload 结果计数：`json!` 序列化后作为响应 `data` 字段（snake_case 键即字段名）。
@@ -106,6 +134,11 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
     // 4. 加载分组数据（纯值 GroupSnapshot：组级模型白名单 + 分组倍率）
     let (group_snapshot, group_count) = load_groups(pool).await?;
 
+    // 5. 加载计费数据：模型单价行 + 用户/令牌展示名目录（token/user records
+    //    已在手，目录纯构造不查库）
+    let price_rows = load_model_prices(pool).await?;
+    let name_directory = NameDirectory::new(&token_records, &user_records);
+
     Ok(ReloadInput {
         channels,
         route_units,
@@ -115,6 +148,8 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
         user_snapshot,
         group_snapshot,
         group_count,
+        price_rows,
+        name_directory,
     })
 }
 
@@ -137,16 +172,16 @@ fn build_dispatch_and_quota(
     (dispatch_snapshot, quota_snapshot)
 }
 
-/// 把纯值包成 `Arc<ArcSwap<T>>`（即 gate/usage 持有的 `Shared*` 形状）。
+/// 把纯值包成 `Arc<ArcSwap<T>>`（即 gate / 计费组件持有的 `Shared*` 形状）。
 fn shared<T>(value: T) -> Arc<arc_swap::ArcSwap<T>> {
     Arc::new(arc_swap::ArcSwap::from_pointee(value))
 }
 
 /// POST /api/gateway/reload 的热更实现：加载最新管理表数据并热更进运行时。
 ///
-/// `target` 必须是 boot 时喂给 gate / usage 中间件的**同一批 `Shared*` 实例**：
+/// `target` 必须是 boot 时喂给 gate / 计费 sink 的**同一批 `Shared*` 实例**：
 /// 它们是 `Arc<ArcSwap<T>>`，store 新值后所有持有者（AuthGate / StateGate /
-/// QuotaGate / usage 中间件）自动看到新数据，无需重建任何组件。
+/// QuotaGate / 结算 sink）自动看到新数据，无需重建任何组件。
 /// Dispatcher 侧走 [`Dispatcher::set_snapshot`] 原地换快照。
 ///
 /// # 非原子性
@@ -192,6 +227,12 @@ pub fn apply_snapshot_reload(
     target.user_snapshot.store(Arc::new(input.user_snapshot));
     target.quota_snapshot.store(Arc::new(quota_snapshot));
     target.group_snapshot.store(Arc::new(input.group_snapshot));
+    // 计费数据随 reload 换新：价格行 + 展示名目录。注意 ForwardStage 手里的
+    // PgPriceTable 是 boot 时 clone 的 HashMap，不随本 store 换（ArcSwap 化
+    // 留待后续，PR Suspect 已注明）；name_directory 是 submit 时现读的共享
+    // 句柄，store 后下次结算即生效。
+    target.price_rows.store(Arc::new(input.price_rows));
+    target.name_directory.store(Arc::new(input.name_directory));
     dispatcher.set_snapshot(Arc::new(dispatch_snapshot));
     counts
 }
@@ -597,10 +638,13 @@ fn build_quota_snapshot(token_records: &[TokenRecord]) -> QuotaSnapshot {
 /// 运行时快照集合：boot 产出、reload 原地热更。
 ///
 /// `token/user/quota/group_snapshot` 是 `Arc<ArcSwap<T>>`：reload 向**同一实例** store
-/// 新值，gate 与 usage 中间件等所有持有者自动看到新数据。
+/// 新值，gate 与计费 sink 等所有持有者自动看到新数据。
 /// `dispatch` 只是喂给 `Dispatcher::new` 的 boot 副本，**boot 后即陈旧**——
 /// reload 走 `Dispatcher::set_snapshot` 原地换新，不回写本字段；运行期以
 /// Dispatcher 内部快照为准（详见 [`reload_snapshots`] 文档）。
+/// `price_rows` / `name_directory` 是计费快照（`Arc<ArcSwap<T>>`，reload 换新）：
+/// 注意 boot 时消费它们的 [`crate::billing::PgPriceTable`] / channel_names 是
+/// clone 值，价格表不随 reload 换（Suspect 见 billing.rs 模块文档）。
 #[derive(Debug, Clone)]
 pub struct Snapshots {
     pub dispatch: DispatchSnapshot,
@@ -608,4 +652,8 @@ pub struct Snapshots {
     pub user_snapshot: SharedUserSnapshot,
     pub quota_snapshot: SharedQuota,
     pub group_snapshot: SharedGroupSnapshot,
+    /// 模型单价行（计费价格表数据源，reload 换新）。
+    pub price_rows: SharedPriceRows,
+    /// 用户/令牌展示名目录（reload 换新；sink submit 时现读）。
+    pub name_directory: SharedNameDirectory,
 }

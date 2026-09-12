@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use api::billing::NameDirectory;
 use api::snapshot::{ReloadInput, Snapshots, apply_snapshot_reload};
 use arc_swap::ArcSwap;
 use chrono::Utc;
@@ -111,6 +112,9 @@ fn empty_target() -> (Snapshots, Arc<Dispatcher>) {
         user_snapshot: Arc::new(ArcSwap::from_pointee(UserSnapshot::default())),
         quota_snapshot: Arc::new(ArcSwap::from_pointee(QuotaSnapshot::default())),
         group_snapshot: Arc::new(ArcSwap::from_pointee(GroupSnapshot::default())),
+        // 计费快照：boot 等价的空价表 / 空名单，reload 必须能 store 换新
+        price_rows: Arc::new(ArcSwap::from_pointee(Vec::new())),
+        name_directory: Arc::new(ArcSwap::from_pointee(NameDirectory::default())),
     };
     // boot 时 Dispatcher 可能拿 None 快照（SnapshotNotReady）；reload 必须让它就绪
     let dispatcher = Arc::new(Dispatcher::new(None, Arc::new(MemoryHealthTable::new())));
@@ -156,12 +160,15 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
         ReloadInput {
             channels,
             route_units: units,
-            token_records: tokens,
+            token_records: tokens.clone(),
             token_snapshot,
-            user_records: users,
+            user_records: users.clone(),
             user_snapshot,
             group_snapshot,
             group_count: 1,
+            // 计费快照输入：与真实链路同构（价格一行、名单由 token/user 记录构建）
+            price_rows: vec![("gpt-4o".into(), 15.0, 60.0, 0.0)],
+            name_directory: NameDirectory::new(&tokens, &users),
         },
     );
 
@@ -196,6 +203,28 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
         "quota 应等于 quota - used_quota"
     );
 
+    // 2b. 计费快照换新生效：价格行与展示名目录 store 后立即可读（价格表
+    //     ArcSwap 化前的 Suspect 只涉及 ForwardStage 手里的 clone，不涉及此处）
+    assert_eq!(
+        target.price_rows.load().len(),
+        1,
+        "reload 后价格行应整表替换"
+    );
+    assert_eq!(
+        target
+            .price_rows
+            .load()
+            .first()
+            .map(|(m, _, _, _)| m.as_str()),
+        Some("gpt-4o")
+    );
+    assert_eq!(
+        target.name_directory.load().username("u-1"),
+        "alice",
+        "reload 后展示名目录应可查"
+    );
+    assert_eq!(target.name_directory.load().token_name("1002"), "tk");
+
     // 3. Dispatcher 换上新快照：boot 时是 None（SnapshotNotReady），reload 后能选中
     let cand = dispatcher
         .select("default", "gpt-4o-mini", &[])
@@ -227,6 +256,8 @@ fn reload_replaces_snapshot_wholesale() {
             user_snapshot: UserSnapshot::default(),
             group_snapshot: GroupSnapshot::default(),
             group_count: 0,
+            price_rows: Vec::new(),
+            name_directory: NameDirectory::default(),
         },
     );
     assert_eq!(counts_a.tokens, 1);
@@ -253,6 +284,8 @@ fn reload_replaces_snapshot_wholesale() {
             user_snapshot: UserSnapshot::default(),
             group_snapshot: GroupSnapshot::default(),
             group_count: 0,
+            price_rows: Vec::new(),
+            name_directory: NameDirectory::default(),
         },
     );
     assert_eq!(counts_b.tokens, 1, "tokens 计数应是新输入规模");
