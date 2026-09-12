@@ -218,6 +218,11 @@ fn finish_returns_settled_event_when_priced() {
     assert_eq!(ev.channel_key, "ch1");
     assert_eq!(ev.status_code, 200);
     assert_eq!(ev.error, None);
+    // 流式路径结算：is_stream 必须为 true（finish 只在 SSE 链上调用）。
+    assert!(
+        ev.is_stream,
+        "stream::finish 结算的事件必须标记 is_stream=true"
+    );
 }
 
 /// 未挂 price_table：不计费，事件为 None（行为与未接计费时代一致）。
@@ -237,6 +242,7 @@ fn finish_error_path_settles_accumulated_counts_with_500() {
     assert_eq!(ev.status_code, 500);
     assert_eq!(ev.error.as_deref(), Some("upstream reset"));
     assert_eq!(ev.cost, 225);
+    assert!(ev.is_stream, "流中途断流仍是流式路径, is_stream=true");
 }
 
 // ---------- ForwardStage 端到端接线（非流式） ----------
@@ -271,6 +277,8 @@ async fn commit_forwarded_settles_non_streamed_into_sink() {
     assert_eq!(ev.token_key, "tok-1");
     assert_eq!(ev.channel_key, "ch-c1");
     assert_eq!(ev.route_unit_key, "c1");
+    // 非流式提交点结算：请求体无 "stream" 字段 → is_stream=false。
+    assert!(!ev.is_stream, "非流式成功结算的事件 is_stream 应为 false");
     // group 来自 ctx.token.group, 透传进 PriceTable::lookup
     assert_eq!(table.looked(), vec![("m".to_string(), "g".to_string())]);
 

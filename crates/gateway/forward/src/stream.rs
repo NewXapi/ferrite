@@ -92,6 +92,8 @@ pub fn finish(
         };
         metering::settle_event(
             counts,
+            // 走到 finish 的必然是流式路径（SSE 扫描链结算）。
+            true,
             &ctx.group,
             ctx.group_ratio,
             &hold,

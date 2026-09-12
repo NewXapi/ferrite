@@ -281,9 +281,9 @@ impl SettleSink for PgSettleSink {
             completion_tokens: i64::try_from(event.completion_tokens).unwrap_or(i64::MAX),
             cost: event.cost,
             use_time_ms: i32::try_from(event.duration_ms).unwrap_or(i32::MAX),
-            // UsageEventRecord 无流式标记字段；MVP 统一落 false——
+            // is_stream 透传事件记录的流式意图（UsageEventRecord 自带该字段）；
             // usage_logs.is_stream 只是展示维度，计费口径不依赖它。
-            is_stream: false,
+            is_stream: event.is_stream,
             token_key: event.token_key.clone(),
         };
         let pool = self.pool.clone();

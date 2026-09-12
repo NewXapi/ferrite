@@ -20,6 +20,9 @@ pub struct UsageEventRecord {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub cached_tokens: u64,
+    /// 请求意图是否为流式（SSE）。落库行据此区分流式 / 非流式来源，
+    /// 失败观测行则记录请求当时的流式意图。
+    pub is_stream: bool,
     /// 首 token 延迟 (流式)。
     pub first_token_ms: u32,
     pub duration_ms: u32,
