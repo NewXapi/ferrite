@@ -102,6 +102,7 @@ crates/web/<prefix-feature>/
 - **禁止宽匹配 `pkill -f cargo` / `pkill -f rustc` 清进程**：多会话并行时这些是别人正在跑的构建（cpulimit 节流下进程任意瞬间都是 T 态，**T 态 ≠ 死进程**），误杀会让对方会话卡在 cargo 全局锁上、构建假死。清理前必须 `readlink /proc/<pid>/cwd` 确认归属；只处理无主残留。
 - **共享 dev 后端（127.0.0.1:3211）生命周期只走 `scripts/dev-backend.sh`**（start / update / stop / status，或 `just dev-backend <args>`）：发现 404/502 先 `just dev-check` 或 `dev-backend.sh status` 判断死活，重启对前端透明（登录态不丢）。
 - **「用户侧报错但 curl / 无缓存浏览器实测全 200」→ 先怀疑浏览器 HTTP 缓存重放**：IAB 有独立缓存，代理误配期毒化的错误响应会被本地重放且**不出网**（dx 代理日志 grep 该路径查无请求 = 实锤）。诊断顺序：dx 日志 → IAB 内直接导航该 API URL 看渲染。服务端无法驱逐已毒化条目（只能用户清缓存/重启 webview）；后端 `/api`、`/tavern` 已加 `Cache-Control: no-store` 防复发。
+- **dev 起停/种子/体检一律走 `justfile` 配方**，命令清单与使用场景见 `justfile` 顶部「使用场景速查」、疑难处置见其末尾「疑难问题 → 推荐处理」块：`just dev-check`（环境体检）、`just dev-backend start|update|stop|status`（共享后端）、`just db-seed` / `just db-reset`（dev 种子）、`just verify`（fmt-check + clippy + check 全套）。开工前先 `just dev-check` 一条命令自检环境，别再手工拼这些命令。
 
 ### 测试分层与 CI 驱动原则
 
