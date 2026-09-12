@@ -79,7 +79,9 @@ enum ColSide {
 /// `hover:bg-zinc-700` 是悬停显形的等价类：预生成的 tailwind.out.css 里没有
 /// `hover:bg-border`/`hover:bg-zinc-500/40`，zinc-700 实心灰在深底上最接近
 /// 规格描述的半透明显形效果。
-const REVEAL_BAR: &str = "bg-transparent transition-colors hover:bg-zinc-700";
+/// 分割线视觉：1px 边框延续色（与面板 border-zinc-800/60 同值，读起来就是
+/// 面板边框的延续），悬停变亮提示可拖。命中区 5px 由外层负 margin 重叠邻居实现。
+const LINE_VISUAL: &str = "bg-zinc-800/60 transition-colors hover:bg-zinc-500";
 
 /// 把 client 坐标映射为「(所在区, 区内序号)」：
 /// - x 落在左列/右列的像素宽度内，再按根容器高度中点上下二分；
@@ -572,9 +574,9 @@ pub fn DockFrame(
 
 /// 竖向列分割线 / 折叠态恢复条（左右分区的调宽/折叠条）。
 ///
-/// tolaria 式透明悬停显形：`bg-transparent` 平时几乎不可见，悬停整条亮起
-/// （`hover:bg-zinc-700`，预生成 css 中 `hover:bg-border` 不存在，取等价类）。
-/// 展开态可拖动调宽、单击折叠；折叠态只剩这条细条，单击恢复默认宽度。
+/// 竖向列分割线：视觉 1px 边框延续线（读作面板边框本身），悬停变亮；
+/// 命中区 5px（负 margin 重叠邻居）。展开态可拖动调宽、单击折叠；
+/// 折叠态这条线仍在（边框不消失），单击恢复默认宽度。
 #[component]
 fn VColLine(
     /// 所属侧。
@@ -586,7 +588,8 @@ fn VColLine(
 ) -> Element {
     rsx! {
         div {
-            class: format!("h-full w-1.5 shrink-0 cursor-col-resize {REVEAL_BAR}"),
+            class: "relative z-10 h-full w-1 shrink-0 cursor-col-resize",
+            style: "margin-left: -2px; margin-right: -2px;",
             role: "separator",
             aria_label: if side == ColSide::Left {
                 if collapsed { "展开左列" } else { "折叠或拖宽左列" }
@@ -598,11 +601,12 @@ fn VColLine(
             "data-testid": if side == ColSide::Left { "col-split-left" } else { "col-split-right" },
             title: if collapsed { "单击展开" } else { "拖动调宽；单击折叠" },
             onmousedown: move |e: MouseEvent| on_mousedown.call(e),
+            div { class: format!("h-full w-px {LINE_VISUAL}") }
         }
     }
 }
 
-/// 水平分割线（上下分区的 row-resize 拖动条），同样透明悬停显形。
+/// 水平分割线（上下分区 row-resize），视觉 1px 边框延续线 + 5px 命中区。
 #[component]
 fn SplitLine(
     /// 所属侧。
@@ -612,7 +616,8 @@ fn SplitLine(
 ) -> Element {
     rsx! {
         div {
-            class: format!("h-1 w-full shrink-0 cursor-row-resize {REVEAL_BAR}"),
+            class: "relative z-10 h-1 w-full shrink-0 cursor-row-resize",
+            style: "margin-top: -2px; margin-bottom: -2px;",
             role: "separator",
             aria_label: if side == SplitSide::Left {
                 "左列上下分割线"
@@ -625,6 +630,7 @@ fn SplitLine(
                 "split-right"
             },
             onmousedown: move |e: MouseEvent| on_mousedown.call(e),
+            div { class: format!("h-px w-full {LINE_VISUAL}") },
         }
     }
 }
