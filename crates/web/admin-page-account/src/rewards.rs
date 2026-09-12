@@ -58,7 +58,9 @@ pub fn RewardsPanel() -> Element {
                 // 用真实入账值提示; 缺字段时降级为通用文案, 不假造数值。
                 Ok(v) => {
                     let msg = match api::topup_credited_quota(&v) {
-                        Some(q) => format!("充值成功,已入账 {} 额度(约 {})", fmt_num(q), fmt_quota(q)),
+                        Some(q) => {
+                            format!("充值成功,已入账 {} 额度(约 {})", fmt_num(q), fmt_quota(q))
+                        }
                         None => "充值成功,兑换码已核销".into(),
                     };
                     ok.set(Some(msg));

@@ -197,10 +197,7 @@ pub async fn update_settings_api(
 /// 请求体 [`UserTopupRequest`] 与后端本地 `TopupRequest { key }` 逐字对齐;
 /// 成功响应为裸 JSON `{"quota": <入账额度, 内部单位>, "success": true}`,
 /// 用 [`topup_credited_quota`] 提取入账值展示。
-pub async fn topup_api(
-    client: &ApiClient,
-    req: &UserTopupRequest,
-) -> ApiResult<serde_json::Value> {
+pub async fn topup_api(client: &ApiClient, req: &UserTopupRequest) -> ApiResult<serde_json::Value> {
     client.post("/api/user/topup", req).await
 }
 

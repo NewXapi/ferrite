@@ -94,7 +94,10 @@ fn session_dto_wire_fields_are_camel_case_for_revoke_flow() {
 
     // 吊销路径由 dto.sid 拼出, 与后端路由 /self/sessions/{sid} 对齐
     let path = format!("/api/user/self/sessions/{}", dto.sid);
-    assert_eq!(path, "/api/user/self/sessions/3f2b8c1e-0000-4000-8000-000000000001");
+    assert_eq!(
+        path,
+        "/api/user/self/sessions/3f2b8c1e-0000-4000-8000-000000000001"
+    );
 }
 
 #[test]
