@@ -211,6 +211,7 @@ impl ForwardStage {
                 code: contract::error::code::UPSTREAM_ERROR,
                 status: 502,
                 retryable: true,
+                channel_scoped: false,
                 message: "lease produced neither reqwest client nor adapter".into(),
             });
         };
@@ -344,13 +345,18 @@ impl ForwardStage {
                         }
                         Err(e) => {
                             let retryable = e.retryable;
+                            let switchable = e.channel_scoped;
                             // 每次失败尝试各落一条零成本观测事件：预算耗尽 /
                             // Fatal 终止时，排障侧也要有"请求发生过"的痕迹。
-                            // 用 task 持有的候选克隆, 避免闭包入参引用的生命周期。
+                            // 必须在 e 移入 error_slot 之前调用。
                             self.submit_failed(ctx_ref, &task.candidate, &e, stream);
                             *lock(&eslot) = Some(e);
                             if retryable {
                                 AttemptOutcome::Retryable(FailureClass::Retryable)
+                            } else if switchable {
+                                // 渠道相关 4xx (P1-B 降层): 健康载荷走 Fatal ——
+                                // health::classify(Err(Fatal)) 落 Neutral, 不改分不记 streak。
+                                AttemptOutcome::FatalButSwitchable(FailureClass::Fatal)
                             } else {
                                 AttemptOutcome::Fatal(FailureClass::Fatal)
                             }
@@ -370,9 +376,10 @@ impl ForwardStage {
                         self.commit_forwarded(ctx, f, &attempt.candidate, stream, &commit_body)
                             .await
                     }
-                    // 理论上只有 Fatal 会走到这里: 循环以客户端错误终止, 没有
-                    // 成功响应可提交, 用暂存的 NormalizedError 透传上游状态码。
-                    (None, AttemptOutcome::Fatal(_)) => {
+                    // Fatal (请求相关问题) 与 FatalButSwitchable (最后一个候选,
+                    // 已无可换渠道——retry 循环把它作为终态带回) 都透传暂存的
+                    // NormalizedError 上游状态码, 没有成功响应可提交。
+                    (None, AttemptOutcome::Fatal(_) | AttemptOutcome::FatalButSwitchable(_)) => {
                         let e = lock(&error_slot).take().ok_or_else(|| {
                             StageError::Internal(anyhow::anyhow!("forward produced no result"))
                         })?;

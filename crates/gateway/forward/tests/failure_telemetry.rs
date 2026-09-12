@@ -134,6 +134,8 @@ impl Egress for ScriptedEgress {
             code: contract::error::code::UPSTREAM_ERROR,
             status,
             retryable,
+            // 4xx 观测用例保持"不可切换渠道"语义（retryable 用例此字段无意义）
+            channel_scoped: false,
             message: format!("upstream {status}"),
         };
         Box::pin(async move { Err(err) })

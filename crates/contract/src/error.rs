@@ -83,6 +83,11 @@ pub struct NormalizedError {
     pub status: u16,
     /// dispatch 状态机据此决定是否换候选重试。
     pub retryable: bool,
+    /// 失败是否“渠道相关”(P1-B 降层):401/403/404 换渠道可能成立 → true;
+    /// 请求相关 4xx (400/413/422) 换谁都失败 → false。
+    /// 换候选只由 `retryable` 决定;本字段仅让不可重试的 4xx 降层到下一候选,
+    /// 健康按 Neutral 记账 (dispatch::failure_scope 为分类口径)。
+    pub channel_scoped: bool,
     /// 人类可读信息 (已掩码, 禁止包含上游 key/内部地址)。
     pub message: String,
 }
@@ -105,6 +110,9 @@ impl NormalizedError {
             status: http_status,
             retryable,
             message,
+            // 与 dispatch::failure_scope::classify_channel_scope 同一张表
+            // (contract 是最底层,不反向依赖,故就地 matches!)。
+            channel_scoped: !retryable && matches!(status, 401 | 403 | 404),
         }
     }
 }

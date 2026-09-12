@@ -138,6 +138,7 @@ pub async fn forward_once(
                     code: contract::error::code::UPSTREAM_ERROR,
                     status: 502,
                     retryable: true,
+                    channel_scoped: false,
                     message: format!("read upstream body: {e}"),
                 });
             }
@@ -173,6 +174,7 @@ fn protocol_bridge_error(
         code: contract::error::code::UPSTREAM_ERROR,
         status,
         retryable,
+        channel_scoped: false,
         message: e.to_string(),
     }
 }
