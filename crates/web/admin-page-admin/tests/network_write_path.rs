@@ -1,12 +1,13 @@
-//! network.rs 写路径的纯函数测试:请求构造(以服务端 DTO 为基底、只覆盖
-//! 抽屉里编辑过的字段、掩码密钥不回传)与 API DTO → EntityStore 行的映射。
+//! network.rs 写路径的纯函数测试:请求构造(后端不可更新的列只读化/
+//! 最小 diff、未改动的 Option 列省略、掩码密钥不回传、items 信封解码)
+//! 与 API DTO → EntityStore 行的映射。
 //! 这些项以 `#[doc(hidden)] pub` 暴露,仅为满足"测试统一放 tests/"的
 //! 项目约定;非公共 API,勿在 crate 之外使用。
 //!
 //! 纯函数不触 Signal,可在裸测试环境直接构造 DTO(均有 Default)。
 
 use admin_page_admin::network::{
-    channel_row_from_dto, channel_upsert_for_import, channel_upsert_from_dto, group_row_from_dto,
+    channel_row_from_dto, channel_update_body, channel_upsert_for_import, group_row_from_dto,
     group_upsert_from_dto, models_json_to_names, parse_key_lines,
 };
 use contract::api::admin::{ChannelDto, GroupDto};
@@ -76,14 +77,15 @@ fn models_json_to_names_handles_strings_and_alias_objects() {
 
 // ---------- 分组更新请求 ----------
 
-/// 更新请求以服务端 DTO 为基底:名称/备注被覆盖,倍率与模型白名单
-/// 必须原样保留——否则一次分组改名会顺手把白名单清空。
+/// 分组名后端**无更新路径**(PUT /api/group/{key} 的 UPDATE 只含
+/// ratio/model_whitelist/remark/status):请求体的 name 必须固定取服务端
+/// 现值,抽屉里生效的编辑只有展示备注;倍率与白名单原样保留,不得置空。
 #[test]
-fn group_upsert_from_dto_overrides_name_remark_keeps_server_fields() {
+fn group_upsert_from_dto_locks_name_and_keeps_server_fields() {
     let dto = base_group_dto();
-    let req = group_upsert_from_dto(&dto, "  vip-pro  ", "新展示名");
-    assert_eq!(req.name, "vip-pro");
-    assert_eq!(req.remark, "新展示名");
+    let req = group_upsert_from_dto(&dto, "  新展示名  ");
+    assert_eq!(req.name, "vip", "分组名不可编辑,请求体固定携带服务端现名");
+    assert_eq!(req.remark, "新展示名", "展示备注 trim 后覆盖");
     assert_eq!(req.ratio, 0.8, "倍率抽屉不可编辑,必须保留服务端现值");
     assert_eq!(
         req.model_whitelist,
@@ -92,43 +94,46 @@ fn group_upsert_from_dto_overrides_name_remark_keeps_server_fields() {
     );
 }
 
-// ---------- 渠道更新请求 ----------
+// ---------- 渠道更新请求体 ----------
 
-/// 渠道更新请求覆盖名称/URL/密钥;调度模型、分组、权重、测速模型、
-/// 备注等服务端现值原样保留(抽屉里不可编辑)。
+/// 最小 diff 请求体:只带 name/baseUrl/testModel;密钥留空时**整体省略
+/// `keys` 字段**(服务端 Option 列缺席 = 保持不变)。裸契约发 `[]` 会被
+/// 解成 Some([]) 并被 validate 以 "at least one key required" 拒绝,
+/// 导致不改密钥就无法保存名称/URL——此测试钉死该形状。
 #[test]
-fn channel_upsert_from_dto_overrides_edited_fields_keeps_server_fields() {
+fn channel_update_body_omits_keys_field_when_unchanged() {
     let dto = base_channel_dto();
-    let req = channel_upsert_from_dto(&dto, "  新名字  ", "https://mirror.example/v1", "");
-    assert_eq!(req.name, "新名字");
-    assert_eq!(req.base_url, "https://mirror.example/v1");
-    assert_eq!(req.channel_type, "openai");
-    assert_eq!(req.models, dto.models, "调度模型不得被更新请求清掉");
-    assert_eq!(req.groups, vec!["default".to_string(), "vip".to_string()]);
-    assert_eq!(req.priority, 3);
-    assert_eq!(req.weight, 5);
-    assert_eq!(req.test_model, Some("gpt-4o".into()));
-    assert_eq!(req.remark, "官方直连");
-}
-
-/// 密钥安全:只携带用户本次输入的明文 key 行;留空 = 空 vec(后端
-/// 约定不变),绝不把列表响应里的掩码值(dto.keys)回传给服务端。
-#[test]
-fn channel_upsert_from_dto_never_echoes_masked_keys() {
-    let dto = base_channel_dto();
-    // 掩码值进 → 不出:请求 keys 与 dto.keys 无交集
-    let req = channel_upsert_from_dto(&dto, "n", "u", "");
-    assert!(req.keys.is_empty(), "留空 = 不改密钥,不得携带任何值");
-    let req = channel_upsert_from_dto(&dto, "n", "u", "sk-new-1\n sk-new-2 \n");
-    assert_eq!(
-        req.keys,
-        vec!["sk-new-1".to_string(), "sk-new-2".to_string()],
-        "只携带用户输入的明文 key"
+    let body = channel_update_body(&dto, "  新名字  ", " https://mirror.example/v1 ", "");
+    assert_eq!(body["name"], json!("新名字"), "name 可更新且 trim");
+    assert_eq!(body["baseUrl"], json!("https://mirror.example/v1"));
+    assert!(
+        body.get("keys").is_none(),
+        "未输入密钥时必须整体省略 keys 字段"
     );
     assert!(
-        !req.keys.iter().any(|k| k.contains('*')),
-        "掩码值绝不能被回传"
+        body.get("models").is_none(),
+        "其余 Option 列省略 = COALESCE 保持现值"
     );
+    assert!(body.get("groups").is_none());
+    // test_model 列后端 UPDATE 没有 COALESCE,省略 = 清 NULL,必须回传现值
+    assert_eq!(body["testModel"], json!("gpt-4o"));
+}
+
+/// 密钥安全与 testModel 空值往返:只携带用户输入的明文行,绝不回传
+/// 掩码值;dto.test_model 为 None 时显式携带 null(与后端 NULL 现状一致)。
+#[test]
+fn channel_update_body_carries_typed_keys_and_explicit_null_test_model() {
+    let dto = base_channel_dto();
+    let body = channel_update_body(&dto, "n", "https://x.example", "sk-new-1\n sk-new-2 \n");
+    assert_eq!(body["keys"], json!(["sk-new-1", "sk-new-2"]));
+    let s = body.to_string();
+    assert!(!s.contains("***"), "掩码值绝不能出现在请求体: {s}");
+
+    let mut no_test = base_channel_dto();
+    no_test.test_model = None;
+    let body = channel_update_body(&no_test, "n", "https://x.example", "");
+    assert_eq!(body["testModel"], serde_json::Value::Null);
+    assert!(body.get("keys").is_none());
 }
 
 // ---------- 导入面板创建请求 ----------

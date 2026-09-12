@@ -4,9 +4,7 @@ use client::ApiClient;
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
 use dioxus::prelude::*;
 
-use crate::api::{
-    create_channel_api, delete_channel_api, delete_group_api, update_channel_api, update_group_api,
-};
+use crate::api::{create_channel_api, delete_channel_api, delete_group_api, update_group_api};
 use crate::entities::EntitiesPanel;
 use crate::state::{ChannelRow, EntityStore, GroupRow};
 use ui::ScrollSpyNav;
@@ -126,8 +124,9 @@ pub fn visible_layers_of(view: &GraphView) -> [Vec<NodeKey>; 3] {
 ///
 /// 分组/渠道的编辑、新建、删除走真实后端(/api/group + /api/channel,
 /// 与卡片页同一套 Upsert 请求);真实响应成功后才写回 EntityStore,
-/// 失败在抽屉里诚实展示。模型别名暂无后端写端点,仍为会话内改动。
-/// 连线与节点摆位是会话级状态,不落库。
+/// 失败在抽屉里诚实展示。后端语义:分组名无更新路径(只读展示,可改
+/// 展示备注),渠道名/URL 可改、密钥留空 = 不变。模型别名暂无后端写
+/// 端点,仍为会话内改动。连线与节点摆位是会话级状态,不落库。
 #[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum NodeKey {
@@ -751,40 +750,51 @@ pub fn channel_row_from_dto(dto: &ChannelDto) -> ChannelRow {
     }
 }
 
-/// 分组更新请求:以服务端 DTO 为基底,只覆盖抽屉里可编辑的名称/展示备注;
-/// 倍率与模型白名单抽屉不可编辑,原样保留服务端现值(避免整单置空)。
+/// 分组更新请求:PUT /api/group/{key} 后端只接受 ratio/modelWhitelist/
+/// remark/status 四列,**name 列不可更新**(UPDATE 语句不含 name)。
+/// 因此名称固定取服务端现值(请求体保持干净),真正生效的编辑只有
+/// 展示备注 remark;倍率与白名单抽屉不可编辑,原样保留服务端现值。
 #[doc(hidden)]
-pub fn group_upsert_from_dto(dto: &GroupDto, name: &str, remark: &str) -> GroupUpsertRequest {
+pub fn group_upsert_from_dto(dto: &GroupDto, remark: &str) -> GroupUpsertRequest {
     GroupUpsertRequest {
-        name: name.trim().to_string(),
+        name: dto.name.clone(),
         ratio: dto.ratio,
         model_whitelist: dto.model_whitelist.clone(),
         remark: remark.trim().to_string(),
     }
 }
 
-/// 渠道更新请求:以服务端 DTO 为基底,只覆盖抽屉里可编辑的名称/URL;
-/// 密钥只携带用户本次输入的明文 key 行——留空 = 不变(后端约定),
-/// 绝不回传列表响应里的掩码值。调度模型/分组/权重等服务端现值原样保留。
+/// 渠道更新请求体(PUT /api/channel/{key} 线格式 `UpdateChannelRequest`,
+/// 各列为 Option)。只发抽屉里可编辑的 `name`/`baseUrl`,外加两点
+/// 后端语义:
+/// - `keys`:字段**缺席 = 保持原密钥**。用户未输入明文行时整体省略——
+///   若按裸契约发空数组,服务端解成 `Some([])`,`validate` 直接以
+///   "at least one key required" 拒绝,不改密钥就存不了名称/URL;
+///   绝不允许把列表响应里的掩码值回传。
+/// - `testModel`:后端 UPDATE 里该列**没有 COALESCE**(直接绑定),
+///   省略等于清 NULL,故必须显式回传服务端现值原样保留。
 #[doc(hidden)]
-pub fn channel_upsert_from_dto(
+pub fn channel_update_body(
     dto: &ChannelDto,
     name: &str,
     base_url: &str,
     keys_text: &str,
-) -> ChannelUpsertRequest {
-    ChannelUpsertRequest {
-        name: name.trim().to_string(),
-        channel_type: dto.channel_type.clone(),
-        base_url: base_url.trim().to_string(),
-        keys: parse_key_lines(keys_text),
-        models: dto.models.clone(),
-        groups: dto.groups.clone(),
-        priority: dto.priority,
-        weight: dto.weight,
-        test_model: dto.test_model.clone(),
-        remark: dto.remark.clone(),
+) -> serde_json::Value {
+    let mut body = serde_json::Map::new();
+    body.insert("name".into(), serde_json::Value::from(name.trim()));
+    body.insert("baseUrl".into(), serde_json::Value::from(base_url.trim()));
+    body.insert(
+        "testModel".into(),
+        match &dto.test_model {
+            Some(m) => serde_json::Value::from(m.clone()),
+            None => serde_json::Value::Null,
+        },
+    );
+    let keys = parse_key_lines(keys_text);
+    if !keys.is_empty() {
+        body.insert("keys".into(), serde_json::Value::from(keys));
     }
+    serde_json::Value::Object(body)
 }
 
 /// 导入面板的渠道创建请求:URL + Key + 可选名称;类型固定 openai、
@@ -2321,7 +2331,8 @@ fn ImportPanel() -> Element {
 ///
 /// `absolute` 覆盖画布右侧，画布尺寸恒定，开合不引起重排。
 /// 三层的编辑内容不同：
-/// - 分组：名字/展示名（草稿 → 「保存」走真实 PUT /api/group/{key}）
+/// - 分组：展示名（草稿 → 「保存」走真实 PUT /api/group/{key}）；
+///   分组名后端无更新路径,只读展示并附诚实小注
 /// - 模型别名：名字（可改，暂无后端写端点，仍为会话内改动）
 /// - 调度模型：模型名**只读**（来自上游，改了就路由不到），
 ///   所属渠道的名称/URL/Key 可编辑，「保存」走真实 PUT /api/channel/{key}
@@ -2397,10 +2408,10 @@ fn GroupInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
         Some(g) => (g.name.clone(), g.display.clone()),
         None => (String::new(), String::new()),
     };
-    // anchor:服务端现名,解析 /api/group/{key} 的锚点;保存成功后随
-    // 响应更新,连续改名不会锚到旧名。草稿只在保存成功后同步。
-    let mut anchor = use_signal(|| r_name.clone());
-    let mut d_name = use_signal(|| r_name.clone());
+    // anchor:服务端现名,解析 /api/group/{key} 的锚点。分组名后端不可
+    // 更新(UPDATE 无 name 列),名称框只读,anchor 全程不变;草稿只剩
+    // 展示备注,保存成功后同步。
+    let anchor = use_signal(|| r_name.clone());
     let mut d_display = use_signal(|| r_display.clone());
     let mut busy = use_signal(|| false);
     let mut err = use_signal(|| None::<String>);
@@ -2410,11 +2421,6 @@ fn GroupInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
     }
 
     let do_save = move |_| {
-        let name = d_name.peek().trim().to_string();
-        if name.is_empty() {
-            err.set(Some("分组名不能为空".into()));
-            return;
-        }
         spawn(async move {
             busy.set(true);
             err.set(None);
@@ -2422,11 +2428,11 @@ fn GroupInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
             let client = ApiClient::shared().clone();
             let anchor_name = anchor.peek().clone();
             let display = d_display.peek().trim().to_string();
-            // ① 取服务端现值(拿 key,并保留抽屉不可编辑的倍率/白名单)
+            // ① 取服务端现值(拿 key;名称/倍率/白名单以现值原样回传)
             let res = match fetch_group_by_name(&client, &anchor_name).await {
                 Ok(dto) => {
-                    // ② 以服务端 DTO 为基底,只覆盖编辑过的字段
-                    let req = group_upsert_from_dto(&dto, &name, &display);
+                    // ② 抽屉里真正生效的编辑只有展示备注 remark
+                    let req = group_upsert_from_dto(&dto, &display);
                     update_group_api(&client, &dto.key, &req)
                         .await
                         .map_err(|e| e.to_string())
@@ -2442,8 +2448,6 @@ fn GroupInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
                     if index < len {
                         store.groups.write()[index] = group_row_from_dto(&fresh);
                     }
-                    anchor.set(fresh.name.clone());
-                    d_name.set(fresh.name.clone());
                     d_display.set(fresh.remark.clone());
                     ok.set(true);
                 }
@@ -2483,14 +2487,17 @@ fn GroupInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
     };
 
     rsx! {
-        BoundField {
-            label: "分组名",
-            value: d_name(),
-            placeholder: "vip",
-            on_change: move |v: String| {
-                ok.set(false);
-                d_name.set(v);
-            },
+        // 分组名后端无更新路径:只读展示,不给可编辑的假象。
+        div { class: "space-y-1",
+            span { class: "text-[11px] text-zinc-500", "分组名" }
+            div { class: "w-full truncate rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-400",
+                role: "note",
+                "data-testid": "group-name-locked",
+                "{r_name}"
+            }
+            p { class: "text-[11px] text-zinc-600",
+                "分组名不可修改（后端无对应更新路径）；可修改展示名"
+            }
         }
         BoundField {
             label: FIELD_DISPLAY,
@@ -2607,8 +2614,9 @@ fn DispatchInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
         .collect();
     // 钩子先于任何提前 return:行存在性在渲染间可能翻转,钩子序列
     // 必须稳定。渠道编辑走草稿 + 「保存」:等 PUT /api/channel/{key}
-    // 成功才写回 store。anchor 是服务端现名(解析 key 的锚点);Key
-    // 输入框初始为空,留空提交 = 不改密钥(列表响应只有掩码,不回传)。
+    // 成功才写回 store。anchor 是服务端现名(解析 key 的锚点,渠道名
+    // 可改故随响应更新);Key 输入框初始为空,留空提交时请求体整体
+    // 省略 keys 字段 = 保持服务端原密钥(掩码值永不回传)。
     let (c_name, c_url) = match &row {
         Some(c) => (c.name.clone(), c.url.clone()),
         None => (String::new(), String::new()),
@@ -2646,8 +2654,16 @@ fn DispatchInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
             let keys_v = d_keys.peek().clone();
             let res = match fetch_channel_by_name(&client, &anchor_name).await {
                 Ok(dto) => {
-                    let req = channel_upsert_from_dto(&dto, &name, &url_v, &keys_v);
-                    update_channel_api(&client, &dto.key, &req)
+                    // 最小 diff 请求体:只带 name/baseUrl(+ 可选 keys,
+                    // 未改密钥时整体省略——裸契约发 [] 会被服务端
+                    // Some([]) 解读并以 "at least one key required"
+                    // 拒绝);testModel 后端无 COALESCE,原样回传防清 NULL。
+                    let body = channel_update_body(&dto, &name, &url_v, &keys_v);
+                    client
+                        .put::<serde_json::Value, ChannelDto>(
+                            &format!("/api/channel/{}", dto.key),
+                            &body,
+                        )
                         .await
                         .map_err(|e| e.to_string())
                 }
@@ -2726,7 +2742,7 @@ fn DispatchInspect(index: usize, on_deleted: EventHandler<()>) -> Element {
                 },
             }
             BoundArea {
-                label: "API Key（多 key 一行一个；留空 = 不改密钥）",
+                label: "API Key（多 key 一行一个；留空 = 保持服务端原密钥不变）",
                 value: d_keys(),
                 placeholder: "sk-…\nsk-…",
                 on_change: move |v: String| {
