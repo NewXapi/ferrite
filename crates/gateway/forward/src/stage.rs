@@ -545,7 +545,8 @@ impl ForwardStage {
             });
         let (user_key, token_key, group) = match ctx.token.as_ref() {
             Some(t) => (t.id.clone(), t.id.clone(), t.group.clone()),
-            None => (String::new(), String::new(), String::new()),
+            // 归因缺失（理论上 gates 已保证 Some）：跳过结算，绝不产出无主账单。
+            None => return,
         };
         // group ratio 由 apps 注入，库层默认 1.0
         let group_ratio = 1.0;

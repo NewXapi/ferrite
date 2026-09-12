@@ -92,7 +92,9 @@ cache = 1.25
 "#,
     );
     let table = gateway::build_price_table(&priced).expect("prices 非空应装配价格表");
-    let p = table.lookup("gpt-4o", "default").expect("配置里的模型应查得到");
+    let p = table
+        .lookup("gpt-4o", "default")
+        .expect("配置里的模型应查得到");
     assert_eq!(p.input, 2.5);
     assert_eq!(p.output, 10.0);
     assert_eq!(p.cache, 1.25);
