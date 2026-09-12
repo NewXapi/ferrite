@@ -165,7 +165,7 @@ pub fn AliasesPage() -> Element {
         modal_state.set(AliasModalState::New);
     };
 
-    let mut open_edit = move |key: String| {
+    let open_edit = move |key: String| {
         if let Some(it) = rows().iter().find(|it| it.key == key) {
             f_name.set(it.row.alias.clone());
             f_display.set(it.row.display.clone());
@@ -308,8 +308,8 @@ pub fn AliasesPage() -> Element {
                                             alias_key: it.key,
                                             alias: it.row,
                                             index: idx,
-                                            on_edit: move |k| open_edit(k),
-                                            on_delete: move |k| write_delete(k),
+                                            on_edit: open_edit,
+                                            on_delete: write_delete,
                                         }
                                     }
                                 }
