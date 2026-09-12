@@ -189,20 +189,36 @@ fn set_col_widths_clamps_and_collapses() {
     assert_eq!(layout.col_right.value(), 0.30);
 
     // 0 = 折叠该列。
-    set_col_widths(&mut layout, SplitRatio::new_unchecked(0.0), SplitRatio::new_unchecked(0.30));
+    set_col_widths(
+        &mut layout,
+        SplitRatio::new_unchecked(0.0),
+        SplitRatio::new_unchecked(0.30),
+    );
     assert_eq!(layout.col_left.value(), 0.0);
 
     // 超上限 clamp 到 0.45。
-    set_col_widths(&mut layout, SplitRatio::new_unchecked(0.9), SplitRatio::new_unchecked(0.1));
+    set_col_widths(
+        &mut layout,
+        SplitRatio::new_unchecked(0.9),
+        SplitRatio::new_unchecked(0.1),
+    );
     assert_eq!(layout.col_left.value(), 0.45);
 
     // 之和超 0.9 按比例压缩：0.45+0.45=0.9 不变；0.5+0.5 → 压到 0.45/0.45。
-    set_col_widths(&mut layout, SplitRatio::new_unchecked(0.5), SplitRatio::new_unchecked(0.5));
+    set_col_widths(
+        &mut layout,
+        SplitRatio::new_unchecked(0.5),
+        SplitRatio::new_unchecked(0.5),
+    );
     assert_eq!(layout.col_left.value(), 0.45);
     assert_eq!(layout.col_right.value(), 0.45);
 
     // NaN 归为 0.28。
-    set_col_widths(&mut layout, SplitRatio::new_unchecked(f32::NAN), SplitRatio::new_unchecked(0.2));
+    set_col_widths(
+        &mut layout,
+        SplitRatio::new_unchecked(f32::NAN),
+        SplitRatio::new_unchecked(0.2),
+    );
     assert_eq!(layout.col_left.value(), 0.28);
 }
 

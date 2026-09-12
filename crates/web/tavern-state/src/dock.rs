@@ -400,15 +400,13 @@ pub fn deserialize(v: &serde_json::Value) -> Result<DockLayout, String> {
     layout.split_left = parse_split(v.get("split_left"))?;
     layout.split_right = parse_split(v.get("split_right"))?;
     // 列宽容忍旧数据缺字段（缺省 0.28），越界 clamp 由 set_col_widths 语义负责
-    let cl = v
-        .get("col_left")
-        .and_then(|x| x.as_f64())
-        .unwrap_or(0.28) as f32;
-    let cr = v
-        .get("col_right")
-        .and_then(|x| x.as_f64())
-        .unwrap_or(0.28) as f32;
-    set_col_widths(&mut layout, SplitRatio::new_unchecked(cl), SplitRatio::new_unchecked(cr));
+    let cl = v.get("col_left").and_then(|x| x.as_f64()).unwrap_or(0.28) as f32;
+    let cr = v.get("col_right").and_then(|x| x.as_f64()).unwrap_or(0.28) as f32;
+    set_col_widths(
+        &mut layout,
+        SplitRatio::new_unchecked(cl),
+        SplitRatio::new_unchecked(cr),
+    );
     Ok(layout)
 }
 
