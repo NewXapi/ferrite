@@ -20,7 +20,9 @@ use contract::records::{
     ChannelKey, ChannelRecord, RouteUnitRecord, SyncMeta, TokenRecord, UserRecord,
 };
 use dispatch::{Dispatch, Dispatcher, MemoryHealthTable, Snapshot as DispatchSnapshot};
-use gateway_gate::snapshot::{QuotaSnapshot, TokenEntry, TokenSnapshot, UserSnapshot};
+use gateway_gate::snapshot::{
+    GroupSnapshot, QuotaSnapshot, TokenEntry, TokenSnapshot, UserSnapshot,
+};
 
 /// 构造 SyncMeta（schema_version 用真实常量，其余字段对本测试无语义）。
 fn sync_meta(key: &str) -> SyncMeta {
@@ -108,6 +110,7 @@ fn empty_target() -> (Snapshots, Arc<Dispatcher>) {
         token_snapshot: Arc::new(ArcSwap::from_pointee(TokenSnapshot::default())),
         user_snapshot: Arc::new(ArcSwap::from_pointee(UserSnapshot::default())),
         quota_snapshot: Arc::new(ArcSwap::from_pointee(QuotaSnapshot::default())),
+        group_snapshot: Arc::new(ArcSwap::from_pointee(GroupSnapshot::default())),
     };
     // boot 时 Dispatcher 可能拿 None 快照（SnapshotNotReady）；reload 必须让它就绪
     let dispatcher = Arc::new(Dispatcher::new(None, Arc::new(MemoryHealthTable::new())));
@@ -143,6 +146,10 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
         user_snapshot.upsert(u.clone());
     }
 
+    // 组快照：1 个 vip 组 —— reload 后 group_snapshot 应可见且计数上报
+    let group_snapshot =
+        api::snapshot::build_group_snapshot(&[("vip".into(), 0.8, serde_json::json!(["gpt-4*"]))]);
+
     let counts = apply_snapshot_reload(
         &target,
         &dispatcher,
@@ -153,6 +160,8 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
             token_snapshot,
             user_records: users,
             user_snapshot,
+            group_snapshot,
+            group_count: 1,
         },
     );
 
@@ -161,8 +170,9 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
     assert_eq!(counts.route_units, 2, "route_units 计数");
     assert_eq!(counts.tokens, 2, "tokens 计数");
     assert_eq!(counts.users, 2, "users 计数");
+    assert_eq!(counts.groups, 1, "groups 计数");
 
-    // 2. store 生效：token/user 可查；quota 口径与 QuotaGate 一致（meta.key 直接作 key）
+    // 2. store 生效：token/user/group 可查；quota 口径与 QuotaGate 一致（meta.key 直接作 key）
     assert!(
         target.token_snapshot.load().lookup(&hash_a).is_some(),
         "新 token 快照应可按 hash 查到"
@@ -170,6 +180,15 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
     assert!(
         target.user_snapshot.load().lookup("u-2").is_some(),
         "新 user 快照应可按 key 查到"
+    );
+    assert_eq!(
+        target
+            .group_snapshot
+            .load()
+            .allowed_models("vip")
+            .map(<[String]>::len),
+        Some(1),
+        "新 group 快照应带 vip 白名单"
     );
     assert_eq!(
         target.quota_snapshot.load().remaining("1001"),
@@ -206,6 +225,8 @@ fn reload_replaces_snapshot_wholesale() {
             token_snapshot: token_snapshot_a,
             user_records: vec![],
             user_snapshot: UserSnapshot::default(),
+            group_snapshot: GroupSnapshot::default(),
+            group_count: 0,
         },
     );
     assert_eq!(counts_a.tokens, 1);
@@ -230,6 +251,8 @@ fn reload_replaces_snapshot_wholesale() {
             token_snapshot: token_snapshot_b,
             user_records: vec![],
             user_snapshot: UserSnapshot::default(),
+            group_snapshot: GroupSnapshot::default(),
+            group_count: 0,
         },
     );
     assert_eq!(counts_b.tokens, 1, "tokens 计数应是新输入规模");
