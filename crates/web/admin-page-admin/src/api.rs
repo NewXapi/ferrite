@@ -5,15 +5,37 @@
 
 use client::{ApiClient, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
-use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
+use contract::api::token::{
+    CreateTokenRequest, CreateTokenResult, TokenDto, TokenList, UpdateTokenRequest,
+};
+
+/// 后端列表端点 (`GET /api/group` / `GET /api/channel`) 的 data 统一包装
+/// `{"items":[...]}`（渠道另有 `total`，本 crate 页面暂不展示总数，忽略）。
+///
+/// `ApiClient::get::<T>` 只剥最外层 `Envelope{success,message,data}`
+/// （admin-catalog 这三个端点目前直接回裸 map），拿到 map 后再按裸
+/// `Vec<Dto>` 解必炸 `invalid type: map, expected a sequence`——历史事故，
+/// `tests/list_envelope.rs` 把这一现场钉死为反向断言。列表 helper 一律先经
+/// 本类型剥壳，再返回裸 `Vec<Dto>` 给调用点。
+///
+/// 对外仅暴露给集成测试钉 wire 契约（同 crate 惯例见 state.rs hydrate 的
+/// 局部 `Items<T>`、admin-page-overview api.rs）。
+#[doc(hidden)]
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct Items<T> {
+    #[serde(default)]
+    pub items: Vec<T>,
+}
 
 // ---------------------------------------------------------------------------
 // Tokens (API Keys)
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/token (列表，admin 模式下包含全局令牌)
+/// 真实调用: GET /api/token (列表，admin 模式下包含全局令牌)。
+/// 后端 data 为 `{items:[...]}`（契约 [`TokenList`]），剥壳后返回裸 Vec。
 pub async fn list_tokens_api(client: &ApiClient) -> ApiResult<Vec<TokenDto>> {
-    client.get("/api/token").await
+    let r: TokenList = client.get("/api/token").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: POST /api/token (创建) — 响应为 `{plaintext, token}`
@@ -42,9 +64,11 @@ pub async fn delete_token_api(client: &ApiClient, key: &str) -> ApiResult<serde_
 // Channels
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/channel (列表，密钥已掩码)
+/// 真实调用: GET /api/channel (列表，密钥已掩码)。
+/// 后端 data 为 `{items:[...],total:n}`，剥壳后返回裸 Vec（total 忽略）。
 pub async fn list_channels_api(client: &ApiClient) -> ApiResult<Vec<ChannelDto>> {
-    client.get("/api/channel").await
+    let r: Items<ChannelDto> = client.get("/api/channel").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: GET /api/channel/{key} (单查，包含完整 keys)
@@ -92,9 +116,11 @@ pub async fn delete_channel_api(client: &ApiClient, key: &str) -> ApiResult<serd
 // Groups
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/group (分组列表)
+/// 真实调用: GET /api/group (分组列表)。
+/// 后端 data 为 `{items:[...]}`，剥壳后返回裸 Vec。
 pub async fn list_groups_api(client: &ApiClient) -> ApiResult<Vec<GroupDto>> {
-    client.get("/api/group").await
+    let r: Items<GroupDto> = client.get("/api/group").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: POST /api/group (创建)
