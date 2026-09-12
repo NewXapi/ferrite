@@ -21,6 +21,7 @@ use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, SelectedRoute
 use gateway_pipeline::{Stage, StageError, TokenInfo, UpstreamError};
 use metering::SettleSink;
 use metering::pricing::{ModelPrice, PriceTable};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 // ---------- 测试辅助 ----------
@@ -89,7 +90,7 @@ impl Dispatch for MockDispatch {
 /// （502 → retryable，400 → 非 retryable）。
 struct ScriptedEgress {
     plans: Vec<(String, u16, bool)>,
-    calls: Mutex<usize>,
+    calls: AtomicUsize,
 }
 
 impl ScriptedEgress {
@@ -99,11 +100,11 @@ impl ScriptedEgress {
                 .iter()
                 .map(|(k, s, r)| (k.to_string(), *s, *r))
                 .collect(),
-            calls: Mutex::new(0),
+            calls: AtomicUsize::new(0),
         }
     }
     fn calls(&self) -> usize {
-        *self.calls.lock().unwrap()
+        self.calls.load(Ordering::SeqCst)
     }
 }
 
@@ -122,7 +123,7 @@ impl Egress for ScriptedEgress {
                 + 'a,
         >,
     > {
-        *self.calls.lock().unwrap() += 1;
+        self.calls.fetch_add(1, Ordering::SeqCst);
         let (_, status, retryable) = self
             .plans
             .iter()
