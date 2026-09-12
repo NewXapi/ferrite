@@ -5,6 +5,7 @@
 //! `TokenEntry` 包装 contract 的 [`TokenRecord`] + gate 自己关心的 `allowed_models`；
 //! 之所以不复用 contract TokenRecord，是因为后者没列允许的模型（那是 gate-only 概念）。
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -278,6 +279,68 @@ impl QuotaSnapshot {
 }
 
 // ============================================================================
+// GroupSnapshot — group name → GroupEntry（组级模型白名单 + 分组倍率）
+// ============================================================================
+
+/// 单个分组的配置：组级模型白名单与分组倍率（对应 `api_groups` 的组语义）。
+#[derive(Debug, Clone)]
+pub struct GroupEntry {
+    /// 该组允许的模型名集合，支持与 [`crate::model::match_model`] 相同的 `gpt-4*` 后缀通配；
+    /// 空 = 该组不限模型。
+    pub allowed_models: Vec<String>,
+    /// 分组倍率，默认 1.0（中性值，不计费放大）。
+    pub multiplier: f64,
+}
+
+impl Default for GroupEntry {
+    fn default() -> Self {
+        Self {
+            allowed_models: vec![],
+            multiplier: 1.0,
+        }
+    }
+}
+
+/// 分组快照（group name → [`GroupEntry`]）。
+///
+/// 与其余快照（DashMap 内部可变、`&self` 增量 upsert）不同：分组是低频、
+/// 整份由 sync 推送的配置，故用 `HashMap` + `&mut self` upsert——
+/// 更新路径 = `ArcSwap::rcu`（load 克隆 → 改 → 整体 store），
+/// 换取 `allowed_models` 可以零拷贝返回 `&[String]`。
+#[derive(Debug, Clone, Default)]
+pub struct GroupSnapshot {
+    by_name: HashMap<String, GroupEntry>,
+}
+
+impl GroupSnapshot {
+    /// 插入或覆盖一个分组的配置。
+    ///
+    /// 倍率是财务乘数，非法值（≤0 / NaN / inf）在写侧 admin-catalog 已校验；
+    /// 这里再兜一道，避免脏数据经 sync 直连进快照后污染计费——命中即回落中性 1.0。
+    pub fn upsert(&mut self, name: String, mut entry: GroupEntry) {
+        if !entry.multiplier.is_finite() || entry.multiplier <= 0.0 {
+            tracing::warn!(
+                group = %name,
+                multiplier = entry.multiplier,
+                "GroupEntry.multiplier 非法, 回落 1.0"
+            );
+            entry.multiplier = 1.0;
+        }
+        self.by_name.insert(name, entry);
+    }
+
+    /// 查组的模型白名单；组不存在（未配置）→ None。
+    pub fn allowed_models(&self, group: &str) -> Option<&[String]> {
+        self.by_name.get(group).map(|e| e.allowed_models.as_slice())
+    }
+
+    /// 查分组倍率；组不存在 → 1.0（中性回落）。
+    pub fn multiplier(&self, group: &str) -> f64 {
+        self.by_name.get(group).map(|e| e.multiplier).unwrap_or(1.0)
+    }
+}
+
+// ============================================================================
 // ArcSwap 句柄别名
 // ============================================================================
 
@@ -286,3 +349,4 @@ pub type SharedUserSnapshot = Arc<ArcSwap<UserSnapshot>>;
 pub type SharedIpPolicy = Arc<ArcSwap<IpPolicy>>;
 pub type SharedPricing = Arc<ArcSwap<PricingSnapshot>>;
 pub type SharedQuota = Arc<ArcSwap<QuotaSnapshot>>;
+pub type SharedGroupSnapshot = Arc<ArcSwap<GroupSnapshot>>;

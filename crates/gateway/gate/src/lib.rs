@@ -42,15 +42,16 @@ pub use graylist as graylist_mod;
 pub use graylist::{
     BLOCK_DURATION, FAIL_STREAK_THRESHOLD, FailEntry, GrayListGate, GrayListState, STREAK_WINDOW,
 };
-pub use model::ModelGate;
+pub use model::{GroupModelGate, ModelGate};
 pub use quota::QuotaGate;
 pub use ratelimit::{LimitScope, RateLimitGate, RateLimiter};
 pub use state::StateGate;
 
 // snapshot re-exports
 pub use snapshot::{
-    IpPolicy, PriceRow, PricingSnapshot, QuotaSnapshot, SharedIpPolicy, SharedPricing, SharedQuota,
-    SharedTokenSnapshot, SharedUserSnapshot, TokenEntry, TokenSnapshot, UserSnapshot,
+    IpPolicy, PriceRow, PricingSnapshot, QuotaSnapshot, SharedGroupSnapshot, SharedIpPolicy,
+    SharedPricing, SharedQuota, SharedTokenSnapshot, SharedUserSnapshot, TokenEntry, TokenSnapshot,
+    UserSnapshot,
 };
 
 /// 鉴权产出的 token 元数据（chain 内部填充，最终提升到 RequestCtx.token）

@@ -1,4 +1,7 @@
 //! `model` —— gate 5：模型白名单（`token.allowed_models`） + 请求体 model/max_tokens 解析
+//!
+//! 另含 [`GroupModelGate`]：组级模型白名单（查 [`crate::snapshot::GroupSnapshot`]），
+//! 与 token 级 [`ModelGate`] 平行的附加闸门。
 
 use async_trait::async_trait;
 use gateway_pipeline::ctx::BodySource;
@@ -6,6 +9,7 @@ use serde::Deserialize;
 
 use super::chain::{Gate, GateCtx};
 use super::error::Rejection;
+use super::snapshot::SharedGroupSnapshot;
 
 pub struct ModelGate;
 
@@ -77,4 +81,55 @@ pub fn match_model(pattern: &str, model: &str) -> bool {
         return model.starts_with(prefix);
     }
     false
+}
+
+/// 组级模型门禁：按 `ctx.group` 查 [`GroupSnapshot`](crate::snapshot::GroupSnapshot)
+/// 的组白名单做匹配。
+///
+/// 与 token 级 [`ModelGate`] 平行的**附加**闸门（挂载顺序：建议排在 ModelGate 之后，
+/// 依赖其已把 `requested_model` 解析进 ctx，本 gate 自身不解析请求体）。
+///
+/// fail-open 策略——"未配置"不拦：
+/// - `ctx.group` 缺失 / 组不在快照里 / 白名单为空 → 放行；
+/// - 仅当组存在且白名单非空、且没有任何 pattern（含 `gpt-4*` 通配）命中时，
+///   返回 [`Rejection::ModelNotAllowedForGroup`]。
+pub struct GroupModelGate {
+    groups: SharedGroupSnapshot,
+}
+
+impl GroupModelGate {
+    pub fn new(groups: SharedGroupSnapshot) -> Self {
+        Self { groups }
+    }
+}
+
+#[async_trait]
+impl Gate for GroupModelGate {
+    fn name(&self) -> &'static str {
+        "group_model"
+    }
+
+    async fn check(&self, ctx: &mut GateCtx) -> Result<(), Rejection> {
+        let model = ctx
+            .requested_model
+            .as_deref()
+            .ok_or(Rejection::ModelNotSpecified)?;
+
+        // 未带组 / 空组名 = 未配置组级门禁 → fail-open。
+        let Some(group) = ctx.group.as_deref().filter(|g| !g.is_empty()) else {
+            return Ok(());
+        };
+        let snapshot = self.groups.load();
+        // 组不存在（未配置）→ fail-open；存在且空白名单同样不限模型。
+        let Some(allowed) = snapshot.allowed_models(group) else {
+            return Ok(());
+        };
+        if allowed.is_empty() || allowed.iter().any(|p| match_model(p, model)) {
+            return Ok(());
+        }
+        Err(Rejection::ModelNotAllowedForGroup {
+            model: model.into(),
+            group: group.into(),
+        })
+    }
 }

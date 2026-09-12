@@ -51,6 +51,10 @@ pub enum Rejection {
     #[error("model forbidden: {model}")]
     ModelForbidden { model: String },
 
+    /// 403 — 模型在分组级白名单外
+    #[error("model not allowed for group {group}: {model}")]
+    ModelNotAllowedForGroup { model: String, group: String },
+
     /// 429 — 灰名单封禁中
     #[error("graylisted")]
     Graylisted,
@@ -99,6 +103,11 @@ pub fn rejection_to_response(rej: Rejection) -> Response {
             rej.to_string(),
         ),
         ModelForbidden { .. } => (StatusCode::FORBIDDEN, "model_forbidden", rej.to_string()),
+        ModelNotAllowedForGroup { .. } => (
+            StatusCode::FORBIDDEN,
+            "model_not_allowed_for_group",
+            rej.to_string(),
+        ),
         Graylisted => (StatusCode::TOO_MANY_REQUESTS, "graylisted", rej.to_string()),
         ConcurrencyExhausted => (
             StatusCode::TOO_MANY_REQUESTS,
