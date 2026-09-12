@@ -53,3 +53,16 @@ db-reset:
 # 共享 dev 后端: start | update | stop | status
 dev-backend *args:
     bash scripts/dev-backend.sh {{args}}
+
+# dev 环境体检：查共享后端(3211)/前端 serve(8090) 监听 + 打印进程卫生提醒
+dev-check:
+    #!/usr/bin/env bash
+    echo "== 监听检查 =="
+    ss -ltn 2>/dev/null | grep -E ':3211|:8090' || echo "  (无 3211/8090 监听)"
+    echo "== 共享后端状态 =="
+    bash scripts/dev-backend.sh status || echo "  ⚠️  后端未运行: just dev-backend start"
+    echo "== 进程卫生提醒 (详见 AGENTS.md「本机 dev 服务与进程卫生」) =="
+    echo "  1. 长跑服务勿用 'nohup &'(Bash 调用结束回收进程组→服务静默死); 用持久后台任务 + ss 验证监听"
+    echo "  2. 勿 pkill -f cargo/rustc (T 态≠死进程, 会误杀并行会话构建); 清理前 readlink /proc/<pid>/cwd"
+    echo "  3. 用户报错但实测 200 → 先查浏览器缓存重放 (dx 日志 grep 该路径无请求 = 实锤)"
+
