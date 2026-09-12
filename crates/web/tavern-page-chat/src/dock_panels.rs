@@ -7,26 +7,16 @@
 use dioxus::prelude::*;
 use tavern_state::{STATE, open_chat};
 
-use crate::dock;
-
-/// 通用面板外壳：带标题栏（拖拽把手）与收起/展开。
-///
-/// 标题栏 `ondblclick` 展开该区（收起态只剩 40px 图标轨时双击恢复）；
-/// 右上角按钮手动收起。
+/// 通用面板外壳：标题栏即拖拽把手。
 #[component]
 pub fn DockPanel(
     /// 面板稳定 id（与 [`dock::zone_item_ids`] 对应）。
     item_id: &'static str,
     /// 面板标题。
     title: &'static str,
-    /// 收起态图标（40px 图标轨显示）。
-    icon: &'static str,
     /// 内容区。
     content: Element,
 ) -> Element {
-    let zone = dock::zone_of_item(item_id).unwrap_or_else(|| dock::default_zone(item_id));
-    let collapsed = dock::zone_collapsed(zone);
-
     rsx! {
         div {
             class: "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800/60 bg-zinc-950/60",
@@ -36,41 +26,11 @@ pub fn DockPanel(
 
             div {
                 class: "flex h-7 shrink-0 cursor-grab items-center gap-1.5 border-b border-zinc-800/50 bg-zinc-900/80 px-2 text-[10px] font-bold text-zinc-400 select-none",
-                // ondoubleclick：dioxus 0.7 起 ondblclick 已废弃
-                ondoubleclick: move |_| {
-                    let z = dock::zone_of_item(item_id).unwrap_or_else(|| dock::default_zone(item_id));
-                    if dock::zone_collapsed(z) {
-                        dock::collapse_zone(z, false);
-                    }
-                },
                 span { class: "text-[9px] text-zinc-600", "·" }
                 span { "{title}" }
-                button {
-                    class: "ml-auto text-[10px] text-zinc-500 hover:text-zinc-200",
-                    title: if collapsed { "展开面板" } else { "收起面板" },
-                    name: "btn-panel-collapse-{item_id}",
-                    aria_label: "收起面板 {title}",
-                    onclick: move |_| dock::collapse_zone(zone, true),
-                    if collapsed { "展开" } else { "收起" }
-                }
             }
 
-            if collapsed {
-                div { class: "flex flex-1 items-center justify-center",
-                    button {
-                        class: "flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-800/70 text-sm hover:bg-zinc-700",
-                        name: "btn-expand-{item_id}",
-                        aria_label: "展开面板 {title}",
-                        onclick: move |_| {
-                            let z = dock::zone_of_item(item_id).unwrap_or_else(|| dock::default_zone(item_id));
-                            dock::collapse_zone(z, false);
-                        },
-                        "{icon}"
-                    }
-                }
-            } else {
-                div { class: "min-h-0 flex-1 overflow-y-auto p-2 no-scrollbar", { content } }
-            }
+            div { class: "min-h-0 flex-1 overflow-y-auto p-2 no-scrollbar", { content } }
         }
     }
 }
@@ -105,7 +65,7 @@ pub fn CharacterPanel(
     });
 
     rsx! {
-        DockPanel { item_id: "character", title: "角色卡", icon: "角色",
+        DockPanel { item_id: "character", title: "角色卡",
             content: rsx! {
             div { class: "flex flex-col gap-2",
                 div { class: "flex flex-col gap-1",
@@ -192,7 +152,7 @@ pub fn SessionsPanel() -> Element {
         })
         .collect();
     rsx! {
-        DockPanel { item_id: "sessions", title: "会话时间线", icon: "会话",
+        DockPanel { item_id: "sessions", title: "会话时间线",
             content: rsx! {
             div { class: "flex flex-col gap-2",
                 button {
@@ -310,7 +270,7 @@ pub fn PromptPanel(
         .unwrap_or_default();
 
     rsx! {
-        DockPanel { item_id: "prompt", title: "prompt 导航", icon: "导航",
+        DockPanel { item_id: "prompt", title: "prompt 导航",
             content: rsx! {
             if prompts_v.is_empty() {
                 div { class: "text-[11px] text-zinc-600", "（暂无 prompt）" }
@@ -379,7 +339,7 @@ pub fn ModelPanel(
         .collect();
 
     rsx! {
-        DockPanel { item_id: "model", title: "模型与轮次", icon: "模型",
+        DockPanel { item_id: "model", title: "模型与轮次",
             content: rsx! {
             div { class: "flex flex-col gap-2",
                 div { class: "flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-0.5 text-zinc-400 text-xs",

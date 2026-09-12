@@ -5,7 +5,7 @@
 
 use tavern_state::dock::{
     DockItem, DockLayout, Side, SplitRatio, Zone, deserialize, dock_tab, move_item,
-    reorder_in_zone, serialize, set_split, set_zone_collapsed,
+    reorder_in_zone, serialize, set_col_widths, set_split, set_zone_collapsed,
 };
 
 fn item(id: &str, zone: Zone, order: u32, enabled: bool) -> DockItem {
@@ -171,6 +171,39 @@ fn set_split_clamps_out_of_range() {
     // NaN 不合法，归为默认 0.5，避免持久化出无效值。
     set_split(&mut layout, Side::Left, SplitRatio::new_unchecked(f32::NAN));
     assert_eq!(layout.split_left.value(), 0.5);
+}
+
+/// 测 set_col_widths：clamp 到 0..=0.45（0=折叠），左右之和超 0.9 按比例压缩，
+/// 保证中央区至少 10%。
+#[test]
+fn set_col_widths_clamps_and_collapses() {
+    let mut layout = DockLayout::default();
+
+    // 正常设置。
+    set_col_widths(
+        &mut layout,
+        SplitRatio::new_unchecked(0.25),
+        SplitRatio::new_unchecked(0.30),
+    );
+    assert_eq!(layout.col_left.value(), 0.25);
+    assert_eq!(layout.col_right.value(), 0.30);
+
+    // 0 = 折叠该列。
+    set_col_widths(&mut layout, SplitRatio::new_unchecked(0.0), SplitRatio::new_unchecked(0.30));
+    assert_eq!(layout.col_left.value(), 0.0);
+
+    // 超上限 clamp 到 0.45。
+    set_col_widths(&mut layout, SplitRatio::new_unchecked(0.9), SplitRatio::new_unchecked(0.1));
+    assert_eq!(layout.col_left.value(), 0.45);
+
+    // 之和超 0.9 按比例压缩：0.45+0.45=0.9 不变；0.5+0.5 → 压到 0.45/0.45。
+    set_col_widths(&mut layout, SplitRatio::new_unchecked(0.5), SplitRatio::new_unchecked(0.5));
+    assert_eq!(layout.col_left.value(), 0.45);
+    assert_eq!(layout.col_right.value(), 0.45);
+
+    // NaN 归为 0.28。
+    set_col_widths(&mut layout, SplitRatio::new_unchecked(f32::NAN), SplitRatio::new_unchecked(0.2));
+    assert_eq!(layout.col_left.value(), 0.28);
 }
 
 /// 测 set_zone_collapsed：true 时该区全禁用且激活置 None；false 时全恢复启用。

@@ -1,8 +1,8 @@
 //! 四区 dock 布局渲染与拖拽逻辑。
 //!
 //! 结构：左列 / 中央 editor 槽 / 右列。左右列各上下二分（比例来自
-//! [`crate::dock`] 的 `SplitRatio`），中间 4px 分割线拖拽改比例，
-//! 把同侧某区压到 <120px 阈值时自动 `set_zone_collapsed(true)`。
+//! [`crate::dock`] 的 `SplitRatio`），列间与列内分割线均可拖拽：
+//! 水平分割线改上下比例，竖向列分割线改列宽（拖过 3% 阈值或单击即折叠/展开列）。
 //!
 //! 面板跨区拖拽事件链：面板标题栏 `mousedown` 记录被拖项与源区 →
 //! 根容器 `mousemove` 置移动标记 → 根容器 `mouseup` 按指针坐标经
@@ -13,13 +13,6 @@ use dioxus::prelude::*;
 use tavern_state::dock::{Side, Zone};
 
 use crate::dock;
-
-/// 把同侧某区压到 <120px 时自动收起该区的阈值。
-const COLLAPSE_THRESHOLD_PX: f64 = 120.0;
-
-/// 左右列各占中央区总宽的比例（与 rsx 里的内联 `style: "width: 28%"` 保持
-/// 一致，命中测试需要同值换算；不用 Tailwind 任意值类，预生成 css 不含它）。
-const COLUMN_WIDTH_RATIO: f64 = 0.28;
 
 /// 中央区挂载时缓存的 client rect，拖拽命中测试用。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -58,13 +51,27 @@ enum SplitSide {
     Right,
 }
 
+/// 竖向列分割线侧（左列宽/右列宽）。
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum ColSide {
+    Left,
+    Right,
+}
+
 /// 把 client 坐标映射为「(所在区, 区内序号)」：
 /// - x 落在左列/右列内，再按中央区高度中点上下二分；
 /// - 中央区不可停靠，返回 `None`。
-fn hit_zone(rect: &ChatRect, cx: f64, cy: f64) -> Option<(Zone, usize)> {
-    let col_w = rect.width * COLUMN_WIDTH_RATIO;
-    let in_left = cx < rect.x + col_w;
-    let in_right = cx > rect.x + rect.width - col_w;
+fn hit_zone(
+    rect: &ChatRect,
+    col_left: f32,
+    col_right: f32,
+    cx: f64,
+    cy: f64,
+) -> Option<(Zone, usize)> {
+    let lw = rect.width * col_left as f64;
+    let rw = rect.width * col_right as f64;
+    let in_left = col_left > 0.0 && cx < rect.x + lw;
+    let in_right = col_right > 0.0 && cx > rect.x + rect.width - rw;
     let top = cy < rect.y + rect.height * 0.5;
 
     if in_left {
@@ -94,7 +101,6 @@ fn zone_label(zone: Zone) -> &'static str {
 }
 
 /// 渲染某区的启用面板堆（区内 order 升序），每项标题栏可按下发起拖拽。
-/// 区收起时渲染 40px 图标轨（每个禁用项一个恢复按钮），保留展开入口。
 fn render_zone(
     zone: Zone,
     character_panel: &Element,
@@ -128,6 +134,7 @@ fn render_zone(
         };
         let item_origin = dock::item_origin(item_name).unwrap_or((zone_c, 0));
         let mut drag_c = *panel_drag;
+
         let el_c = el.clone();
         let item_key = item_name.to_string();
         children.push(rsx! {
@@ -152,33 +159,6 @@ fn render_zone(
         });
     }
 
-    // 收起态：该区全部项被禁用 → 渲染图标轨（每项一个恢复按钮），不渲染正常堆
-    let collapsed_items: Vec<Element> = dock::zone_disabled_items(zone)
-        .iter()
-        .map(|it| {
-            let key = it.id.clone();
-            let title_c = it.title.clone();
-            let icon_c = match it.id.as_str() {
-                "character" => "角色",
-                "sessions" => "会话",
-                "prompt" => "导航",
-                "model" => "模型",
-                _ => it.title.as_str(),
-            };
-            rsx! {
-                button {
-                    key: "zone-collapsed-{key}",
-                    class: "flex w-full items-center justify-center rounded-lg border border-zinc-800/60 bg-zinc-900/80 py-2 text-[10px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 select-none",
-                    title: "展开{title_c}",
-                    name: "btn-zone-expand-{key}",
-                    aria_label: "展开 {title_c}",
-                    onclick: move |_| dock::collapse_zone(zone_c, false),
-                    "{icon_c}"
-                }
-            }
-        })
-        .collect();
-
     let children_v = children.clone();
     let zone_label_c = zone_label(zone_c);
     rsx! {
@@ -186,13 +166,7 @@ fn render_zone(
             // h-full：撑满上下分割容器，否则分区塌成内容高
             class: "flex h-full min-h-0 flex-col gap-1",
             "data-testid": "dock-zone-{zone_label_c}",
-            if children.is_empty() && !collapsed_items.is_empty() {
-                div { class: "flex min-h-0 flex-1 flex-col gap-1",
-                    { collapsed_items.iter() }
-                }
-            } else {
-                { children_v.iter() }
-            }
+            { children_v.iter() }
         }
     }
 }
@@ -219,6 +193,8 @@ pub fn DockFrame(
     let dock_layout = use_memo(move || dock::DOCK.read().clone());
     let split_left = dock_layout().split_left.value();
     let split_right = dock_layout().split_right.value();
+    let col_left = dock_layout().col_left.value();
+    let col_right = dock_layout().col_right.value();
 
     // prop 名只对应默认停靠区：面板可跨区拖动，render_zone 按 DOCK 信号的
     // 实际落区从这四个元素里取用，槽位名只是传参通道，不锁定面板位置。
@@ -230,6 +206,19 @@ pub fn DockFrame(
     let mut rect = use_signal(|| None::<ChatRect>);
     let mut panel_drag = use_signal(|| None::<PanelDrag>);
     let mut split_drag = use_signal(|| None::<(SplitSide, f64)>);
+    let mut col_drag = use_signal(|| None::<(ColSide, f64)>);
+
+    // 列分割线 mousedown：记录侧与起点。单击（无移动）折叠/展开在 mouseup 处理。
+    let start_col = {
+        let mut col_drag = col_drag;
+        move |side: ColSide| {
+            move |e: MouseEvent| {
+                e.stop_propagation();
+                let c = e.client_coordinates();
+                col_drag.set(Some((side, c.x)));
+            }
+        }
+    };
 
     // 分割线 mousedown：记录起点与初始比例，mousemove 持续改 split。
     let start_split = {
@@ -249,13 +238,42 @@ pub fn DockFrame(
     };
 
     let on_root_move = {
-        // 仅 panel_drag 在闭包里经 with_mut 写入需要 mut 重绑定；
-        // split_drag/rect 只读，直接捕获外层绑定即可。
+        // panel_drag 在闭包里经 with_mut 写入需要 mut 重绑定；
+        // col_drag 只读、split_drag/rect 只读，直接捕获外层绑定即可。
         let mut panel_drag = panel_drag;
+        let col_drag = col_drag;
         move |e: MouseEvent| {
             let c = e.client_coordinates();
 
-            // 分割线拖拽中：按列内 y 比例改 split，被压区 <120px 自动收起
+            // 竖向列分割线拖拽：按整宽 x 比例改列宽，压到 <3% 即折叠该列
+            if let Some((_side, sx)) = *col_drag.read() {
+                let Some(r) = *rect.read() else {
+                    return;
+                };
+                // 未超过 4px 视为点按，不进入拖拽改宽
+                if (c.x - sx).abs() <= 4.0 {
+                    return;
+                }
+                let (mut l, mut rr) = (
+                    dock::DOCK.read().col_left.value(),
+                    dock::DOCK.read().col_right.value(),
+                );
+                match _side {
+                    ColSide::Left => l = ((c.x - r.x) / r.width.max(1.0)) as f32,
+                    ColSide::Right => rr = ((r.x + r.width - c.x) / r.width.max(1.0)) as f32,
+                }
+                // 拖过 3% 阈值视为折叠意图，置 0
+                if l < 0.03 {
+                    l = 0.0;
+                }
+                if rr < 0.03 {
+                    rr = 0.0;
+                }
+                dock::set_cols(l, rr);
+                return;
+            }
+
+            // 分割线拖拽中：按列内 y 比例改 split
             if let Some((side, _start)) = *split_drag.read() {
                 let Some(r) = *rect.read() else {
                     return;
@@ -263,15 +281,6 @@ pub fn DockFrame(
                 let col_h = r.height;
                 let ratio = ((c.y - r.y) / col_h.max(1.0)).clamp(0.05, 0.95);
                 dock::set_side_split(side.into(), ratio as f32);
-
-                let top_h = ratio * col_h;
-                let bottom_h = col_h - top_h;
-                let (top_zone, bottom_zone) = match side {
-                    SplitSide::Left => (Zone::LeftTop, Zone::LeftBottom),
-                    SplitSide::Right => (Zone::RightTop, Zone::RightBottom),
-                };
-                dock::collapse_zone(top_zone, top_h < COLLAPSE_THRESHOLD_PX);
-                dock::collapse_zone(bottom_zone, bottom_h < COLLAPSE_THRESHOLD_PX);
                 return;
             }
 
@@ -285,11 +294,33 @@ pub fn DockFrame(
     };
 
     let on_root_up = {
-        // 仅 split_drag 在闭包里 set 需要 mut 重绑定；
+        // split_drag/col_drag 在闭包里 set 需要 mut 重绑定；
         // panel_drag/rect 只读，直接捕获外层绑定即可。
         let mut split_drag = split_drag;
+        let mut col_drag = col_drag;
         move |e: MouseEvent| {
             split_drag.set(None);
+
+            // 列分割线单击（无移动）：切换该列折叠/展开
+            if let Some((side, sx)) = *col_drag.read() {
+                let c = e.client_coordinates();
+                if (c.x - sx).abs() <= 4.0 {
+                    let cur = dock::DOCK.read();
+                    let (l, r) = (cur.col_left.value(), cur.col_right.value());
+                    drop(cur);
+                    match side {
+                        ColSide::Left => {
+                            let nl = if l == 0.0 { 0.28 } else { 0.0 };
+                            dock::set_cols(nl, r);
+                        }
+                        ColSide::Right => {
+                            let nr = if r == 0.0 { 0.28 } else { 0.0 };
+                            dock::set_cols(l, nr);
+                        }
+                    }
+                }
+            }
+            col_drag.set(None);
 
             let pd = *panel_drag.read();
             let Some(pd) = pd else {
@@ -303,7 +334,11 @@ pub fn DockFrame(
             let Some(r) = *rect.read() else {
                 return;
             };
-            if let Some((target, target_index)) = hit_zone(&r, c.x, c.y) {
+            let (cl, cr) = {
+                let cur = dock::DOCK.read();
+                (cur.col_left.value(), cur.col_right.value())
+            };
+            if let Some((target, target_index)) = hit_zone(&r, cl, cr, c.x, c.y) {
                 if target == pd.from_zone {
                     // 同区：区内重排（追加到目标索引处）
                     dock::reorder_zone(target, pd.from_index, target_index + 1);
@@ -350,6 +385,8 @@ pub fn DockFrame(
 
     let split_left_c = split_left;
     let split_right_c = split_right;
+    let col_left_c = col_left;
+    let col_right_c = col_right;
 
     rsx! {
         div {
@@ -371,59 +408,114 @@ pub fn DockFrame(
             onmouseleave: move |_| {
                 panel_drag.set(None);
                 split_drag.set(None);
+                col_drag.set(None);
             },
 
-            // 左列：上下二分（列宽走内联 style：Tailwind 任意值类 w-[28%]
-            // 不在预生成 tailwind.out.css 里，会塌成内容宽）
-            div {
-                class: "flex h-full shrink-0 flex-col gap-1 py-1 pr-1",
-                style: "width: 28%",
-                role: "group",
-                aria_label: "左列面板",
+            // 左列：上下二分（列宽内联 style，动态来自 DOCK.col_left；0=折叠隐藏）
+            { if col_left_c > 0.0 {
+                rsx! {
+                    div {
+                        class: "flex h-full shrink-0 flex-col gap-1 py-1 pr-1",
+                        style: "width: {col_left_c as f64 * 100.0}%",
+                        role: "group",
+                        aria_label: "左列面板",
 
-                div {
-                    class: "flex min-h-0 flex-col",
-                    style: "height: {split_left_c as f64 * 100.0}%",
-                    { left_top_stack }
-                }
+                        div {
+                            class: "flex min-h-0 flex-col",
+                            style: "height: {split_left_c as f64 * 100.0}%",
+                            { left_top_stack }
+                        }
 
-                SplitLine {
-                    side: SplitSide::Left,
-                    on_mousedown: move |e: MouseEvent| start_split(SplitSide::Left)(e),
-                }
+                        SplitLine {
+                            side: SplitSide::Left,
+                            on_mousedown: move |e: MouseEvent| start_split(SplitSide::Left)(e),
+                        }
 
-                div {
-                    class: "flex min-h-0 flex-1 flex-col",
-                    { left_bottom_stack }
+                        div {
+                            class: "flex min-h-0 flex-1 flex-col",
+                            { left_bottom_stack }
+                        }
+                    }
                 }
+            } else { rsx! { div {} } } }
+
+            // 左竖向列分割线：拖动调宽，单击折叠/展开左列
+            VColLine {
+                side: ColSide::Left,
+                collapsed: col_left_c == 0.0,
+                on_mousedown: move |e: MouseEvent| start_col(ColSide::Left)(e),
             }
 
             // 中央 editor 槽
             div { class: "flex h-full min-h-0 min-w-0 flex-1 flex-col", { editor } }
 
-            // 右列：上下二分（列宽内联 style，理由同左列）
-            div {
-                class: "flex h-full shrink-0 flex-col gap-1 py-1 pl-1",
-                style: "width: 28%",
-                role: "group",
-                aria_label: "右列面板",
-
-                div {
-                    class: "flex min-h-0 flex-col",
-                    style: "height: {split_right_c as f64 * 100.0}%",
-                    { right_top_stack }
-                }
-
-                SplitLine {
-                    side: SplitSide::Right,
-                    on_mousedown: move |e: MouseEvent| start_split(SplitSide::Right)(e),
-                }
-
-                div {
-                    class: "flex min-h-0 flex-1 flex-col",
-                    { right_bottom_stack }
-                }
+            // 右竖向列分割线：拖动调宽，单击折叠/展开右列
+            VColLine {
+                side: ColSide::Right,
+                collapsed: col_right_c == 0.0,
+                on_mousedown: move |e: MouseEvent| start_col(ColSide::Right)(e),
             }
+
+            // 右列：上下二分（列宽内联 style，动态来自 DOCK.col_right；0=折叠隐藏）
+            { if col_right_c > 0.0 {
+                rsx! {
+                    div {
+                        class: "flex h-full shrink-0 flex-col gap-1 py-1 pl-1",
+                        style: "width: {col_right_c as f64 * 100.0}%",
+                        role: "group",
+                        aria_label: "右列面板",
+
+                        div {
+                            class: "flex min-h-0 flex-col",
+                            style: "height: {split_right_c as f64 * 100.0}%",
+                            { right_top_stack }
+                        }
+
+                        SplitLine {
+                            side: SplitSide::Right,
+                            on_mousedown: move |e: MouseEvent| start_split(SplitSide::Right)(e),
+                        }
+
+                        div {
+                            class: "flex min-h-0 flex-1 flex-col",
+                            { right_bottom_stack }
+                        }
+                    }
+                }
+            } else { rsx! { div {} } } }
+        }
+    }
+}
+
+/// 竖向列分割线（左右分区的调宽/折叠条）：6px 宽、cursor-col-resize；
+/// 折叠态显示醒目色提示可点击展开。
+#[component]
+fn VColLine(
+    /// 所属侧。
+    side: ColSide,
+    /// 对应列是否折叠。
+    collapsed: bool,
+    /// 按下回调。
+    on_mousedown: EventHandler<MouseEvent>,
+) -> Element {
+    rsx! {
+        div {
+            class: if collapsed {
+                "h-full w-1.5 shrink-0 cursor-col-resize rounded bg-purple-500/50 hover:bg-purple-400 transition-colors"
+            } else {
+                "h-full w-1.5 shrink-0 cursor-col-resize rounded bg-zinc-800/70 hover:bg-purple-500/40 transition-colors"
+            },
+            role: "separator",
+            aria_label: if side == ColSide::Left {
+                if collapsed { "展开左列" } else { "折叠或拖宽左列" }
+            } else if collapsed {
+                "展开右列"
+            } else {
+                "折叠或拖宽右列"
+            },
+            "data-testid": if side == ColSide::Left { "col-split-left" } else { "col-split-right" },
+            title: "拖动调宽；单击折叠/展开",
+            onmousedown: move |e: MouseEvent| on_mousedown.call(e),
         }
     }
 }

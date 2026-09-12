@@ -98,6 +98,10 @@ pub struct DockLayout {
     pub split_left: SplitRatio,
     /// 右列上下分割比例。
     pub split_right: SplitRatio,
+    /// 左列宽度占总宽比例（0 = 该列折叠；上限 0.45）。
+    pub col_left: SplitRatio,
+    /// 右列宽度占总宽比例（0 = 该列折叠；上限 0.45）。
+    pub col_right: SplitRatio,
 }
 
 impl Default for DockLayout {
@@ -107,6 +111,8 @@ impl Default for DockLayout {
             active_by_zone: Zone::ALL.map(|z| (z, None::<String>)).into_iter().collect(),
             split_left: SplitRatio::DEFAULT,
             split_right: SplitRatio::DEFAULT,
+            col_left: SplitRatio::new_unchecked(0.28),
+            col_right: SplitRatio::new_unchecked(0.28),
         }
     }
 }
@@ -257,6 +263,31 @@ pub fn set_split(layout: &mut DockLayout, side: Side, ratio: SplitRatio) {
     }
 }
 
+/// 设置左右列宽度占总宽的比例（列间水平分割线用）。
+///
+/// - 取值 clamp 到 0.0..=0.45：0 表示该列折叠；NaN 归为 0.28。
+/// - 左右之和超过 0.9 时按比例压缩，保证中央区至少 10%。
+pub fn set_col_widths(layout: &mut DockLayout, left: SplitRatio, right: SplitRatio) {
+    let l = if left.value().is_finite() {
+        left.value().clamp(0.0, 0.45)
+    } else {
+        0.28
+    };
+    let r = if right.value().is_finite() {
+        right.value().clamp(0.0, 0.45)
+    } else {
+        0.28
+    };
+    let (l, r) = if l + r > 0.9 {
+        let k = 0.9 / (l + r);
+        (l * k, r * k)
+    } else {
+        (l, r)
+    };
+    layout.col_left = SplitRatio::new_unchecked(l);
+    layout.col_right = SplitRatio::new_unchecked(r);
+}
+
 /// 设置某区收起/展开。
 ///
 /// - `collapsed = true`：该区所有项 `enabled = false`，激活项置 `None`。
@@ -297,6 +328,8 @@ pub fn serialize(layout: &DockLayout) -> serde_json::Value {
         "active_by_zone": active,
         "split_left": layout.split_left.value(),
         "split_right": layout.split_right.value(),
+        "col_left": layout.col_left.value(),
+        "col_right": layout.col_right.value(),
     })
 }
 
@@ -366,6 +399,16 @@ pub fn deserialize(v: &serde_json::Value) -> Result<DockLayout, String> {
 
     layout.split_left = parse_split(v.get("split_left"))?;
     layout.split_right = parse_split(v.get("split_right"))?;
+    // 列宽容忍旧数据缺字段（缺省 0.28），越界 clamp 由 set_col_widths 语义负责
+    let cl = v
+        .get("col_left")
+        .and_then(|x| x.as_f64())
+        .unwrap_or(0.28) as f32;
+    let cr = v
+        .get("col_right")
+        .and_then(|x| x.as_f64())
+        .unwrap_or(0.28) as f32;
+    set_col_widths(&mut layout, SplitRatio::new_unchecked(cl), SplitRatio::new_unchecked(cr));
     Ok(layout)
 }
 

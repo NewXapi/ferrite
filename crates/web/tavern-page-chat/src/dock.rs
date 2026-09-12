@@ -9,7 +9,7 @@
 use dioxus::prelude::*;
 use tavern_state::dock::{
     DockItem, DockLayout, Side, SplitRatio, Zone, deserialize, move_item, reorder_in_zone,
-    serialize, set_split, set_zone_collapsed,
+    serialize, set_col_widths, set_split,
 };
 
 /// localStorage 键。
@@ -55,6 +55,8 @@ fn default_layout() -> DockLayout {
         // 半区空旷、底部被撑太大。左 35/65，右 40/60。
         split_left: SplitRatio::new_unchecked(0.35),
         split_right: SplitRatio::new_unchecked(0.40),
+        col_left: SplitRatio::new_unchecked(0.28),
+        col_right: SplitRatio::new_unchecked(0.28),
         ..DockLayout::default()
     }
 }
@@ -115,15 +117,16 @@ pub fn set_side_split(side: Side, ratio: f32) {
     persist();
 }
 
-/// 收起/展开某区。
-pub fn collapse_zone(zone: Zone, collapsed: bool) {
-    DOCK.with_mut(|l| set_zone_collapsed(l, zone, collapsed));
+/// 设置左右列宽（0 = 折叠该列；越界值由纯函数 clamp）。
+pub fn set_cols(left: f32, right: f32) {
+    DOCK.with_mut(|l| {
+        set_col_widths(
+            l,
+            SplitRatio::new_unchecked(left),
+            SplitRatio::new_unchecked(right),
+        )
+    });
     persist();
-}
-
-/// 该区是否处于收起态（任一停靠项被禁用即视为收起）。
-pub fn zone_collapsed(zone: Zone) -> bool {
-    DOCK().items.iter().any(|i| i.zone == zone && !i.enabled)
 }
 
 /// 某面板当前停靠的区。
@@ -146,16 +149,6 @@ pub fn zone_item_ids(zone: Zone) -> Vec<String> {
         .collect();
     ids.sort_by_key(|(o, _)| *o);
     ids.into_iter().map(|(_, id)| id.clone()).collect()
-}
-
-/// 某区被禁用的项（区收起态渲染图标轨用）。
-pub fn zone_disabled_items(zone: Zone) -> Vec<DockItem> {
-    DOCK()
-        .items
-        .iter()
-        .filter(|i| i.zone == zone && !i.enabled)
-        .cloned()
-        .collect()
 }
 
 /// 某面板在区内启用项中的（区, 索引）；找不到返回 None。

@@ -40,7 +40,7 @@ pub fn msg_display(msg: &tavern_state::Message) -> (String, bool, usize, Vec<Str
     )
 }
 
-/// 中央互动区 editor 槽：顶部工具栏 + 消息流 + 粘性 composer + Dialog 群。
+/// 中央互动区 editor 槽：消息流 + composer + Dialog 群（顶栏在页面层全宽渲染）。
 ///
 /// 作为独立组件方便 DockFrame 以 Element 形式接收。
 #[component]
@@ -71,12 +71,6 @@ pub fn EditorSlot(
     scroll_running: Signal<bool>,
     /// 模型下拉开关。
     model_dropdown_open: Signal<bool>,
-    /// 主题。
-    theme_light: bool,
-    /// 切回大厅。
-    on_goto_characters: EventHandler<()>,
-    /// 切主题。
-    on_toggle_theme: EventHandler<()>,
     /// 发送回调。
     handle_send: EventHandler<()>,
     /// 滚动回调。
@@ -161,41 +155,6 @@ pub fn EditorSlot(
 
     rsx! {
         div { class: "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-
-            div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-10 select-none",
-                div { class: "flex items-center gap-2",
-                    button {
-                        class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
-                        title: "剧本会话",
-                        name: "btn-sidebar-toggle-top",
-                        onclick: move |e| e.stop_propagation(),
-                        span { class: "font-semibold", "剧本会话" }
-                    }
-                    button {
-                        class: "flex h-8 items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:flex",
-                        title: "回到剧本库大厅",
-                        onclick: move |_| on_goto_characters.call(()),
-                        "大厅"
-                    }
-                }
-                div { class: "flex items-center gap-2",
-                    button {
-                        class: "flex h-8 w-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
-                        title: "切换光暗",
-                        onclick: move |_| on_toggle_theme.call(()),
-                        if theme_light { "暗" } else { "亮" }
-                    }
-                    button {
-                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
-                        title: "快捷菜单",
-                        onclick: move |e| {
-                            e.stop_propagation();
-                            menu_open.set(!menu_open());
-                        },
-                        "菜单"
-                    }
-                }
-            }
 
             div {
                 id: "chat-scroll-viewport",
@@ -405,7 +364,7 @@ pub fn ChatPage(
     // draft 与 active_bubble_menu_id 在本组件闭包里有写入，保留 mut。
     let detail_modal_open = use_signal(|| false);
     let donate_modal_open = use_signal(|| false);
-    let menu_open = use_signal(|| false);
+    let mut menu_open = use_signal(|| false);
     let model_dropdown_open = use_signal(|| false);
     let memory_boost = use_signal(|| true);
     let stream_toggle = use_signal(|| true);
@@ -483,11 +442,50 @@ pub fn ChatPage(
 
     rsx! {
         div {
-            class: "relative flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100 select-none",
+            class: "relative flex h-full w-full flex-col overflow-hidden bg-zinc-950 text-zinc-100 select-none",
             onclick: move |_| {
                 active_bubble_menu_id.set(None);
             },
-            layout::DockFrame {
+
+            // 顶层 header：全宽，dock 三列都在它下面
+            div { class: "flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-zinc-900/70 px-4 backdrop-blur-xl z-20 select-none",
+                div { class: "flex items-center gap-2",
+                    button {
+                        class: "flex h-8 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/90 px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:border-purple-500/40 transition-all active:scale-95 shadow-sm",
+                        title: "剧本会话",
+                        name: "btn-sidebar-toggle-top",
+                        onclick: move |e| e.stop_propagation(),
+                        span { class: "font-semibold", "剧本会话" }
+                    }
+                    button {
+                        class: "flex h-8 items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:flex",
+                        title: "回到剧本库大厅",
+                        onclick: move |_| on_goto_characters.call(()),
+                        "大厅"
+                    }
+                }
+                div { class: "flex items-center gap-2",
+                    button {
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors",
+                        title: "切换光暗",
+                        onclick: move |_| on_toggle_theme.call(()),
+                        if theme_light { "暗" } else { "亮" }
+                    }
+                    button {
+                        class: "flex h-8 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors",
+                        title: "快捷菜单",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            menu_open.set(!menu_open());
+                        },
+                        "菜单"
+                    }
+                }
+            }
+
+            // 三列 dock 区（顶栏之下）
+            div { class: "flex min-h-0 flex-1",
+                layout::DockFrame {
                 editor: rsx! {
                     EditorSlot {
                         draft: draft,
@@ -503,9 +501,6 @@ pub fn ChatPage(
                         scroll_dirty: scroll_dirty,
                         scroll_running: scroll_running,
                         model_dropdown_open: model_dropdown_open,
-                        theme_light: theme_light,
-                        on_goto_characters: on_goto_characters,
-                        on_toggle_theme: on_toggle_theme,
                         handle_send: handle_send_ev,
                         on_scroll: on_scroll_ev,
                     }
@@ -532,6 +527,7 @@ pub fn ChatPage(
                         model_dropdown_open: model_dropdown_open,
                     }
                 },
+                }
             }
         }
     }
