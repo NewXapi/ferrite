@@ -18,6 +18,7 @@ pub mod components;
 pub mod dialog;
 pub mod feedback;
 pub mod form;
+pub mod icons;
 pub mod scroll_spy;
 pub mod segmented;
 pub mod session;

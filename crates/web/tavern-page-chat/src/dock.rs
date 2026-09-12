@@ -8,8 +8,8 @@
 
 use dioxus::prelude::*;
 use tavern_state::dock::{
-    DockItem, DockLayout, Side, SplitRatio, Zone, deserialize, move_item, reorder_in_zone,
-    serialize, set_col_widths, set_split,
+    COL_DEFAULT_PX, DockItem, DockLayout, DockMode, Side, SplitRatio, Zone, deserialize, move_item,
+    reorder_in_zone, serialize, set_col_widths, set_mode, set_split,
 };
 
 /// localStorage 键。
@@ -55,8 +55,10 @@ fn default_layout() -> DockLayout {
         // 半区空旷、底部被撑太大。左 35/65，右 40/60。
         split_left: SplitRatio::new_unchecked(0.35),
         split_right: SplitRatio::new_unchecked(0.40),
-        col_left: SplitRatio::new_unchecked(0.28),
-        col_right: SplitRatio::new_unchecked(0.28),
+        // 列宽为像素定宽（0 = 折叠；非 0 由纯函数 clamp 到 180..=480）。
+        col_left: COL_DEFAULT_PX,
+        col_right: COL_DEFAULT_PX,
+        // mode 默认 Side（右 dock 侧挂占位）。
         ..DockLayout::default()
     }
 }
@@ -117,16 +119,28 @@ pub fn set_side_split(side: Side, ratio: f32) {
     persist();
 }
 
-/// 设置左右列宽（0 = 折叠该列；越界值由纯函数 clamp）。
-pub fn set_cols(left: f32, right: f32) {
+/// 设置左右列的像素宽度（0 = 折叠该列；非 0 越界值由纯函数 clamp 到
+/// [`tavern_state::dock::COL_MIN_PX`]..=[`tavern_state::dock::COL_MAX_PX`]）。
+pub fn set_cols(left_px: u16, right_px: u16) {
+    DOCK.with_mut(|l| set_col_widths(l, left_px, right_px));
+    persist();
+}
+
+/// 切换右 dock 呈现模式（Side ↔ Floating）并写回持久化。
+pub fn toggle_mode() {
     DOCK.with_mut(|l| {
-        set_col_widths(
-            l,
-            SplitRatio::new_unchecked(left),
-            SplitRatio::new_unchecked(right),
-        )
+        let next = match l.mode {
+            DockMode::Side => DockMode::Floating,
+            DockMode::Floating => DockMode::Side,
+        };
+        set_mode(l, next);
     });
     persist();
+}
+
+/// 当前右 dock 呈现模式（渲染层据此选侧挂占位 / 浮层叠放）。
+pub fn dock_mode() -> DockMode {
+    DOCK().mode
 }
 
 /// 重置为默认布局（菜单「重置布局」入口用）：任何拖乱的状态一键还原。
