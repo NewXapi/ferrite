@@ -152,14 +152,14 @@ pub fn ChannelHealth() -> Element {
                     // 汇总卡
                     div { class: "grid grid-cols-2 gap-3 md:grid-cols-4",
                         for (value, label) in summary {
-                            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3",
+                            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/20 cursor-default",
                                 p { class: "text-base font-semibold text-zinc-100", "{value}" }
                                 p { class: "mt-0.5 text-xs text-zinc-500", "{label}" }
                             }
                         }
                     }
                     // 逐渠道可用率
-                    div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3",
+                    div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
                         for r in data {
                             div { class: "flex items-center gap-3",
                                 span { class: "w-28 shrink-0 truncate text-sm text-zinc-300", "{r.name}" }

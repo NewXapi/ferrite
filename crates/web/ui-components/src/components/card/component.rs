@@ -12,6 +12,14 @@ use dioxus::prelude::*;
 const CARD_BASE_CLASS: &str =
     "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm";
 
+/// `hoverable=true` 时叠加的悬停变亮 class。
+///
+/// shadcn 的 Card 本身是静态的、不含 hover 态；这一层是 ferrite 管理台面板的
+/// 统一交互（边框变亮 + 轻微上浮 + 阴影），与 overview/models 面板此前手写的
+/// 内联 hover 对齐。迁移完成后各面板改用 `<Card hoverable>` 取代裸 div + 内联 class。
+const CARD_HOVER_CLASS: &str =
+    "transition-all duration-200 hover:border-zinc-700 hover:shadow-md";
+
 /// shadcn new-york-v4 CardHeader 基础 class（ui/card.tsx:22，逐字）。
 const CARD_HEADER_BASE_CLASS: &str = "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6";
 
@@ -62,10 +70,17 @@ fn with_class(attributes: Vec<Attribute>, extra: &str) -> Vec<Attribute> {
 /// shadcn new-york-v4 风格卡片容器。
 #[component]
 pub fn Card(
+    /// 悬停时边框变亮 + 阴影（管理台面板统一交互），默认 false。
+    #[props(default)] hoverable: bool,
     #[props(extends=GlobalAttributes)] attributes: Vec<Attribute>,
     children: Element,
 ) -> Element {
-    let class = with_class(attributes, CARD_BASE_CLASS);
+    let base = if hoverable {
+        format!("{CARD_BASE_CLASS} {CARD_HOVER_CLASS}")
+    } else {
+        CARD_BASE_CLASS.to_string()
+    };
+    let class = with_class(attributes, &base);
 
     rsx! {
         div {
