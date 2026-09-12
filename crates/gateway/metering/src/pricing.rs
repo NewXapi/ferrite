@@ -31,19 +31,39 @@ fn default_group_multiplier() -> f64 {
 
 /// 定价表 trait — catalog 快照的投影。
 pub trait PriceTable: Send + Sync {
-    fn lookup(&self, model: &str) -> Option<ModelPrice>;
+    /// 查 `(model, group)` 的价。
+    ///
+    /// `group` 是请求分组名（如 "default" / "vip"）；实现可按组返回不同价。
+    /// 返回值里的 [`ModelPrice::group_multiplier`] 参与 [`price_of`] 计算；
+    /// 组倍率的**请求侧真实来源**（GroupRecord.rate_multiplier）由调用方作为
+    /// `group_ratio` 传给 [`price_of`] / [`crate::settle_event`]，不经本表。
+    fn lookup(&self, model: &str, group: &str) -> Option<ModelPrice>;
 }
 
 /// 结算价计算。
 ///
 /// 内部单位换算: 500_000 单位 = $1 (new-api 语义), 即
-/// cost = tokens × price_per_million / 1e6 × 500_000 × group_multiplier。
-pub fn price_of(counts: crate::scanner::TokenCounts, price: &ModelPrice) -> i64 {
+/// cost = (in+out+cache 美元) × price.group_multiplier × group_ratio × 500_000，
+/// 向上取整（`.ceil()`：非零消耗至少 1 单位，零消耗仍为 0）。
+///
+/// `group_ratio` 是请求分组倍率（GroupRecord.rate_multiplier），缺省 1.0；
+/// 与表内 `group_multiplier` 相乘，两级倍率语义各自独立。
+pub fn price_of(counts: crate::scanner::TokenCounts, price: &ModelPrice, group_ratio: f64) -> i64 {
     let input_cost = counts.prompt as f64 * price.input / 1e6;
     let output_cost = counts.completion as f64 * price.output / 1e6;
     let cache_cost = counts.cached as f64 * price.cache / 1e6;
-    let total_dollars = (input_cost + output_cost + cache_cost) * price.group_multiplier;
-    (total_dollars * 500_000.0).ceil() as i64
+    let total_dollars =
+        (input_cost + output_cost + cache_cost) * price.group_multiplier * group_ratio;
+    let raw = total_dollars * 500_000.0;
+    // 计费向上取整，但浮点噪声会让本该整数（如 2250.0）的和轻微溢出到
+    // 2250.0000000002，直接 ceil 会每笔多收 1 单位。先在极小容差内吸附到最近
+    // 整数，再对真实小数部分 ceil。
+    let snapped = if (raw - raw.round()).abs() < 1e-6 {
+        raw.round()
+    } else {
+        raw.ceil()
+    };
+    snapped as i64
 }
 /// 来自配置的定价表实现。
 #[derive(Debug, Clone)]
@@ -58,7 +78,9 @@ impl ConfigPriceTable {
 }
 
 impl PriceTable for ConfigPriceTable {
-    fn lookup(&self, model: &str) -> Option<ModelPrice> {
+    /// 配置表按 model 命中；组倍率的真实来源（`group_ratio`）由调用方在
+    /// settle 时传入，本实现不使用 `group` 参数。
+    fn lookup(&self, model: &str, _group: &str) -> Option<ModelPrice> {
         self.prices.get(model).copied()
     }
 }

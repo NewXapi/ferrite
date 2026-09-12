@@ -19,7 +19,9 @@ pub mod ledger;
 pub mod pricing;
 pub mod scanner;
 pub mod settle;
+pub mod sink;
 
 pub use ledger::{Hold, Ledger};
 pub use scanner::StreamScanner;
-pub use settle::settle_event;
+pub use settle::{extract_usage, settle_event};
+pub use sink::SettleSink;
