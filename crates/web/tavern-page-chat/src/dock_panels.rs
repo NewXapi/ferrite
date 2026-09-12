@@ -6,6 +6,7 @@
 
 use dioxus::prelude::*;
 use tavern_state::{STATE, open_chat};
+use tavern_ui::icons::IconPlus;
 
 /// 通用面板外壳：标题栏即拖拽把手。
 #[component]
@@ -168,7 +169,8 @@ pub fn SessionsPanel() -> Element {
                             });
                         }
                     },
-                    "+ 新对话"
+                    IconPlus { size: 12 }
+                    "新对话"
                 }
                 div { class: "flex flex-col gap-2",
                     { session_items.iter() }
