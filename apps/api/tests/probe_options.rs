@@ -69,10 +69,7 @@ fn channel_targets_take_host_443() {
             "https://api.example.com/v1?x=1".to_string(),
         ),
         ("clb".to_string(), "http://other.example.org".to_string()),
-        (
-            "clc".to_string(),
-            "https://std.example.com:443".to_string(),
-        ),
+        ("clc".to_string(), "https://std.example.com:443".to_string()),
     ];
     assert_eq!(
         channel_probe_targets(&rows),
@@ -92,13 +89,48 @@ fn channel_targets_skip_bad_rows() {
         ("garbage".to_string(), "not a url".to_string()),
         ("nohost".to_string(), "mailto:a@example.com".to_string()),
         ("emptyhost".to_string(), "file:///tmp/x".to_string()),
-        ("oddport".to_string(), "https://api.example.com:8443".to_string()),
+        (
+            "oddport".to_string(),
+            "https://api.example.com:8443".to_string(),
+        ),
         ("good".to_string(), "https://api.example.com".to_string()),
     ];
     assert_eq!(
         channel_probe_targets(&rows),
         vec![("good".to_string(), "api.example.com:443".to_string())]
     );
+}
+
+/// IPv6 字面量与 userinfo 型 base_url 的解析钉住（OCR 审查采纳项）。
+///
+/// url crate 对 IPv6 的 `host_str()` **保留方括号**（`[2001:db8::1]`），
+/// 拼出的目标 `[2001:db8::1]:443` 正是 probe.rs `split_host_port` 需要的形态
+/// （它按最后一个冒号切 host/port，IPv6 必须靠方括号界定）。userinfo 只取 host，
+/// 凭据不进目标字符串——这条把两段链路对 IPv6/凭据的约定钉在一起。
+#[test]
+fn channel_targets_ipv6_and_userinfo() {
+    let rows = vec![
+        (
+            "ipv6".to_string(),
+            "https://[2001:db8::1]:443/v1".to_string(),
+        ),
+        (
+            "authed".to_string(),
+            "https://user:secret@api.example.com/v1".to_string(),
+        ),
+    ];
+    let got = channel_probe_targets(&rows);
+    assert_eq!(got.len(), 2);
+    assert_eq!(
+        got[0],
+        ("ipv6".to_string(), "[2001:db8::1]:443".to_string())
+    );
+    assert_eq!(
+        got[1],
+        ("authed".to_string(), "api.example.com:443".to_string())
+    );
+    // 凭据不得出现在探测目标里
+    assert!(!got.iter().any(|(_, t)| t.contains("secret")));
 }
 
 /// 无 enabled 渠道 = 空输出（循环本轮零次探测，不 panic）。

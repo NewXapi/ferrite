@@ -312,15 +312,21 @@ pub fn parse_probe_options(rows: &[(String, serde_json::Value)]) -> ProbeOptions
 }
 
 /// 读 options 表 → [`ProbeOptions`]。表不存在/查询失败按缺省（关闭）处理——
-/// 探测是可选增强，读取失败不该在日志里刷屏。
+/// 探测是可选增强，读失败不该刷屏，但也不能零可观测：debug 级每间隔最多一条。
 async fn read_probe_options(pool: &PgPool) -> ProbeOptions {
     let rows: Vec<(String, serde_json::Value)> =
-        sqlx::query_as("SELECT key, value FROM options WHERE key IN ($1, $2)")
+        match sqlx::query_as("SELECT key, value FROM options WHERE key IN ($1, $2)")
             .bind(probe_keys::ENABLED)
             .bind(probe_keys::INTERVAL_SECS)
             .fetch_all(pool)
             .await
-            .unwrap_or_default();
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!(error = %e, "读取探测 options 失败，本轮按缺省（关闭）");
+                Vec::new()
+            }
+        };
     parse_probe_options(&rows)
 }
 
@@ -344,14 +350,20 @@ pub fn channel_probe_targets(rows: &[(String, String)]) -> Vec<(String, String)>
 }
 
 /// 读全部 enabled 渠道的 `(name, base_url)` 行（供 [`channel_probe_targets`]）。
-/// 查询失败按空处理——与 [`read_probe_options`] 同一"读失败不刷屏"约定。
+/// 查询失败按空处理（与 [`read_probe_options`] 同款 debug 日志，不刷屏但可观测）。
 async fn probe_targets_rows(pool: &PgPool) -> Vec<(String, String)> {
-    sqlx::query_as(
+    match sqlx::query_as(
         "SELECT name, base_url FROM api_channels WHERE status = 1 AND base_url <> '' ORDER BY priority DESC NULLS LAST",
     )
     .fetch_all(pool)
     .await
-    .unwrap_or_default()
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::debug!(error = %e, "读取探测目标渠道失败，本轮跳过");
+            Vec::new()
+        }
+    }
 }
 
 /// 启动定时探测循环（生命周期 = 进程生命周期，不做优雅关闭）。
