@@ -588,8 +588,8 @@ fn VColLine(
 ) -> Element {
     rsx! {
         div {
-            class: "relative z-10 h-full w-1 shrink-0 cursor-col-resize",
-            style: "margin-left: -2px; margin-right: -2px;",
+            class: "relative z-10 h-full shrink-0 cursor-col-resize",
+            style: "width: 5px; margin-left: -2px; margin-right: -2px;",
             role: "separator",
             aria_label: if side == ColSide::Left {
                 if collapsed { "展开左列" } else { "折叠或拖宽左列" }
@@ -616,8 +616,8 @@ fn SplitLine(
 ) -> Element {
     rsx! {
         div {
-            class: "relative z-10 h-1 w-full shrink-0 cursor-row-resize",
-            style: "margin-top: -2px; margin-bottom: -2px;",
+            class: "relative z-10 w-full shrink-0 cursor-row-resize",
+            style: "height: 5px; margin-top: -2px; margin-bottom: -2px;",
             role: "separator",
             aria_label: if side == SplitSide::Left {
                 "左列上下分割线"
