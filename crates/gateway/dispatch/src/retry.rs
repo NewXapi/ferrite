@@ -158,6 +158,9 @@ impl Failover {
 ///   match outcome {
 ///     Done { .. } | Fatal(_) => return Ok((attempt, outcome)) // 获胜候选带出
 ///     Retryable(_)           => mark_tried; continue          // 换候选重试
+///     FatalButSwitchable(_)  => mark_tried; 暂存该结果; continue
+///       # select 已无剩余候选 (NoCandidate) → 带回暂存结果透传 (最后一个候选
+///       # 的渠道相关 4xx 原样给客户端, 不伪装成 503)
 ///   }
 /// }
 /// Err(RetriesExhausted)
@@ -166,9 +169,10 @@ impl Failover {
 /// `RetryPolicy::max_attempts` 预算耗尽 → `DispatchError::RetriesExhausted`
 /// (上层映射 502/503, 与 NoCandidate=503 区分)。
 ///
-/// 成功返回 `Ok((Attempt, AttemptOutcome))`: 获胜 (或 Fatal 终止) 的那次尝试的
-/// 上下文与结果; 调用方 (forward::ForwardStage) 需要候选身份来组装响应流与
-/// 落健康归属。失败仍返回 `Err(DispatchError)`。
+/// 成功返回 `Ok((Attempt, AttemptOutcome))`: 获胜 (或 Fatal / 最后候选的
+/// FatalButSwitchable 终止) 的那次尝试的上下文与结果; 调用方
+/// (forward::ForwardStage) 需要候选身份来组装响应流与落健康归属。
+/// 失败仍返回 `Err(DispatchError)`。
 pub async fn run_retry_loop<Sel, Attempt, Fut>(
     group: &str,
     model: &str,
@@ -180,11 +184,25 @@ pub async fn run_retry_loop<Sel, Attempt, Fut>(
 where
     Sel: FnMut(&str, &str, &[String]) -> Result<Candidate, crate::DispatchError>,
     Attempt: FnMut(&Candidate) -> Fut,
-    Fut: std::future::Future<Output = AttemptOutcome>,
+    Fut: Future<Output = AttemptOutcome>,
 {
     let mut failover = Failover::new(*policy);
+    // 最近一次渠道相关 4xx (FatalButSwitchable) 的尝试结果。选不出下一候选
+    // (NoCandidate = 全部试完) 时把它作为终态带回: 客户端拿到上游真实 4xx,
+    // 而不是被 503 NoCandidate 掩盖 (P1-B「最后一个候选才透传」)。
+    let mut last_switchable: Option<(crate::Attempt, AttemptOutcome)> = None;
     while let Some(attempt_no) = failover.next_attempt() {
-        let candidate = select(group, model, failover.exclude())?;
+        let candidate = match select(group, model, failover.exclude()) {
+            Ok(c) => c,
+            Err(e) => {
+                if matches!(e, crate::DispatchError::NoCandidate { .. }) {
+                    if let Some(last) = last_switchable.take() {
+                        return Ok(last);
+                    }
+                }
+                return Err(e);
+            }
+        };
         let outcome = attempt(&candidate).await;
         report(
             &candidate.unit.meta.key,
@@ -213,10 +231,19 @@ where
                 ));
             }
             AttemptOutcome::Retryable(_) => {
+                // 终次失败不再是渠道相关 4xx → 清空暂存, 只透传「最后一个」候选。
+                last_switchable = None;
                 failover.mark_tried(candidate.unit.meta.key.clone());
             }
-            AttemptOutcome::FatalButSwitchable(_) => {
+            AttemptOutcome::FatalButSwitchable(class) => {
                 failover.mark_tried(candidate.unit.meta.key.clone());
+                last_switchable = Some((
+                    crate::Attempt {
+                        candidate,
+                        attempt_no,
+                    },
+                    AttemptOutcome::FatalButSwitchable(class),
+                ));
             }
         }
     }
