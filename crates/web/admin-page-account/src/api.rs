@@ -1,8 +1,10 @@
 //! 账户页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 //!
-//! 现在是 mock 直连(同步返回 `mock` crate 的静态数据);接上真实后端时
-//! 只改本文件 —— 换成 `crates/shared/client` 的请求,必要时把签名改成 async,
-//! 三个面板(keys / usage_logs / rewards)本身无需改动。
+//! 两类入口并存:
+//! - `fetch_*`: mock 直连 (同步返回 `mock` crate 静态数据), 覆盖尚无后端端点的
+//!   面板 (钱包 / 邀请分成), 接上后端时只改本文件;
+//! - `*_api`: 真实后端调用 (async, 走 `client::ApiClient`), 已覆盖密钥 / 用量 /
+//!   用户信息 / 会话 / 设置 / 兑换码充值。
 
 pub use mock::account::{ApiKey, Invitee, Profile, Recharge, RewardStat, UsageLog, Wallet};
 
@@ -64,7 +66,7 @@ use contract::api::token::{
     CreateTokenRequest, CreateTokenResult, TokenDto, TokenList, UpdateTokenRequest,
 };
 use contract::api::usage::{UsageLogPage, UsageStatDto};
-use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto};
+use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto, UserTopupRequest};
 
 /// 真实调用: GET /api/token (owner 模式, 后端按 token 属主过滤, 无 query 参数)。
 /// 列表为 `{items}` 信封, 拆包后返回 `Vec<TokenDto>`。
@@ -186,4 +188,27 @@ pub async fn update_settings_api(
     settings: &serde_json::Value,
 ) -> ApiResult<serde_json::Value> {
     client.put("/api/user/self/setting", settings).await
+}
+
+// ---- 兑换码充值 (rewards 面板) ----
+
+/// 真实调用: POST /api/user/topup — 兑换码充值 (CAS 核销, 事务内入账用户 quota)。
+///
+/// 请求体 [`UserTopupRequest`] 与后端本地 `TopupRequest { key }` 逐字对齐;
+/// 成功响应为裸 JSON `{"quota": <入账额度, 内部单位>, "success": true}`,
+/// 用 [`topup_credited_quota`] 提取入账值展示。
+pub async fn topup_api(
+    client: &ApiClient,
+    req: &UserTopupRequest,
+) -> ApiResult<serde_json::Value> {
+    client.post("/api/user/topup", req).await
+}
+
+/// 从 POST /api/user/topup 的成功响应提取入账额度。
+///
+/// 后端成功返回 `{"quota": <i64 内部单位>, "success": true}`; 字段缺失、
+/// 非整数 (含浮点) 或为 null 时返回 `None`, 调用方降级为通用成功文案,
+/// 不假造入账数值。
+pub fn topup_credited_quota(resp: &serde_json::Value) -> Option<i64> {
+    resp.get("quota").and_then(|q| q.as_i64())
 }
