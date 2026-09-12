@@ -79,45 +79,41 @@ struct Harness {
 }
 
 impl Harness {
-    fn run(
+    async fn run(
         mut self,
-    ) -> impl Future<
-        Output = (
-            Result<(dispatch::Attempt, AttemptOutcome), DispatchError>,
-            Vec<Vec<String>>,
-            Vec<(String, Result<u16, FailureClass>)>,
-        ),
-    > {
-        async move {
-            let result = run_retry_loop(
-                "g",
-                "m",
-                &RetryPolicy::default(),
-                |g, m, exclude| {
-                    self.selects.push(exclude.to_vec());
-                    self.pool
-                        .iter()
-                        .find(|c| !exclude.contains(&c.unit.meta.key))
-                        .cloned()
-                        .ok_or(DispatchError::NoCandidate {
-                            group: g.to_string(),
-                            model: m.to_string(),
-                        })
-                },
-                |c| {
-                    let plan = self
-                        .plans
-                        .iter()
-                        .find(|(k, _)| *k == c.unit.meta.key)
-                        .map(|(_, p)| *p)
-                        .expect("plan for candidate");
-                    std::future::ready(outcome(plan))
-                },
-                |key, outcome| self.reports.push((key.to_string(), outcome)),
-            )
-            .await;
-            (result, self.selects, self.reports)
-        }
+    ) -> (
+        Result<(dispatch::Attempt, AttemptOutcome), DispatchError>,
+        Vec<Vec<String>>,
+        Vec<(String, Result<u16, FailureClass>)>,
+    ) {
+        let result = run_retry_loop(
+            "g",
+            "m",
+            &RetryPolicy::default(),
+            |g, m, exclude| {
+                self.selects.push(exclude.to_vec());
+                self.pool
+                    .iter()
+                    .find(|c| !exclude.contains(&c.unit.meta.key))
+                    .cloned()
+                    .ok_or(DispatchError::NoCandidate {
+                        group: g.to_string(),
+                        model: m.to_string(),
+                    })
+            },
+            |c| {
+                let plan = self
+                    .plans
+                    .iter()
+                    .find(|(k, _)| *k == c.unit.meta.key)
+                    .map(|(_, p)| *p)
+                    .expect("plan for candidate");
+                std::future::ready(outcome(plan))
+            },
+            |key, outcome| self.reports.push((key.to_string(), outcome)),
+        )
+        .await;
+        (result, self.selects, self.reports)
     }
 }
 

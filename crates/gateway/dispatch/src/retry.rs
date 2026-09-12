@@ -195,10 +195,10 @@ where
         let candidate = match select(group, model, failover.exclude()) {
             Ok(c) => c,
             Err(e) => {
-                if matches!(e, crate::DispatchError::NoCandidate { .. }) {
-                    if let Some(last) = last_switchable.take() {
-                        return Ok(last);
-                    }
+                if matches!(e, crate::DispatchError::NoCandidate { .. })
+                    && let Some(last) = last_switchable.take()
+                {
+                    return Ok(last);
                 }
                 return Err(e);
             }
