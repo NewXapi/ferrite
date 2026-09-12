@@ -6,11 +6,12 @@
 //!
 //! 模型要点 (与 phase0 逐项对齐):
 //! - **outcome 五分类**: Success / Fatal / Throttled(429) / Neutral(其它 4xx) /
-//!   UnauthorizedRun(401 连续升级, 3 次 → Fatal);
+//!   UnauthorizedRun(401/403 连续升级, 3 次 → Fatal);
 //! - **EWMA 连续分**: `score = α×obs + (1-α)×score`, obs ∈ {1.0, 0.0, 0.7(429)},
 //!   MinRequests 前不更新, MinScore 下限;
-//! - **递增冷却**: 触发阈值 CooldownThreshold, 时长按
+//! - **递增冷却**: 触发阈值 CooldownThreshold; 5xx/传输层 streak 时长按
 //!   `base + (max-base)×(1-α^streak)` 滑向 max, 每次激活 streak+1;
+//!   P1-A 分档: 401/403-run 升级的 Fatal → max 档, 429 → base 短冷却;
 //! - **slow-start ramp**: 冷却结束进入 ramp (RampPending), 权重按
 //!   `request_count/min_requests` 渐进, 真实失败立即 RampExited;
 //! - **max-ejection**: 同层冷却渠道占比超 CooldownMaxEjectionPercent 时,
@@ -41,7 +42,7 @@ pub enum ChannelOutcome {
     Fatal,
     /// 429 — 渠道健康但被限流, 轻度降权, obs = 0.7。
     Throttled,
-    /// 其它 4xx (400/403/404/422/孤立 401) — 渠道无责, 不改分不记 streak。
+    /// 其它 4xx (400/404/422/孤立 401/403) — 渠道无责, 不改分不记 streak。
     Neutral,
 }
 
@@ -59,7 +60,7 @@ pub struct HealthState {
     pub ewma_score: f64,
     /// 已观测请求数; 未达 MinRequests 前 EWMA 不更新 (信任新渠道)。
     pub request_count: u32,
-    /// 连续 401 次数; 达 UnauthorizedEscalationThreshold → Fatal。
+    /// 连续 401/403 (凭据类) 次数; 达 UnauthorizedEscalationThreshold → Fatal。
     pub unauthorized_run: u32,
     /// 真实失败后退出 slow-start ramp (不再渐进)。
     pub ramp_exited: bool,
@@ -135,7 +136,7 @@ impl Default for HealthSetting {
 
 /// 429 的 EWMA 观测值 (轻度降权, 非致命)。
 pub const THROTTLED_OBSERVATION: f64 = 0.7;
-/// 连续 401 达此数升级为 Fatal。
+/// 连续 401/403 达此数升级为 Fatal。
 pub const UNAUTHORIZED_ESCALATION_THRESHOLD: u32 = 3;
 /// 无历史渠道的默认分。
 pub const DEFAULT_SCORE: f64 = 1.0;
@@ -341,11 +342,13 @@ fn apply_outcome(
     if matches!(outcome, ChannelOutcome::Fatal | ChannelOutcome::Throttled)
         && st.failure_streak >= cfg.cooldown_threshold
     {
-        start_cooldown(st, cfg, now_ms);
+        start_cooldown(st, cfg, now_ms, outcome);
     }
 }
 
 /// 分类 — phase0 `classifyChannelOutcomeUnlocked` + UnauthorizedRun 升级。
+/// 401/403 独立分支 (P1-A): 孤立凭据错误保持 Neutral 语义 (渠道无责不改分),
+/// 但计入 unauthorized_run; 连续达阈值 → Fatal。成功/429/5xx/其它 4xx 清零。
 fn classify(st: &mut HealthState, outcome: Result<u16, FailureClass>) -> ChannelOutcome {
     match outcome {
         Ok(status) => match status {
@@ -357,7 +360,7 @@ fn classify(st: &mut HealthState, outcome: Result<u16, FailureClass>) -> Channel
                 st.unauthorized_run = 0;
                 ChannelOutcome::Throttled
             }
-            401 => {
+            401 | 403 => {
                 if st.unauthorized_run < UNAUTHORIZED_ESCALATION_THRESHOLD {
                     st.unauthorized_run += 1;
                 }
@@ -371,7 +374,7 @@ fn classify(st: &mut HealthState, outcome: Result<u16, FailureClass>) -> Channel
                 st.unauthorized_run = 0;
                 ChannelOutcome::Fatal
             }
-            // 其它 4xx: 渠道无责, 不改分。
+            // 其它 4xx (400/404/422 等): 渠道无责, 不改分。
             _ => {
                 st.unauthorized_run = 0;
                 ChannelOutcome::Neutral
@@ -390,8 +393,9 @@ fn classify(st: &mut HealthState, outcome: Result<u16, FailureClass>) -> Channel
     }
 }
 
-/// 冷却时长 — phase0 `CooldownDuration`:
+/// 冷却时长 (5xx/传输层曲线) — phase0 `CooldownDuration`:
 /// `base + (max-base) × (1 - cooldown_alpha^prior_activations)`。
+/// 签名保持纯 (cfg, streak): outcome 分档在 `start_cooldown` 调用点做。
 fn cooldown_duration_ms(cfg: &HealthSetting, prior_activations: u32) -> u64 {
     let base = cfg.cooldown_base_seconds;
     let max = cfg.cooldown_max_seconds.max(base);
@@ -404,13 +408,29 @@ fn cooldown_duration_ms(cfg: &HealthSetting, prior_activations: u32) -> u64 {
     (secs * 1000.0) as u64
 }
 
-/// 进入冷却 — phase0 `startCooldownLocked`:
-/// 时长由当前 cooldown_streak 决定, 激活后 streak+1, 重置请求计数进入 ramp。
-fn start_cooldown(st: &mut HealthState, cfg: &HealthSetting, now_ms: u64) {
-    let d = cooldown_duration_ms(cfg, st.cooldown_streak);
+/// 进入冷却 — phase0 `startCooldownLocked` + P1-A outcome 分档:
+/// - 401/403-run 升级的 Fatal → max 档 (凭据坏是持续态, 短冷却只会空转);
+/// - 429 (Throttled) → base 短冷却 (限流是暂态, 不随 streak 爬向 max);
+/// - 5xx/传输层 streak → phase0 递增曲线。
+/// 时长由当前 cooldown_streak 决定, 激活后 streak+1, 重置请求计数进入 ramp;
+/// 成功进入冷却时把触发 outcome 记入 last_cooling_outcome。
+fn start_cooldown(
+    st: &mut HealthState,
+    cfg: &HealthSetting,
+    now_ms: u64,
+    outcome: ChannelOutcome,
+) {
+    let d = match outcome {
+        ChannelOutcome::Fatal if st.unauthorized_run >= UNAUTHORIZED_ESCALATION_THRESHOLD => {
+            cfg.cooldown_max_seconds.max(cfg.cooldown_base_seconds) * 1000
+        }
+        ChannelOutcome::Throttled => cfg.cooldown_base_seconds * 1000,
+        _ => cooldown_duration_ms(cfg, st.cooldown_streak),
+    };
     if d == 0 {
         return;
     }
+    st.last_cooling_outcome = Some(outcome);
     st.cooldown_streak += 1;
     st.failure_streak = 0;
     st.request_count = 0;
