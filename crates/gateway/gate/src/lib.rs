@@ -31,6 +31,7 @@ pub mod graylist;
 pub mod model;
 pub mod quota;
 pub mod ratelimit;
+pub mod rewrite;
 pub mod snapshot;
 pub mod state;
 
@@ -45,6 +46,7 @@ pub use graylist::{
 pub use model::{GroupModelGate, ModelGate};
 pub use quota::QuotaGate;
 pub use ratelimit::{LimitScope, RateLimitGate, RateLimiter};
+pub use rewrite::{InjectSpec, rewrite_body};
 pub use state::StateGate;
 
 // snapshot re-exports

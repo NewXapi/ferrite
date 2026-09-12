@@ -27,6 +27,8 @@
 use crate::candidate::Candidate;
 use crate::health::FailureClass;
 
+use std::time::Duration;
+
 /// 单次尝试结果 — forward → retry 的回报。
 #[derive(Debug)]
 pub enum AttemptOutcome {
@@ -36,6 +38,9 @@ pub enum AttemptOutcome {
     Retryable(FailureClass),
     /// 不可重试失败。
     Fatal(FailureClass),
+    /// 渠道相关 4xx：本候选失败但换渠道可能成立。健康记 Neutral（不改 EWMA），
+    /// 循环换候选；最后一个候选才透传。
+    FatalButSwitchable(FailureClass),
 }
 
 /// 重试策略参数。
@@ -43,15 +48,25 @@ pub enum AttemptOutcome {
 /// 只管尝试预算；"哪些状态码可重试"已由 `forward::egress::classify_status`
 /// （`NormalizedError.retryable`）与 [`health::classify`](crate::health) 判定，
 /// 不在此重复一份。
+///
+/// 默认值健康化（api-hub 900s/420s 是个人特化）。
 #[derive(Debug, Clone, Copy)]
 pub struct RetryPolicy {
     /// 含首次在内最多尝试次数 (new-api retry 次数语义; wildtoken 默认 1)。
     pub max_attempts: u32,
+    /// 候选链总预算封顶（api-hub total_budget；P3 实现读取，当前仅契约）。
+    pub total_budget: Duration,
+    /// 单次尝试超时上限。
+    pub per_req_timeout: Duration,
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self { max_attempts: 3 }
+        Self {
+            max_attempts: 3,
+            total_budget: Duration::from_secs(120),
+            per_req_timeout: Duration::from_secs(30),
+        }
     }
 }
 
@@ -175,8 +190,12 @@ where
             &candidate.unit.meta.key,
             match &outcome {
                 AttemptOutcome::Done { status } => Ok(*status),
-                AttemptOutcome::Retryable(_) | AttemptOutcome::Fatal(_) => Err(match &outcome {
-                    AttemptOutcome::Retryable(c) | AttemptOutcome::Fatal(c) => *c,
+                AttemptOutcome::Retryable(_)
+                | AttemptOutcome::Fatal(_)
+                | AttemptOutcome::FatalButSwitchable(_) => Err(match &outcome {
+                    AttemptOutcome::Retryable(c)
+                    | AttemptOutcome::Fatal(c)
+                    | AttemptOutcome::FatalButSwitchable(c) => *c,
                     _ => unreachable!(),
                 }),
             },
@@ -194,6 +213,9 @@ where
                 ));
             }
             AttemptOutcome::Retryable(_) => {
+                failover.mark_tried(candidate.unit.meta.key.clone());
+            }
+            AttemptOutcome::FatalButSwitchable(_) => {
                 failover.mark_tried(candidate.unit.meta.key.clone());
             }
         }

@@ -71,6 +71,9 @@ pub struct HealthState {
     pub cooldown_streak: u32,
     /// 冷却截止时刻 (unix ms); 0 = 未在冷却。
     pub cooldown_until_ms: u64,
+    /// 最近一次触发冷却时的 outcome（P1-A 差异化冷却依据：401-run 升级的 Fatal
+    /// → max 档；5xx streak → 现行曲线；429 → base 短冷却）。None = 尚未冷却过。
+    pub last_cooling_outcome: Option<ChannelOutcome>,
 }
 
 impl Default for HealthState {
@@ -84,6 +87,7 @@ impl Default for HealthState {
             failure_streak: 0,
             cooldown_streak: 0,
             cooldown_until_ms: 0,
+            last_cooling_outcome: None,
         }
     }
 }

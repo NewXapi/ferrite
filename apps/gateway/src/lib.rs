@@ -69,6 +69,7 @@ pub fn build_price_table(cfg: &GatewayConfig) -> Option<Arc<dyn PriceTable>> {
 pub fn build_retry_policy(cfg: &GatewayConfig) -> dispatch::RetryPolicy {
     dispatch::RetryPolicy {
         max_attempts: cfg.retry.max_attempts,
+        ..dispatch::RetryPolicy::default()
     }
 }
 
