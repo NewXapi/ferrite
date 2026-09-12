@@ -3,9 +3,12 @@
 //!
 //! # 数据来源
 //! - api_channels (status=1) → contract::records::ChannelRecord
-//! - api_channels.models JSONB → RouteUnitRecord 数组展开
+//! - api_channels.models JSONB × keys → RouteUnitRecord 数组展开（每 key 一个 unit）
 //! - api_tokens (status=1) → TokenRecord + gate::snapshot::TokenSnapshot
+//!   （含 api_tokens.allowed_models JSONB → `TokenEntry.allowed_models`）
 //! - auth_users (status=1) → UserRecord + gate::snapshot::UserSnapshot
+//! - api_groups (status=1) → gate::snapshot::GroupSnapshot
+//!   （model_whitelist JSONB → 组级模型白名单；ratio → 分组倍率）
 //!
 //! # 桥接形状
 //! 所有输出类型均来自 `contract::records::*` 或 gate 快照类型。
@@ -17,6 +20,7 @@
 //!     pub token_snapshot: gateway_gate::snapshot::SharedTokenSnapshot,
 //!     pub user_snapshot: gateway_gate::snapshot::SharedUserSnapshot,
 //!     pub quota_snapshot: gateway_gate::snapshot::SharedQuota,
+//!     pub group_snapshot: gateway_gate::snapshot::SharedGroupSnapshot,
 //! }
 //! ```
 //!
@@ -37,8 +41,8 @@ use contract::SCHEMA_VERSION;
 use contract::records::{ChannelKey, ChannelRecord, RouteUnitRecord, TokenRecord, UserRecord};
 
 use gateway_gate::snapshot::{
-    QuotaSnapshot, SharedQuota, SharedTokenSnapshot, SharedUserSnapshot, TokenEntry, TokenSnapshot,
-    UserSnapshot,
+    GroupSnapshot, QuotaSnapshot, SharedGroupSnapshot, SharedQuota, SharedTokenSnapshot,
+    SharedUserSnapshot, TokenEntry, TokenSnapshot, UserSnapshot,
 };
 
 use dispatch::Dispatcher;
@@ -55,6 +59,7 @@ pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
         token_snapshot: shared(input.token_snapshot),
         user_snapshot: shared(input.user_snapshot),
         quota_snapshot: shared(quota_snapshot),
+        group_snapshot: shared(input.group_snapshot),
     })
 }
 
@@ -71,6 +76,10 @@ pub struct ReloadInput {
     pub token_snapshot: TokenSnapshot,
     pub user_records: Vec<UserRecord>,
     pub user_snapshot: UserSnapshot,
+    pub group_snapshot: GroupSnapshot,
+    /// 本次载入的启用分组数。`GroupSnapshot` 无 len 访问器（内部 HashMap 私有），
+    /// 计数只能在加载侧（遍历 PG 行时）一并算出，供 [`ReloadCounts::groups`] 上报。
+    pub group_count: usize,
 }
 
 /// reload 结果计数：`json!` 序列化后作为响应 `data` 字段（snake_case 键即字段名）。
@@ -80,6 +89,7 @@ pub struct ReloadCounts {
     pub route_units: u64,
     pub tokens: u64,
     pub users: u64,
+    pub groups: u64,
 }
 
 /// 从 PG 管理表加载纯值快照数据（boot 与 reload 共用同一加载逻辑）。
@@ -93,6 +103,9 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
     // 3. 加载用户数据（纯值：records + 纯 UserSnapshot）
     let (user_records, user_snapshot) = load_users(pool).await?;
 
+    // 4. 加载分组数据（纯值 GroupSnapshot：组级模型白名单 + 分组倍率）
+    let (group_snapshot, group_count) = load_groups(pool).await?;
+
     Ok(ReloadInput {
         channels,
         route_units,
@@ -100,6 +113,8 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
         token_snapshot,
         user_records,
         user_snapshot,
+        group_snapshot,
+        group_count,
     })
 }
 
@@ -135,7 +150,7 @@ fn shared<T>(value: T) -> Arc<arc_swap::ArcSwap<T>> {
 /// Dispatcher 侧走 [`Dispatcher::set_snapshot`] 原地换快照。
 ///
 /// # 非原子性
-/// 四次 store（token / user / quota / dispatch）**不是一个原子事务**：两次 store
+/// 五次 store（token / user / quota / group / dispatch）**不是一个原子事务**：两次 store
 /// 之间在途请求可能短暂看到新旧混合视图（例如新 token 快照 + 旧渠道快照）。
 /// 单机管理面 reload 的瞬时窗口可接受，不为一致性引入全局锁。
 ///
@@ -152,11 +167,11 @@ pub async fn reload_snapshots(
     Ok(apply_snapshot_reload(target, dispatcher, input))
 }
 
-/// reload 的纯逻辑部分：把 [`ReloadInput`] store 进 `target` 的三个 `Shared*`
+/// reload 的纯逻辑部分：把 [`ReloadInput`] store 进 `target` 的 `Shared*`
 /// 与 `dispatcher`，返回本次热更的计数。不碰 PG，可离线单测。
 ///
-/// store 顺序：先 `Shared*` 三连（token → user → quota），最后换 Dispatcher——
-/// 让鉴权先看到新 token，紧随其后的请求用新渠道/路由调度。四次 store 之间
+/// store 顺序：先 `Shared*`（token → user → quota → group），最后换 Dispatcher——
+/// 让鉴权先看到新 token，紧随其后的请求用新渠道/路由调度。各次 store 之间
 /// 存在非原子窗口（见 [`reload_snapshots`] 文档），此处刻意不加锁。
 pub fn apply_snapshot_reload(
     target: &Snapshots,
@@ -170,11 +185,13 @@ pub fn apply_snapshot_reload(
         route_units: dispatch_snapshot.units.len() as u64,
         tokens: input.token_records.len() as u64,
         users: input.user_records.len() as u64,
+        groups: input.group_count as u64,
     };
 
     target.token_snapshot.store(Arc::new(input.token_snapshot));
     target.user_snapshot.store(Arc::new(input.user_snapshot));
     target.quota_snapshot.store(Arc::new(quota_snapshot));
+    target.group_snapshot.store(Arc::new(input.group_snapshot));
     dispatcher.set_snapshot(Arc::new(dispatch_snapshot));
     counts
 }
@@ -224,6 +241,8 @@ async fn load_channels_and_units(
                     .collect()
             })
             .unwrap_or_default();
+        // key 数量先存下：channel.push 后借用不到了，而展开路由单元需要它
+        let key_count = channel_keys.len();
 
         // Build SyncMeta for channel
         let channel_meta = contract::records::SyncMeta {
@@ -249,8 +268,15 @@ async fn load_channels_and_units(
 
         channels.push(channel);
 
-        // Expand models JSONB to RouteUnitRecord
-        let units = expand_models_json(&models_json, &channel_key_str, &groups, priority, weight);
+        // Expand models JSONB to RouteUnitRecord（按渠道 key 数展开：一把 key 一个 unit）
+        let units = expand_models_json(
+            &models_json,
+            &channel_key_str,
+            &groups,
+            key_count,
+            priority,
+            weight,
+        );
         route_units.extend(units);
     }
 
@@ -261,12 +287,22 @@ async fn load_channels_and_units(
 /// - 字符串数组 ["m1"] → public_model=upstream_model="m1"
 /// - 对象数组 [{"alias":"public","upstream":"upstream"}] → 映射对
 /// - 其他形状 → warn! + 跳过
-/// - 笛卡尔积 groups × models 在内存展开（PG 不存派生路由）；
-///   空 groups 的渠道不产生任何路由单元（不服务任何分组）
-fn expand_models_json(
+/// - 笛卡尔积 groups × models × keys 在内存展开（PG 不存派生路由）；
+///   空 groups 的渠道不产生任何路由单元（不服务任何分组）；
+///   `key_count == 0`（渠道没配 key）同样不产生单元——没有可用凭据，
+///   展开了也永远过不了候选解析（候选凭据取自 `channel.keys[key_index]`）。
+///
+/// 为什么每把 key 一个 unit（而不是过去恒 `key_index = 0`）：
+/// dispatch 的健康状态机以 `unit.meta.key` 为粒度熔断/加权（见 dispatch::health），
+/// candidate 再按 `unit.key_index` 取回对应渠道的 key。把多 key 渠道摊成
+/// 每 key 一个 unit 后，单 key 挂了只熔断它自己的 unit，选择器自然把流量
+/// 轮换到同渠道其余健在 key 上，不再全押第 0 把。
+/// unit_key 因此带 key_index 后缀（`{channel}:{group}:{model}:{key_index}`）保持唯一。
+pub fn expand_models_json(
     models_json: &Value,
     channel_key: &str,
     groups: &[String],
+    key_count: usize,
     priority: i32,
     weight: i32,
 ) -> Vec<RouteUnitRecord> {
@@ -277,6 +313,11 @@ fn expand_models_json(
             channel = channel_key,
             "channel has no groups; no route units"
         );
+        return units;
+    }
+
+    if key_count == 0 {
+        tracing::warn!(channel = channel_key, "channel has no keys; no route units");
         return units;
     }
 
@@ -303,26 +344,29 @@ fn expand_models_json(
             };
 
             for group in groups {
-                let unit_key = format!("{}:{}:{}", channel_key, group, public_model);
-                let unit_meta = contract::records::SyncMeta {
-                    key: unit_key,
-                    schema_version: SCHEMA_VERSION,
-                    logical_version: 1,
-                    origin: "admin".into(),
-                    updated_at: Utc::now(),
-                };
+                for key_index in 0..key_count as u32 {
+                    let unit_key =
+                        format!("{}:{}:{}:{}", channel_key, group, public_model, key_index);
+                    let unit_meta = contract::records::SyncMeta {
+                        key: unit_key,
+                        schema_version: SCHEMA_VERSION,
+                        logical_version: 1,
+                        origin: "admin".into(),
+                        updated_at: Utc::now(),
+                    };
 
-                units.push(RouteUnitRecord {
-                    meta: unit_meta,
-                    group: group.clone(),
-                    public_model: public_model.clone(),
-                    channel_key: channel_key.to_string(),
-                    key_index: 0,
-                    upstream_model: upstream_model.clone(),
-                    priority,
-                    weight: weight as u32,
-                    status: 1,
-                });
+                    units.push(RouteUnitRecord {
+                        meta: unit_meta,
+                        group: group.clone(),
+                        public_model: public_model.clone(),
+                        channel_key: channel_key.to_string(),
+                        key_index,
+                        upstream_model: upstream_model.clone(),
+                        priority,
+                        weight: weight as u32,
+                        status: 1,
+                    });
+                }
             }
         }
     }
@@ -335,7 +379,7 @@ fn expand_models_json(
 async fn load_tokens(pool: &PgPool) -> anyhow::Result<(Vec<TokenRecord>, TokenSnapshot)> {
     let rows = sqlx::query(
         r#"
-        SELECT key, user_key, name, key_hash, key_preview, group_id, quota, unlimited_quota, used_quota, expires_at, status
+        SELECT key, user_key, name, key_hash, key_preview, group_id, quota, unlimited_quota, used_quota, allowed_models, expires_at, status
         FROM api_tokens
         WHERE status = 1
         "#,
@@ -357,6 +401,7 @@ async fn load_tokens(pool: &PgPool) -> anyhow::Result<(Vec<TokenRecord>, TokenSn
         let quota: i64 = row.try_get("quota")?;
         let unlimited_quota: bool = row.try_get("unlimited_quota")?;
         let used_quota: i64 = row.try_get("used_quota")?;
+        let allowed_models_json: Value = row.try_get("allowed_models")?;
         let expires_at: Option<chrono::DateTime<Utc>> = row.try_get("expires_at")?;
         let status: i16 = row.try_get("status")?;
 
@@ -382,8 +427,11 @@ async fn load_tokens(pool: &PgPool) -> anyhow::Result<(Vec<TokenRecord>, TokenSn
             status: status as u8,
         };
 
+        // allowed_models JSONB（'[]' = 不限制）→ gate 的 Option<Vec<String>>；
+        // ModelGate 只在 Some(非空) 且白名单不含请求模型时拒绝。
+        let allowed_models = parse_token_allowed_models(&allowed_models_json);
         // Build TokenSnapshot
-        let entry = TokenEntry::new(token.clone(), None); // ponytail: 暂无模型白名单，默认全部允许
+        let entry = TokenEntry::new(token.clone(), allowed_models);
         let hash_bytes = hex::decode(&key_hash)?;
         let hash_arr: [u8; 32] = hash_bytes[..].try_into()?;
         snapshot.upsert(hash_arr, entry);
@@ -391,6 +439,38 @@ async fn load_tokens(pool: &PgPool) -> anyhow::Result<(Vec<TokenRecord>, TokenSn
     }
 
     Ok((token_records, snapshot))
+}
+
+/// 解析模型名 JSONB 数组（`["gpt-4", "gpt-4*"]`）为 `Vec<String>`。
+///
+/// 供 token 级（`api_tokens.allowed_models`）与组级（`api_groups.model_whitelist`）
+/// 两处白名单共用：非数组 / 非字符串元素一律跳过（脏数据不炸快照加载），
+/// 解析结果为空时由调用方按各自语义解释（token：None=不限；组：空=不限）。
+pub fn parse_model_list_json(value: &Value) -> Vec<String> {
+    match value.as_array() {
+        Some(arr) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        None => {
+            if !value.is_null() {
+                tracing::warn!(?value, "模型白名单不是 JSON 数组，按空处理");
+            }
+            Vec::new()
+        }
+    }
+}
+
+/// 解析 `api_tokens.allowed_models` JSONB 为 gate 的 `Option<Vec<String>>`：
+/// 空数组 / 非法形状 → `None`（零限制 = 不挡任何模型）；
+/// 非空数组 → `Some(...)`，交给 ModelGate 做 `gpt-4*` 通配匹配。
+pub fn parse_token_allowed_models(value: &Value) -> Option<Vec<String>> {
+    let models = parse_model_list_json(value);
+    if models.is_empty() {
+        None
+    } else {
+        Some(models)
+    }
 }
 
 /// 加载用户记录并构建**纯值** UserSnapshot（不包 Shared；包装归 load_snapshots /
@@ -449,6 +529,52 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnaps
     Ok((user_records, snapshot))
 }
 
+/// 加载分组记录（`api_groups`，仅启用）并构建**纯值** GroupSnapshot。
+///
+/// 返回 `(快照, 启用组数)`：`GroupSnapshot` 没有 len 访问器，reload 计数在此处顺手算出。
+/// PG 读取是薄壳，白名单/倍率的拼装语义全部在 [`build_group_snapshot`]（纯函数，可离线圈测）。
+async fn load_groups(pool: &PgPool) -> anyhow::Result<(GroupSnapshot, usize)> {
+    let rows = sqlx::query(
+        r#"
+        SELECT name, ratio, model_whitelist
+        FROM api_groups
+        WHERE status = 1
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut parsed = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let name: String = row.try_get("name")?;
+        let ratio: f64 = row.try_get("ratio")?;
+        let model_whitelist: Value = row.try_get("model_whitelist")?;
+        parsed.push((name, ratio, model_whitelist));
+    }
+    let count = parsed.len();
+    Ok((build_group_snapshot(&parsed), count))
+}
+
+/// 从 api_groups 的 `(name, ratio, model_whitelist)` 行纯构建 [`GroupSnapshot`]。
+///
+/// - `model_whitelist` JSONB：`["gpt-4*"]` 形状；空数组 = 该组不限模型，
+///   非数组/脏元素按空处理（不炸整个快照加载）。
+/// - `ratio` 即分组倍率，原样写入 `GroupEntry::multiplier`——非法值（≤0/NaN/inf）
+///   由 `GroupSnapshot::upsert` 兜底回落 1.0，本函数不重复校验。
+pub fn build_group_snapshot(rows: &[(String, f64, Value)]) -> GroupSnapshot {
+    let mut snapshot = GroupSnapshot::default();
+    for (name, ratio, model_whitelist) in rows {
+        snapshot.upsert(
+            name.clone(),
+            gateway_gate::snapshot::GroupEntry {
+                allowed_models: parse_model_list_json(model_whitelist),
+                multiplier: *ratio,
+            },
+        );
+    }
+    snapshot
+}
+
 /// 构建**纯值** quota 快照（包装成 `SharedQuota` 归调用方）。
 ///
 /// 桶键 = token 的 UUID `meta.key`，与 `QuotaGate` 查询键（`TokenInfo.id`，
@@ -470,7 +596,7 @@ fn build_quota_snapshot(token_records: &[TokenRecord]) -> QuotaSnapshot {
 
 /// 运行时快照集合：boot 产出、reload 原地热更。
 ///
-/// `token/user/quota_snapshot` 是 `Arc<ArcSwap<T>>`：reload 向**同一实例** store
+/// `token/user/quota/group_snapshot` 是 `Arc<ArcSwap<T>>`：reload 向**同一实例** store
 /// 新值，gate 与 usage 中间件等所有持有者自动看到新数据。
 /// `dispatch` 只是喂给 `Dispatcher::new` 的 boot 副本，**boot 后即陈旧**——
 /// reload 走 `Dispatcher::set_snapshot` 原地换新，不回写本字段；运行期以
@@ -481,4 +607,5 @@ pub struct Snapshots {
     pub token_snapshot: SharedTokenSnapshot,
     pub user_snapshot: SharedUserSnapshot,
     pub quota_snapshot: SharedQuota,
+    pub group_snapshot: SharedGroupSnapshot,
 }

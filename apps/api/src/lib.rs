@@ -37,7 +37,7 @@ use forward::stage::ForwardStage;
 use gateway_gate::auth::AuthGate;
 use gateway_gate::chain::GateChain;
 use gateway_gate::graylist::GrayListGate;
-use gateway_gate::model::ModelGate;
+use gateway_gate::model::{GroupModelGate, ModelGate};
 use gateway_gate::quota::QuotaGate;
 use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
 use gateway_gate::snapshot::{IpPolicy, PricingSnapshot};
@@ -111,6 +111,10 @@ async fn assemble(
             Arc::new(arc_swap::ArcSwap::from_pointee(IpPolicy::default())),
         ))
         .push(ModelGate)
+        // 组级白名单紧随 token 级 ModelGate：两道闸门取交集（token 白名单先过，
+        // 组白名单再过）。GroupModelGate 依赖 ModelGate 已解析出的 ctx.requested_model，
+        // 自身不解析请求体；组未配置 / 白名单空 → fail-open（见 gate crate 文档）。
+        .push(GroupModelGate::new(snapshots.group_snapshot.clone()))
         .push(QuotaGate::new(
             snapshots.quota_snapshot.clone(),
             Arc::new(arc_swap::ArcSwap::from_pointee(PricingSnapshot::default())),
@@ -237,13 +241,13 @@ struct ReloadState {
 /// reload 失败响应形状（对齐 admin-catalog 的 err_json 模式）。
 type ReloadErrResp = (StatusCode, Json<serde_json::Value>);
 
-/// POST /api/gateway/reload — 热重载管理面快照（channels / route_units / tokens / users）。
+/// POST /api/gateway/reload — 热重载管理面快照（channels / route_units / tokens / users / groups）。
 ///
 /// 鉴权与守卫先于任何查库/热更：
 /// - 无 Authorization 头或 token 无效/过期 → 401（`bearer_user` 的 `AuthError` 状态码映射）
 /// - role < [`auth::routes::ADMIN_ROLE_THRESHOLD`] → 403（对齐 admin-catalog `require_admin`）
 ///
-/// 成功 → 200 `{"success": true, "data": {channels, route_units, tokens, users}}`；
+/// 成功 → 200 `{"success": true, "data": {channels, route_units, tokens, users, groups}}`；
 /// 加载/store 失败（DB 错误等）→ 500 `{"success": false, "message": ...}`，运行时
 /// 快照保持原样（store 只在加载全部成功后发生）。
 async fn reload_handler(
@@ -270,7 +274,7 @@ async fn reload_handler(
         ));
     }
 
-    // 3. 热更：加载最新管理表数据 → store 进 Shared* 与 Dispatcher（非原子四次
+    // 3. 热更：加载最新管理表数据 → store 进 Shared* 与 Dispatcher（非原子五次
     // store，见 snapshot::reload_snapshots 文档）
     let counts = snapshot::reload_snapshots(&state.pool, &state.snapshots, &state.dispatcher)
         .await
