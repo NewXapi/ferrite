@@ -165,8 +165,8 @@ async fn pg_pool() -> Option<sqlx::PgPool> {
     }
 }
 
-/// sink 全链路：submit 一条结算事件 → usage_logs 落一行（含冗余展示字段与
-/// is_stream=false）→ api_tokens.used_quota 递增 → 内存 quota 快照扣减。
+/// sink 全链路：submit 一条结算事件 → usage_logs 落一行（含冗余展示字段、
+/// is_stream 透传事件值）→ api_tokens.used_quota 递增 → 内存 quota 快照扣减。
 ///
 /// submit 是 spawn-and-forget，测试轮询 usage_logs 直到该 model 出现（每次
 /// 运行唯一 model 名天然隔离历史数据），超时即失败。
@@ -252,6 +252,7 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         prompt_tokens: 11,
         completion_tokens: 7,
         cached_tokens: 0,
+        is_stream: false,
         first_token_ms: 10,
         duration_ms: 240,
         cost,
@@ -296,7 +297,7 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
     };
 
     // 落库载荷与事件逐字段一致（量化字段原样带入、冗余展示名来自名单目录、
-    // is_stream=false：UsageEventRecord 无流式标记字段，MVP 统一落 false）
+    // is_stream 透传事件的流式标记，本事件为非流式 false）
     let (
         prompt,
         completion,
@@ -310,7 +311,7 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
     assert_eq!(prompt, 11);
     assert_eq!(completion, 7);
     assert_eq!(quota_col, cost, "usage_logs.quota 必须等于事件 cost");
-    assert!(!is_stream, "MVP 统一落 is_stream=false（事件无该字段）");
+    assert!(!is_stream, "事件 is_stream=false 应原样透传到 usage_logs");
     assert_eq!(username, "billing_authority_it");
     assert_eq!(token_name, "tk-billing-authority");
     assert_eq!(channel_name, "ch-billing-authority");

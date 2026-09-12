@@ -252,10 +252,12 @@ fn e2e_settle_generates_usage_event_with_cost() {
     };
     let pt = FixedPriceTable;
     let event = metering::settle_event(
-        counts, "default", 1.0, &hold, &pt, "ch1", "u1", "gpt-4o", "gpt-4o", 100, 500, 200, None,
+        counts, false, "default", 1.0, &hold, &pt, "ch1", "u1", "gpt-4o", "gpt-4o", 100, 500, 200,
+        None,
     );
     assert_eq!(event.prompt_tokens, 100);
     assert_eq!(event.completion_tokens, 50);
+    assert!(!event.is_stream, "非流式结算透传 is_stream=false");
     assert!(event.cost > 0);
     assert_eq!(event.status_code, 200);
 }
