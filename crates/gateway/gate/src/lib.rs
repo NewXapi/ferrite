@@ -13,7 +13,7 @@
 //! | [`ratelimit`]   | ④ per-key / per-channel RPM/TPM | RATE_LIMITED |
 //! | [`model`]       | ⑤ token.allowed_models 白名单 | MODEL_FORBIDDEN |
 //! | [`graylist`]    | ⑥ 连续失败封禁 | GRAYLISTED |
-//! | [`concurrency`] | ⑦ post-dispatch，每 channel Semaphore | CONCURRENCY_EXHAUSTED |
+//! | [`concurrency`] | ⑦ post-dispatch，每 channel Semaphore（槽满不排队；ctx drop 归还） | RATE_LIMITED (429) |
 //! | [`snapshot`]    | (数据源) identity / quota / ip-policy 持有 | CATALOG_NOT_READY |
 //!
 //! ```text

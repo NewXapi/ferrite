@@ -159,6 +159,20 @@ impl PipeStream {
     }
 }
 
+/// stage 放入请求上下文的 RAII 守卫集合。
+///
+/// stage 把需要随请求生命周期持有的临时资源（如 `gateway-gate` 的
+/// `ConcurrencyGate` 签发的并发槽 `OwnedSemaphorePermit`）以
+/// `Box<dyn Send + Sync>` 形式 push 进 [`RequestCtx::drop_guards`]；本请求结束、
+/// `RequestCtx` drop 时守卫随之 drop，底层资源自动归还——不需要显式 release
+/// 调用，也不存在句柄丢失导致槽位泄漏。
+///
+/// **已知限制**：流式响应时 handler 在返回 `StageOutcome::Stream` 后 ctx 即
+/// drop，守卫因此在**流建立阶段**释放，而非整条流结束时。本字段当前接受该语义
+/// （并发槽覆盖的是"请求被接受并完成转发建立"的窗口）；把守卫绑定到整条流的
+/// 生命周期属后续项。
+pub type DropGuards = Vec<Box<dyn Send + Sync>>;
+
 /// 跨 stage 共享的可变上下文
 ///
 /// 每个字段在特定 stage 之后才被填充；未填充的字段是 None。
@@ -190,6 +204,10 @@ pub struct RequestCtx {
 
     /// 任意 stage 可写入：跨 stage 错误（不直接返回，用 StageOutcome 处理）
     pub error: Option<StageError>,
+
+    /// 任意 stage 可写入：RAII 守卫，随 ctx 在本请求结束时 drop
+    /// （语义与已知限制见 [`DropGuards`]）。
+    pub drop_guards: DropGuards,
 }
 
 impl RequestCtx {
@@ -204,6 +222,7 @@ impl RequestCtx {
             upstream: None,
             streamed: StreamedAccum::default(),
             error: None,
+            drop_guards: Vec::new(),
         }
     }
 

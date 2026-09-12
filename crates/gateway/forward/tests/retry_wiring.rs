@@ -202,6 +202,7 @@ fn ctx_with_route(route: Candidate) -> gateway_pipeline::RequestCtx {
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 

@@ -136,6 +136,7 @@ fn make_ctx() -> gateway_pipeline::RequestCtx {
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 
