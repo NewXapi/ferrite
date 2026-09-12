@@ -2,6 +2,8 @@
 //! 数据来自真实后端:挂载时 `use_effect` 拉 `list_channels_api`,写入本地
 //! `channels` signal;启用/停用走 `set_channel_status_api`,删除走
 //! `delete_channel_api`,新建/编辑走 `create_channel_api` / `update_channel_api`。
+//! 编辑保存用最小 diff 体(`UpdateChannelBody`):密钥框留空 = 不触碰现有密钥,
+//! 弹窗不管理的列(models/priority/weight)不随请求发出、由后端 COALESCE 保持。
 //! 拓扑测速、批量分组、快速导入是 mock 期的纯前端特性,已移除(后端暂无对应接口)。
 
 use dioxus::prelude::*;
@@ -12,8 +14,8 @@ use client::ApiClient;
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest};
 
 use crate::api::{
-    create_channel_api, delete_channel_api, list_channels_api, set_channel_status_api,
-    update_channel_api,
+    UpdateChannelBody, create_channel_api, delete_channel_api, list_channels_api,
+    set_channel_status_api, update_channel_api,
 };
 use crate::groups::{Badge, Modal, StatCard};
 use crate::state::CHANNEL_TYPES;
@@ -60,6 +62,9 @@ pub fn ChannelsPage() -> Element {
     let mut f_keys = use_signal(String::new);
     let mut f_group = use_signal(|| "default".to_string());
     let mut f_remark = use_signal(String::new);
+    // 测速模型：弹窗无编辑控件，但后端 test_model 列是 SQL 直绑（无 COALESCE），
+    // 编辑保存必须原样回传现值，缺席即被清成 NULL。编辑打开时从列表行带入。
+    let mut f_test_model = use_signal(|| None::<String>);
 
     // 挂载即拉取真实列表;reload 变化时重拉
     use_effect(move || {
@@ -132,6 +137,7 @@ pub fn ChannelsPage() -> Element {
         f_keys.set(String::new());
         f_group.set("default".to_string());
         f_remark.set(String::new());
+        f_test_model.set(None);
         modal_state.set(ChannelModalState::New);
     };
 
@@ -140,9 +146,11 @@ pub fn ChannelsPage() -> Element {
             f_name.set(c.name.clone());
             f_ctype.set(c.channel_type.clone());
             f_url.set(c.base_url.clone());
+            // 密钥编辑框留空：不回显掩码，最小 diff 语义是「留空 = 不改动现有密钥」。
             f_keys.set(String::new());
             f_group.set(c.groups.join(","));
             f_remark.set(c.remark.clone());
+            f_test_model.set(c.test_model.clone());
             modal_state.set(ChannelModalState::Edit(key));
         }
     };
@@ -311,6 +319,7 @@ pub fn ChannelsPage() -> Element {
                     keys: f_keys,
                     group: f_group,
                     remark: f_remark,
+                    test_model: f_test_model,
                     on_cancel: move |_| modal_state.set(ChannelModalState::Closed),
                     on_submit: close_and_reload,
                 }
@@ -421,7 +430,11 @@ fn ChannelCard(
     }
 }
 
-/// 渠道编辑/新建综合弹窗 (含类型、名称、URL、Key、分组、备注;后端暂不支持模型调度候补)
+/// 渠道编辑/新建综合弹窗 (含类型、名称、URL、Key、分组、备注;后端暂不支持模型调度候补)。
+/// 编辑分支发 [`UpdateChannelBody`] 最小 diff 体;新建分支仍用全量
+/// [`ChannelUpsertRequest`]（创建语义要求 keys/models 等字段必须给全）。
+/// 保存成功走 `on_submit`（关弹窗+重拉列表），失败弹窗保持打开并内嵌展示
+/// `channel-save-error`（role=alert）供就地重试。
 #[component]
 fn ChannelFormModal(
     editing: bool,
@@ -432,6 +445,7 @@ fn ChannelFormModal(
     keys: Signal<String>,
     group: Signal<String>,
     remark: Signal<String>,
+    test_model: Signal<Option<String>>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -447,9 +461,13 @@ fn ChannelFormModal(
     };
 
     let submitting = use_signal(|| false);
+    // 保存失败信息（新建/编辑两条路径共用）：非空时弹窗保持打开、
+    // 内嵌展示错误供用户就地重试；弹窗关闭重挂载时自然复位。
+    let submit_err = use_signal(|| None::<String>);
 
     // 工厂式复制,避免把原 signal 移动出闭包(供 rsx 中 submitting() 继续读取)
     let submitting2 = submitting;
+    let submit_err2 = submit_err;
     let on_submit2 = on_submit;
     let channel_key2 = channel_key.clone();
     let do_submit = move |_| {
@@ -466,35 +484,58 @@ fn ChannelFormModal(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let g = group.peek().clone();
+        let gvec: Vec<String> = group
+            .peek()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         let rm = remark.peek().clone();
-        let (mut sub, cb) = (submitting2, on_submit2);
+        let tm = test_model.peek().clone();
+        let (mut sub, mut serr, cb) = (submitting2, submit_err2, on_submit2);
         spawn(async move {
             sub.set(true);
+            serr.set(None); // 新一轮尝试，清掉上一次的失败提示
             let client = ApiClient::shared().clone();
-            let req = ChannelUpsertRequest {
-                name: n,
-                channel_type: ct,
-                base_url: u,
-                keys: k,
-                models: json!([]),
-                groups: g
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
-                priority: 0,
-                weight: 0,
-                test_model: None,
-                remark: rm,
-            };
             let res = match key {
-                Some(kk) => update_channel_api(&client, &kk, &req).await,
-                None => create_channel_api(&client, &req).await,
+                // 编辑:最小 diff 体——keys 未重输则字段整体缺席(保持现有密钥,
+                // 恒发 [] 会被后端 400 拒绝);testModel 恒带现值(直绑列,缺席即清);
+                // models/priority/weight 等弹窗不管理的列不发(COALESCE 保持)。
+                Some(kk) => {
+                    let body = UpdateChannelBody {
+                        name: n,
+                        channel_type: ct,
+                        base_url: u,
+                        groups: gvec,
+                        remark: rm,
+                        test_model: tm,
+                        keys: (!k.is_empty()).then_some(k),
+                    };
+                    update_channel_api(&client, &kk, &body).await
+                }
+                None => {
+                    let req = ChannelUpsertRequest {
+                        name: n,
+                        channel_type: ct,
+                        base_url: u,
+                        keys: k,
+                        models: json!([]),
+                        groups: gvec,
+                        priority: 0,
+                        weight: 0,
+                        test_model: tm,
+                        remark: rm,
+                    };
+                    create_channel_api(&client, &req).await
+                }
             };
-            let _ = res;
             sub.set(false);
-            cb.call(());
+            match res {
+                // 成功才走 on_submit（关弹窗 + 重拉列表）；失败保持弹窗打开、
+                // 错误就地展示——此前 `let _ = res;` 把失败吞成静默假成功。
+                Ok(_) => cb.call(()),
+                Err(e) => serr.set(Some(format!("保存失败:{e}"))),
+            }
         });
     };
 
@@ -548,7 +589,11 @@ fn ChannelFormModal(
                     label { class: "mb-1.5 block text-xs text-zinc-400", "API Key (多 Key 可换行)" }
                     textarea {
                         class: "w-full h-20 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none resize-none",
-                        placeholder: "sk-...",
+                        placeholder: if editing {
+                            "留空 = 保持现有密钥；输入明文则整体替换"
+                        } else {
+                            "sk-..."
+                        },
                         value: "{keys}",
                         oninput: move |e| keys.set(e.value()),
                     }
@@ -562,6 +607,17 @@ fn ChannelFormModal(
                         value: "{remark}",
                         oninput: move |e| remark.set(e.value()),
                     }
+                }
+            }
+
+            // 保存失败提示（复用 system.rs 表单错误块样式与 alert 角色），
+            // 紧贴操作按钮上方，用户看到错误后可直接改参重试
+            if let Some(msg) = submit_err() {
+                div {
+                    role: "alert",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
+                    "data-testid": "channel-save-error",
+                    "{msg}"
                 }
             }
 
