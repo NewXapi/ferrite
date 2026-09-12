@@ -142,7 +142,7 @@ fn snapshot_queries_and_fallbacks() {
 
     // 命中：白名单原样返回（零拷贝借用）
     assert_eq!(
-        groups.allowed_models("vip").map(Vec::as_slice),
+        groups.allowed_models("vip"),
         Some(&["gpt-4*".to_string()][..])
     );
     assert_eq!(groups.multiplier("vip"), 2.5);
@@ -152,7 +152,7 @@ fn snapshot_queries_and_fallbacks() {
 
     // upsert 覆盖同名组
     groups.upsert("vip".into(), GroupEntry::default());
-    assert_eq!(groups.allowed_models("vip").map(Vec::len), Some(0));
+    assert_eq!(groups.allowed_models("vip").map(<[String]>::len), Some(0));
     assert_eq!(groups.multiplier("vip"), 1.0);
     // 确认默认值本身
     let d = GroupEntry::default();

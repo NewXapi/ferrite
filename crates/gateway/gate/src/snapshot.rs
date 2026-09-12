@@ -306,7 +306,7 @@ impl Default for GroupEntry {
 /// 与其余快照（DashMap 内部可变、`&self` 增量 upsert）不同：分组是低频、
 /// 整份由 sync 推送的配置，故用 `HashMap` + `&mut self` upsert——
 /// 更新路径 = `ArcSwap::rcu`（load 克隆 → 改 → 整体 store），
-/// 换取 `allowed_models` 可以零拷贝返回 `&Vec<String>`。
+/// 换取 `allowed_models` 可以零拷贝返回 `&[String]`。
 #[derive(Debug, Clone, Default)]
 pub struct GroupSnapshot {
     by_name: HashMap<String, GroupEntry>,
@@ -314,13 +314,24 @@ pub struct GroupSnapshot {
 
 impl GroupSnapshot {
     /// 插入或覆盖一个分组的配置。
-    pub fn upsert(&mut self, name: String, entry: GroupEntry) {
+    ///
+    /// 倍率是财务乘数，非法值（≤0 / NaN / inf）在写侧 admin-catalog 已校验；
+    /// 这里再兜一道，避免脏数据经 sync 直连进快照后污染计费——命中即回落中性 1.0。
+    pub fn upsert(&mut self, name: String, mut entry: GroupEntry) {
+        if !entry.multiplier.is_finite() || entry.multiplier <= 0.0 {
+            tracing::warn!(
+                group = %name,
+                multiplier = entry.multiplier,
+                "GroupEntry.multiplier 非法, 回落 1.0"
+            );
+            entry.multiplier = 1.0;
+        }
         self.by_name.insert(name, entry);
     }
 
     /// 查组的模型白名单；组不存在（未配置）→ None。
-    pub fn allowed_models(&self, group: &str) -> Option<&Vec<String>> {
-        self.by_name.get(group).map(|e| &e.allowed_models)
+    pub fn allowed_models(&self, group: &str) -> Option<&[String]> {
+        self.by_name.get(group).map(|e| e.allowed_models.as_slice())
     }
 
     /// 查分组倍率；组不存在 → 1.0（中性回落）。
