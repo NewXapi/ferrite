@@ -92,9 +92,17 @@ pub async fn delete_channel_api(client: &ApiClient, key: &str) -> ApiResult<serd
 // Groups
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/group (分组列表)
+// 后端列表端点统一包装 `{"items":[...]}`(分组端点裸对象则直接 decode)。
+#[derive(Debug, Default, serde::Deserialize)]
+struct GroupItems {
+    #[serde(default)]
+    items: Vec<GroupDto>,
+}
+
+/// 真实调用: GET /api/group (分组列表,响应为 `{"items":[...]}`)
 pub async fn list_groups_api(client: &ApiClient) -> ApiResult<Vec<GroupDto>> {
-    client.get("/api/group").await
+    let r: GroupItems = client.get("/api/group").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: POST /api/group (创建)
