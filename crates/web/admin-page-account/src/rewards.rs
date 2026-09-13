@@ -1,17 +1,23 @@
+use contract::api::user::UserTopupRequest;
 use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
 
 use crate::api::{self, Invitee, Recharge, RewardStat};
+use crate::usage_support::{fmt_num, fmt_quota};
 
-// NOTE: 邀请奖励面板无对应后端端点,数据保持 mock(`api::fetch_wallet` /
-// `fetch_recharges` / `fetch_reward_stats` / `fetch_invitees` / `fetch_invite_link`)。
-// 接真实后端时,需后端先提供钱包 / 邀请分成端点,再参照 KeysPanel / UsageLogsPanel
-// 的 `use_effect` + `spawn` + `ApiClient::shared()` 模式改写本面板。
+// NOTE: 兑换码充值已接真实后端 (POST /api/user/topup, 兑换码 CAS 核销入账)。
+// 面板其余数据 (钱包 / 充值记录 / 奖励统计 / 被邀人 / 邀请链接) 仍无对应后端
+// 端点, 保持 mock (`api::fetch_wallet` / `fetch_recharges` / `fetch_reward_stats`
+// / `fetch_invitees` / `fetch_invite_link`); 接真实后端时,参照 KeysPanel /
+// UsageLogsPanel 的 `use_effect` + `spawn` + `ApiClient::shared()` 模式改写。
 #[component]
 pub fn RewardsPanel() -> Element {
     let mut show_copied = use_signal(|| false);
     let mut redeem_code = use_signal(String::new);
-    let mut show_success = use_signal(|| false);
+    // 兑换码充值: 真实请求状态 (成功提示持久保留到下次操作, 失败诚实展示)
+    let mut topup_busy = use_signal(|| false);
+    let mut topup_ok = use_signal(|| None::<String>);
+    let mut topup_err = use_signal(String::new);
 
     let wallet = api::fetch_wallet();
     let recharges = api::fetch_recharges();
@@ -28,14 +34,42 @@ pub fn RewardsPanel() -> Element {
     };
 
     let redeem = move |_| {
-        if !redeem_code().trim().is_empty() {
-            show_success.set(true);
-            redeem_code.set(String::new());
-            spawn(async move {
-                TimeoutFuture::new(2_000).await;
-                show_success.set(false);
-            });
+        if topup_busy() {
+            return;
         }
+        let code = redeem_code().trim().to_string();
+        if code.is_empty() {
+            topup_err.set("请先输入兑换码".into());
+            topup_ok.set(None);
+            return;
+        }
+        topup_busy.set(true);
+        topup_err.set(String::new());
+        topup_ok.set(None);
+        let client = client::ApiClient::shared().clone();
+        let req = UserTopupRequest { key: code };
+        let mut code_s = redeem_code;
+        let mut b = topup_busy;
+        let mut ok = topup_ok;
+        let mut er = topup_err;
+        spawn(async move {
+            match api::topup_api(&client, &req).await {
+                // 后端成功响应 {"quota": <内部额度单位>, "success": true}:
+                // 用真实入账值提示; 缺字段时降级为通用文案, 不假造数值。
+                Ok(v) => {
+                    let msg = match api::topup_credited_quota(&v) {
+                        Some(q) => {
+                            format!("充值成功,已入账 {} 额度(约 {})", fmt_num(q), fmt_quota(q))
+                        }
+                        None => "充值成功,兑换码已核销".into(),
+                    };
+                    ok.set(Some(msg));
+                    code_s.set(String::new());
+                }
+                Err(e) => er.set(e.to_string()),
+            }
+            b.set(false);
+        });
     };
 
     rsx! {
@@ -43,6 +77,12 @@ pub fn RewardsPanel() -> Element {
                     // 钱包区
                     section { id: "rewards-sec-wallet", class: "scroll-mt-8 space-y-4",
                         h2 { class: "text-lg font-medium text-zinc-100", "钱包" }
+                        // 诚实声明: 钱包/充值记录尚无后端端点, 仍为 mock 演示数据;
+                        // 兑换码入账结果以 topup 成功提示里的真实 quota 为准。
+                        p { class: "mt-1 text-xs text-zinc-500",
+                            "data-testid": "wallet-demo-note",
+                            "以下余额与充值记录为演示数据, 实际余额以后端入账为准"
+                        }
 
                         // 钱包大卡 + 兑换码充值
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
@@ -59,23 +99,36 @@ pub fn RewardsPanel() -> Element {
                             }
 
                             div { class: "mt-10 border-t border-dashed border-zinc-700 pt-6",
-                                p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
-                                div { class: "flex flex-col gap-3 sm:flex-row",
-                                    input {
-                                        class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
-                                        placeholder: "请输入兑换码",
-                                        value: redeem_code(),
-                                        oninput: move |e| redeem_code.set(e.value()),
-                                    }
-                                    button {
-                                        class: "w-full shrink-0 rounded-2xl bg-white px-10 py-3.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100 sm:w-auto",
-                                        onclick: redeem,
-                                        "立即充值"
+                                div { role: "group", "aria-label": "兑换码充值",
+                                    p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
+                                    div { class: "flex flex-col gap-3 sm:flex-row",
+                                        input {
+                                            class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
+                                            placeholder: "请输入兑换码",
+                                            value: redeem_code(),
+                                            "data-testid": "topup-code",
+                                            oninput: move |e| redeem_code.set(e.value()),
+                                        }
+                                        button {
+                                            class: "w-full shrink-0 rounded-2xl bg-white px-10 py-3.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100 sm:w-auto",
+                                            onclick: redeem,
+                                            disabled: topup_busy(),
+                                            "data-testid": "topup-submit",
+                                            "aria-label": "立即充值",
+                                            if topup_busy() { "充值中…" } else { "立即充值" }
+                                        }
                                     }
                                 }
-                                if show_success() {
+                                if let Some(msg) = topup_ok() {
                                     p { class: "mt-4 flex items-center gap-2 text-sm text-emerald-400",
-                                        "充值成功,余额已更新"
+                                        "data-testid": "topup-result",
+                                        "{msg}"
+                                    }
+                                }
+                                if !topup_err().is_empty() {
+                                    p { class: "mt-4 text-sm text-red-400",
+                                        "data-testid": "topup-error",
+                                        "充值失败: {topup_err()}"
                                     }
                                 }
                             }
