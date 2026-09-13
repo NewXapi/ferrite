@@ -198,6 +198,7 @@ fn mk_ctx() -> RequestCtx {
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 
