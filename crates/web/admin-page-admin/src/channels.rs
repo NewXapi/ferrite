@@ -146,7 +146,7 @@ pub fn ChannelsPage() -> Element {
     ];
 
     // 筛选纯函数:抽取为模块级 `filter_channels`,便于纯函数单测
-    let filtered = filter_channels(&list, &search().trim().to_lowercase(), filter_tier());
+    let filtered = filter_channels(&list, &search(), filter_tier());
 
     let open_new = move |_| {
         f_name.set(String::new());
