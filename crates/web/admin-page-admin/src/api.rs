@@ -166,9 +166,9 @@ pub struct ModelAliasView {
     pub name: String,
 }
 
-/// 后端列表端点统一包装 `{"items":[...]}`。
+/// 后端列表端点统一包装 `{"items":[...]}`（别名侧；与 ModelItems 区分元素类型）。
 #[derive(Debug, Default, serde::Deserialize)]
-struct ModelItems {
+struct ModelAliasItems {
     #[serde(default)]
     items: Vec<ModelAliasView>,
 }
@@ -178,7 +178,7 @@ struct ModelItems {
 /// 响应 items 为 `ModelView`,此处只映射 key+name,其余字段由 serde 忽略。
 /// 错误情况:401(未登录)、网络失败、JSON 不含 items → `ApiError`。
 pub async fn list_model_aliases_api(client: &ApiClient) -> ApiResult<Vec<ModelAliasView>> {
-    let r: ModelItems = client.get("/api/models?size=100").await?;
+    let r: ModelAliasItems = client.get("/api/models?size=100").await?;
     Ok(r.items)
 }
 
