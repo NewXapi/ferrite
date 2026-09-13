@@ -267,6 +267,12 @@ impl Dispatch for MockDispatch {
             .unwrap()
             .push((unit_key.to_string(), outcome));
     }
+
+    fn channel_name(&self, channel_key: &str) -> Option<String> {
+        // candidate() 生成 `ch-{key}`；测试断言 `name-{key}`。
+        let key = channel_key.strip_prefix("ch-")?;
+        Some(format!("name-{key}"))
+    }
 }
 
 // ---------- sink mock ----------
