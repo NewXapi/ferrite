@@ -129,12 +129,8 @@ impl Dispatcher {
     /// 时为 `None`；装载后即使被 reload 覆盖，旧句柄仍保持有效（ArcSwap 原子替换）。
     /// 面向 admin 查询面（如 `/api/gateway/health` 的渠道归因 join），
     /// 不用于热路径选择（热路径走 [`Dispatch::select`]）。
-    #[allow(clippy::manual_map)]
     pub fn snapshot(&self) -> Option<Arc<Snapshot>> {
-        match self.snapshot.load_full().as_ref() {
-            Some(arc) => Some(arc.clone()),
-            None => None,
-        }
+        Arc::clone(&self.snapshot.load_full()).as_ref().clone()
     }
 
     pub fn set_limits(&self, limits: HashMap<String, RateLimitSpec>) {
