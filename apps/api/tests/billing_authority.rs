@@ -407,8 +407,14 @@ fn error_jobs_translate_to_log_type_5() {
         "≥400+失败摘要 → 错误行"
     );
     assert!(
-        err.content.contains("502") && err.content.contains("upstream reset"),
-        "错误摘要与状态码进 content 列"
+        err.content.contains("502"),
+        "状态码进 content 列, got {:?}",
+        err.content
+    );
+    assert!(
+        err.content.contains("upstream reset"),
+        "错误摘要进 content 列, got {:?}",
+        err.content
     );
     assert_eq!(err.quota, 0, "错误行零成本");
     assert!(err.is_stream, "流式意图透传");
