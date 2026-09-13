@@ -451,14 +451,14 @@ fn RedemptionCard(
                     }
                 } else if item.status == 2 {
                     button {
-                        "data-testid": "disable-redemption",
+                        "data-testid": "disabled-redemption",
                         class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "已停用"
                     }
                 } else {
                     button {
-                        "data-testid": "disable-redemption",
+                        "data-testid": "redeemed-redemption",
                         class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "已核销"
