@@ -5,12 +5,14 @@
 //! 1. 返回计数与输入规模一致（channels / route_units / tokens / users）；
 //! 2. 四个运行时组件真的看到新数据（token 可鉴权、user 可查、quota 口径与
 //!    gate 一致、dispatcher 能从新路由单元选出候选）；
-//! 3. reload 是**整表替换**而非合并 —— 二次 reload 后旧 token 必须消失。
+//! 3. reload 是**整表替换**而非合并 —— 二次 reload 后旧 token 必须消失；
+//! 4. 计费快照（价格行 / 名单目录 / 渠道名映射）随 reload 整批换新。
 //!
 //! 为什么能离线跑：`apply_snapshot_reload` 是不碰 PG 的纯函数，store 逻辑本身
 //! 无外部依赖；boot/reload 的 PG 读取链路由 `tests-e2e` 的
 //! `e2e_reload_picks_up_new_token_without_restart` 端到端覆盖。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use api::billing::NameDirectory;
@@ -112,13 +114,23 @@ fn empty_target() -> (Snapshots, Arc<Dispatcher>) {
         user_snapshot: Arc::new(ArcSwap::from_pointee(UserSnapshot::default())),
         quota_snapshot: Arc::new(ArcSwap::from_pointee(QuotaSnapshot::default())),
         group_snapshot: Arc::new(ArcSwap::from_pointee(GroupSnapshot::default())),
-        // 计费快照：boot 等价的空价表 / 空名单，reload 必须能 store 换新
+        // 计费快照：boot 等价的空价表 / 空名单 / 空渠道名映射，reload 必须能 store 换新
         price_rows: Arc::new(ArcSwap::from_pointee(Vec::new())),
         name_directory: Arc::new(ArcSwap::from_pointee(NameDirectory::default())),
+        channel_names: Arc::new(ArcSwap::from_pointee(HashMap::new())),
     };
     // boot 时 Dispatcher 可能拿 None 快照（SnapshotNotReady）；reload 必须让它就绪
     let dispatcher = Arc::new(Dispatcher::new(None, Arc::new(MemoryHealthTable::new())));
     (target, dispatcher)
+}
+
+/// 与 `load_snapshot_data` 同规则地从渠道记录派生渠道名映射
+/// （meta.key UUID 字符串 → 展示名），保证测试输入与真实加载路径同构。
+fn channel_names_of(channels: &[ChannelRecord]) -> HashMap<String, String> {
+    channels
+        .iter()
+        .map(|ch| (ch.meta.key.clone(), ch.name.clone()))
+        .collect()
 }
 
 /// reload 后计数正确，且四个运行时组件都看到新数据。
@@ -158,6 +170,9 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
         true,
     )]);
 
+    // 渠道名映射：与 load_snapshot_data 同规则派生（channels 随后被 move 进输入）
+    let channel_names = channel_names_of(&channels);
+
     let counts = apply_snapshot_reload(
         &target,
         &dispatcher,
@@ -173,6 +188,7 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
             // 计费快照输入：与真实链路同构（价格一行、名单由 token/user 记录构建）
             price_rows: vec![("gpt-4o".into(), 15.0, 60.0, 0.0)],
             name_directory: NameDirectory::new(&tokens, &users),
+            channel_names,
         },
     );
 
@@ -228,6 +244,13 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
         "reload 后展示名目录应可查"
     );
     assert_eq!(target.name_directory.load().token_name("1002"), "tk");
+    // 渠道名映射随 reload 换新：UUID 字符串键查展示名（channel() 助手命名
+    // 规则 ch-{key}，与 load_snapshot_data 派生规则一致）
+    assert_eq!(
+        target.channel_names.load().get("ch-1").map(String::as_str),
+        Some("ch-ch-1"),
+        "reload 后渠道名映射应可查（UUID 字符串键）"
+    );
 
     // 3. Dispatcher 换上新快照：boot 时是 None（SnapshotNotReady），reload 后能选中
     let cand = dispatcher
@@ -262,6 +285,7 @@ fn reload_replaces_snapshot_wholesale() {
             group_count: 0,
             price_rows: Vec::new(),
             name_directory: NameDirectory::default(),
+            channel_names: channel_names_of(&[channel("ch-1")]),
         },
     );
     assert_eq!(counts_a.tokens, 1);
@@ -290,6 +314,7 @@ fn reload_replaces_snapshot_wholesale() {
             group_count: 0,
             price_rows: Vec::new(),
             name_directory: NameDirectory::default(),
+            channel_names: channel_names_of(&[channel("ch-2"), channel("ch-3")]),
         },
     );
     assert_eq!(counts_b.tokens, 1, "tokens 计数应是新输入规模");
@@ -300,4 +325,14 @@ fn reload_replaces_snapshot_wholesale() {
     assert!(target.token_snapshot.load().lookup(&hash_b).is_some());
     assert_eq!(counts_b.channels, 2, "channels 计数应是新输入规模");
     assert_eq!(counts_b.route_units, 3, "route_units 计数应是新输入规模");
+    // 渠道名映射同为整表替换：旧渠道键消失、新渠道键可查
+    assert!(
+        target.channel_names.load().get("ch-1").is_none(),
+        "被删除的旧渠道名不应残留在映射里"
+    );
+    assert_eq!(
+        target.channel_names.load().get("ch-3").map(String::as_str),
+        Some("ch-ch-3"),
+        "新渠道名应随二次 reload 可查"
+    );
 }

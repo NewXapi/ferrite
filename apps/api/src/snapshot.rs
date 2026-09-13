@@ -25,6 +25,7 @@
 //!     pub group_snapshot: gateway_gate::snapshot::SharedGroupSnapshot,
 //!     pub price_rows: SharedPriceRows,
 //!     pub name_directory: billing::SharedNameDirectory,
+//!     pub channel_names: SharedChannelNames,
 //! }
 //! ```
 //!
@@ -58,6 +59,12 @@ use crate::billing::{NameDirectory, SharedNameDirectory};
 /// store 换新。行形状 = `(model, input, output, cache)`，单位 $/M tokens。
 pub type SharedPriceRows = Arc<arc_swap::ArcSwap<Vec<(String, f64, f64, f64)>>>;
 
+/// 渠道展示名映射的共享句柄（`Arc<ArcSwap<T>>`）：boot 新建、reload 原地
+/// store 换新。键 = 渠道 UUID 字符串（`ChannelRecord.meta.key`，PG UUID 列
+/// 的 `to_string()`），值 = 渠道展示名；结算 sink 在 submit 时现读，
+/// **渠道改名免重启生效**。
+pub type SharedChannelNames = Arc<arc_swap::ArcSwap<HashMap<String, String>>>;
+
 /// 读模型单价表（迁移 0003）：每行 `(model, input, output, cache)`，$/M tokens。
 ///
 /// 计费权威裁决见 [`crate::billing`] 模块文档：这是 pipeline 结算价格表的
@@ -84,6 +91,7 @@ pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
         group_snapshot: shared(input.group_snapshot),
         price_rows: shared(input.price_rows),
         name_directory: shared(input.name_directory),
+        channel_names: shared(input.channel_names),
     })
 }
 
@@ -111,6 +119,9 @@ pub struct ReloadInput {
     pub price_rows: Vec<(String, f64, f64, f64)>,
     /// 用户/令牌展示名目录（usage_logs 冗余展示字段用）。
     pub name_directory: NameDirectory,
+    /// 渠道 UUID 字符串 → 展示名（usage_logs.channel_name 冗余展示字段用）。
+    /// 与 `channels` 同批加载逐条克隆而来，保证名单与渠道快照同一份数据。
+    pub channel_names: HashMap<String, String>,
 }
 
 /// reload 结果计数：`json!` 序列化后作为响应 `data` 字段（snake_case 键即字段名）。
@@ -128,6 +139,13 @@ pub struct ReloadCounts {
 async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
     // 1. 加载渠道数据
     let (channels, route_units) = load_channels_and_units(pool).await?;
+
+    // 渠道展示名映射：与 channels 同批逐条克隆（meta.key 是 UUID 字符串，
+    // 与结算事件 UsageEventRecord.channel_key 的归因键同形，查表无需解析）。
+    let channel_names: HashMap<String, String> = channels
+        .iter()
+        .map(|ch| (ch.meta.key.clone(), ch.name.clone()))
+        .collect();
 
     // 2. 加载令牌数据（纯值：records + 纯 TokenSnapshot）
     let (token_records, token_snapshot) = load_tokens(pool).await?;
@@ -154,6 +172,7 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
         group_count,
         price_rows,
         name_directory,
+        channel_names,
     })
 }
 
@@ -231,12 +250,12 @@ pub fn apply_snapshot_reload(
     target.user_snapshot.store(Arc::new(input.user_snapshot));
     target.quota_snapshot.store(Arc::new(quota_snapshot));
     target.group_snapshot.store(Arc::new(input.group_snapshot));
-    // 计费数据随 reload 换新：价格行 + 展示名目录。注意 ForwardStage 手里的
-    // PgPriceTable 是 boot 时 clone 的 HashMap，不随本 store 换（ArcSwap 化
-    // 留待后续，PR Suspect 已注明）；name_directory 是 submit 时现读的共享
-    // 句柄，store 后下次结算即生效。
+    // 计费快照随 reload 换新：价格行 / 展示名目录 / 渠道名映射。三者的消费方
+    // （PgPriceTable、PgSettleSink）都持同一批 ArcSwap 句柄、读取时现 load，
+    // store 后下一次 lookup / submit 即读到新值——改价、改名都免重启。
     target.price_rows.store(Arc::new(input.price_rows));
     target.name_directory.store(Arc::new(input.name_directory));
+    target.channel_names.store(Arc::new(input.channel_names));
     dispatcher.set_snapshot(Arc::new(dispatch_snapshot));
     counts
 }
@@ -652,9 +671,9 @@ fn build_quota_snapshot(token_records: &[TokenRecord]) -> QuotaSnapshot {
 /// `dispatch` 只是喂给 `Dispatcher::new` 的 boot 副本，**boot 后即陈旧**——
 /// reload 走 `Dispatcher::set_snapshot` 原地换新，不回写本字段；运行期以
 /// Dispatcher 内部快照为准（详见 [`reload_snapshots`] 文档）。
-/// `price_rows` / `name_directory` 是计费快照（`Arc<ArcSwap<T>>`，reload 换新）：
-/// 注意 boot 时消费它们的 [`crate::billing::PgPriceTable`] / channel_names 是
-/// clone 值，价格表不随 reload 换（Suspect 见 billing.rs 模块文档）。
+/// `price_rows` / `name_directory` / `channel_names` 是计费快照
+/// （`Arc<ArcSwap<T>>`，reload 换新）：消费方 [`crate::billing::PgPriceTable`] /
+/// [`crate::billing::PgSettleSink`] 持句柄现读，改价与渠道改名都免重启生效。
 #[derive(Debug, Clone)]
 pub struct Snapshots {
     pub dispatch: DispatchSnapshot,
@@ -666,4 +685,7 @@ pub struct Snapshots {
     pub price_rows: SharedPriceRows,
     /// 用户/令牌展示名目录（reload 换新；sink submit 时现读）。
     pub name_directory: SharedNameDirectory,
+    /// 渠道 UUID 字符串 → 展示名（reload 换新；sink submit 时现读，
+    /// 渠道改名免重启生效）。
+    pub channel_names: SharedChannelNames,
 }
