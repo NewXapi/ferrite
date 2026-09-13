@@ -418,6 +418,22 @@ impl ForwardStage {
 
         match loop_result {
             Ok((attempt, outcome)) => {
+                // 归因回写：retry 可能换候选，ctx 还带着 DispatchStage 的初选；
+                // Pipeline::run 据此打包 RouteAttribution，不回写会把 usage 记到
+                // 失败的初选渠道上。名字回查快照，查不到降级 key-only（与
+                // DispatchStage 同款纪律）。
+                let channel_key = attempt.candidate.unit.channel_key.clone();
+                let channel_name = dispatch.channel_name(&channel_key);
+                if channel_name.is_none() {
+                    tracing::debug!(
+                        channel_key = %channel_key,
+                        "channel name not found in dispatch snapshot; retry attribution carries key only"
+                    );
+                }
+                ctx.route = Some(attempt.candidate.clone());
+                ctx.selected_channel_key = Some(channel_key);
+                ctx.selected_channel_name = channel_name;
+
                 let forwarded = lock(&result_slot).take();
                 match (forwarded, outcome) {
                     (Some(f), _) => {
