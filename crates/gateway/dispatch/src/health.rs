@@ -204,6 +204,20 @@ impl MemoryHealthTable {
     fn lock(&self) -> std::sync::MutexGuard<'_, StateMap> {
         self.states.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// 全表只读口 — 返回当前所有健康记录的 (unit_key, 状态) 快照列表。
+    ///
+    /// 语义：锁内克隆整张表后释放锁（`HealthState` 是 `Copy`，克隆无堆分配
+    /// 风险；调用方拿到的是数据副本，后续再读不受并发 record 影响）。
+    /// 只读、不结算过期冷却 — 查询面不产生副作用（与 `is_selectable` /
+    /// `routing_weight` 的惰性结算语义区分）。
+    /// 未 `record` 过的 unit 不在表里，不会出现在结果中。
+    /// 面向 admin 查询面（`/api/gateway/health`），不在热路径调用
+    /// （锁内整表克隆，规模随 record 过的渠道数增长）。
+    pub fn entries(&self) -> Vec<(String, HealthState)> {
+        let states = self.lock();
+        states.iter().map(|(key, st)| (key.clone(), *st)).collect()
+    }
 }
 
 impl HealthTable for MemoryHealthTable {
