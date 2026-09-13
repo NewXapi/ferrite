@@ -48,6 +48,8 @@ fn sample_job(model: &str) -> RecordJob {
         use_time_ms: 240,
         is_stream: true,
         token_key: Uuid::new_v4().to_string(),
+        status_code: 200,
+        error: None,
     }
 }
 

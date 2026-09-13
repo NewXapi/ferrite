@@ -46,47 +46,42 @@ pub type SharedNameDirectory = Arc<arc_swap::ArcSwap<NameDirectory>>;
 
 /// PG 价格表 + 组倍率折算的 [`PriceTable`] 实现。
 ///
-/// 价格行来自 `model_prices`（boot 时经 [`crate::snapshot::load_model_prices`]
-/// 载入）；组倍率来自 `api_groups.ratio`（#159 已装进组快照）。
+/// 价格行来自 `model_prices`，持 [`crate::snapshot::SharedPriceRows`] 共享句柄：
+/// reload store 新行后 lookup 即读到新价，**改价不需要重启**。
+/// 组倍率来自 `api_groups.ratio`（#159 已装进组快照）。
 pub struct PgPriceTable {
-    by_model: HashMap<String, ModelPrice>,
+    rows: crate::snapshot::SharedPriceRows,
     groups: SharedGroupSnapshot,
 }
 
 impl PgPriceTable {
-    /// 从 `model_prices` 行（`(model, input, output, cache)`，$/M tokens）与
-    /// 组快照构建。
+    /// 从价格行共享句柄与组快照构建。
     ///
     /// `group_multiplier` 基值恒 1.0：迁移 0003 起分组倍率唯一来源是
     /// `api_groups.ratio`（见该迁移头注释「双轨断裂收敛为单轨」），
     /// 在 [`PriceTable::lookup`] 时经组快照折算，不在价格行重复存放。
-    pub fn new(rows: &[(String, f64, f64, f64)], groups: SharedGroupSnapshot) -> Self {
-        let by_model = rows
-            .iter()
-            .map(|(model, input, output, cache)| {
-                (
-                    model.clone(),
-                    ModelPrice {
-                        input: *input,
-                        output: *output,
-                        cache: *cache,
-                        group_multiplier: 1.0,
-                    },
-                )
-            })
-            .collect();
-        Self { by_model, groups }
+    pub fn new(rows: crate::snapshot::SharedPriceRows, groups: SharedGroupSnapshot) -> Self {
+        Self { rows, groups }
     }
 }
 
 impl PriceTable for PgPriceTable {
-    /// 查 `(model, group)` 价：命中 → 价格 clone 并把组倍率乘进
-    /// `group_multiplier`；未命中 → `None`（库层按缺价免费落账）。
+    /// 查 `(model, group)` 价：命中 → 价格并把组倍率乘进 `group_multiplier`；
+    /// 未命中 → `None`（库层按缺价免费落账）。
+    ///
+    /// 价格行是几十量级的小 vec，线性扫即可，免去每请求重建 HashMap。
     ///
     /// 组不存在时 [`gateway_gate::snapshot::GroupSnapshot::multiplier`] 回落
     /// 中性 1.0，不放大也不拒绝计费。
     fn lookup(&self, model: &str, group: &str) -> Option<ModelPrice> {
-        let mut price = *self.by_model.get(model)?;
+        let rows = self.rows.load();
+        let (_, input, output, cache) = rows.iter().find(|(m, ..)| m == model)?;
+        let mut price = ModelPrice {
+            input: *input,
+            output: *output,
+            cache: *cache,
+            group_multiplier: 1.0,
+        };
         price.group_multiplier *= self.groups.load().multiplier(group);
         Some(price)
     }
@@ -165,24 +160,53 @@ pub struct RecordJob {
     pub use_time_ms: i32,
     pub is_stream: bool,
     pub token_key: String,
+    /// 上游最终状态码；0 = 连接失败（`UsageEventRecord` 同名字段透传）。
+    pub status_code: u16,
+    /// 失败摘要；成功为 None。与 `status_code ≥ 400` 共同判定错误观测行
+    /// （#166 的零成本结算事件）。
+    pub error: Option<String>,
+}
+
+impl RecordJob {
+    /// 错误观测行判定：上游已应答 ≥400 且带失败摘要。
+    ///
+    /// 成功但免费的行（cost=0、status=200）不落入此类，仍是 consume。
+    pub fn is_error(&self) -> bool {
+        self.status_code >= 400 && self.error.is_some()
+    }
 }
 
 /// 把一次请求的用量载荷翻译成 observe 的 [`observe::logs::UsageEvent`]。
 ///
-/// `log_type` 由 [`observe::logs::UsageEvent::consume`] 构造函数内部设为
-/// [`observe::logs::LOG_TYPE_CONSUME`]（= 2），本函数不得手写字面量：观测侧的排行榜
-/// `/api/log/top` 与趋势 `/api/log/trend` 都按 `log_type = 2` 过滤，这里曾手写
-/// `log_type: 1`（1=充值，见 `db/migrations/0002_usage_logs.sql`），
-/// 导致每条真实消费都被记成充值并从两个总览查询里整体消失。
+/// `log_type` 由 [`observe::logs::UsageEvent::consume`] /
+/// [`observe::logs::UsageEvent::error`] 构造函数内部设为
+/// [`observe::logs::LOG_TYPE_CONSUME`]（= 2）/ [`observe::logs::LOG_TYPE_ERROR`]
+/// （= 5），本函数不得手写字面量：观测侧的排行榜 `/api/log/top` 与趋势
+/// `/api/log/trend` 都按 `log_type = 2` 过滤，这里曾手写 `log_type: 1`
+/// （1=充值，见 `db/migrations/0002_usage_logs.sql`），导致每条真实消费都被
+/// 记成充值并从两个总览查询里整体消失。
+///
+/// [`RecordJob::is_error`]（上游 ≥400 且带失败摘要，#166 的零成本观测事件）
+/// 决定骨架走 error() 还是 consume()；错误行的摘要进 `content` 列。
 ///
 /// `channel_key` / `channel_name` 来自 pipeline 结算事件的渠道归因；
 /// 归因缺失（dispatch 前短路等）时留空，与列默认值一致。
 /// `channel_key` 落库前解析成 UUID（`usage_logs.channel_key` 是 UUID 列），
 /// 解析失败按缺失处理而不是让整条 INSERT 报类型错。
-/// `ip` / `request_id` / `content` 同理留空。
+/// `ip` / `request_id` 同理留空。
 pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
-    let mut event =
-        observe::logs::UsageEvent::consume(job.user_uuid, &job.username, &job.model_name);
+    let mut event = if job.is_error() {
+        let mut e = observe::logs::UsageEvent::error(job.user_uuid, &job.username, &job.model_name);
+        // 错误摘要进 content（列注释：扩展信息）；status 一并带上便于排障过滤
+        e.content = format!(
+            "upstream {}: {}",
+            job.status_code,
+            job.error.as_deref().unwrap_or("")
+        );
+        e
+    } else {
+        observe::logs::UsageEvent::consume(job.user_uuid, &job.username, &job.model_name)
+    };
     event.token_key = job.token_uuid;
     event.token_name = job.token_name.clone();
     event.channel_key = job
@@ -285,6 +309,8 @@ impl SettleSink for PgSettleSink {
             // usage_logs.is_stream 只是展示维度，计费口径不依赖它。
             is_stream: event.is_stream,
             token_key: event.token_key.clone(),
+            status_code: event.status_code,
+            error: event.error.clone(),
         };
         let pool = self.pool.clone();
         let quota_snapshot = self.quota_snapshot.clone();
@@ -300,6 +326,7 @@ impl SettleSink for PgSettleSink {
 /// used_quota 是缓存态（可由账本重算），内存 quota 扣减失败影响的是下次
 /// 预检精度，都不该让已经完成的转发请求报错。
 async fn record_settlement(pool: &PgPool, quota_snapshot: &SharedQuota, job: RecordJob) {
+    let is_error = job.is_error();
     let event = build_consume_event(&job);
     let RecordJob {
         cost, token_key, ..
@@ -308,6 +335,10 @@ async fn record_settlement(pool: &PgPool, quota_snapshot: &SharedQuota, job: Rec
     match svc.record(&event).await {
         Ok(id) => tracing::debug!(usage_id = %id, "usage recorded"),
         Err(e) => tracing::warn!(error = %e, "failed to record usage"),
+    }
+    if is_error {
+        // 错误观测行零成本：跳过 used_quota 递增与内存扣减，省一次 UPDATE。
+        return;
     }
     // api_tokens.key 是 UUID 列：必须绑 Uuid，绑 String 会类型不匹配导致 0 行更新
     match uuid::Uuid::parse_str(&token_key) {

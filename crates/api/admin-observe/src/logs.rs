@@ -26,6 +26,11 @@ pub const LOG_TYPE_TOPUP: i16 = 1;
 /// 真实消费全部被当成充值，从 `/api/log/top` 与 `/api/log/trend` 里整体消失。
 pub const LOG_TYPE_CONSUME: i16 = 2;
 
+/// 错误流水：`usage_logs.log_type = 5`（枚举见 `db/migrations/0002_usage_logs.sql`）。
+/// 上游已应答 ≥400 或传输失败的请求由 pipeline 结算的**零成本观测事件**翻译而来：
+/// 不扣费（quota=0）、不进消费聚合（top/trend 只认 2），只留排障痕迹。
+pub const LOG_TYPE_ERROR: i16 = 5;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageEvent {
@@ -82,6 +87,16 @@ impl UsageEvent {
             ip: String::new(),
             request_id: String::new(),
             content: String::new(),
+        }
+    }
+
+    /// 构造一条错误流水的骨架（`log_type = 5`）。与 [`Self::consume`] 同理由：
+    /// log_type 的唯一定义点，禁止调用方手写字面量。
+    /// 错误摘要放 `content`（列注释：扩展信息 JSON/文本）。
+    pub fn error(user_key: Uuid, username: &str, model_name: &str) -> Self {
+        Self {
+            log_type: LOG_TYPE_ERROR,
+            ..Self::consume(user_key, username, model_name)
         }
     }
 }
