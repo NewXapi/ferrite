@@ -30,6 +30,7 @@ dependencies = [
  "client",
  "contract",
  "dioxus",
+ "futures-util",
  "gloo-timers",
  "hex",
  "serde",
