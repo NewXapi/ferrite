@@ -139,3 +139,49 @@ pub struct RedemptionUpsertRequest {
     pub count: u32,
     pub expires_at: Option<String>,
 }
+
+/// 货币 DTO — 对标 admin-api /api/currency 响应
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrencyView {
+    pub code: String,
+    pub name: String,
+    pub internal_rate: f64,
+    pub enabled: bool,
+    pub remark: String,
+}
+
+/// 用户余额项 DTO
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserBalanceDto {
+    pub currency_code: String,
+    pub amount: i64,
+}
+
+/// 用户钱包 DTO — 综合展示
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletView {
+    pub user_key: String,
+    pub balances: Vec<UserBalanceDto>,
+    pub available_i64: i64,
+}
+
+/// 充值请求 — 对标 admin-api /api/user/topup
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopUpRequest {
+    pub user_key: String,
+    pub currency: String,
+    pub amount: i64,
+}
+
+/// 奖励请求 — 对标 admin-api /api/affiliate/reward
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RewardRequest {
+    pub kind: String,
+    pub user_key: String,
+    pub amount: i64,
+}

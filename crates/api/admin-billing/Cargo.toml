@@ -19,7 +19,8 @@ uuid     = { workspace = true }
 rand     = { workspace = true }
 sha2     = { workspace = true }
 hex      = { workspace = true }
-chrono   = { workspace = true }
+contract     = { path = "../../contract" }
+ thiserror   = { workspace = true }
 tracing  = { workspace = true }
 auth     = { path = "../auth" }
 

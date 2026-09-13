@@ -573,7 +573,7 @@ version = "0.1.0"
 dependencies = [
  "auth",
  "axum",
- "chrono",
+ "contract",
  "db-bootstrap",
  "hex",
  "rand 0.8.8",
@@ -581,6 +581,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "uuid",

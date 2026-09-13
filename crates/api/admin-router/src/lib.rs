@@ -1,9 +1,12 @@
-//! admin-api 路由聚合 — apps/api 一次性挂载。
-
 use std::sync::Arc;
 
 use axum::Router;
 use sqlx::PgPool;
+
+use billing::{
+    AffiliateAppState, CurrencyAppState, TopupAppState, WalletAppState, affiliate_router,
+    currency_router, topup_router, wallet_router,
+};
 
 /// 启动时建表 + 聚合 admin-api 子域 Router。
 /// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies, dispatcher, health).await?;`
@@ -76,9 +79,36 @@ pub async fn router(
             auth: auth_svc.clone(),
         });
 
+    // billing 货币子域：钱包 / 货币定义 / 拉人奖励 / 充值。
+    // AffiliateService::new 收 WalletService 值（非 Arc），内部独享一份。
+    let wallet_svc = Arc::new(billing::WalletService::new(pool.clone()));
+    let currency_svc = Arc::new(billing::CurrencyService::new(pool.clone()));
+    let affiliate_svc = Arc::new(billing::AffiliateService::new(
+        pool.clone(),
+        billing::WalletService::new(pool.clone()),
+    ));
+    let topup_svc = Arc::new(billing::TopupService::new(pool.clone()));
+
+    let wallet_router = wallet_router(WalletAppState {
+        svc: wallet_svc,
+        auth: auth_svc.clone(),
+    });
+    let currency_router = currency_router(CurrencyAppState {
+        svc: currency_svc,
+        auth: auth_svc.clone(),
+    });
+    let affiliate_router = affiliate_router(AffiliateAppState {
+        svc: affiliate_svc,
+        auth: auth_svc.clone(),
+    });
+    let topup_router = topup_router(TopupAppState {
+        svc: topup_svc,
+        auth: auth_svc.clone(),
+    });
+
     // auth 子路由自身不带前缀（/login /register ...），必须 nest 到 /api/user
     // 与前端 admin-client 约定的 /api/user/{login,register,...} 对齐。
-    let auth_router = Router::new().nest("/api/user", auth_router);
+    let auth_router = axum::Router::new().nest("/api/user", auth_router);
 
     Ok(auth_router
         .merge(token_router)
@@ -86,6 +116,10 @@ pub async fn router(
         .merge(group_router)
         .merge(model_router)
         .merge(redeem_router)
+        .merge(wallet_router)
+        .merge(currency_router)
+        .merge(affiliate_router)
+        .merge(topup_router)
         .merge(options_router)
         .merge(log_router)
         .merge(monitor_router)

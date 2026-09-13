@@ -74,7 +74,9 @@ impl PriceTable for PgPriceTable {
     /// 组不存在时 [`gateway_gate::snapshot::GroupSnapshot::multiplier`] 回落
     /// 中性 1.0，不放大也不拒绝计费。
     fn lookup(&self, model: &str, group: &str) -> Option<ModelPrice> {
+        // 热路径：两个 ArcSwap guard 只 load 一次（每次请求都会走这里）。
         let rows = self.rows.load();
+        let groups = self.groups.load();
         let (_, input, output, cache) = rows.iter().find(|(m, ..)| m == model)?;
         let mut price = ModelPrice {
             input: *input,
@@ -82,7 +84,7 @@ impl PriceTable for PgPriceTable {
             cache: *cache,
             group_multiplier: 1.0,
         };
-        price.group_multiplier *= self.groups.load().multiplier(group);
+        price.group_multiplier *= groups.multiplier(group);
         Some(price)
     }
 }
