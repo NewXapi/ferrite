@@ -20,11 +20,11 @@
 //! [`gateway_gate::snapshot::GroupSnapshot::multiplier`] 在 [`PgPriceTable::lookup`]
 //! 里折算进返回值的 `group_multiplier`；forward 库层传的 `group_ratio` 保持 1.0。
 //!
-//! # reload 陈旧性（Suspect）
-//! [`PgPriceTable`] 持有的价格 HashMap 与 [`PgSettleSink`] 持有的渠道名映射
-//! 都是 boot 时 clone 的快照：`Snapshots.price_rows` / `name_directory` 会随
-//! reload 换新（名单目录是共享句柄，submit 时现读，改名即生效），但价格表
-//! 不随 reload 换 —— ArcSwap 化留待后续（PR Suspect 已注明）。
+//! # reload 热更
+//! [`PgPriceTable`] 持有的价格行、[`PgSettleSink`] 持有的渠道名映射与
+//! 用户/令牌名单目录都是 `Arc<ArcSwap<T>>` 共享句柄（`Snapshots.price_rows` /
+//! `channel_names` / `name_directory`）：reload 向同一批句柄 store 新值后，
+//! lookup / submit 现读即生效——**改价、渠道改名、用户改名都免重启**。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -237,18 +237,19 @@ pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
 pub struct PgSettleSink {
     pool: PgPool,
     quota_snapshot: SharedQuota,
-    /// 渠道 UUID 字符串 → 展示名（boot 渠道快照投影；与 `Snapshots.dispatch`
-    /// 字段同款陈旧性，reload 不回写）。
-    channel_names: HashMap<String, String>,
+    /// 渠道 UUID 字符串 → 展示名的共享句柄：reload store 新映射后，
+    /// 下次 submit 现读即生效（渠道改名免重启）。
+    channel_names: crate::snapshot::SharedChannelNames,
     names: SharedNameDirectory,
 }
 
 impl PgSettleSink {
-    /// 组装 sink。`names` 传共享句柄：reload 换新名单后 submit 即读到新值。
+    /// 组装 sink。`names` / `channel_names` 传共享句柄：reload 换新后
+    /// submit 即读到新值。
     pub fn new(
         pool: PgPool,
         quota_snapshot: SharedQuota,
-        channel_names: HashMap<String, String>,
+        channel_names: crate::snapshot::SharedChannelNames,
         names: SharedNameDirectory,
     ) -> Self {
         Self {
@@ -290,6 +291,7 @@ impl SettleSink for PgSettleSink {
         };
         let channel_name = self
             .channel_names
+            .load()
             .get(&event.channel_key)
             .cloned()
             .unwrap_or_default();

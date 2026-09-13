@@ -174,8 +174,47 @@ async fn pg_pool() -> Option<sqlx::PgPool> {
     }
 }
 
+/// usage_logs 行的断言投影（与测试查询的列序一致）。
+type UsageLogRow = (
+    i32,
+    i32,
+    i64,
+    bool,
+    String,
+    String,
+    String,
+    Option<uuid::Uuid>,
+);
+
+/// 轮询等待某 model 的结算行落库：submit 是 spawn-and-forget，行由后台
+/// 任务写入（10s 预算；PG 就绪时通常 <100ms，超时即失败）。
+async fn wait_log_row(pool: &sqlx::PgPool, model: &str) -> UsageLogRow {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let row = sqlx::query_as::<_, UsageLogRow>(
+            "SELECT prompt_tokens, completion_tokens, quota, is_stream, username, token_name, \
+             channel_name, token_key \
+             FROM usage_logs WHERE model_name = $1",
+        )
+        .bind(model)
+        .fetch_optional(pool)
+        .await
+        .expect("query usage_logs");
+        if let Some(row) = row {
+            return row;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "结算事件 10s 内未落 usage_logs（model={model}）：sink 落地链路断了"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 /// sink 全链路：submit 一条结算事件 → usage_logs 落一行（含冗余展示字段、
 /// is_stream 透传事件值）→ api_tokens.used_quota 递增 → 内存 quota 快照扣减。
+/// 第二阶段钉住渠道改名热更：向 sink 持有的 SharedChannelNames 句柄 store
+/// 新映射（与 `apply_snapshot_reload` 同一动作），下一条事件落新名。
 ///
 /// submit 是 spawn-and-forget，测试轮询 usage_logs 直到该 model 出现（每次
 /// 运行唯一 model 名天然隔离历史数据），超时即失败。
@@ -240,23 +279,27 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
     let quota_snapshot: gateway_gate::snapshot::SharedQuota =
         Arc::new(ArcSwap::from_pointee(quota));
 
-    let mut channel_names = HashMap::new();
-    channel_names.insert(channel_uuid.to_string(), "ch-billing-authority".to_string());
+    let mut channel_names_map = HashMap::new();
+    channel_names_map.insert(channel_uuid.to_string(), "ch-billing-authority".to_string());
+    // 与 boot 装配同形：sink 持共享句柄（SharedChannelNames），不是 clone 的定稿
+    // HashMap——reload store 新映射后 submit 现读即生效（改名免重启）。
+    let channel_names: api::snapshot::SharedChannelNames =
+        Arc::new(ArcSwap::from_pointee(channel_names_map));
 
     let sink = PgSettleSink::new(
         pool.clone(),
         quota_snapshot.clone(),
-        channel_names,
+        channel_names.clone(),
         Arc::new(ArcSwap::from_pointee(NameDirectory::new(&tokens, &users))),
     );
 
-    let event = UsageEventRecord {
+    let make_event = |model: &str| UsageEventRecord {
         meta: sync_meta(&Uuid::new_v4().to_string()),
         token_key: token_key.clone(),
         user_key: user_uuid.to_string(),
         channel_key: channel_uuid.to_string(),
         route_unit_key: "ru-test".into(),
-        public_model: model.clone(),
+        public_model: model.to_string(),
         upstream_model: format!("{model}-upstream"),
         prompt_tokens: 11,
         completion_tokens: 7,
@@ -269,41 +312,10 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         error: None,
     };
 
-    sink.submit(event);
+    sink.submit(make_event(&model));
 
     // 轮询等待 spawn 的后台落地完成（10s 预算；PG 就绪时通常 <100ms）
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let row = loop {
-        let row = sqlx::query_as::<
-            _,
-            (
-                i32,
-                i32,
-                i64,
-                bool,
-                String,
-                String,
-                String,
-                Option<uuid::Uuid>,
-            ),
-        >(
-            "SELECT prompt_tokens, completion_tokens, quota, is_stream, username, token_name, \
-             channel_name, token_key \
-             FROM usage_logs WHERE model_name = $1",
-        )
-        .bind(&model)
-        .fetch_optional(&pool)
-        .await
-        .expect("query usage_logs");
-        if let Some(row) = row {
-            break row;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "结算事件 10s 内未落 usage_logs：sink 落地链路断了"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    };
+    let row = wait_log_row(&pool, &model).await;
 
     // 落库载荷与事件逐字段一致（量化字段原样带入、冗余展示名来自名单目录、
     // is_stream 透传事件的流式标记，本事件为非流式 false）
@@ -344,6 +356,23 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         1000 - cost,
         "quota 快照必须按事件 cost 扣减"
     );
+
+    // 渠道改名热更（新名经 reload 生效）：向 sink 持有的同一名单句柄 store
+    // 新映射（与 apply_snapshot_reload 的 store 同一动作），不重建 sink；
+    // 下一条结算事件的 channel_name 必须是新名。
+    let renamed_model = format!("m-ba-renamed-{}", Uuid::new_v4().simple());
+    channel_names.store(Arc::new(HashMap::from([(
+        channel_uuid.to_string(),
+        "ch-renamed-hot".to_string(),
+    )])));
+    sink.submit(make_event(&renamed_model));
+    let (_, _, renamed_quota, _, _, _, renamed_channel, _) =
+        wait_log_row(&pool, &renamed_model).await;
+    assert_eq!(
+        renamed_channel, "ch-renamed-hot",
+        "store 新名单后 sink 必须现读到新渠道名（改名免重启）"
+    );
+    assert_eq!(renamed_quota, cost, "改名后事件 cost 口径不变");
 
     // 清理本次插入的 token 行（usage_logs 行留下，与 usage_log_type.rs 同策略：
     // 用唯一 model 名隔离，不做清理）

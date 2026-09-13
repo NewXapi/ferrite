@@ -15,14 +15,22 @@
 //! PG 读取链路本身由 e2e（`tests-e2e` 的 reload 用例）覆盖，这里只锁纯函数语义，
 //! 与 `reload_counts.rs` 的离线测试策略一致。
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use api::snapshot::{build_group_snapshot, expand_models_json, parse_token_allowed_models};
+use api::billing::NameDirectory;
+use api::snapshot::{
+    ReloadInput, Snapshots, apply_snapshot_reload, build_group_snapshot, expand_models_json,
+    parse_token_allowed_models,
+};
 use arc_swap::ArcSwap;
 use bytes::Bytes;
+use dispatch::{Dispatcher, MemoryHealthTable, Snapshot as DispatchSnapshot};
 use gateway_gate::chain::GateCtx;
-use gateway_gate::snapshot::TokenEntry;
+use gateway_gate::snapshot::{
+    GroupSnapshot, QuotaSnapshot, TokenEntry, TokenSnapshot, UserSnapshot,
+};
 use gateway_gate::{Gate, GroupModelGate, Rejection};
 use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta};
 use serde_json::json;
@@ -272,5 +280,72 @@ async fn group_model_gate_enforces_snapshot() {
     assert!(
         matches!(&err, Rejection::GroupDisabled { group } if group == "blocked"),
         "拒绝变体应为 GroupDisabled(blocked)，实得 {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 4. channel_names 热更：apply_snapshot_reload store 新名单，持句柄方现读生效
+// ---------------------------------------------------------------------------
+
+/// 渠道改名免重启：`Snapshots.channel_names` 是共享句柄，reload 向同一实例
+/// store 新映射后，持句柄的结算 sink（`PgSettleSink` submit 的读取姿势：
+/// `channel_names.load().get(key)`）立刻看到新名。
+///
+/// 回归背景：旧实现把 `HashMap<String, String>` 在 boot 时从 dispatch 快照
+/// 投影成定稿值传给 sink，渠道改名必须重启进程。本测试钉住新语义：
+/// 两次 `apply_snapshot_reload`（boot 名单 → 改名名单）之间不重建任何组件，
+/// 句柄现读即新名。纯离线（ReloadInput 手构），不碰 PG。
+#[test]
+fn apply_snapshot_reload_hot_swaps_channel_names() {
+    // boot 等价物：全部空快照句柄 + 空 Dispatcher（同 reload_counts.rs 的
+    // empty_target，这里只需要 channel_names 维度的最小装配）
+    let target = Snapshots {
+        dispatch: DispatchSnapshot::default(),
+        token_snapshot: Arc::new(ArcSwap::from_pointee(TokenSnapshot::default())),
+        user_snapshot: Arc::new(ArcSwap::from_pointee(UserSnapshot::default())),
+        quota_snapshot: Arc::new(ArcSwap::from_pointee(QuotaSnapshot::default())),
+        group_snapshot: Arc::new(ArcSwap::from_pointee(GroupSnapshot::default())),
+        price_rows: Arc::new(ArcSwap::from_pointee(Vec::new())),
+        name_directory: Arc::new(ArcSwap::from_pointee(NameDirectory::default())),
+        channel_names: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+    };
+    let dispatcher = Dispatcher::new(None, Arc::new(MemoryHealthTable::new()));
+
+    // 渠道 key 必须是 UUID 字符串形态——真实链路里名单键来自
+    // `uuid::Uuid::to_string()`（load_channels_and_units），结算事件
+    // `UsageEventRecord.channel_key` 同形，两侧都不做解析。
+    let channel_key = uuid::Uuid::new_v4().to_string();
+
+    let reload_input = |name: &str| ReloadInput {
+        channels: vec![],
+        route_units: vec![],
+        token_records: vec![],
+        token_snapshot: TokenSnapshot::default(),
+        user_records: vec![],
+        user_snapshot: UserSnapshot::default(),
+        group_snapshot: GroupSnapshot::default(),
+        group_count: 0,
+        price_rows: vec![],
+        name_directory: NameDirectory::default(),
+        channel_names: HashMap::from([(channel_key.clone(), name.to_string())]),
+    };
+
+    // sink 视角：装配时 clone 的同一句柄（PgSettleSink::new 收的就是它）
+    let sink_view = target.channel_names.clone();
+
+    // boot 名单落位
+    apply_snapshot_reload(&target, &dispatcher, reload_input("ch-old-name"));
+    assert_eq!(
+        sink_view.load().get(&channel_key).map(String::as_str),
+        Some("ch-old-name"),
+        "boot 名单应经句柄可查"
+    );
+
+    // 改名后走 reload：不重启、不重建 sink，句柄现读即新名
+    apply_snapshot_reload(&target, &dispatcher, reload_input("ch-renamed"));
+    assert_eq!(
+        sink_view.load().get(&channel_key).map(String::as_str),
+        Some("ch-renamed"),
+        "渠道改名必须经 reload 免重启生效（sink 持句柄现读）"
     );
 }

@@ -15,7 +15,6 @@
 //! # Ok(())
 //! } ```
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Json;
@@ -145,15 +144,9 @@ async fn assemble(
     // 计费权威接线（#146/#159）：pipeline 结算点是唯一扣费写点，价格表 +
     // 结算 sink 在此注入 ForwardStage；usage 中间件已退役（双写双扣 + SSE
     // 吞流，裁决见 billing.rs 模块文档）。
-    // channel_names 从 boot 渠道快照投影（UUID → 展示名）；与 Snapshots.dispatch
-    // 字段同款陈旧性——reload 不回写，渠道改名后新账单仍记旧名（Suspect 同价格表）。
-    let channel_names: HashMap<String, String> = snapshots
-        .dispatch
-        .channels
-        .iter()
-        .map(|(key, channel)| (key.clone(), channel.name.clone()))
-        .collect();
-    // 持共享句柄而非 load 快照：reload store 新价格行后 lookup 即读到新价（热更）
+    // channel_names / price_rows / name_directory 全部持共享句柄（Arc<ArcSwap>），
+    // reload store 新值后 sink submit / 价格 lookup 现读即生效——渠道改名、
+    // 改价都免重启。
     let price_table = billing::PgPriceTable::new(
         snapshots.price_rows.clone(),
         snapshots.group_snapshot.clone(),
@@ -161,7 +154,7 @@ async fn assemble(
     let settle_sink = billing::PgSettleSink::new(
         pool.clone(),
         snapshots.quota_snapshot.clone(),
-        channel_names,
+        snapshots.channel_names.clone(),
         snapshots.name_directory.clone(),
     );
     let forward_stage =
