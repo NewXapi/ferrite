@@ -88,7 +88,7 @@ fn cooling_unit_joins_snapshot_fields() {
     assert_eq!(v.channel_key.as_deref(), Some("ch-a"));
     assert_eq!(v.channel_name.as_deref(), Some("Alpha"));
     assert_eq!(v.public_model.as_deref(), Some("gpt-4o"));
-    assert_eq!(v.state, "cooling");
+    assert_eq!(v.state.as_str(), "cooling");
     assert_eq!(v.last_cooling_outcome.as_deref(), Some("fatal"));
     assert_eq!(v.remaining_cooldown_ms, 10_000);
 }
@@ -105,7 +105,8 @@ fn expired_cooling_reads_as_slow_start_with_zero_remaining() {
     let items = build_health_view(&table.entries(), Some(&snap()), later);
     assert_eq!(items.len(), 1);
     assert_eq!(
-        items[0].state, "ok",
+        items[0].state.as_str(),
+        "ok",
         "无惰性结算：到期冷却既非 cooling 也非 ramp 标记"
     );
     assert_eq!(items[0].remaining_cooldown_ms, 0);
@@ -125,7 +126,7 @@ fn missing_snapshot_degrades_joined_fields_to_none() {
     assert!(v.channel_key.is_none());
     assert!(v.channel_name.is_none());
     assert!(v.public_model.is_none());
-    assert_eq!(v.state, "ok");
+    assert_eq!(v.state.as_str(), "ok");
     assert_eq!(v.last_cooling_outcome, None);
 }
 
@@ -155,7 +156,7 @@ fn neutral_only_units_are_listed_as_ok() {
     let items = build_health_view(&table.entries(), Some(&snap()), now);
     assert_eq!(items.len(), 1);
     let v = &items[0];
-    assert_eq!(v.state, "ok");
+    assert_eq!(v.state.as_str(), "ok");
     assert_eq!(v.channel_name.as_deref(), Some("Beta"));
     assert_eq!(v.public_model.as_deref(), Some("claude-sonnet"));
 }
@@ -177,8 +178,8 @@ fn mixed_entries_preserve_input_order() {
         .iter()
         .map(|v| (v.unit_key.as_str(), v.state))
         .collect();
-    assert_eq!(states.get("u-a:0"), Some(&"cooling"));
-    assert_eq!(states.get("u-b:0"), Some(&"ok"));
+    assert_eq!(states.get("u-a:0").map(|s| s.as_str()), Some("cooling"));
+    assert_eq!(states.get("u-b:0").map(|s| s.as_str()), Some("ok"));
     assert_eq!(keys.len(), 2);
 }
 
@@ -194,6 +195,6 @@ fn ramp_pending_reads_as_slow_start() {
 
     let items = build_health_view(&entries, None, 0);
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].state, "slow_start");
+    assert_eq!(items[0].state.as_str(), "slow_start");
     assert_eq!(items[0].remaining_cooldown_ms, 0);
 }

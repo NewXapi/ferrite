@@ -25,6 +25,31 @@ use auth::error::AuthError;
 use auth::routes::{ADMIN_ROLE_THRESHOLD, bearer_user};
 use auth::service::AuthService;
 
+/// 健康状态视图 — 三态枚举，序列化按 snake_case 转字符串（cooling / slow_start / ok）。
+///
+/// 用类型而非 `&'static str`：调用方拼写错误编译期即暴露，API 自文档化。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HealthStateView {
+    /// 冷却窗口内。
+    Cooling,
+    /// 冷却刚结束、ramp 渐进期。
+    SlowStart,
+    /// 当前健康。
+    Ok,
+}
+
+impl HealthStateView {
+    /// 序列化后的字符串形态（测试断言用；与 `#[serde(rename_all = "snake_case")]` 同源）。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cooling => "cooling",
+            Self::SlowStart => "slow_start",
+            Self::Ok => "ok",
+        }
+    }
+}
+
 /// 单条渠道健康视图 — join 后的面板数据行。
 ///
 /// 字段为 Option 时：unit 的 channel_key 已不在当前快照 channels 中（渠道
@@ -40,8 +65,8 @@ pub struct HealthView {
     pub channel_name: Option<String>,
     /// 公开模型别名（join 自快照 units；同上可缺省）。
     pub public_model: Option<String>,
-    /// 三态：`cooling`（冷却窗口内）/ `slow_start`（冷却刚结束、ramp 渐进期）/ `ok`。
-    pub state: &'static str,
+    /// 三态，取值见 [`HealthStateView`]（序列化为 snake_case 字符串）。
+    pub state: HealthStateView,
     /// 最近一次触发冷却的 outcome（P1-A 分档依据）；从未冷却 = None。
     pub last_cooling_outcome: Option<String>,
     /// 剩余冷却毫秒；未冷却 = 0。读路径惰性结算，到期待结算时为 0 而非负数。
@@ -151,11 +176,11 @@ pub fn build_health_view(
         };
 
         let state = if st.is_cooling(now_ms) {
-            "cooling"
+            HealthStateView::Cooling
         } else if st.ramp_pending {
-            "slow_start"
+            HealthStateView::SlowStart
         } else {
-            "ok"
+            HealthStateView::Ok
         };
 
         let remaining = if st.is_cooling(now_ms) {
