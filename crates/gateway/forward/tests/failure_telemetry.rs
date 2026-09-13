@@ -198,6 +198,8 @@ fn ctx_with_body(body: &'static [u8], route: Candidate) -> gateway_pipeline::Req
         selected_channel_name: None,
         upstream: None,
         streamed: StreamedAccum::default(),
+        // #165 给 RequestCtx 加了 drop_guards（RAII 并发闸），此字面量补齐
+        drop_guards: Vec::new(),
         error: None,
     }
 }
