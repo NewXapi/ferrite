@@ -37,6 +37,7 @@ fn group_snapshot() -> gateway_gate::snapshot::SharedGroupSnapshot {
         GroupEntry {
             allowed_models: vec![],
             multiplier: 0.8,
+            enabled: true,
         },
     );
     Arc::new(ArcSwap::from_pointee(snapshot))

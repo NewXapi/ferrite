@@ -93,6 +93,10 @@ pub fn match_model(pattern: &str, model: &str) -> bool {
 /// - `ctx.group` 缺失 / 组不在快照里 / 白名单为空 → 放行；
 /// - 仅当组存在且白名单非空、且没有任何 pattern（含 `gpt-4*` 通配）命中时，
 ///   返回 [`Rejection::ModelNotAllowedForGroup`]。
+///
+/// 禁用语义例外于 fail-open：组存在于快照且被管理台禁用（`enabled = false`）
+/// → 该组**整组拒绝**，返回 [`Rejection::GroupDisabled`]（契约见迁移 0001 的
+/// `api_groups.status` 注释：禁用组 → gate 层整组拒绝）。
 pub struct GroupModelGate {
     groups: SharedGroupSnapshot,
 }
@@ -120,6 +124,12 @@ impl Gate for GroupModelGate {
             return Ok(());
         };
         let snapshot = self.groups.load();
+        // 管理台显式禁用（status≠1）的组 → 整组拒绝，与白名单无关。
+        if snapshot.is_disabled(group) {
+            return Err(Rejection::GroupDisabled {
+                group: group.into(),
+            });
+        }
         // 组不存在（未配置）→ fail-open；存在且空白名单同样不限模型。
         let Some(allowed) = snapshot.allowed_models(group) else {
             return Ok(());

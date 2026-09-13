@@ -7,8 +7,9 @@
 //! - api_tokens (status=1) → TokenRecord + gate::snapshot::TokenSnapshot
 //!   （含 api_tokens.allowed_models JSONB → `TokenEntry.allowed_models`）
 //! - auth_users (status=1) → UserRecord + gate::snapshot::UserSnapshot
-//! - api_groups (status=1) → gate::snapshot::GroupSnapshot
-//!   （model_whitelist JSONB → 组级模型白名单；ratio → 分组倍率）
+//! - api_groups (全量，含禁用) → gate::snapshot::GroupSnapshot
+//!   （model_whitelist JSONB → 组级模型白名单；ratio → 分组倍率；
+//!   status → `GroupEntry.enabled`，禁用组进快照供 gate 整组拒绝）
 //! - model_prices → 计费价格行（billing::PgPriceTable 的数据源）
 //!
 //! # 桥接形状
@@ -100,7 +101,9 @@ pub struct ReloadInput {
     pub user_records: Vec<UserRecord>,
     pub user_snapshot: UserSnapshot,
     pub group_snapshot: GroupSnapshot,
-    /// 本次载入的启用分组数。`GroupSnapshot` 无 len 访问器（内部 HashMap 私有），
+    /// 本次载入的**启用**分组数（`status = 1`）。禁用组会进 `GroupSnapshot`
+    /// 供 gate 整组拒绝，但不进对外计数——`ReloadCounts::groups` 口径与
+    /// 改造前的"只收启用组"一致。`GroupSnapshot` 无 len 访问器（内部 HashMap 私有），
     /// 计数只能在加载侧（遍历 PG 行时）一并算出，供 [`ReloadCounts::groups`] 上报。
     pub group_count: usize,
     /// 模型单价行（`(model, input, output, cache)`，$/M tokens）——
@@ -117,6 +120,7 @@ pub struct ReloadCounts {
     pub route_units: u64,
     pub tokens: u64,
     pub users: u64,
+    /// 启用的分组数（禁用组进快照但不计数，见 [`ReloadInput::group_count`]）。
     pub groups: u64,
 }
 
@@ -570,16 +574,18 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnaps
     Ok((user_records, snapshot))
 }
 
-/// 加载分组记录（`api_groups`，仅启用）并构建**纯值** GroupSnapshot。
+/// 加载分组记录（`api_groups`，**全量含禁用**）并构建**纯值** GroupSnapshot。
 ///
-/// 返回 `(快照, 启用组数)`：`GroupSnapshot` 没有 len 访问器，reload 计数在此处顺手算出。
-/// PG 读取是薄壳，白名单/倍率的拼装语义全部在 [`build_group_snapshot`]（纯函数，可离线圈测）。
+/// 禁用组（status ≠ 1）不再被 SQL 过滤掉——它们带着 `enabled = false` 进快照，
+/// 由 `GroupModelGate` 据此对该组请求整组拒绝（迁移 0001 的 status 列契约）。
+/// 返回 `(快照, 启用组数)`：`GroupSnapshot` 没有 len 访问器，reload 计数在此处
+/// 顺手算出，且只数启用组（对外口径与改造前一致）。
+/// PG 读取是薄壳，白名单/倍率/启用位的拼装语义全部在 [`build_group_snapshot`]（纯函数，可离线圈测）。
 async fn load_groups(pool: &PgPool) -> anyhow::Result<(GroupSnapshot, usize)> {
     let rows = sqlx::query(
         r#"
-        SELECT name, ratio, model_whitelist
+        SELECT name, ratio, model_whitelist, status
         FROM api_groups
-        WHERE status = 1
         "#,
     )
     .fetch_all(pool)
@@ -590,26 +596,30 @@ async fn load_groups(pool: &PgPool) -> anyhow::Result<(GroupSnapshot, usize)> {
         let name: String = row.try_get("name")?;
         let ratio: f64 = row.try_get("ratio")?;
         let model_whitelist: Value = row.try_get("model_whitelist")?;
-        parsed.push((name, ratio, model_whitelist));
+        let status: i16 = row.try_get("status")?;
+        parsed.push((name, ratio, model_whitelist, status == 1));
     }
-    let count = parsed.len();
+    let count = parsed.iter().filter(|(_, _, _, enabled)| *enabled).count();
     Ok((build_group_snapshot(&parsed), count))
 }
 
-/// 从 api_groups 的 `(name, ratio, model_whitelist)` 行纯构建 [`GroupSnapshot`]。
+/// 从 api_groups 的 `(name, ratio, model_whitelist, enabled)` 行纯构建 [`GroupSnapshot`]。
 ///
 /// - `model_whitelist` JSONB：`["gpt-4*"]` 形状；空数组 = 该组不限模型，
 ///   非数组/脏元素按空处理（不炸整个快照加载）。
 /// - `ratio` 即分组倍率，原样写入 `GroupEntry::multiplier`——非法值（≤0/NaN/inf）
 ///   由 `GroupSnapshot::upsert` 兜底回落 1.0，本函数不重复校验。
-pub fn build_group_snapshot(rows: &[(String, f64, Value)]) -> GroupSnapshot {
+/// - `enabled`（PG `status == 1`）写入 `GroupEntry::enabled`；false 的组由
+///   `GroupModelGate` 整组拒绝。
+pub fn build_group_snapshot(rows: &[(String, f64, Value, bool)]) -> GroupSnapshot {
     let mut snapshot = GroupSnapshot::default();
-    for (name, ratio, model_whitelist) in rows {
+    for (name, ratio, model_whitelist, enabled) in rows {
         snapshot.upsert(
             name.clone(),
             gateway_gate::snapshot::GroupEntry {
                 allowed_models: parse_model_list_json(model_whitelist),
                 multiplier: *ratio,
+                enabled: *enabled,
             },
         );
     }

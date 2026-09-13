@@ -10,7 +10,7 @@
 //!    非空 → Some），并确认其进入 `TokenEntry::new` 后被 gate 链路可见；
 //! 3. **组级白名单**：`build_group_snapshot` 把 `api_groups` 行拼成 `GroupSnapshot`，
 //!    `GroupModelGate::check` 对 vip+命中通配放行 / vip+非白名单拒绝 /
-//!    未配置组 fail-open。
+//!    未配置组 fail-open / 禁用组（status≠1）整组拒绝。
 //!
 //! PG 读取链路本身由 e2e（`tests-e2e` 的 reload 用例）覆盖，这里只锁纯函数语义，
 //! 与 `reload_counts.rs` 的离线测试策略一致。
@@ -197,12 +197,14 @@ fn gate_ctx(group: Option<&str>, model: Option<&str>) -> GateCtx {
     }
 }
 
-/// api_groups 行 → GroupSnapshot：白名单与倍率都落进快照。
+/// api_groups 行 → GroupSnapshot：白名单、倍率与启用位（status==1）都落进快照。
 #[test]
 fn build_group_snapshot_maps_whitelist_and_ratio() {
     let snapshot = build_group_snapshot(&[
-        ("vip".into(), 0.8, json!(["gpt-4*"])),
-        ("free".into(), 1.5, json!([])),
+        ("vip".into(), 0.8, json!(["gpt-4*"]), true),
+        ("free".into(), 1.5, json!([]), true),
+        // 禁用组（status≠1 → enabled=false）：行进快照，供 gate 整组拒绝
+        ("blocked".into(), 1.0, json!([]), false),
     ]);
 
     assert_eq!(
@@ -223,13 +225,22 @@ fn build_group_snapshot_maps_whitelist_and_ratio() {
     // 未配置组 → None / 中性 1.0（gate 据此 fail-open）
     assert_eq!(snapshot.allowed_models("ghost"), None);
     assert!((snapshot.multiplier("ghost") - 1.0).abs() < f64::EPSILON);
+    // 启用位映射：status==1 的组不禁用；status≠1 的组进快照且 is_disabled 命中；
+    // 未知组 is_disabled 恒 false（fail-open 语义不变）。
+    assert!(!snapshot.is_disabled("vip"));
+    assert!(snapshot.is_disabled("blocked"));
+    assert!(!snapshot.is_disabled("ghost"));
 }
 
 /// GroupModelGate 接线语义：vip+命中通配 → 放行；vip+白名单外 →
-/// ModelNotAllowedForGroup；未配置组 → fail-open 放行。
+/// ModelNotAllowedForGroup；未配置组 → fail-open 放行；禁用组 → GroupDisabled。
 #[tokio::test]
 async fn group_model_gate_enforces_snapshot() {
-    let snapshot = build_group_snapshot(&[("vip".into(), 0.8, json!(["gpt-4*"]))]);
+    let snapshot = build_group_snapshot(&[
+        ("vip".into(), 0.8, json!(["gpt-4*"]), true),
+        // 空白名单 + 禁用：拒绝必须来自禁用位而非白名单匹配
+        ("blocked".into(), 1.0, json!([]), false),
+    ]);
     let gate = GroupModelGate::new(Arc::new(ArcSwap::from_pointee(snapshot)));
 
     // vip + gpt-4o：`gpt-4*` 通配命中 → 放行
@@ -254,4 +265,12 @@ async fn group_model_gate_enforces_snapshot() {
     // 空组名同样 fail-open
     let mut c = gate_ctx(Some(""), Some("claude-3.5"));
     gate.check(&mut c).await.expect("空组名应放行");
+
+    // 禁用组 → 整组拒绝（GroupDisabled），与请求模型无关
+    let mut c = gate_ctx(Some("blocked"), Some("gpt-4o"));
+    let err = gate.check(&mut c).await.expect_err("禁用组应整组拒绝");
+    assert!(
+        matches!(&err, Rejection::GroupDisabled { group } if group == "blocked"),
+        "拒绝变体应为 GroupDisabled(blocked)，实得 {err:?}"
+    );
 }

@@ -150,9 +150,13 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
         user_snapshot.upsert(u.clone());
     }
 
-    // 组快照：1 个 vip 组 —— reload 后 group_snapshot 应可见且计数上报
-    let group_snapshot =
-        api::snapshot::build_group_snapshot(&[("vip".into(), 0.8, serde_json::json!(["gpt-4*"]))]);
+    // 组快照：1 个启用的 vip 组 —— reload 后 group_snapshot 应可见且计数上报
+    let group_snapshot = api::snapshot::build_group_snapshot(&[(
+        "vip".into(),
+        0.8,
+        serde_json::json!(["gpt-4*"]),
+        true,
+    )]);
 
     let counts = apply_snapshot_reload(
         &target,
