@@ -1,8 +1,9 @@
-//! 管理面板的共享实体 store：分组 / 模型别名 / 渠道 / 订阅套餐 / 兑换码。
+//! 管理面板的共享实体 store：分组 / 模型别名 / 渠道 / 订阅套餐。
 //! 拓扑图、抽屉与「设置」tab 读写同一份数据，任一侧修改立即同步。
 //! 数据在应用启动时由 `hydrate()` 从真实后端灌入
 //! (/api/group + /api/channel + /api/route_unit + /api/models);
-//! 订阅套餐暂无后端端点,保持空列表(页面显示诚实空态)。
+//! 订阅套餐暂无后端端点,保持空列表(页面显示诚实空态);
+//! 兑换码不进本 store — RedemptionsPage 直接消费 /api/redemption。
 //!
 //! 索引必须与图的 SEED_EDGES 对齐（见 network/mod.rs）：
 //! 分组顺序 default/claude/gpt-5/vip，别名 gpt-4o/gpt-5/claude-sonnet-4/gemini-2.5-pro。
@@ -79,18 +80,8 @@ pub struct PlanRow {
 }
 pub const PLAN_PERIODS: &[&str] = &["month", "quarter", "year"];
 
-/// 兑换码(对齐 new-api redemption 的字段子集)
-/// 状态:1 未用 / 2 停用 / 3 已用
-#[derive(Clone, PartialEq)]
-pub struct RedRow {
-    pub name: String,
-    pub key: String,
-    /// 额度(¥ 等值)
-    pub quota: f64,
-    pub status: u8,
-    pub created: String,
-    pub expired: String,
-}
+// 兑换码已从本 store 移除:RedemptionsPage 直接消费 `crate::api` 的
+// /api/redemption 真实端点,不再经过 EntityStore。
 
 #[derive(Clone, Copy)]
 pub struct EntityStore {
@@ -98,7 +89,6 @@ pub struct EntityStore {
     pub aliases: Signal<Vec<AliasRow>>,
     pub channels: Signal<Vec<ChannelRow>>,
     pub plans: Signal<Vec<PlanRow>>,
-    pub redemptions: Signal<Vec<RedRow>>,
 }
 
 impl EntityStore {
@@ -341,53 +331,18 @@ impl EntityStore {
                     waffo_product_id: "".into(),
                 },
             ]),
-            redemptions: Signal::new(vec![
-                RedRow {
-                    name: "内测福利".into(),
-                    key: "BETA-3F2A".into(),
-                    quota: 50.0,
-                    status: 1,
-                    created: "2026-08-30".into(),
-                    expired: "永不过期".into(),
-                },
-                RedRow {
-                    name: "内测福利".into(),
-                    key: "BETA-9C14".into(),
-                    quota: 50.0,
-                    status: 3,
-                    created: "2026-08-30".into(),
-                    expired: "永不过期".into(),
-                },
-                RedRow {
-                    name: "活动码".into(),
-                    key: "ACTV-77D1".into(),
-                    quota: 10.0,
-                    status: 2,
-                    created: "2026-08-25".into(),
-                    expired: "2026-09-15".into(),
-                },
-                RedRow {
-                    name: "活动码".into(),
-                    key: "ACTV-08E2".into(),
-                    quota: 10.0,
-                    status: 1,
-                    created: "2026-08-25".into(),
-                    expired: "2026-09-15".into(),
-                },
-            ]),
         }
     }
 }
 
 impl EntityStore {
-    /// 空店：分组/别名/渠道/套餐/兑换码全空,等 hydrate 灌入真实数据。
+    /// 空店：分组/别名/渠道/套餐全空,等 hydrate 灌入真实数据。
     pub fn empty() -> Self {
         Self {
             groups: Signal::new(Vec::new()),
             aliases: Signal::new(Vec::new()),
             channels: Signal::new(Vec::new()),
             plans: Signal::new(Vec::new()),
-            redemptions: Signal::new(Vec::new()),
         }
     }
 
