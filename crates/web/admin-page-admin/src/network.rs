@@ -106,15 +106,16 @@ pub fn channel_models(models: &serde_json::Value) -> Vec<String> {
 /// 三组端点并发拉取真实拓扑数据。全 401/网络错时统一返回 Err(错误摘要),
 /// 由调用方渲染错误态。纯异步,无 UI 依赖。
 pub async fn load_network_data(client: &ApiClient) -> NetworkResult {
-    let groups = list_groups_api(client)
-        .await
-        .map_err(|e| format!("拉取分组失败: {e}"))?;
-    let channels = list_channels_api(client)
-        .await
-        .map_err(|e| format!("拉取渠道失败: {e}"))?;
-    let models = list_models_api(client)
-        .await
-        .map_err(|e| format!("拉取模型失败: {e}"))?;
+    // 三组端点真正并发：join! 等价于 max(各请求耗时) 而非顺序求和
+    // （ocr finding：注释声称并发却顺序 await，属注释撒谎）。
+    let (groups, channels, models) = futures_util::join!(
+        list_groups_api(client),
+        list_channels_api(client),
+        list_models_api(client),
+    );
+    let groups = groups.map_err(|e| format!("拉取分组失败: {e}"))?;
+    let channels = channels.map_err(|e| format!("拉取渠道失败: {e}"))?;
+    let models = models.map_err(|e| format!("拉取模型失败: {e}"))?;
     Ok(GraphView::from_dtos(&groups, &models, &channels))
 }
 
