@@ -25,6 +25,7 @@ use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_proxy::ProxyManager;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 /// 转发 stage — 依赖 egress（测试 mock / 无代理）或 [`ProxyManager`] 租约 Client。
 pub struct ForwardStage {
@@ -45,6 +46,13 @@ pub struct ForwardStage {
     /// 结算产物落地通道（apps 实现，写 usage_logs / 扣内存 quota）；
     /// 与 `price_table` 成对注入。
     sink: Option<Arc<dyn metering::SettleSink>>,
+    /// 全局并发闸（v2 挂载）：`with_concurrency` 注入的整体并发上限信号量。
+    /// `None` = 不限（行为与未挂载时完全一致）。这是**全局**上限，不分渠道——
+    /// 分渠道挂载属后续项，需 per-channel `DashMap<channel_key, Semaphore>`；
+    /// gate 的 stage 版本（`gate::concurrency`）即 per-channel 设计，但它为
+    /// pipeline 挂载而写，`with_retry` 模式下 `ctx.route` 永不写回，pipeline
+    /// 层拿不到选路结果，故并发闸只能挂在 ForwardStage 内部 attempt 路径。
+    concurrency: Option<Arc<Semaphore>>,
 }
 
 /// meow `ProxyAdapter` → [`StreamDialer`] 适配。
@@ -138,6 +146,7 @@ impl ForwardStage {
             retry_policy: RetryPolicy::default(),
             price_table: None,
             sink: None,
+            concurrency: None,
         }
     }
 
@@ -153,6 +162,22 @@ impl ForwardStage {
     pub fn with_retry(mut self, dispatch: Arc<dyn Dispatch>, policy: RetryPolicy) -> Self {
         self.dispatch = Some(dispatch);
         self.retry_policy = policy;
+        self
+    }
+
+    /// 挂全局并发闸：整个 ForwardStage 共享一个 `Semaphore(max)`（MVP：整体
+    /// 并发上限，不分渠道；分渠道挂载属后续项，需 per-channel DashMap）。
+    ///
+    /// acquire 点在每条转发路径的 `forward_task` 之前，`try` 语义不排队：
+    /// 重试模式在 attempt 闭包内（permit 随 attempt 结束释放），单次模式在
+    /// `handle` 内（permit 持到 `commit_forwarded` 完成）。槽满立即以
+    /// `rate_limited`(429, retryable, degraded) 拒绝本 attempt——健康表不记
+    /// 真实失败、不落 `submit_failed` 观测事件。
+    ///
+    /// 注意：`max = 0` 的信号量会拒绝一切请求；装配侧约定 0 = 不限并发，
+    /// 即不调用本 builder（`concurrency` 保持 `None`）。
+    pub fn with_concurrency(mut self, max: usize) -> Self {
+        self.concurrency = Some(Arc::new(Semaphore::new(max)));
         self
     }
 
@@ -310,6 +335,15 @@ impl Stage for ForwardStage {
         };
         let task = Self::build_task(&candidate, ctx.request.path.clone(), body, stream);
 
+        // 并发闸（v2 挂载）：forward_task 之前 try_acquire，permit 随本函数
+        // 作用域存活——成功路径持到 commit_forwarded 完成（覆盖响应体读取/
+        // 结算窗口），失败提前 return 时立即 drop。槽满：不 submit_failed
+        // （并发拒绝不是上游错误，无 status_code 可报），直接按 429 语义短路。
+        let _permit = match try_acquire_concurrency(&self.concurrency) {
+            Ok(permit) => permit,
+            Err(e) => return Err(normalized_to_stage_error(e)),
+        };
+
         let forwarded = match self.forward_task(&task).await {
             Ok(f) => f,
             Err(a) => {
@@ -381,6 +415,25 @@ impl ForwardStage {
                 let slot = Arc::clone(&slot);
                 let eslot = Arc::clone(&eslot);
                 async move {
+                    // 并发闸（v2 挂载）：forward_task 之前 try_acquire；permit
+                    // 留在闭包局部变量，本 attempt 结束（Ok 或 Err）即随作用域
+                    // drop 释放槽位——**不进 ctx.drop_guards**（attempt 结束就
+                    // 该释放，不是整个响应结束）。槽满：并发拒绝不是上游错误，
+                    // 不 submit_failed；健康按 degraded 语义走 Retryable 臂
+                    // （同 P1-C：驱动换候选、健康表不记真实上游失败）；错误
+                    // 暂存 eslot，预算耗尽时透传 429。
+                    let _permit = match try_acquire_concurrency(&self.concurrency) {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            let retryable = e.retryable;
+                            *lock(&eslot) = Some(e);
+                            if retryable {
+                                return AttemptOutcome::Retryable(FailureClass::Retryable);
+                            }
+                            // 理论不可达臂（信号量 Closed）：按 Fatal 终止。
+                            return AttemptOutcome::Fatal(FailureClass::Fatal);
+                        }
+                    };
                     match self.forward_task(&task).await {
                         Ok(forwarded) => {
                             let status = forwarded.status;
@@ -718,6 +771,39 @@ fn normalized_to_stage_error(e: NormalizedError) -> StageError {
         code: e.status,
         body_preview: e.message.into_bytes(),
     })
+}
+
+/// 并发闸 acquire（v2 挂载点）：`concurrency` 未挂载 → `Ok(None)`，行为不变。
+///
+/// 槽满（`NoPermits`）→ `Err(NormalizedError)`：`rate_limited`/429/`retryable`
+/// /非渠道相关——调用方据此走 degraded 语义（同 P1-C：健康表不记真实失败），
+/// 且**不调 `submit_failed`**（并发拒绝不是上游错误，没有 status_code 可报）。
+/// permit 是 owned（持有 `Arc<Semaphore>`），可安全跨 await 持有、随作用域
+/// drop 归还槽位。
+fn try_acquire_concurrency(
+    concurrency: &Option<Arc<Semaphore>>,
+) -> Result<Option<OwnedSemaphorePermit>, NormalizedError> {
+    let Some(sem) = concurrency.as_ref() else {
+        return Ok(None);
+    };
+    match sem.clone().try_acquire_owned() {
+        Ok(permit) => Ok(Some(permit)),
+        Err(TryAcquireError::NoPermits) => Err(NormalizedError {
+            code: contract::error::code::RATE_LIMITED,
+            status: 429,
+            retryable: true,
+            channel_scoped: false,
+            message: "concurrency limit reached".into(),
+        }),
+        // 本模块从不 close() 信号量，Closed 理论不可达；兜底按内部错误终止。
+        Err(e) => Err(NormalizedError {
+            code: contract::error::code::INTERNAL,
+            status: 500,
+            retryable: false,
+            channel_scoped: false,
+            message: format!("semaphore closed: {e}"),
+        }),
+    }
 }
 
 /// 请求体是否要求流式响应 —— 读顶层 `stream` 布尔字段。
