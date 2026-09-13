@@ -193,3 +193,46 @@ pub async fn disable_redemption_api(client: &ApiClient, key: &str) -> ApiResult<
         .await?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// 系统选项 (admin-ops options)
+// ---------------------------------------------------------------------------
+
+/// 单条运行时选项,对齐后端 `OptionsService::list` 返回的 OptionView。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionView {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub updated_at: String,
+}
+
+/// 后端列表端点统一包装 `{"items":[...]}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct OptionItems {
+    #[serde(default)]
+    items: Vec<OptionView>,
+}
+
+/// 真实调用: GET /api/option (全部选项,库值回退注册表默认值)
+pub async fn list_options_api(client: &ApiClient) -> ApiResult<Vec<OptionView>> {
+    let r: OptionItems = client.get("/api/option").await?;
+    Ok(r.items)
+}
+
+/// 真实调用: PUT /api/option {key, value} — 写入(未知 key 或非法值域被拒)。
+/// 返回更新后的值(后端 echo)。
+pub async fn update_option_api(
+    client: &ApiClient,
+    key: &str,
+    value: &serde_json::Value,
+) -> ApiResult<serde_json::Value> {
+    #[derive(Default, serde::Deserialize)]
+    struct UpdateResp {
+        #[serde(default)]
+        value: serde_json::Value,
+    }
+    let req = serde_json::json!({ "key": key, "value": value });
+    let r: UpdateResp = client.put("/api/option", &req).await?;
+    Ok(r.value)
+}
