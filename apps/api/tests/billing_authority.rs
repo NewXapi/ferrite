@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use api::billing::{NameDirectory, PgPriceTable, PgSettleSink};
+use api::billing::{NameDirectory, PgPriceTable, PgSettleSink, build_consume_event};
 use arc_swap::ArcSwap;
 use chrono::Utc;
 use contract::records::{SyncMeta, TokenRecord, UsageEventRecord, UserRecord};
@@ -44,7 +44,15 @@ fn group_snapshot() -> gateway_gate::snapshot::SharedGroupSnapshot {
 
 /// 价格表：一行 m-claude（input 2.0 / output 4.0 / cache 1.0，$/M tokens）。
 fn price_table() -> PgPriceTable {
-    PgPriceTable::new(&[("m-claude".to_string(), 2.0, 4.0, 1.0)], group_snapshot())
+    PgPriceTable::new(
+        Arc::new(ArcSwap::from_pointee(vec![(
+            "m-claude".to_string(),
+            2.0,
+            4.0,
+            1.0,
+        )])),
+        group_snapshot(),
+    )
 }
 
 /// 组倍率必须折算进 lookup 返回值（组倍率唯一来源 api_groups.ratio，
@@ -343,4 +351,65 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         .execute(&pool)
         .await
         .expect("cleanup api_tokens row");
+}
+
+/// 价格表持共享句柄：reload store 新行后 lookup 即读到新价（热更无需重启）。
+#[test]
+fn price_table_reflects_reload_without_restart() {
+    let rows = Arc::new(ArcSwap::from_pointee(vec![(
+        "m-hot".to_string(),
+        1.0,
+        2.0,
+        0.0,
+    )]));
+    let pt = PgPriceTable::new(rows.clone(), group_snapshot());
+    assert_eq!(pt.lookup("m-hot", "default").expect("boot 价").input, 1.0);
+    // 模拟 reload：向同一 ArcSwap 实例 store 新价
+    rows.store(Arc::new(vec![("m-hot".to_string(), 9.9, 8.8, 0.0)]));
+    let after = pt.lookup("m-hot", "default").expect("reload 后仍有价");
+    assert_eq!(after.input, 9.9, "改价必须免重启生效（持句柄读取）");
+    assert_eq!(after.output, 8.8);
+}
+
+/// ≥400 + 失败摘要的观测载荷翻译成 log_type=5 错误行；成功/免费行仍 consume。
+#[test]
+fn error_jobs_translate_to_log_type_5() {
+    let base = || api::billing::RecordJob {
+        user_uuid: Uuid::new_v4(),
+        username: "u".into(),
+        token_uuid: Some(Uuid::new_v4()),
+        token_name: "t".into(),
+        model_name: "m".into(),
+        channel_key: None,
+        channel_name: String::new(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        cost: 0,
+        use_time_ms: 0,
+        is_stream: true,
+        token_key: Uuid::new_v4().to_string(),
+        status_code: 200,
+        error: None,
+    };
+    let ok = build_consume_event(&base());
+    assert_eq!(ok.log_type, observe::logs::LOG_TYPE_CONSUME);
+
+    let failed = api::billing::RecordJob {
+        status_code: 502,
+        error: Some("upstream reset".into()),
+        ..base()
+    };
+    assert!(failed.is_error());
+    let err = build_consume_event(&failed);
+    assert_eq!(
+        err.log_type,
+        observe::logs::LOG_TYPE_ERROR,
+        "≥400+失败摘要 → 错误行"
+    );
+    assert!(
+        err.content.contains("502") && err.content.contains("upstream reset"),
+        "错误摘要与状态码进 content 列"
+    );
+    assert_eq!(err.quota, 0, "错误行零成本");
+    assert!(err.is_stream, "流式意图透传");
 }

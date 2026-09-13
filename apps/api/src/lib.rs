@@ -146,8 +146,11 @@ async fn assemble(
         .iter()
         .map(|(key, channel)| (key.clone(), channel.name.clone()))
         .collect();
-    let price_rows = snapshots.price_rows.load();
-    let price_table = billing::PgPriceTable::new(&price_rows, snapshots.group_snapshot.clone());
+    // 持共享句柄而非 load 快照：reload store 新价格行后 lookup 即读到新价（热更）
+    let price_table = billing::PgPriceTable::new(
+        snapshots.price_rows.clone(),
+        snapshots.group_snapshot.clone(),
+    );
     let settle_sink = billing::PgSettleSink::new(
         pool.clone(),
         snapshots.quota_snapshot.clone(),
