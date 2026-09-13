@@ -1,23 +1,50 @@
 //! Dashboard 各页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 
-/// 模型页:模型卡片。
-pub mod models {
-    pub use mock::models::ModelInfo;
-
-    pub fn fetch_models() -> &'static [ModelInfo] {
-        mock::models::MODELS
-    }
-}
-
-/// 排行榜页:六维评分与立绘。
-pub mod leaderboard {
-    pub use crate::leaderboard::data::{
-        DIMS, MODELS, ModelStat, avg_norms, composite, dim_rank, dim_raw, key_stats, norms,
-    };
-}
-
 use client::{ApiClient, ApiResult};
 use contract::api::usage::{DashboardSummaryDto, UsageLogPage, UsageStatDto};
+
+/// `/api/models` 列表项的页面本地视图:只映射模型页实际展示的后端 `ModelView` 字段子集。
+///
+/// 后端没有的字段(价格、六维实力、趋势、分组报价)不在此列——页面不造数据。
+/// 容器级 `#[serde(default)]`:后端响应缺任何字段时落 `Default::default()`
+/// (数值 0 / bool false / 空串),整条解析不因缺字段失败,页面诚实降级展示。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ModelCardView {
+    /// 模型名(公开别名,消费日志按它聚合)。
+    pub name: String,
+    /// 归属方(owner)。
+    pub owner: String,
+    /// 模型类型(如 openai / anthropic)。
+    pub model_type: String,
+    /// 状态:1 = 启用,其余 = 停用(与后端 `status = 1` 判定同口径)。
+    pub status: i16,
+    /// 累计调用次数。
+    pub usage_count: i64,
+    /// 最大上下文 tokens。
+    pub max_tokens: i32,
+    /// 是否支持视觉输入。
+    pub is_vision: bool,
+    /// 是否支持工具调用。
+    pub is_tool: bool,
+}
+
+/// 真实调用: GET /api/models?size=100 — 管理端模型列表。
+///
+/// 返回 `(items, total)`:后端单页上限 100 条(size 被 clamp 到 1..=100),
+/// `total` 是库内总数,供页面诚实标注「显示前 N / 共 M 个」。
+/// 错误情况:401/403(未登录或非管理员)、网络失败,均走 [`ApiResult`]。
+pub async fn list_models_api(client: &ApiClient) -> ApiResult<(Vec<ModelCardView>, i64)> {
+    #[derive(Default, serde::Deserialize)]
+    struct ModelPage {
+        #[serde(default)]
+        items: Vec<ModelCardView>,
+        #[serde(default)]
+        total: i64,
+    }
+    let r: ModelPage = client.get("/api/models?size=100").await?;
+    Ok((r.items, r.total))
+}
 
 /// 真实调用: GET /api/dashboard
 pub async fn get_dashboard_summary_api(client: &ApiClient) -> ApiResult<DashboardSummaryDto> {
