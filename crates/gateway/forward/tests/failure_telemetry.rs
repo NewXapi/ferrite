@@ -8,139 +8,21 @@
 //! 4. `is_stream` 记录请求意图：非流式请求失败 false、流式请求失败 true；
 //! 5. 未挂 pt/sink 时失败路径行为不变（照常报错，不产出事件、不 panic）。
 //!
-//! mock 风格与 retry_wiring.rs 一致：手写 Dispatch + 脚本化 Egress，不发真实网络。
+//! mock 风格与 retry_wiring.rs 一致：手写 Dispatch + 脚本化 Egress，不发真实网络
+//! （mock 与请求构造器提取在 `tests/common/mod.rs` 共享；本文件只构造失败计划）。
 
-use bytes::Bytes;
-use contract::error::NormalizedError;
-use contract::records::{RouteUnitRecord, SyncMeta, UsageEventRecord};
-use dispatch::health::FailureClass;
-use dispatch::{Candidate, Dispatch, DispatchError, RetryPolicy};
+mod common;
+
+use contract::records::UsageEventRecord;
+use dispatch::RetryPolicy;
 use forward::ForwardStage;
-use forward::egress::{Egress, ForwardedResponse, Timeouts};
-use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, SelectedRoute, StreamedAccum};
-use gateway_pipeline::{Stage, StageError, TokenInfo, UpstreamError};
-use metering::SettleSink;
+use gateway_pipeline::{Stage, StageError, UpstreamError};
 use metering::pricing::{ModelPrice, PriceTable};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use common::*;
 
 // ---------- 测试辅助 ----------
-
-fn candidate(key: &str) -> Candidate {
-    SelectedRoute {
-        unit: RouteUnitRecord {
-            meta: SyncMeta {
-                key: key.to_string(),
-                schema_version: 1,
-                logical_version: 1,
-                origin: "test".to_string(),
-                updated_at: chrono::Utc::now(),
-            },
-            group: "g".to_string(),
-            public_model: "m".to_string(),
-            channel_key: format!("ch-{key}"),
-            key_index: 0,
-            upstream_model: "m".to_string(),
-            priority: 10,
-            weight: 10,
-            status: 1,
-        },
-        secret: "sk-test".to_string(),
-        // base_url 含 key 标记, ScriptedEgress 据此区分候选。
-        base_url: format!("http://upstream-{key}.invalid"),
-        upstream_model: "m".to_string(),
-        provider_type: "openai".to_string(),
-        settings: serde_json::Value::Null,
-    }
-}
-
-/// 手写 mock Dispatch：按 exclude 顺序吐候选，与 retry_wiring 同构。
-struct MockDispatch {
-    candidates: Vec<Candidate>,
-}
-
-impl MockDispatch {
-    fn new(candidates: Vec<Candidate>) -> Self {
-        Self { candidates }
-    }
-}
-
-impl Dispatch for MockDispatch {
-    fn select(
-        &self,
-        group: &str,
-        model: &str,
-        exclude: &[String],
-    ) -> Result<Candidate, DispatchError> {
-        self.candidates
-            .iter()
-            .find(|c| !exclude.contains(&c.unit.meta.key))
-            .cloned()
-            .ok_or_else(|| DispatchError::NoCandidate {
-                group: group.to_string(),
-                model: model.to_string(),
-            })
-    }
-
-    fn report(&self, _unit_key: &str, _outcome: Result<u16, FailureClass>) {}
-}
-
-/// 脚本化 egress mock：按 url 里的候选标记返回分类错误（本文件只测失败路径，
-/// 不返回成功体）。错误与真实 egress::classify_status 输出同构
-/// （502 → retryable，400 → 非 retryable）。
-struct ScriptedEgress {
-    plans: Vec<(String, u16, bool)>,
-    calls: AtomicUsize,
-}
-
-impl ScriptedEgress {
-    fn new(plans: &[(&str, u16, bool)]) -> Self {
-        Self {
-            plans: plans
-                .iter()
-                .map(|(k, s, r)| (k.to_string(), *s, *r))
-                .collect(),
-            calls: AtomicUsize::new(0),
-        }
-    }
-    fn calls(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
-    }
-}
-
-impl Egress for ScriptedEgress {
-    fn execute<'a>(
-        &'a self,
-        url: &'a str,
-        _headers: &'a [(String, String)],
-        _body: Bytes,
-        _timeouts: &'a Timeouts,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<ForwardedResponse, contract::error::NormalizedError>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        let (_, status, retryable) = self
-            .plans
-            .iter()
-            .find(|(marker, ..)| url.contains(marker))
-            .unwrap_or_else(|| panic!("ScriptedEgress: unexpected url {url}"));
-        let (status, retryable) = (*status, *retryable);
-        let err = NormalizedError {
-            code: contract::error::code::UPSTREAM_ERROR,
-            status,
-            retryable,
-            // 4xx 观测用例保持"不可切换渠道"语义（retryable 用例此字段无意义）
-            channel_scoped: false,
-            message: format!("upstream {status}"),
-        };
-        Box::pin(async move { Err(err) })
-    }
-}
 
 /// 固定价表：证明零成本来自 counts 全 0，而非"没挂到价"。
 struct FixedPriceTable;
@@ -155,57 +37,6 @@ impl PriceTable for FixedPriceTable {
         })
     }
 }
-
-/// 内存 sink mock：收集失败观测事件供断言。
-#[derive(Default)]
-struct VecSink(Mutex<Vec<UsageEventRecord>>);
-
-impl SettleSink for VecSink {
-    fn submit(&self, event: UsageEventRecord) {
-        self.0.lock().unwrap().push(event);
-    }
-}
-
-impl VecSink {
-    fn events(&self) -> Vec<UsageEventRecord> {
-        self.0.lock().unwrap().clone()
-    }
-}
-
-/// 构造 ctx：body 决定流式意图（含 `"stream":true` 即流式），route 预置给
-/// 单次模式用（with_retry 后 handle 忽略它）。
-fn ctx_with_body(body: &'static [u8], route: Candidate) -> gateway_pipeline::RequestCtx {
-    gateway_pipeline::RequestCtx {
-        request: RequestMeta {
-            method: "POST".to_string(),
-            path: "/v1/chat/completions".to_string(),
-            headers: http::HeaderMap::new(),
-            body: BodySource::InMemory(Bytes::from_static(body)),
-            client_ip: "127.0.0.1".parse().unwrap(),
-            request_id: uuid::Uuid::now_v7(),
-            inbound_protocol: ProtocolKind::OpenAI,
-        },
-        token: Some(TokenInfo {
-            id: "tok-1".into(),
-            group: "g".to_string(),
-            enabled: true,
-            allowed_models: None,
-            auth_version: 1,
-        }),
-        requested_model: Some("m".to_string()),
-        route: Some(route),
-        selected_channel_key: None,
-        selected_channel_name: None,
-        upstream: None,
-        streamed: StreamedAccum::default(),
-        // #165 给 RequestCtx 加了 drop_guards（RAII 并发闸），此字面量补齐
-        drop_guards: Vec::new(),
-        error: None,
-    }
-}
-
-const NON_STREAM_BODY: &[u8] = b"{\"model\":\"m\"}";
-const STREAM_BODY: &[u8] = b"{\"model\":\"m\",\"stream\":true}";
 
 /// 挂 fake pt/sink 的 stage 构造器，返回 stage 与 sink 句柄。
 fn priced_stage(egress: Arc<ScriptedEgress>) -> (ForwardStage, Arc<VecSink>) {
@@ -237,7 +68,13 @@ fn assert_zero_cost_observation(ev: &UsageEventRecord, unit_key: &str) {
 #[tokio::test]
 async fn single_shot_failure_emits_one_zero_cost_event() {
     let c1 = candidate("c1");
-    let egress = Arc::new(ScriptedEgress::new(&[("upstream-c1", 502, true)]));
+    let egress = Arc::new(ScriptedEgress::new(vec![(
+        "upstream-c1",
+        Plan::Fail {
+            status: 502,
+            retryable: true,
+        },
+    )]));
     let (stage, sink) = priced_stage(egress.clone());
 
     let mut ctx = ctx_with_body(NON_STREAM_BODY, c1);
@@ -257,7 +94,7 @@ async fn single_shot_failure_emits_one_zero_cost_event() {
     assert_eq!(ev.status_code, 502);
     assert_eq!(ev.error.as_deref(), Some("upstream 502"), "error 非空");
     assert!(!ev.is_stream, "非流式请求失败, is_stream=false");
-    assert_eq!(egress.calls(), 1);
+    assert_eq!(egress.calls().len(), 1);
 }
 
 // ---------- 用例 2: 预算耗尽 → 每次失败尝试各 1 条 ----------
@@ -265,9 +102,21 @@ async fn single_shot_failure_emits_one_zero_cost_event() {
 #[tokio::test]
 async fn retry_exhaustion_records_each_failed_attempt() {
     let dispatch = Arc::new(MockDispatch::new(vec![candidate("c1"), candidate("c2")]));
-    let egress = Arc::new(ScriptedEgress::new(&[
-        ("upstream-c1", 502, true),
-        ("upstream-c2", 502, true),
+    let egress = Arc::new(ScriptedEgress::new(vec![
+        (
+            "upstream-c1",
+            Plan::Fail {
+                status: 502,
+                retryable: true,
+            },
+        ),
+        (
+            "upstream-c2",
+            Plan::Fail {
+                status: 502,
+                retryable: true,
+            },
+        ),
     ]));
     let (stage, sink) = priced_stage(egress.clone());
     let stage = stage.with_retry(
@@ -302,7 +151,7 @@ async fn retry_exhaustion_records_each_failed_attempt() {
         events.iter().all(|e| !e.is_stream),
         "非流式请求的两次失败都应为 is_stream=false"
     );
-    assert_eq!(egress.calls(), 2);
+    assert_eq!(egress.calls().len(), 2);
 }
 
 // ---------- 用例 3: Fatal 4xx 同样留痕, 且不触碰第二候选 ----------
@@ -310,9 +159,21 @@ async fn retry_exhaustion_records_each_failed_attempt() {
 #[tokio::test]
 async fn fatal_4xx_records_one_event_and_short_circuits() {
     let dispatch = Arc::new(MockDispatch::new(vec![candidate("c1"), candidate("c2")]));
-    let egress = Arc::new(ScriptedEgress::new(&[
-        ("upstream-c1", 400, false),
-        ("upstream-c2", 502, true),
+    let egress = Arc::new(ScriptedEgress::new(vec![
+        (
+            "upstream-c1",
+            Plan::Fail {
+                status: 400,
+                retryable: false,
+            },
+        ),
+        (
+            "upstream-c2",
+            Plan::Fail {
+                status: 502,
+                retryable: true,
+            },
+        ),
     ]));
     let (stage, sink) = priced_stage(egress.clone());
     let stage = stage.with_retry(dispatch, RetryPolicy::default());
@@ -332,14 +193,20 @@ async fn fatal_4xx_records_one_event_and_short_circuits() {
     assert_zero_cost_observation(&events[0], "c1");
     assert_eq!(events[0].status_code, 400);
     assert_eq!(events[0].error.as_deref(), Some("upstream 400"));
-    assert_eq!(egress.calls(), 1, "Fatal 不得触碰 c2");
+    assert_eq!(egress.calls().len(), 1, "Fatal 不得触碰 c2");
 }
 
 // ---------- 用例 4: 流式请求失败 → is_stream=true ----------
 
 #[tokio::test]
 async fn streaming_request_failure_marks_is_stream_true() {
-    let egress = Arc::new(ScriptedEgress::new(&[("upstream-c1", 502, true)]));
+    let egress = Arc::new(ScriptedEgress::new(vec![(
+        "upstream-c1",
+        Plan::Fail {
+            status: 502,
+            retryable: true,
+        },
+    )]));
     let (stage, sink) = priced_stage(egress.clone());
 
     let mut ctx = ctx_with_body(STREAM_BODY, candidate("c1"));
@@ -366,7 +233,13 @@ async fn streaming_request_failure_marks_is_stream_true() {
 
 #[tokio::test]
 async fn failure_without_sink_still_short_circuits() {
-    let egress = Arc::new(ScriptedEgress::new(&[("upstream-c1", 502, true)]));
+    let egress = Arc::new(ScriptedEgress::new(vec![(
+        "upstream-c1",
+        Plan::Fail {
+            status: 502,
+            retryable: true,
+        },
+    )]));
     let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
     let stage = ForwardStage::new(egress.clone(), adaptors); // 不 with_price_table
 
@@ -382,5 +255,5 @@ async fn failure_without_sink_still_short_circuits() {
         ),
         "got {err:?}"
     );
-    assert_eq!(egress.calls(), 1);
+    assert_eq!(egress.calls().len(), 1);
 }

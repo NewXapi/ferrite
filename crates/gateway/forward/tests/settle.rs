@@ -8,18 +8,20 @@
 //!    PriceTable + SettleSink 后，`ForwardStage::handle`（内部走
 //!    commit_forwarded 唯一结算点）让 sink 恰好收到 1 条事件且计数、cost、
 //!    group 归因全部正确。
+//!
+//! mock 与请求构造器提取在 `tests/common/mod.rs` 共享。
+
+mod common;
 
 use bytes::Bytes;
-use contract::records::{RouteUnitRecord, SyncMeta, UsageEventRecord};
 use forward::ForwardStage;
-use forward::egress::{Egress, ForwardedResponse, Timeouts};
 use forward::stream::{SseContext, finish, pipe_chunk};
-use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, SelectedRoute, StreamedAccum};
-use gateway_pipeline::{Stage, StageOutcome, TokenInfo};
-use metering::SettleSink;
+use gateway_pipeline::{Stage, StageOutcome};
 use metering::pricing::{ModelPrice, PriceTable};
 use metering::scanner::StreamScanner;
 use std::sync::{Arc, Mutex};
+
+use common::*;
 
 // ---------- 测试辅助 ----------
 
@@ -51,110 +53,9 @@ impl RecordingPriceTable {
     }
 }
 
-/// 内存 sink mock（apps 侧实现的同型物）：收集结算事件供断言。
-#[derive(Default)]
-struct VecSink(Mutex<Vec<UsageEventRecord>>);
-
-impl SettleSink for VecSink {
-    fn submit(&self, event: UsageEventRecord) {
-        self.0.lock().unwrap().push(event);
-    }
-}
-
-impl VecSink {
-    fn events(&self) -> Vec<UsageEventRecord> {
-        self.0.lock().unwrap().clone()
-    }
-}
-
-fn route(key: &str) -> SelectedRoute {
-    SelectedRoute {
-        unit: RouteUnitRecord {
-            meta: SyncMeta {
-                key: key.to_string(),
-                schema_version: 1,
-                logical_version: 1,
-                origin: "test".to_string(),
-                updated_at: chrono::Utc::now(),
-            },
-            group: "g".to_string(),
-            public_model: "m".to_string(),
-            channel_key: format!("ch-{key}"),
-            key_index: 0,
-            upstream_model: "m".to_string(),
-            priority: 10,
-            weight: 10,
-            status: 1,
-        },
-        secret: "sk-test".to_string(),
-        base_url: "http://upstream.invalid".to_string(),
-        upstream_model: "m".to_string(),
-        provider_type: "openai".to_string(),
-        settings: serde_json::Value::Null,
-    }
-}
-
 /// 单次模式（无 with_retry）的最小 RequestCtx：route 预置、token 带 group。
 fn ctx_single_shot() -> gateway_pipeline::RequestCtx {
-    gateway_pipeline::RequestCtx {
-        request: RequestMeta {
-            method: "POST".to_string(),
-            path: "/v1/chat/completions".to_string(),
-            headers: http::HeaderMap::new(),
-            body: BodySource::InMemory(Bytes::from_static(b"{\"model\":\"m\"}")),
-            client_ip: "127.0.0.1".parse().unwrap(),
-            request_id: uuid::Uuid::now_v7(),
-            inbound_protocol: ProtocolKind::OpenAI,
-        },
-        token: Some(TokenInfo {
-            id: "tok-1".into(),
-            group: "g".to_string(),
-            enabled: true,
-            allowed_models: None,
-            auth_version: 1,
-        }),
-        requested_model: Some("m".to_string()),
-        route: Some(route("c1")),
-        selected_channel_key: None,
-        selected_channel_name: None,
-        upstream: None,
-        streamed: StreamedAccum::default(),
-        error: None,
-        drop_guards: Vec::new(),
-    }
-}
-
-/// 恒返 200 + 固定 body 的 mock egress（非流式）。
-struct FixedEgress {
-    body: &'static [u8],
-}
-
-impl Egress for FixedEgress {
-    fn execute<'a>(
-        &'a self,
-        _url: &'a str,
-        _headers: &'a [(String, String)],
-        _body: Bytes,
-        _timeouts: &'a Timeouts,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<ForwardedResponse, contract::error::NormalizedError>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(
-            Bytes::from_static(self.body),
-        )]);
-        Box::pin(async move {
-            Ok(ForwardedResponse::from_stream(
-                200,
-                "application/json",
-                stream,
-            ))
-        })
-    }
+    ctx_with_body(NON_STREAM_BODY, candidate("c1"))
 }
 
 // ---------- scanner ----------
