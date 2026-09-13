@@ -169,6 +169,13 @@ impl Failover {
 /// `RetryPolicy::max_attempts` 预算耗尽 → `DispatchError::RetriesExhausted`
 /// (上层映射 502/503, 与 NoCandidate=503 区分)。
 ///
+/// P1-C（双健康账本桥）说明：`proxy::manager` 侧的节点冷却不经本循环感知——
+/// forward 的尝试闭包在「绑定节点全冷却 → 直连回落失败」时直接把结果分类为
+/// `Retryable(Retryable)` 送达（degraded 语义 = 既有的 Retryable 臂：
+/// report(Err(Retryable)) 驱动 unit 失败 streak + mark_tried + continue），
+/// 故循环本体无需独立 degraded 分支；streak 达阈值后 unit 由
+/// `health`/`selector` 弹射，不再反复选中代理全挂的渠道。
+///
 /// 成功返回 `Ok((Attempt, AttemptOutcome))`: 获胜 (或 Fatal / 最后候选的
 /// FatalButSwitchable 终止) 的那次尝试的上下文与结果; 调用方
 /// (forward::ForwardStage) 需要候选身份来组装响应流与落健康归属。
