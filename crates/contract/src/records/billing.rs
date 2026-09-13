@@ -69,3 +69,25 @@ pub struct RedeemCodeRecord {
     pub redeemed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
+
+/// 货币定义 (currency_defs 表)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrencyDefRecord {
+    pub meta: SyncMeta,
+    pub code: String,
+    pub name: String,
+    pub internal_rate: f64,
+    pub enabled: bool,
+    pub remark: String,
+}
+
+/// 用户货币余额 (user_balances 表)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserBalanceRecord {
+    pub meta: SyncMeta,
+    pub user_key: String,
+    pub currency_code: String,
+    pub amount: i64,
+}

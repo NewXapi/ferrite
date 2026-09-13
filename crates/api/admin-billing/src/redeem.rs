@@ -5,8 +5,9 @@
 //! - 码明文 = "fx-" + 32 hex (16B random)，明文存库（一次性优惠券码，管理员可复查）
 //! - 核销 CAS: `UPDATE ... WHERE code = $1 AND status = 1 RETURNING quota`，
 //!   并发核销同一码只有一个成功，其余 404/Conflict
-//! - 核销事务内同时给 `auth_users.quota` 入账（用户余额，与网关扣费
-//!   `used_quota` 相对；契约见 todo/admin-api.md P1）
+//! - 核销事务内给 `user_balances(FREE)` 入账（多货币系统，0007；
+//!   不再直接写 `auth_users.quota` —— 货币余额在 `user_balances`，
+//!   折算可用 i64 供 QuotaGate，见 todo/billing-implementation.md 第九节）
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -76,11 +77,15 @@ fn preview(plaintext: &str) -> String {
 
 pub struct RedeemService {
     pool: PgPool,
+    wallet: crate::wallet::WalletService,
 }
 
 impl RedeemService {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            wallet: crate::wallet::WalletService::new(pool.clone()),
+            pool,
+        }
     }
 
     /// 批量生成: count 条唯一码，同 quota；明文仅返回一次，库内 sha256。
@@ -112,8 +117,7 @@ impl RedeemService {
         tx.commit().await?;
         Ok(plaintexts)
     }
-
-    /// 核销: 单次有效（CAS），事务内入账 auth_users.quota。
+    /// 核销: 单次有效（CAS），事务内给 `user_balances(FREE)` 入账。
     /// 并发核销同一码 → 只有一个成功，其余 NotFound。
     pub async fn redeem(&self, code: &str, user_key: Uuid) -> Result<i64, AuthError> {
         if code.trim().is_empty() {
@@ -136,18 +140,12 @@ impl RedeemService {
                 "redemption code invalid or used".into(),
             ))?
             .0;
-        let applied = sqlx::query(
-            "UPDATE auth_users SET quota = quota + $2, updated_at = now() WHERE key = $1",
-        )
-        .bind(user_key)
-        .bind(quota)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-        // 入账目标不存在 → 回滚（码保持未核销，资金不丢）
-        if applied == 0 {
-            return Err(AuthError::NotFound("user not found".into()));
-        }
+        // 入账到 user_balances(FREE)（0007 多货币系统），同事务原子提交。
+        // credit_in_tx 内部 ON CONFLICT 叠加，幂等。
+        let _ = self
+            .wallet
+            .credit_redeem_in_tx(&mut tx, user_key, quota)
+            .await?;
         tx.commit().await?;
         Ok(quota)
     }

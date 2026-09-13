@@ -28,7 +28,8 @@ pub mod routing;
 pub mod usage;
 
 pub use billing::{
-    PaymentOrderRecord, RedeemCodeRecord, SubscriptionPlanRecord, UserSubscriptionRecord,
+    CurrencyDefRecord, PaymentOrderRecord, RedeemCodeRecord, SubscriptionPlanRecord,
+    UserBalanceRecord, UserSubscriptionRecord,
 };
 pub use channel::{ChannelKey, ChannelRecord};
 pub use identity::{TokenRecord, UserRecord};

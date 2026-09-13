@@ -29,6 +29,14 @@
 //! | [`redeem`]       | 兑换码生成/核销 |
 //! | [`idempotency`]  | 幂等护栏 (通用) |
 
+pub mod affiliate;
+pub mod currency;
 pub mod redeem;
+pub mod topup;
+pub mod wallet;
 
+pub use affiliate::{AffiliateAppState, AffiliateService, router as affiliate_router};
+pub use currency::{CurrencyAppState, CurrencyService, router as currency_router};
 pub use redeem::{RedeemAppState, RedeemService, router};
+pub use topup::{TopupAppState, TopupService, router as topup_router};
+pub use wallet::{WalletAppState, WalletService, router as wallet_router};
