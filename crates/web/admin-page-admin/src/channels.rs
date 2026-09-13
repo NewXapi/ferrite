@@ -37,6 +37,48 @@ const SEC_STATS: &str = "渠道概览";
 const SEC_FILTER: &str = "筛选与操作";
 const SEC_LIST: &str = "渠道列表";
 
+/// 渠道列表筛选纯函数:按关键词(名称/类型/地址/分组,大小写不敏感)+
+/// 状态档位(0=全部, 1=启用中, 2=已停用)过滤。
+///
+/// 抽成模块级 `pub` 纯函数,便于在同层 `tests/` 做无 runtime 的纯函数单测。
+pub fn filter_channels(list: &[ChannelDto], query: &str, tier: usize) -> Vec<ChannelDto> {
+    let q = query.trim().to_lowercase();
+    list.iter()
+        .filter(|c| {
+            if !q.is_empty()
+                && !c.name.to_lowercase().contains(&q)
+                && !c.channel_type.to_lowercase().contains(&q)
+                && !c.base_url.to_lowercase().contains(&q)
+                && !c.groups.iter().any(|g| g.to_lowercase().contains(&q))
+            {
+                return false;
+            }
+            match tier {
+                1 => c.status == 1,
+                2 => c.status != 1,
+                _ => true,
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+/// 弹窗「绑定分组」输入解析:逗号分隔,trim,去空项(保持输入顺序)。
+pub fn parse_group_input(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// 弹窗「API Key」输入解析:换行分隔多 Key,trim,去空行(保持输入顺序)。
+pub fn parse_keys_input(raw: &str) -> Vec<String> {
+    raw.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[component]
 pub fn ChannelsPage() -> Element {
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
@@ -103,27 +145,8 @@ pub fn ChannelsPage() -> Element {
         format!("已停用 ({disabled_count})"),
     ];
 
-    let filtered: Vec<ChannelDto> = {
-        let q = search().trim().to_lowercase();
-        let tier = filter_tier();
-        list.into_iter()
-            .filter(|c| {
-                if !q.is_empty()
-                    && !c.name.to_lowercase().contains(&q)
-                    && !c.channel_type.to_lowercase().contains(&q)
-                    && !c.base_url.to_lowercase().contains(&q)
-                    && !c.groups.iter().any(|g| g.to_lowercase().contains(&q))
-                {
-                    return false;
-                }
-                match tier {
-                    1 => c.status == 1,
-                    2 => c.status != 1,
-                    _ => true,
-                }
-            })
-            .collect()
-    };
+    // 筛选纯函数:抽取为模块级 `filter_channels`,便于纯函数单测
+    let filtered = filter_channels(&list, &search(), filter_tier());
 
     let open_new = move |_| {
         f_name.set(String::new());
@@ -222,6 +245,7 @@ pub fn ChannelsPage() -> Element {
                             }
                             button {
                                 class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                                "data-testid": "new-channel",
                                 onclick: open_new,
                                 "✚ 新建渠道"
                             }
@@ -460,13 +484,8 @@ fn ChannelFormModal(
         }
         let ct = ctype.peek().clone();
         let u = url.peek().trim().to_string();
-        let k: Vec<String> = keys
-            .peek()
-            .split('\n')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        let g = group.peek().clone();
+        let k = parse_keys_input(&keys.peek());
+        let g = parse_group_input(&group.peek());
         let rm = remark.peek().clone();
         let (mut sub, cb) = (submitting2, on_submit2);
         spawn(async move {
@@ -478,11 +497,7 @@ fn ChannelFormModal(
                 base_url: u,
                 keys: k,
                 models: json!([]),
-                groups: g
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
+                groups: g,
                 priority: 0,
                 weight: 0,
                 test_model: None,
