@@ -26,10 +26,10 @@ use sqlx::PgPool;
 
 use crate::config::Config;
 
+pub mod billing;
 pub mod config;
 pub mod snapshot;
 pub mod tavern;
-pub mod usage;
 
 use dispatch::{Dispatcher, MemoryHealthTable};
 use forward::egress::ReqwestEgress;
@@ -46,7 +46,7 @@ use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 
-/// 组装完整应用 Router：admin-api + tavern + pipeline gateway + 用量中间件 + reload。
+/// 组装完整应用 Router：admin-api + tavern + pipeline gateway（含计费结算）+ reload。
 pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
     let egress: Arc<dyn forward::egress::Egress> = Arc::new(ReqwestEgress::new());
     assemble(pool, egress, true).await
@@ -77,11 +77,28 @@ async fn assemble(
     };
     let auth_svc = Arc::new(auth::AuthService::new(pool.clone(), secret.into_bytes())?);
 
+    // 从 PG 加载快照 → Dispatcher（#170 渠道健康端点需要与数据面共享同一批 Arc，
+    // 故在 admin router 之前构造；gate / 计费 / reload 与 ForwardStage 复用同一批）。
+    let snapshots = Arc::new(snapshot::load_snapshots(&pool).await?);
+    let health = Arc::new(MemoryHealthTable::new());
+    let dispatcher = Arc::new(Dispatcher::new(
+        Some(Arc::new(snapshots.dispatch.clone())),
+        health.clone(),
+    ));
+
     // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）；
     // auth_svc 同时留给 reload 路由的 bearer 鉴权（见 ReloadState）。
-    let admin = admin_router::router(pool.clone(), auth_svc.clone(), proxies.clone())
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
+    // dispatcher/health 与数据面 ForwardStage / reload 路由共享同一批 Arc，
+    // 查询面 /api/gateway/health 才能读到运行期实时冷却/慢启动状态。
+    let admin = admin_router::router(
+        pool.clone(),
+        auth_svc.clone(),
+        proxies.clone(),
+        dispatcher.clone(),
+        health.clone(),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
 
     // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
     // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
@@ -92,16 +109,6 @@ async fn assemble(
 
     // 酒馆域路由
     let tavern = tavern::router(&tavern::TavernConfig::default())?;
-
-    // 从 PG 加载快照 → Dispatcher + gates → Pipeline
-    // Arc 包装是 reload 的前提：ReloadState 与 usage 中间件必须共享同一批
-    // Shared* 实例，reload 时 store 新值双方才自动可见。
-    let snapshots = Arc::new(snapshot::load_snapshots(&pool).await?);
-    let health = Arc::new(MemoryHealthTable::new());
-    let dispatcher = Arc::new(Dispatcher::new(
-        Some(Arc::new(snapshots.dispatch.clone())),
-        health.clone(),
-    ));
 
     // 快照已是 Shared*（Arc<ArcSwap<T>>），直接喂给 gate
     let gates = GateChain::new()
@@ -134,6 +141,25 @@ async fn assemble(
         forward_stage
     };
 
+    // 计费权威接线（#146/#159）：pipeline 结算点是唯一扣费写点，价格表 +
+    // 结算 sink 在此注入 ForwardStage；usage 中间件已退役（双写双扣 + SSE
+    // 吞流，裁决见 billing.rs 模块文档）。
+    // channel_names / price_rows / name_directory 全部持共享句柄（Arc<ArcSwap>），
+    // reload store 新值后 sink submit / 价格 lookup 现读即生效——渠道改名、
+    // 改价都免重启。
+    let price_table = billing::PgPriceTable::new(
+        snapshots.price_rows.clone(),
+        snapshots.group_snapshot.clone(),
+    );
+    let settle_sink = billing::PgSettleSink::new(
+        pool.clone(),
+        snapshots.quota_snapshot.clone(),
+        snapshots.channel_names.clone(),
+        snapshots.name_directory.clone(),
+    );
+    let forward_stage =
+        forward_stage.with_price_table(Arc::new(price_table), Arc::new(settle_sink));
+
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
@@ -143,18 +169,10 @@ async fn assemble(
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 
-    // 用量中间件包 pipeline router；再叠路径守卫：pipeline 只接数据面路径
+    // 路径守卫包 pipeline router：pipeline 只接数据面路径
     // （/v1* 与 /healthz），其余未匹配路径一律 404，不让 admin/tavern 之外
     // 的杂路径掉进 pipeline 被 AuthGate 判 401（恢复 scoped fallback 语义）。
-    let usage_state = usage::UsageMiddlewareState {
-        pool: pool.clone(),
-        snapshots: snapshots.clone(),
-    };
     let pipeline_router = gateway_pipeline::router::build_router(pipeline)
-        .layer(axum::middleware::from_fn_with_state(
-            usage_state,
-            usage::usage_middleware,
-        ))
         .layer(axum::middleware::from_fn(gateway_path_guard));
 
     // reload 端点：bearer 鉴权 + admin 守卫 + 热更快照（Shared* store + set_snapshot）
@@ -226,8 +244,8 @@ async fn gateway_path_guard(
 
 /// POST /api/gateway/reload 的路由 state：热更目标 + 鉴权服务。
 ///
-/// `snapshots` 必须与 usage 中间件 / gate 持有的是同一个 `Arc<Snapshots>`
-/// （boot 时 clone 同源），否则 store 新值后中间件看不到。
+/// `snapshots` 必须与 gate / 计费 sink 持有的是同一个 `Arc<Snapshots>`
+/// （boot 时 clone 同源），否则 store 新值后持有者看不到。
 /// `dispatcher` 同理：与 DispatchStage 共享同一 `Arc<Dispatcher>`。
 /// axum state 要求 Clone，全部字段都是廉价 Arc/pool 句柄克隆。
 #[derive(Clone)]

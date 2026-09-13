@@ -7,28 +7,33 @@
 //! - api_tokens (status=1) → TokenRecord + gate::snapshot::TokenSnapshot
 //!   （含 api_tokens.allowed_models JSONB → `TokenEntry.allowed_models`）
 //! - auth_users (status=1) → UserRecord + gate::snapshot::UserSnapshot
-//! - api_groups (status=1) → gate::snapshot::GroupSnapshot
-//!   （model_whitelist JSONB → 组级模型白名单；ratio → 分组倍率）
+//! - api_groups (全量，含禁用) → gate::snapshot::GroupSnapshot
+//!   （model_whitelist JSONB → 组级模型白名单；ratio → 分组倍率；
+//!   status → `GroupEntry.enabled`，禁用组进快照供 gate 整组拒绝）
+//! - model_prices → 计费价格行（billing::PgPriceTable 的数据源）
 //!
 //! # 桥接形状
 //! 所有输出类型均来自 `contract::records::*` 或 gate 快照类型。
 //!
 //! # 快照结构
-//! ```rust
+//! ```text
 //! pub struct Snapshots {
 //!     pub dispatch: dispatch::Snapshot,
 //!     pub token_snapshot: gateway_gate::snapshot::SharedTokenSnapshot,
 //!     pub user_snapshot: gateway_gate::snapshot::SharedUserSnapshot,
 //!     pub quota_snapshot: gateway_gate::snapshot::SharedQuota,
 //!     pub group_snapshot: gateway_gate::snapshot::SharedGroupSnapshot,
+//!     pub price_rows: SharedPriceRows,
+//!     pub name_directory: billing::SharedNameDirectory,
+//!     pub channel_names: SharedChannelNames,
 //! }
 //! ```
 //!
 //! # reload 分层
 //! 「加载纯值」（[`load_snapshot_data`]）与「包装 / store」（[`load_snapshots`] /
 //! [`reload_snapshots`]）拆成两层：boot 路径新建 `Shared*` 实例；reload 路径向
-//! **既有同一批** `Shared*` 实例 store 新值（usage 中间件与 gate 持有的正是这些
-//! 实例，store 后自动看到新数据），Dispatcher 侧走 `Dispatcher::set_snapshot`。
+//! **既有同一批** `Shared*` 实例 store 新值（gate、计费 sink 与 reload 路由持有
+//! 的正是这些实例，store 后自动看到新数据），Dispatcher 侧走 `Dispatcher::set_snapshot`。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -48,6 +53,30 @@ use gateway_gate::snapshot::{
 use dispatch::Dispatcher;
 use dispatch::Snapshot as DispatchSnapshot;
 
+use crate::billing::{NameDirectory, SharedNameDirectory};
+
+/// 模型单价行集合的共享句柄（`Arc<ArcSwap<T>>`）：boot 新建、reload 原地
+/// store 换新。行形状 = `(model, input, output, cache)`，单位 $/M tokens。
+pub type SharedPriceRows = Arc<arc_swap::ArcSwap<Vec<(String, f64, f64, f64)>>>;
+
+/// 渠道展示名映射的共享句柄（`Arc<ArcSwap<T>>`）：boot 新建、reload 原地
+/// store 换新。键 = 渠道 UUID 字符串（`ChannelRecord.meta.key`，PG UUID 列
+/// 的 `to_string()`），值 = 渠道展示名；结算 sink 在 submit 时现读，
+/// **渠道改名免重启生效**。
+pub type SharedChannelNames = Arc<arc_swap::ArcSwap<HashMap<String, String>>>;
+
+/// 读模型单价表（迁移 0003）：每行 `(model, input, output, cache)`，$/M tokens。
+///
+/// 计费权威裁决见 [`crate::billing`] 模块文档：这是 pipeline 结算价格表的
+/// 唯一数据源，未知模型（表里没有的行）→ 免费落账。boot 与 reload 共用。
+pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64, f64, f64)>> {
+    let rows: Vec<(String, f64, f64, f64)> =
+        sqlx::query_as("SELECT model, input, output, cache FROM model_prices")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows)
+}
+
 /// 从 admin-catalog 表加载快照（boot 路径：新建 `Shared*` 实例）。
 pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
     let input = load_snapshot_data(pool).await?;
@@ -60,6 +89,9 @@ pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
         user_snapshot: shared(input.user_snapshot),
         quota_snapshot: shared(quota_snapshot),
         group_snapshot: shared(input.group_snapshot),
+        price_rows: shared(input.price_rows),
+        name_directory: shared(input.name_directory),
+        channel_names: shared(input.channel_names),
     })
 }
 
@@ -77,9 +109,19 @@ pub struct ReloadInput {
     pub user_records: Vec<UserRecord>,
     pub user_snapshot: UserSnapshot,
     pub group_snapshot: GroupSnapshot,
-    /// 本次载入的启用分组数。`GroupSnapshot` 无 len 访问器（内部 HashMap 私有），
+    /// 本次载入的**启用**分组数（`status = 1`）。禁用组会进 `GroupSnapshot`
+    /// 供 gate 整组拒绝，但不进对外计数——`ReloadCounts::groups` 口径与
+    /// 改造前的"只收启用组"一致。`GroupSnapshot` 无 len 访问器（内部 HashMap 私有），
     /// 计数只能在加载侧（遍历 PG 行时）一并算出，供 [`ReloadCounts::groups`] 上报。
     pub group_count: usize,
+    /// 模型单价行（`(model, input, output, cache)`，$/M tokens）——
+    /// 计费价格表数据源，见 [`load_model_prices`]。
+    pub price_rows: Vec<(String, f64, f64, f64)>,
+    /// 用户/令牌展示名目录（usage_logs 冗余展示字段用）。
+    pub name_directory: NameDirectory,
+    /// 渠道 UUID 字符串 → 展示名（usage_logs.channel_name 冗余展示字段用）。
+    /// 与 `channels` 同批加载逐条克隆而来，保证名单与渠道快照同一份数据。
+    pub channel_names: HashMap<String, String>,
 }
 
 /// reload 结果计数：`json!` 序列化后作为响应 `data` 字段（snake_case 键即字段名）。
@@ -89,6 +131,7 @@ pub struct ReloadCounts {
     pub route_units: u64,
     pub tokens: u64,
     pub users: u64,
+    /// 启用的分组数（禁用组进快照但不计数，见 [`ReloadInput::group_count`]）。
     pub groups: u64,
 }
 
@@ -96,6 +139,13 @@ pub struct ReloadCounts {
 async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
     // 1. 加载渠道数据
     let (channels, route_units) = load_channels_and_units(pool).await?;
+
+    // 渠道展示名映射：与 channels 同批逐条克隆（meta.key 是 UUID 字符串，
+    // 与结算事件 UsageEventRecord.channel_key 的归因键同形，查表无需解析）。
+    let channel_names: HashMap<String, String> = channels
+        .iter()
+        .map(|ch| (ch.meta.key.clone(), ch.name.clone()))
+        .collect();
 
     // 2. 加载令牌数据（纯值：records + 纯 TokenSnapshot）
     let (token_records, token_snapshot) = load_tokens(pool).await?;
@@ -106,6 +156,11 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
     // 4. 加载分组数据（纯值 GroupSnapshot：组级模型白名单 + 分组倍率）
     let (group_snapshot, group_count) = load_groups(pool).await?;
 
+    // 5. 加载计费数据：模型单价行 + 用户/令牌展示名目录（token/user records
+    //    已在手，目录纯构造不查库）
+    let price_rows = load_model_prices(pool).await?;
+    let name_directory = NameDirectory::new(&token_records, &user_records);
+
     Ok(ReloadInput {
         channels,
         route_units,
@@ -115,6 +170,9 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
         user_snapshot,
         group_snapshot,
         group_count,
+        price_rows,
+        name_directory,
+        channel_names,
     })
 }
 
@@ -137,16 +195,16 @@ fn build_dispatch_and_quota(
     (dispatch_snapshot, quota_snapshot)
 }
 
-/// 把纯值包成 `Arc<ArcSwap<T>>`（即 gate/usage 持有的 `Shared*` 形状）。
+/// 把纯值包成 `Arc<ArcSwap<T>>`（即 gate / 计费组件持有的 `Shared*` 形状）。
 fn shared<T>(value: T) -> Arc<arc_swap::ArcSwap<T>> {
     Arc::new(arc_swap::ArcSwap::from_pointee(value))
 }
 
 /// POST /api/gateway/reload 的热更实现：加载最新管理表数据并热更进运行时。
 ///
-/// `target` 必须是 boot 时喂给 gate / usage 中间件的**同一批 `Shared*` 实例**：
+/// `target` 必须是 boot 时喂给 gate / 计费 sink 的**同一批 `Shared*` 实例**：
 /// 它们是 `Arc<ArcSwap<T>>`，store 新值后所有持有者（AuthGate / StateGate /
-/// QuotaGate / usage 中间件）自动看到新数据，无需重建任何组件。
+/// QuotaGate / 结算 sink）自动看到新数据，无需重建任何组件。
 /// Dispatcher 侧走 [`Dispatcher::set_snapshot`] 原地换快照。
 ///
 /// # 非原子性
@@ -192,6 +250,12 @@ pub fn apply_snapshot_reload(
     target.user_snapshot.store(Arc::new(input.user_snapshot));
     target.quota_snapshot.store(Arc::new(quota_snapshot));
     target.group_snapshot.store(Arc::new(input.group_snapshot));
+    // 计费快照随 reload 换新：价格行 / 展示名目录 / 渠道名映射。三者的消费方
+    // （PgPriceTable、PgSettleSink）都持同一批 ArcSwap 句柄、读取时现 load，
+    // store 后下一次 lookup / submit 即读到新值——改价、改名都免重启。
+    target.price_rows.store(Arc::new(input.price_rows));
+    target.name_directory.store(Arc::new(input.name_directory));
+    target.channel_names.store(Arc::new(input.channel_names));
     dispatcher.set_snapshot(Arc::new(dispatch_snapshot));
     counts
 }
@@ -529,16 +593,18 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnaps
     Ok((user_records, snapshot))
 }
 
-/// 加载分组记录（`api_groups`，仅启用）并构建**纯值** GroupSnapshot。
+/// 加载分组记录（`api_groups`，**全量含禁用**）并构建**纯值** GroupSnapshot。
 ///
-/// 返回 `(快照, 启用组数)`：`GroupSnapshot` 没有 len 访问器，reload 计数在此处顺手算出。
-/// PG 读取是薄壳，白名单/倍率的拼装语义全部在 [`build_group_snapshot`]（纯函数，可离线圈测）。
+/// 禁用组（status ≠ 1）不再被 SQL 过滤掉——它们带着 `enabled = false` 进快照，
+/// 由 `GroupModelGate` 据此对该组请求整组拒绝（迁移 0001 的 status 列契约）。
+/// 返回 `(快照, 启用组数)`：`GroupSnapshot` 没有 len 访问器，reload 计数在此处
+/// 顺手算出，且只数启用组（对外口径与改造前一致）。
+/// PG 读取是薄壳，白名单/倍率/启用位的拼装语义全部在 [`build_group_snapshot`]（纯函数，可离线圈测）。
 async fn load_groups(pool: &PgPool) -> anyhow::Result<(GroupSnapshot, usize)> {
     let rows = sqlx::query(
         r#"
-        SELECT name, ratio, model_whitelist
+        SELECT name, ratio, model_whitelist, status
         FROM api_groups
-        WHERE status = 1
         "#,
     )
     .fetch_all(pool)
@@ -549,26 +615,30 @@ async fn load_groups(pool: &PgPool) -> anyhow::Result<(GroupSnapshot, usize)> {
         let name: String = row.try_get("name")?;
         let ratio: f64 = row.try_get("ratio")?;
         let model_whitelist: Value = row.try_get("model_whitelist")?;
-        parsed.push((name, ratio, model_whitelist));
+        let status: i16 = row.try_get("status")?;
+        parsed.push((name, ratio, model_whitelist, status == 1));
     }
-    let count = parsed.len();
+    let count = parsed.iter().filter(|(_, _, _, enabled)| *enabled).count();
     Ok((build_group_snapshot(&parsed), count))
 }
 
-/// 从 api_groups 的 `(name, ratio, model_whitelist)` 行纯构建 [`GroupSnapshot`]。
+/// 从 api_groups 的 `(name, ratio, model_whitelist, enabled)` 行纯构建 [`GroupSnapshot`]。
 ///
 /// - `model_whitelist` JSONB：`["gpt-4*"]` 形状；空数组 = 该组不限模型，
 ///   非数组/脏元素按空处理（不炸整个快照加载）。
 /// - `ratio` 即分组倍率，原样写入 `GroupEntry::multiplier`——非法值（≤0/NaN/inf）
 ///   由 `GroupSnapshot::upsert` 兜底回落 1.0，本函数不重复校验。
-pub fn build_group_snapshot(rows: &[(String, f64, Value)]) -> GroupSnapshot {
+/// - `enabled`（PG `status == 1`）写入 `GroupEntry::enabled`；false 的组由
+///   `GroupModelGate` 整组拒绝。
+pub fn build_group_snapshot(rows: &[(String, f64, Value, bool)]) -> GroupSnapshot {
     let mut snapshot = GroupSnapshot::default();
-    for (name, ratio, model_whitelist) in rows {
+    for (name, ratio, model_whitelist, enabled) in rows {
         snapshot.upsert(
             name.clone(),
             gateway_gate::snapshot::GroupEntry {
                 allowed_models: parse_model_list_json(model_whitelist),
                 multiplier: *ratio,
+                enabled: *enabled,
             },
         );
     }
@@ -597,10 +667,13 @@ fn build_quota_snapshot(token_records: &[TokenRecord]) -> QuotaSnapshot {
 /// 运行时快照集合：boot 产出、reload 原地热更。
 ///
 /// `token/user/quota/group_snapshot` 是 `Arc<ArcSwap<T>>`：reload 向**同一实例** store
-/// 新值，gate 与 usage 中间件等所有持有者自动看到新数据。
+/// 新值，gate 与计费 sink 等所有持有者自动看到新数据。
 /// `dispatch` 只是喂给 `Dispatcher::new` 的 boot 副本，**boot 后即陈旧**——
 /// reload 走 `Dispatcher::set_snapshot` 原地换新，不回写本字段；运行期以
 /// Dispatcher 内部快照为准（详见 [`reload_snapshots`] 文档）。
+/// `price_rows` / `name_directory` / `channel_names` 是计费快照
+/// （`Arc<ArcSwap<T>>`，reload 换新）：消费方 [`crate::billing::PgPriceTable`] /
+/// [`crate::billing::PgSettleSink`] 持句柄现读，改价与渠道改名都免重启生效。
 #[derive(Debug, Clone)]
 pub struct Snapshots {
     pub dispatch: DispatchSnapshot,
@@ -608,4 +681,11 @@ pub struct Snapshots {
     pub user_snapshot: SharedUserSnapshot,
     pub quota_snapshot: SharedQuota,
     pub group_snapshot: SharedGroupSnapshot,
+    /// 模型单价行（计费价格表数据源，reload 换新）。
+    pub price_rows: SharedPriceRows,
+    /// 用户/令牌展示名目录（reload 换新；sink submit 时现读）。
+    pub name_directory: SharedNameDirectory,
+    /// 渠道 UUID 字符串 → 展示名（reload 换新；sink submit 时现读，
+    /// 渠道改名免重启生效）。
+    pub channel_names: SharedChannelNames,
 }

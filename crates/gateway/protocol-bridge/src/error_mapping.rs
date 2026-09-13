@@ -86,6 +86,7 @@ pub fn map_error(e: StageError, target: ProtocolKind) -> Response<Body> {
         message: e.to_string(),
         status: error_status(&e).as_u16(),
         retryable: false,
+        channel_scoped: false,
     };
 
     let (status, body) = match target {

@@ -12,6 +12,8 @@ use crate::scanner::TokenCounts;
 
 /// 生成并落盘一条 UsageEvent。
 ///
+/// `is_stream` 是请求的流式意图（流式扫描链结算传 `true`，非流式提交点与
+/// 失败观测事件按请求体 `stream` 字段传值），原样进 [`UsageEventRecord::is_stream`]。
 /// `group` 随 model 一起进 [`PriceTable::lookup`]（实现可按组给价）；
 /// `group_ratio` 是请求分组倍率（GroupRecord.rate_multiplier），乘进
 /// [`price_of`]；库层调用方拿不到组倍率真值时传 1.0。
@@ -20,6 +22,7 @@ use crate::scanner::TokenCounts;
 #[allow(clippy::too_many_arguments)]
 pub fn settle_event(
     counts: TokenCounts,
+    is_stream: bool,
     group: &str,
     group_ratio: f64,
     hold: &Hold,
@@ -63,6 +66,7 @@ pub fn settle_event(
         prompt_tokens: counts.prompt,
         completion_tokens: counts.completion,
         cached_tokens: counts.cached,
+        is_stream,
         first_token_ms,
         duration_ms,
         cost,

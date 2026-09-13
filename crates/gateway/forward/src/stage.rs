@@ -211,6 +211,7 @@ impl ForwardStage {
                 code: contract::error::code::UPSTREAM_ERROR,
                 status: 502,
                 retryable: true,
+                channel_scoped: false,
                 message: "lease produced neither reqwest client nor adapter".into(),
             });
         };
@@ -267,10 +268,14 @@ impl Stage for ForwardStage {
         };
         let task = Self::build_task(&candidate, ctx.request.path.clone(), body, stream);
 
-        let forwarded = self
-            .forward_task(&task)
-            .await
-            .map_err(normalized_to_stage_error)?;
+        let forwarded = match self.forward_task(&task).await {
+            Ok(f) => f,
+            Err(e) => {
+                // 上游已应答/传输失败且有候选：先落一条零成本观测事件再短路。
+                self.submit_failed(ctx, &candidate, &e, stream);
+                return Err(normalized_to_stage_error(e));
+            }
+        };
 
         self.commit_forwarded(ctx, forwarded, &task.candidate, task.stream, &task.body)
             .await
@@ -311,6 +316,9 @@ impl ForwardStage {
         // 获胜尝试的 Forwarded 与最近一次失败, 短临界区 std Mutex (不跨 await 持锁)。
         let result_slot: Arc<Mutex<Option<crate::Forwarded>>> = Arc::new(Mutex::new(None));
         let error_slot: Arc<Mutex<Option<NormalizedError>>> = Arc::new(Mutex::new(None));
+        // 失败观测需要 ctx 的归因字段：循环期间共享借用 ctx（循环 future
+        // 结束即释放），之后 commit_forwarded 才能继续用 &mut ctx。
+        let ctx_ref: &RequestCtx = ctx;
 
         let dsel = Arc::clone(&dispatch);
         let drep = Arc::clone(&dispatch);
@@ -337,9 +345,18 @@ impl ForwardStage {
                         }
                         Err(e) => {
                             let retryable = e.retryable;
+                            let switchable = e.channel_scoped;
+                            // 每次失败尝试各落一条零成本观测事件：预算耗尽 /
+                            // Fatal 终止时，排障侧也要有"请求发生过"的痕迹。
+                            // 必须在 e 移入 error_slot 之前调用。
+                            self.submit_failed(ctx_ref, &task.candidate, &e, stream);
                             *lock(&eslot) = Some(e);
                             if retryable {
                                 AttemptOutcome::Retryable(FailureClass::Retryable)
+                            } else if switchable {
+                                // 渠道相关 4xx (P1-B 降层): 健康载荷走 Fatal ——
+                                // health::classify(Err(Fatal)) 落 Neutral, 不改分不记 streak。
+                                AttemptOutcome::FatalButSwitchable(FailureClass::Fatal)
                             } else {
                                 AttemptOutcome::Fatal(FailureClass::Fatal)
                             }
@@ -359,9 +376,10 @@ impl ForwardStage {
                         self.commit_forwarded(ctx, f, &attempt.candidate, stream, &commit_body)
                             .await
                     }
-                    // 理论上只有 Fatal 会走到这里: 循环以客户端错误终止, 没有
-                    // 成功响应可提交, 用暂存的 NormalizedError 透传上游状态码。
-                    (None, AttemptOutcome::Fatal(_)) => {
+                    // Fatal (请求相关问题) 与 FatalButSwitchable (最后一个候选,
+                    // 已无可换渠道——retry 循环把它作为终态带回) 都透传暂存的
+                    // NormalizedError 上游状态码, 没有成功响应可提交。
+                    (None, AttemptOutcome::Fatal(_) | AttemptOutcome::FatalButSwitchable(_)) => {
                         let e = lock(&error_slot).take().ok_or_else(|| {
                             StageError::Internal(anyhow::anyhow!("forward produced no result"))
                         })?;
@@ -559,6 +577,8 @@ impl ForwardStage {
         };
         let event = metering::settle_event(
             counts,
+            // 本函数只在非流式提交点调用（流式经 stream::finish 结算）。
+            false,
             &group,
             group_ratio,
             &hold,
@@ -571,6 +591,58 @@ impl ForwardStage {
             0,
             status,
             None,
+        );
+        sink.submit(event);
+    }
+
+    /// 失败结算 — 上游已应答（4xx/5xx）或传输失败但**有候选**时，产出一条
+    /// **零成本观测事件**交给 sink，让"这次请求发生过、被哪个候选拒了"在
+    /// usage_logs 留下痕迹。
+    ///
+    /// 纯观测不参与扣费：counts 全 0 → cost 必为 0；status/error 取自
+    /// [`NormalizedError`]；`is_stream` 记录请求意图（与成功路径同源）。
+    /// 归因键（user/token/group）与 `settle_non_stream` 一致，均来自
+    /// `ctx.token`。pt/sink 未挂载或归因缺失时静默跳过——绝不产出无主账单，
+    /// 也不改变调用方照常返回 [`StageError`] 的控制流。
+    fn submit_failed(
+        &self,
+        ctx: &RequestCtx,
+        candidate: &SelectedRoute,
+        err: &NormalizedError,
+        stream: bool,
+    ) {
+        let (Some(pt), Some(sink)) = (self.price_table.as_ref(), self.sink.as_ref()) else {
+            return;
+        };
+        let (user_key, token_key, group) = match ctx.token.as_ref() {
+            Some(t) => (t.id.clone(), t.id.clone(), t.group.clone()),
+            // 归因缺失（理论上 gates 已保证 Some）：跳过观测，同成功路径语义。
+            None => return,
+        };
+        // 库层不做预扣：amount=0 表"事后结算非预扣"（同 settle_non_stream）。
+        let hold = metering::ledger::Hold {
+            id: 0,
+            amount: 0,
+            user_key,
+            token_key,
+        };
+        // counts 全 0 → price_of 结果为 0，观测事件不产生账单。
+        let event = metering::settle_event(
+            metering::scanner::TokenCounts::default(),
+            stream,
+            &group,
+            // group ratio 由 apps 注入，库层默认 1.0（同 settle_non_stream）。
+            1.0,
+            &hold,
+            pt.as_ref(),
+            &candidate.unit.channel_key,
+            &candidate.unit.meta.key,
+            &candidate.unit.public_model,
+            &candidate.upstream_model,
+            0,
+            0,
+            err.status,
+            Some(&err.message),
         );
         sink.submit(event);
     }

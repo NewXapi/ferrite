@@ -1,21 +1,26 @@
-//! admin-api 路由聚合 — apps/api 一次性挂载。
-//!
-//! apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies).await?;`
-//! `auth_svc` 由 app 层组装后注入（FERRITE_JWT_SECRET 是组装关注点，本 crate 不读环境变量）。
-//! DDL 失败返回 Err，由调用方决定日志/退出策略。
+use std::sync::Arc;
+
+use axum::Router;
+use sqlx::PgPool;
 
 use billing::{
     AffiliateAppState, CurrencyAppState, TopupAppState, WalletAppState, affiliate_router,
     currency_router, topup_router, wallet_router,
 };
-use sqlx::PgPool;
 
 /// 启动时建表 + 聚合 admin-api 子域 Router。
+/// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies, dispatcher, health).await?;`
+/// `auth_svc` 由 app 层组装后注入（FERRITE_JWT_SECRET 是组装关注点，本 crate 不读环境变量）。
+/// `dispatcher` / `health` 是数据面共享句柄（#170 渠道健康端点用），必须与
+/// `apps/api` 数据面持有的是**同一批实例**，查询面才能读到运行期实时状态。
+/// DDL 失败返回 Err，由调用方决定日志/退出策略。
 pub async fn router(
     pool: PgPool,
-    auth_svc: std::sync::Arc<auth::AuthService>,
-    proxies: std::sync::Arc<gateway_proxy::ProxyManager>,
-) -> Result<axum::Router, Box<dyn std::error::Error>> {
+    auth_svc: Arc<auth::AuthService>,
+    proxies: Arc<gateway_proxy::ProxyManager>,
+    dispatcher: Arc<dispatch::Dispatcher>,
+    health: Arc<dispatch::MemoryHealthTable>,
+) -> Result<Router, Box<dyn std::error::Error>> {
     // 建表唯一入口：db/migrations（ensure_table 补丁式建表已退役）。
     db_bootstrap::run_migrations(&pool).await?;
     tracing::info!("db migrations applied");
@@ -23,32 +28,32 @@ pub async fn router(
     let auth_router = auth::routes::router_with_svc(auth_svc.clone())?;
 
     let token_router = catalog::tokens::router(catalog::tokens::TokenAppState {
-        svc: std::sync::Arc::new(catalog::tokens::TokenService::new(pool.clone())),
+        svc: Arc::new(catalog::tokens::TokenService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let channel_router = catalog::channels::router(catalog::channels::ChannelAppState {
-        svc: std::sync::Arc::new(catalog::channels::ChannelService::new(pool.clone())),
+        svc: Arc::new(catalog::channels::ChannelService::new(pool.clone())),
         auth: auth_svc.clone(),
         monitor: observe::monitor::MonitorDeps::new(pool.clone()),
     });
     let group_router = catalog::groups::router(catalog::groups::GroupAppState {
-        svc: std::sync::Arc::new(catalog::groups::GroupService::new(pool.clone())),
+        svc: Arc::new(catalog::groups::GroupService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let model_router = catalog::models::router(catalog::models::ModelAppState {
-        svc: std::sync::Arc::new(catalog::models::ModelService::new(pool.clone())),
+        svc: Arc::new(catalog::models::ModelService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let log_router = observe::logs::router(observe::logs::LogAppState {
-        svc: std::sync::Arc::new(observe::logs::LogService::new(pool.clone())),
+        svc: Arc::new(observe::logs::LogService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let redeem_router = billing::router(billing::RedeemAppState {
-        svc: std::sync::Arc::new(billing::RedeemService::new(pool.clone())),
+        svc: Arc::new(billing::RedeemService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let options_router = ops::router(ops::OptionsAppState {
-        svc: std::sync::Arc::new(ops::OptionsService::new(pool.clone())),
+        svc: Arc::new(ops::OptionsService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let monitor_router = observe::monitor::router(observe::monitor::MonitorAppState {
@@ -56,26 +61,33 @@ pub async fn router(
         auth: auth_svc.clone(),
     });
     let system_info_router = ops::system_info_router(ops::SystemInfoAppState {
-        svc: std::sync::Arc::new(ops::SystemInfoService::new(
+        svc: Arc::new(ops::SystemInfoService::new(
             pool.clone(),
             ops::ProcessTimeTracker::default(),
         )),
         auth: auth_svc.clone(),
     });
     let proxy_node_router = admin_proxy::router(admin_proxy::ProxyNodeAppState {
-        svc: std::sync::Arc::new(admin_proxy::ProxyNodeService::new(pool.clone())),
+        svc: Arc::new(admin_proxy::ProxyNodeService::new(pool.clone())),
         auth: auth_svc.clone(),
         proxies,
     });
+    let gateway_health_router =
+        observe::gateway_health::router(observe::gateway_health::GatewayHealthState {
+            dispatcher,
+            health,
+            auth: auth_svc.clone(),
+        });
 
-    // 新增 billing 子域 router
-    let wallet_svc = std::sync::Arc::new(billing::WalletService::new(pool.clone()));
-    let currency_svc = std::sync::Arc::new(billing::CurrencyService::new(pool.clone()));
-    let affiliate_svc = std::sync::Arc::new(billing::AffiliateService::new(
+    // billing 货币子域：钱包 / 货币定义 / 拉人奖励 / 充值。
+    // AffiliateService::new 收 WalletService 值（非 Arc），内部独享一份。
+    let wallet_svc = Arc::new(billing::WalletService::new(pool.clone()));
+    let currency_svc = Arc::new(billing::CurrencyService::new(pool.clone()));
+    let affiliate_svc = Arc::new(billing::AffiliateService::new(
         pool.clone(),
         billing::WalletService::new(pool.clone()),
     ));
-    let topup_svc = std::sync::Arc::new(billing::TopupService::new(pool.clone()));
+    let topup_svc = Arc::new(billing::TopupService::new(pool.clone()));
 
     let wallet_router = wallet_router(WalletAppState {
         svc: wallet_svc,
@@ -112,5 +124,6 @@ pub async fn router(
         .merge(log_router)
         .merge(monitor_router)
         .merge(system_info_router)
-        .merge(proxy_node_router))
+        .merge(proxy_node_router)
+        .merge(gateway_health_router))
 }

@@ -165,6 +165,7 @@ impl Egress for ScriptedEgress {
                     code: contract::error::code::UPSTREAM_ERROR,
                     status,
                     retryable,
+                    channel_scoped: matches!(status, 401 | 403 | 404) && !retryable,
                     message: format!("upstream {status}"),
                 };
                 Box::pin(async move { Err(err) })
@@ -202,6 +203,7 @@ fn ctx_with_route(route: Candidate) -> gateway_pipeline::RequestCtx {
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 

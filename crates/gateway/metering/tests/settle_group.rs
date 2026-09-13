@@ -56,6 +56,7 @@ fn settle_event_uses_group_and_group_ratio() {
     };
     let ev = settle_event(
         counts,
+        true,
         "vip",
         2.0,
         &hold(),
@@ -71,10 +72,13 @@ fn settle_event_uses_group_and_group_ratio() {
     );
     // $30/M × 1M × ratio 2 = $60 → 60 * 500_000 = 30_000_000
     assert_eq!(ev.cost, 30_000_000);
+    // is_stream 原样透传进记录（流式路径的证据）。
+    assert!(ev.is_stream, "is_stream=true 应透传到事件");
 
     // default 组回到 $15/M 且 ratio 1.0 → 7_500_000
     let ev = settle_event(
         counts,
+        false,
         "default",
         1.0,
         &hold(),
@@ -89,6 +93,7 @@ fn settle_event_uses_group_and_group_ratio() {
         None,
     );
     assert_eq!(ev.cost, 7_500_000);
+    assert!(!ev.is_stream, "is_stream=false 应透传到事件");
 
     // 事件归因键来自 hold
     assert_eq!(ev.user_key, "u1");
@@ -105,6 +110,7 @@ fn settle_event_unknown_model_free_and_error_fields_carried() {
     };
     let ev = settle_event(
         counts,
+        false,
         "vip",
         2.0,
         &hold(),
@@ -122,6 +128,7 @@ fn settle_event_unknown_model_free_and_error_fields_carried() {
 
     let ev = settle_event(
         counts,
+        false,
         "default",
         1.0,
         &hold(),
@@ -159,6 +166,7 @@ fn sink_receives_settled_events() {
     };
     let ev = settle_event(
         counts,
+        false,
         "default",
         1.0,
         &hold(),

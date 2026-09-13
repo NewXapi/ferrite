@@ -11,8 +11,8 @@ use wasm_bindgen::prelude::*;
 // Page roots that implement each panel.
 use page_account::{KeysPanel, RewardsPanel, SessionsPanel, SettingsPanel, UsageLogsPanel};
 use page_admin::{
-    AliasesPage, ChannelsPage, GroupsPage, NetworkPanel, RedemptionsPage, SubscriptionsPage,
-    SystemPage, state::EntityStore,
+    AliasesPage, ChannelsPage, GatewayHealthPanel, GroupsPage, NetworkPanel, RedemptionsPage,
+    SubscriptionsPage, SystemPage, state::EntityStore,
 };
 use page_overview::{LeaderboardPanel, ModelsPanel, OverviewPanel};
 use page_users::UsersPanel;
@@ -279,6 +279,7 @@ fn get_initial_route() -> (Section, u8) {
             "#subscriptions" => (Section::Manage, 5),
             "#redemptions" => (Section::Manage, 6),
             "#system" => (Section::Manage, 7),
+            "#gw-health" => (Section::Manage, 8),
             _ => (Section::Dashboard, 0),
         };
     }
@@ -377,6 +378,7 @@ pub fn HomePage() -> Element {
             "订阅".into(),
             "兑换".into(),
             "系统".into(),
+            "网关健康".into(),
         ],
     };
     // 越界的 dash_tab clamp 到当前 section 的末位 tab,保证选中态与内容一致
@@ -477,6 +479,9 @@ pub fn HomePage() -> Element {
                         (Section::Manage, 5) => rsx! { SubscriptionsPage {} },
                         (Section::Manage, 6) => rsx! { RedemptionsPage {} },
                         (Section::Manage, 7) => rsx! { SystemPage {} },
+                        (Section::Manage, 8) => rsx! {
+                            GatewayHealthPanel {}
+                        },
                         (Section::Manage, _) => rsx! { NetworkPanel {} },
                     }
                 }

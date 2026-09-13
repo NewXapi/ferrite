@@ -123,6 +123,16 @@ impl Dispatcher {
         self.snapshot.store(Arc::new(Some(snapshot)));
     }
 
+    /// 取当前渠道快照的只读口 — 返回共享的 `Arc` 句柄（零拷贝，非克隆数据）。
+    ///
+    /// 语义：boot 前未装载过任何快照（[`DispatchError::SnapshotNotReady`] 场景）
+    /// 时为 `None`；装载后即使被 reload 覆盖，旧句柄仍保持有效（ArcSwap 原子替换）。
+    /// 面向 admin 查询面（如 `/api/gateway/health` 的渠道归因 join），
+    /// 不用于热路径选择（热路径走 [`Dispatch::select`]）。
+    pub fn snapshot(&self) -> Option<Arc<Snapshot>> {
+        Arc::clone(&self.snapshot.load_full()).as_ref().clone()
+    }
+
     pub fn set_limits(&self, limits: HashMap<String, RateLimitSpec>) {
         self.limits.store(Arc::new(limits));
     }

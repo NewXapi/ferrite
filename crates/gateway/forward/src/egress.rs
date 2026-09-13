@@ -174,10 +174,11 @@ impl ReqwestEgress {
 /// 非 2xx → `NormalizedError`。
 ///
 /// 按状态码归类 (对齐 dispatch::health::FailureClass):
-/// - 401/403 → invalid_api_key, 不重试
+/// - 401/403 → invalid_api_key, 不重试, 但渠道相关 → 降层换候选 (凭据坏 ≠ 别家坏)
+/// - 404 → upstream_error, 不重试, 渠道相关 (该渠道无此模型, 换渠道可能成立)
 /// - 429 → rate_limited, 可重试
 /// - 5xx → upstream_error, 可重试
-/// - 其它 4xx → upstream_error (致命), 不重试 (协议/客户端问题, 换渠道救不了)
+/// - 其它 4xx → upstream_error (致命), 不重试不降层 (请求本身坏, 换渠道救不了)
 pub(crate) fn classify_status(
     status: u16,
     body_preview: String,
@@ -190,10 +191,17 @@ pub(crate) fn classify_status(
         400..=499 => (code::UPSTREAM_ERROR, status, false),
         _ => (code::UPSTREAM_ERROR, 502, false),
     };
+    // 渠道相关 4xx 的口径复用 dispatch::failure_scope (P1-B 降层), 不在此
+    // 重复一张表; 可重试失败 (429/5xx) 本来就换候选, 该标志只管非重试分支。
+    let channel_scoped = !retryable
+        && matches!(status, 400..=499)
+        && dispatch::failure_scope::classify_channel_scope(status)
+            == dispatch::failure_scope::FailureScope::Channel;
     contract::error::NormalizedError {
         code,
         status: http_status,
         retryable,
+        channel_scoped,
         message: body_preview.chars().take(200).collect(),
     }
 }
@@ -208,6 +216,7 @@ pub(crate) fn build_header_map(
                 code: contract::error::code::UPSTREAM_ERROR,
                 status: 502,
                 retryable: false,
+                channel_scoped: false,
                 message: format!("invalid header name `{k}`: {e}"),
             })?;
         let value =
@@ -216,6 +225,7 @@ pub(crate) fn build_header_map(
                 status: 502,
                 retryable: false,
                 message: format!("invalid header value `{v}`: {e}"),
+                channel_scoped: false,
             })?;
         map.append(name, value);
     }
@@ -275,6 +285,7 @@ impl Egress for ReqwestEgress {
                     code: contract::error::code::UPSTREAM_ERROR,
                     status: if e.is_timeout() { 504 } else { 502 },
                     retryable,
+                    channel_scoped: false,
                     message: msg,
                 }
             })
@@ -286,6 +297,7 @@ impl Egress for ReqwestEgress {
                     code: contract::error::code::UPSTREAM_ERROR,
                     status: 504,
                     retryable: true,
+                    channel_scoped: false,
                     message: "upstream total timeout".into(),
                 }
             })??;
@@ -321,6 +333,7 @@ impl Egress for ReqwestEgress {
                     code: contract::error::code::UPSTREAM_ERROR,
                     status: 504,
                     retryable: true,
+                    channel_scoped: false,
                     message: "upstream first-byte timeout".into(),
                 })?;
 
@@ -336,6 +349,7 @@ impl Egress for ReqwestEgress {
                             code: contract::error::code::UPSTREAM_ERROR,
                             status: 502,
                             retryable: true,
+                            channel_scoped: false,
                             message: format!("upstream stream error: {e}"),
                         });
                     }
