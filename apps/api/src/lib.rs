@@ -46,6 +46,12 @@ use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 
+/// ForwardStage 全局并发闸容量（v2 挂载）：整体并发上限，不分渠道——
+/// 分渠道挂载属后续项（需 per-channel DashMap，见 ForwardStage::concurrency
+/// 字段文档）。MVP 无配置来源，暂用常量；后续项：接入配置源（options 表 /
+/// config.toml）后改为按配置装配。
+const FORWARD_MAX_CONCURRENCY: usize = 64;
+
 /// 组装完整应用 Router：admin-api + tavern + pipeline gateway（含计费结算）+ reload。
 pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
     let egress: Arc<dyn forward::egress::Egress> = Arc::new(ReqwestEgress::new());
@@ -165,7 +171,12 @@ async fn assemble(
             .push(gates)
             // dispatcher 同时被 reload 路由（ReloadState）与重试循环持有，clone 一份给 stage；
             // with_retry 后 ForwardStage 自己驱动选路，不再需要 DispatchStage（避免双次 select/限流计数）
-            .push(forward_stage.with_retry(dispatcher.clone(), dispatch::RetryPolicy::default()))
+            .push(
+                forward_stage
+                    .with_retry(dispatcher.clone(), dispatch::RetryPolicy::default())
+                    // 全局并发闸（v2 挂载）：整体上限常量 64，见 FORWARD_MAX_CONCURRENCY。
+                    .with_concurrency(FORWARD_MAX_CONCURRENCY),
+            )
             .push(ProtocolBridgeStage::new(adaptors)),
     );
 

@@ -30,6 +30,27 @@ const SEC_STATS: &str = "分组概览";
 const SEC_FILTER: &str = "筛选与操作";
 const SEC_LIST: &str = "分组列表";
 
+/// 把用户输入的逗号/分号分隔白名单拆成模型名数组(去空、trim)。
+/// 与后端 `validate_whitelist` 对齐:每项必须是非空字符串。
+pub fn parse_whitelist_raw(raw: &str) -> Vec<String> {
+    raw.split([',', '，', ';', '；'])
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+/// 从后端返回的 `model_whitelist` JSON(字符串数组或空)取回白名单。
+pub fn parse_whitelist(v: &serde_json::Value) -> Vec<String> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| m.as_str().map(ToOwned::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[component]
 pub fn GroupsPage() -> Element {
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
@@ -50,6 +71,8 @@ pub fn GroupsPage() -> Element {
     let mut f_name = use_signal(String::new);
     let mut f_ratio = use_signal(|| "1.0".to_string());
     let mut f_remark = use_signal(String::new);
+    // 模型白名单:逗号分隔输入,提交时拆分;后端校验非空字符串数组
+    let mut f_whitelist = use_signal(String::new);
 
     // 挂载即拉取真实列表;reload 变化时重拉
     use_effect(move || {
@@ -124,6 +147,7 @@ pub fn GroupsPage() -> Element {
         f_name.set(String::new());
         f_ratio.set("1.0".to_string());
         f_remark.set(String::new());
+        f_whitelist.set(String::new());
         modal_state.set(ModalState::New);
     };
 
@@ -132,6 +156,7 @@ pub fn GroupsPage() -> Element {
             f_name.set(g.name.clone());
             f_ratio.set(format!("{}", g.ratio));
             f_remark.set(g.remark.clone());
+            f_whitelist.set(parse_whitelist(&g.model_whitelist).join(", "));
             modal_state.set(ModalState::Edit(key));
         }
     };
@@ -171,7 +196,9 @@ pub fn GroupsPage() -> Element {
 
     rsx! {
         div { class: "flex flex-col gap-6",
-                // 通知条(成功/错误/进行中)
+            role: "region",
+            "aria-label": "分组管理",
+            // 通知条(成功/错误/进行中)
                 if let Some(msg) = notice() {
                     div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
                         "{msg}"
@@ -207,6 +234,7 @@ pub fn GroupsPage() -> Element {
                             }
                             button {
                                 class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                                "data-testid": "new-group",
                                 onclick: open_new,
                                 "✚ 新建分组"
                             }
@@ -216,6 +244,7 @@ pub fn GroupsPage() -> Element {
                     input {
                         class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                         r#type: "text",
+                        "data-testid": "group-search",
                         placeholder: "搜索分组标识或备注...",
                         value: "{search}",
                         oninput: move |e| search.set(e.value()),
@@ -246,6 +275,7 @@ pub fn GroupsPage() -> Element {
                             p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                             button {
                                 class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                "data-testid": "retry-groups",
                                 onclick: move |_| reload.set(reload() + 1),
                                 "重试"
                             }
@@ -293,6 +323,7 @@ pub fn GroupsPage() -> Element {
                     name: f_name,
                     ratio: f_ratio,
                     remark: f_remark,
+                    whitelist: f_whitelist,
                     on_cancel: move |_| modal_state.set(ModalState::Closed),
                     on_submit: close_and_reload,
                 }
@@ -522,6 +553,7 @@ fn GroupFormModal(
     name: Signal<String>,
     ratio: Signal<String>,
     remark: Signal<String>,
+    whitelist: Signal<String>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -544,6 +576,7 @@ fn GroupFormModal(
     let submitting2 = submitting;
     let on_submit2 = on_submit;
     let group_key2 = group_key.clone();
+    let whitelist2 = whitelist;
     let do_submit = move |_| {
         let key = group_key2.clone();
         let n = name.peek().trim().to_string();
@@ -552,6 +585,7 @@ fn GroupFormModal(
         }
         let r = ratio.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
         let rm = remark.peek().clone();
+        let wl = parse_whitelist_raw(&whitelist2.peek());
         let (mut sub, cb) = (submitting2, on_submit2);
         spawn(async move {
             sub.set(true);
@@ -559,7 +593,7 @@ fn GroupFormModal(
             let req = GroupUpsertRequest {
                 name: n,
                 ratio: r,
-                model_whitelist: json!([]),
+                model_whitelist: json!(wl),
                 remark: rm,
             };
             let res = match key {
@@ -588,6 +622,7 @@ fn GroupFormModal(
                     label { class: "mb-1.5 block text-xs text-zinc-400", "分组标识 (英文唯一标识)" }
                     input {
                         class: MODAL_INPUT,
+                        "data-testid": "group-name",
                         placeholder: "例如: vip, claude, fast",
                         value: "{name}",
                         disabled: editing && name() == "default",
@@ -602,6 +637,7 @@ fn GroupFormModal(
                     label { class: "mb-1.5 block text-xs text-zinc-400", "展示备注 (可选)" }
                     input {
                         class: MODAL_INPUT,
+                        "data-testid": "group-remark",
                         placeholder: "例如: VIP会员专线、高峰备用组",
                         value: "{remark}",
                         oninput: move |e| remark.set(e.value()),
@@ -609,10 +645,23 @@ fn GroupFormModal(
                 }
 
                 div {
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "模型白名单 (逗号分隔,可选)" }
+                    input {
+                        class: MODAL_INPUT,
+                        "data-testid": "group-whitelist",
+                        placeholder: "例如: gpt-4o, claude-3.5",
+                        value: "{whitelist}",
+                        oninput: move |e| whitelist.set(e.value()),
+                    }
+                    p { class: "mt-1 text-[11px] text-zinc-500", "留空 = 全模型可用;填了 = 仅这些模型" }
+                }
+
+                div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (ratio ≥ 0)" }
                     input {
                         class: "{MODAL_INPUT} font-mono",
                         r#type: "text",
+                        "data-testid": "group-ratio",
                         placeholder: "1.0",
                         value: "{ratio}",
                         oninput: move |e| ratio.set(e.value()),
@@ -661,11 +710,13 @@ fn GroupFormModal(
             div { class: "mt-6 flex gap-3",
                 button {
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    "data-testid": "group-cancel",
                     onclick: move |_| on_cancel.call(()),
                     "取消"
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    "data-testid": "group-submit",
                     disabled: submitting(),
                     onclick: do_submit,
                     "{submit_label}"

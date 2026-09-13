@@ -1,12 +1,12 @@
 //! 管理面板的共享实体 store：分组 / 模型别名 / 渠道 / 订阅套餐。
 //! 拓扑图、抽屉与「设置」tab 读写同一份数据，任一侧修改立即同步。
 //! 数据在应用启动时由 `hydrate()` 从真实后端灌入
-//! (/api/group + /api/channel + /api/route_unit + /api/models);
-//! 订阅套餐暂无后端端点,保持空列表(页面显示诚实空态);
+//! (/api/group + /api/channel + /api/models);
+//! 订阅套餐暂无后端端点,保持空列表(页面显示诚实空态)。
 //! 兑换码不进本 store — RedemptionsPage 直接消费 /api/redemption。
 //!
-//! 索引必须与图的 SEED_EDGES 对齐（见 network/mod.rs）：
-//! 分组顺序 default/claude/gpt-5/vip，别名 gpt-4o/gpt-5/claude-sonnet-4/gemini-2.5-pro。
+//! 网络拓扑(NetworkPanel)另走自己的实时拉取路径(network.rs
+//! `load_network_data`),store 侧 hydrate 结果只作为启动布局的兜底快照。
 
 use client::ApiClient;
 use dioxus::prelude::*;
@@ -347,7 +347,8 @@ impl EntityStore {
     }
 
     /// 从真实后端灌水：分组(/api/group)、渠道(/api/channel)、
-    /// 路由单元(/api/route_unit → 渠道 dispatch 模型)、模型别名(/api/models)。
+    /// 模型别名(/api/models)。渠道的 dispatch 模型直接展开自渠道
+    /// 自身的 `models` JSONB,不再打已删除的 /api/route_unit。
     /// 未登录(401)时静默保持空,登录后 HomePage 重挂载会再次 hydrate。
     pub async fn hydrate(mut store: EntityStore) {
         #[derive(Debug, Default, serde::Deserialize)]

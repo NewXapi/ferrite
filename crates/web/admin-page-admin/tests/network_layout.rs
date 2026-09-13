@@ -19,6 +19,11 @@ fn test_view() -> GraphView {
             (0, "gpt-5".to_string()),
             (1, "claude-sonnet-4".to_string()),
         ],
+        channel_groups: vec![
+            vec!["default".into(), "vip".into()],
+            vec!["claude".into()],
+            vec!["default".into()],
+        ],
     }
 }
 

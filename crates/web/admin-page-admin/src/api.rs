@@ -92,9 +92,43 @@ pub async fn delete_channel_api(client: &ApiClient, key: &str) -> ApiResult<serd
 // Groups
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/group (分组列表)
+// 后端列表端点统一包装 `{"items":[...]}`(分组端点裸对象则直接 decode)。
+#[derive(Debug, Default, serde::Deserialize)]
+struct GroupItems {
+    #[serde(default)]
+    items: Vec<GroupDto>,
+}
+
+/// 真实调用: GET /api/group (分组列表,响应为 `{"items":[...]}`)
 pub async fn list_groups_api(client: &ApiClient) -> ApiResult<Vec<GroupDto>> {
-    client.get("/api/group").await
+    let r: GroupItems = client.get("/api/group").await?;
+    Ok(r.items)
+}
+
+// ---------------------------------------------------------------------------
+// Models (别名/模型目录)
+// ---------------------------------------------------------------------------
+
+/// 模型目录 DTO — 对齐 admin-catalog /api/models 的 `ModelView` 投影。
+/// `name` 是别名/对外模型名,网络拓扑的中间层(Mapping)即用它;
+/// 价格/倍率字段该端点暂未提供,拓扑层一律取 0/1.0。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelView {
+    pub name: String,
+}
+
+/// 后端列表端点统一包装 `{"items":[...]}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct ModelItems {
+    #[serde(default)]
+    items: Vec<ModelView>,
+}
+
+/// 真实调用: GET /api/models?size=100 (模型/别名列表,按 name 升序)
+pub async fn list_models_api(client: &ApiClient) -> ApiResult<Vec<ModelView>> {
+    let r: ModelItems = client.get("/api/models?size=100").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: POST /api/group (创建)
