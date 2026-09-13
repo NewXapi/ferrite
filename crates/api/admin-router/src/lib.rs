@@ -25,7 +25,11 @@ pub async fn router(
     db_bootstrap::run_migrations(&pool).await?;
     tracing::info!("db migrations applied");
 
-    let auth_router = auth::routes::router_with_svc(auth_svc.clone())?;
+    // 注册 hook：新用户注册 → seed 全部启用货币（#179 多货币，幂等）。
+    let registered_hook: std::sync::Arc<dyn auth::routes::OnUserRegistered> =
+        std::sync::Arc::new(billing::WalletSeedHook::new(pool.clone()));
+    let auth_router =
+        auth::routes::router_with_svc_and_hook(auth_svc.clone(), Some(registered_hook))?;
 
     let token_router = catalog::tokens::router(catalog::tokens::TokenAppState {
         svc: Arc::new(catalog::tokens::TokenService::new(pool.clone())),

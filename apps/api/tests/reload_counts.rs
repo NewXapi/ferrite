@@ -189,6 +189,7 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
             price_rows: vec![("gpt-4o".into(), 15.0, 60.0, 0.0)],
             name_directory: NameDirectory::new(&tokens, &users),
             channel_names,
+            user_quotas: HashMap::new(),
         },
     );
 
@@ -286,6 +287,7 @@ fn reload_replaces_snapshot_wholesale() {
             price_rows: Vec::new(),
             name_directory: NameDirectory::default(),
             channel_names: channel_names_of(&[channel("ch-1")]),
+            user_quotas: HashMap::new(),
         },
     );
     assert_eq!(counts_a.tokens, 1);
@@ -315,6 +317,7 @@ fn reload_replaces_snapshot_wholesale() {
             price_rows: Vec::new(),
             name_directory: NameDirectory::default(),
             channel_names: channel_names_of(&[channel("ch-2"), channel("ch-3")]),
+            user_quotas: HashMap::new(),
         },
     );
     assert_eq!(counts_b.tokens, 1, "tokens 计数应是新输入规模");

@@ -250,6 +250,7 @@ dependencies = [
  "arc-swap",
  "auth",
  "axum",
+ "billing",
  "bytes",
  "chrono",
  "contract",

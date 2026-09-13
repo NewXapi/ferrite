@@ -328,6 +328,9 @@ fn apply_snapshot_reload_hot_swaps_channel_names() {
         price_rows: vec![],
         name_directory: NameDirectory::default(),
         channel_names: HashMap::from([(channel_key.clone(), name.to_string())]),
+        // user_quotas：quota 快照 user 级折算值（#179）。测试无货币行 → 空 map，
+        // token 桶 unwrap_or(0) → prehold 恒拦截（与"没充值"语义一致）。
+        user_quotas: HashMap::new(),
     };
 
     // sink 视角：装配时 clone 的同一句柄（PgSettleSink::new 收的就是它）

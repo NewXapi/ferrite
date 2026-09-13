@@ -231,11 +231,12 @@ pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
 // ============================================================================
 
 /// pipeline 结算事件的 PG 落地通道：写 usage_logs（权威账本）+ 增量维护
-/// `api_tokens.used_quota`（缓存态）+ 扣内存 quota 快照（与 QuotaGate 同桶）。
+/// `api_tokens.used_quota`（缓存态）+ 扣货币余额 `user_balances`（钱包层）+
+/// 扣内存 quota 快照（与 QuotaGate 同桶，user 级折算值）。
 ///
-/// 三处写点与退役的 usage 中间件完全一致——变了的只是**事件来源**：
-/// 中间件靠缓冲响应体自算 usage（双写双扣），现在统一吃 pipeline
-/// 在唯一提交点产出的 [`UsageEventRecord`]。
+/// 写点与退役的 usage 中间件一致，新增第 4 处货币扣费。变了的只是
+/// **事件来源**：中间件靠缓冲响应体自算 usage（双写双扣），现在统一吃
+/// pipeline 在唯一提交点产出的 [`UsageEventRecord`]。
 pub struct PgSettleSink {
     pool: PgPool,
     quota_snapshot: SharedQuota,
@@ -243,22 +244,27 @@ pub struct PgSettleSink {
     /// 下次 submit 现读即生效（渠道改名免重启）。
     channel_names: crate::snapshot::SharedChannelNames,
     names: SharedNameDirectory,
+    /// 钱包服务：settle 时按 cost 扣 user 级货币余额（货币层唯一扣费写点）。
+    wallet: billing::WalletService,
 }
 
 impl PgSettleSink {
     /// 组装 sink。`names` / `channel_names` 传共享句柄：reload 换新后
-    /// submit 即读到新值。
+    /// submit 即读到新值。`wallet` 与 admin-router 共享同一 PG 池即可
+    /// （无共享可变状态，WalletService 每请求走 DB 事务）。
     pub fn new(
         pool: PgPool,
         quota_snapshot: SharedQuota,
         channel_names: crate::snapshot::SharedChannelNames,
         names: SharedNameDirectory,
+        wallet: billing::WalletService,
     ) -> Self {
         Self {
             pool,
             quota_snapshot,
             channel_names,
             names,
+            wallet,
         }
     }
 }
@@ -318,22 +324,33 @@ impl SettleSink for PgSettleSink {
         };
         let pool = self.pool.clone();
         let quota_snapshot = self.quota_snapshot.clone();
+        let wallet = self.wallet.clone();
         tokio::spawn(async move {
-            record_settlement(&pool, &quota_snapshot, job).await;
+            record_settlement(&pool, &quota_snapshot, &wallet, job).await;
         });
     }
 }
 
-/// 后台落地：写 usage_logs → 增 `api_tokens.used_quota` → 扣内存 quota。
+/// 后台落地：写 usage_logs → 增 `api_tokens.used_quota` → 扣货币余额
+/// `user_balances` → 扣内存 quota 快照（user 级）。
 ///
 /// 任一步失败只 warn 不炸：usage_logs 是权威账本（写入失败有 warn 可追），
-/// used_quota 是缓存态（可由账本重算），内存 quota 扣减失败影响的是下次
+/// used_quota 是缓存态（可由账本重算），货币扣减失败有 warn 且快照同步扣
+/// （余额由 center 侧 available_i64 校正），内存 quota 扣减失败影响的是下次
 /// 预检精度，都不该让已经完成的转发请求报错。
-async fn record_settlement(pool: &PgPool, quota_snapshot: &SharedQuota, job: RecordJob) {
+async fn record_settlement(
+    pool: &PgPool,
+    quota_snapshot: &SharedQuota,
+    wallet: &billing::WalletService,
+    job: RecordJob,
+) {
     let is_error = job.is_error();
     let event = build_consume_event(&job);
     let RecordJob {
-        cost, token_key, ..
+        cost,
+        token_key,
+        user_uuid,
+        ..
     } = job;
     let svc = observe::logs::LogService::new(pool.clone());
     match svc.record(&event).await {
@@ -359,7 +376,28 @@ async fn record_settlement(pool: &PgPool, quota_snapshot: &SharedQuota, job: Rec
         }
         Err(e) => tracing::warn!(error = %e, token_key = %token_key, "token key is not a uuid"),
     }
-    // DB 用 UUID 主键，内存 quota 快照桶键同样是 token 的 UUID 字符串
-    // （与 QuotaGate 查询键 TokenInfo.id 一致，见 snapshot::build_quota_snapshot）
-    quota_snapshot.load().add(&token_key, -cost);
+    // 货币扣费（钱包层，#179 多货币）：按 internal_rate 折算后扣 user_balances。
+    // 不足时 clamp 到 0 并返回实扣——网关语义是"尽力扣，余账由下次请求的
+    // prehold 拦截兜底"，这里不因余额不足而追讨已转发的 token。
+    if cost > 0 {
+        match wallet.deduct_by_cost(user_uuid, cost).await {
+            Ok((deducted, fully)) => {
+                if !fully {
+                    tracing::warn!(
+                        user_key = %user_uuid,
+                        cost,
+                        deducted,
+                        "wallet balance insufficient; deducted as much as possible"
+                    );
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, user_key = %user_uuid, "wallet deduction failed"),
+        }
+    }
+    // 内存 quota 快照桶键 = user 的 UUID 字符串（user 级折算可用值；
+    // 与 QuotaGate 查询键 TokenInfo.id 不同层——快照加载时按 token→user
+    // 展开，同一用户所有 token 共享货币余额，见 snapshot::build_quota_snapshot）
+    quota_snapshot
+        .load()
+        .add(&event.user_key.to_string(), -cost);
 }

@@ -13,9 +13,19 @@ use sqlx::PgPool;
 use crate::error::AuthError;
 use crate::service::AuthService;
 
+// 注册后置 hook（#179 多货币）：billing 实现本 trait 做货币 seed。
+// auth 不依赖 billing（反向依赖会成环），hook 经 trait object 注入。
+pub trait OnUserRegistered: Send + Sync {
+    /// 用户注册成功后调用（key 为 auth_users.key UUID 字符串）。
+    fn on_registered(&self, user_key: uuid::Uuid);
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub svc: Arc<AuthService>,
+    /// 注册后置 hook（#179 多货币）：注册成功触发货币 seed。`None` = 无
+    /// 货币层（测试环境未装配 billing 表时 seed 会炸，装配方按环境决定）。
+    pub registered_hook: Option<std::sync::Arc<dyn OnUserRegistered>>,
 }
 
 pub fn router(pool: PgPool) -> Result<Router, AuthError> {
@@ -27,7 +37,18 @@ pub fn router(pool: PgPool) -> Result<Router, AuthError> {
 
 /// 共享 AuthService 的组装入口 — admin-api-router 聚合多个子域时用。
 pub fn router_with_svc(svc: Arc<AuthService>) -> Result<Router, AuthError> {
-    let state = AppState { svc };
+    router_with_svc_and_hook(svc, None)
+}
+
+/// admin-router 聚合入口：传入注册 hook 供货币 seed（#179 多货币）。
+pub fn router_with_svc_and_hook(
+    svc: Arc<AuthService>,
+    registered_hook: Option<std::sync::Arc<dyn OnUserRegistered>>,
+) -> Result<Router, AuthError> {
+    let state = AppState {
+        svc,
+        registered_hook,
+    };
 
     Ok(Router::new()
         // Existing auth endpoints
@@ -145,7 +166,18 @@ async fn register(
         .register(&req.username, &req.password, email)
         .await
     {
-        Ok(u) => Ok(Json(json!(u))),
+        Ok(u) => {
+            // 注册成功 → 为新用户 seed 全部启用货币（#179 多货币，幂等
+            // ON CONFLICT DO NOTHING，amount=0）。seed 失败只 warn：账号
+            // 已建成，货币行缺失等钱包侧首次入账时补（available_i64 查
+            // 无行按 0，注册流程不被货币层故障拖死）。
+            if let Ok(key) = uuid::Uuid::parse_str(&u.key)
+                && let Some(hook) = &state.registered_hook
+            {
+                hook.on_registered(key);
+            }
+            Ok(Json(json!(u)))
+        }
         Err(e) => Err(err_response(e)),
     }
 }

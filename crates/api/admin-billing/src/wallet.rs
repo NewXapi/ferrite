@@ -21,6 +21,7 @@ use auth::service::AuthService;
 
 use crate::currency::BillingErr;
 
+#[derive(Clone)]
 pub struct WalletService {
     pool: PgPool,
 }

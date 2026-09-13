@@ -27,6 +27,7 @@ use sqlx::PgPool;
 use crate::config::Config;
 
 pub mod billing;
+
 pub mod config;
 pub mod snapshot;
 pub mod tavern;
@@ -157,11 +158,14 @@ async fn assemble(
         snapshots.price_rows.clone(),
         snapshots.group_snapshot.clone(),
     );
+    // 钱包服务：settle 扣货币余额 + 管理面共享同一 PG 池（无共享可变状态）。
+    let wallet = ::billing::WalletService::new(pool.clone());
     let settle_sink = billing::PgSettleSink::new(
         pool.clone(),
         snapshots.quota_snapshot.clone(),
         snapshots.channel_names.clone(),
         snapshots.name_directory.clone(),
+        wallet,
     );
     let forward_stage =
         forward_stage.with_price_table(Arc::new(price_table), Arc::new(settle_sink));
