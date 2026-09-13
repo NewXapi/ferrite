@@ -1,7 +1,7 @@
 //! `gateway-gate` 组级模型门禁集成测试 —— GroupSnapshot 查询 + GroupModelGate 判定
 //!
-//! 覆盖：组白名单命中/通配命中、不命中拒绝、未配置 fail-open、缺 model、
-//! 快照查询回落，以及新 Rejection 变体的 HTTP 映射（403 + code）。
+//! 覆盖：组白名单命中/通配命中、不命中拒绝、未配置 fail-open、禁用组整组拒绝、
+//! 缺 model、快照查询回落，以及新 Rejection 变体的 HTTP 映射（403 + code）。
 
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -27,6 +27,7 @@ fn group_snapshot() -> SharedGroupSnapshot {
         GroupEntry {
             allowed_models: vec!["gpt-4*".into()],
             multiplier: 2.5,
+            enabled: true,
         },
     );
     groups.upsert(
@@ -34,6 +35,7 @@ fn group_snapshot() -> SharedGroupSnapshot {
         GroupEntry {
             allowed_models: vec![],
             multiplier: 1.0,
+            enabled: true,
         },
     );
     Arc::new(ArcSwap::from_pointee(groups))
@@ -118,6 +120,36 @@ async fn unknown_group_and_missing_group_fail_open() {
 }
 
 #[tokio::test]
+async fn disabled_group_rejects_even_with_open_whitelist() {
+    // 契约（迁移 0001 api_groups.status 注释）：status≠1 的禁用组 → gate 层整组拒绝。
+    let mut groups = GroupSnapshot::default();
+    groups.upsert(
+        "blocked".into(),
+        GroupEntry {
+            allowed_models: vec![],
+            multiplier: 1.0,
+            enabled: false,
+        },
+    );
+    // 前提自证：该组白名单为空 = 只看白名单的话任何模型都该放行，
+    // 因此拒绝只可能来自禁用位（而不是 ModelNotAllowedForGroup）。
+    assert_eq!(
+        groups.allowed_models("blocked").map(<[String]>::len),
+        Some(0),
+        "禁用组的白名单必须是空，拒绝来源才是禁用位"
+    );
+    assert!(groups.is_disabled("blocked"));
+
+    let gate = GroupModelGate::new(Arc::new(ArcSwap::from_pointee(groups)));
+    let mut c = ctx(Some("blocked"), Some("any-model-at-all"));
+    let r = gate.check(&mut c).await.unwrap_err();
+    assert!(
+        matches!(&r, Rejection::GroupDisabled { group } if group == "blocked"),
+        "unexpected rejection: {r:?}"
+    );
+}
+
+#[tokio::test]
 async fn missing_requested_model_is_model_not_specified() {
     let gate = GroupModelGate::new(group_snapshot());
     let mut c = ctx(Some("vip"), None);
@@ -137,6 +169,7 @@ fn snapshot_queries_and_fallbacks() {
         GroupEntry {
             allowed_models: vec!["gpt-4*".into()],
             multiplier: 2.5,
+            enabled: true,
         },
     );
 
@@ -149,15 +182,32 @@ fn snapshot_queries_and_fallbacks() {
     // 缺失回落：None / 1.0（中性倍率）
     assert!(groups.allowed_models("missing").is_none());
     assert_eq!(groups.multiplier("missing"), 1.0);
+    // is_disabled：启用组 false，未知组 false（fail-open 语义不变）
+    assert!(!groups.is_disabled("vip"));
+    assert!(!groups.is_disabled("missing"));
 
     // upsert 覆盖同名组
     groups.upsert("vip".into(), GroupEntry::default());
     assert_eq!(groups.allowed_models("vip").map(<[String]>::len), Some(0));
     assert_eq!(groups.multiplier("vip"), 1.0);
-    // 确认默认值本身
+    // 确认默认值本身（enabled=true：默认组种子/未显式禁用都走启用路径）
     let d = GroupEntry::default();
     assert!(d.allowed_models.is_empty());
     assert_eq!(d.multiplier, 1.0);
+    assert!(d.enabled);
+    assert!(!groups.is_disabled("vip"));
+
+    // 显式禁用的组：is_disabled 命中，白名单/倍率查询不受影响
+    groups.upsert(
+        "vip".into(),
+        GroupEntry {
+            allowed_models: vec!["gpt-4*".into()],
+            multiplier: 2.5,
+            enabled: false,
+        },
+    );
+    assert!(groups.is_disabled("vip"));
+    assert_eq!(groups.multiplier("vip"), 2.5);
 }
 
 // ---------------------------------------------------------------------------
@@ -182,4 +232,20 @@ async fn rejection_maps_to_403_with_code() {
         msg.contains("claude-x") && msg.contains("vip"),
         "msg = {msg}"
     );
+}
+
+#[tokio::test]
+async fn group_disabled_maps_to_403_with_code() {
+    let resp = rejection_to_response(Rejection::GroupDisabled {
+        group: "blocked".into(),
+    });
+    assert_eq!(resp.status(), 403);
+    let bytes = axum::body::to_bytes(resp.into_body(), 4096)
+        .await
+        .expect("read body");
+    let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json body");
+    assert_eq!(v["error"]["code"], "group_disabled");
+    // message 里应带组名，供客户端/排障定位是哪个组被禁用
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(msg.contains("blocked"), "msg = {msg}");
 }

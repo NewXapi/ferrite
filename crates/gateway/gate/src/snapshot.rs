@@ -290,6 +290,9 @@ pub struct GroupEntry {
     pub allowed_models: Vec<String>,
     /// 分组倍率，默认 1.0（中性值，不计费放大）。
     pub multiplier: f64,
+    /// 管理台启用位（对应 `api_groups.status = 1`）；
+    /// false = 管理台禁用，gate 整组拒绝该组请求（见 [`GroupSnapshot::is_disabled`]）。
+    pub enabled: bool,
 }
 
 impl Default for GroupEntry {
@@ -297,6 +300,8 @@ impl Default for GroupEntry {
         Self {
             allowed_models: vec![],
             multiplier: 1.0,
+            // 默认启用：default 组种子 / 未显式禁用的构造路径都走启用语义。
+            enabled: true,
         }
     }
 }
@@ -337,6 +342,12 @@ impl GroupSnapshot {
     /// 查分组倍率；组不存在 → 1.0（中性回落）。
     pub fn multiplier(&self, group: &str) -> f64 {
         self.by_name.get(group).map(|e| e.multiplier).unwrap_or(1.0)
+    }
+
+    /// 该组是否被管理台显式禁用（存在于快照且 `enabled = false`）。
+    /// 未知组返回 false——"未配置"不拦，fail-open 语义不变。
+    pub fn is_disabled(&self, group: &str) -> bool {
+        self.by_name.get(group).is_some_and(|e| !e.enabled)
     }
 }
 
