@@ -8,7 +8,7 @@ use bytes::Bytes;
 use chrono::Utc;
 use contract::records::{SyncMeta, TokenRecord, UserRecord};
 use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta};
-use gateway_pipeline::{RequestCtx, Stage, StageOutcome};
+use gateway_pipeline::{RequestCtx, SelectedRoute, Stage, StageError, StageOutcome};
 use http::HeaderMap;
 use uuid::Uuid;
 
@@ -446,22 +446,106 @@ async fn graylist_blocks_after_streak_threshold() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. concurrency — 槽满
+// 7. concurrency — RAII 槽位：ctx drop 归还 / 槽满 RateLimited / 未注册放行
 // ---------------------------------------------------------------------------
 
+/// 构造一个带 SelectedRoute 的 RequestCtx（concurrency 是 post-dispatch gate，
+/// handle 需要 ctx.route 才能知道占哪个渠道的槽）。
+fn ctx_with_channel(channel_key: &str) -> RequestCtx {
+    let mut ctx = RequestCtx::new(make_meta(HeaderMap::new(), b"{}".to_vec()));
+    ctx.route = Some(SelectedRoute {
+        unit: contract::records::RouteUnitRecord {
+            meta: meta(channel_key),
+            group: "default".into(),
+            public_model: "gpt-4o".into(),
+            channel_key: channel_key.into(),
+            key_index: 0,
+            upstream_model: "gpt-4o".into(),
+            priority: 0,
+            weight: 1,
+            status: 1,
+        },
+        secret: "sk-upstream".into(),
+        base_url: "http://127.0.0.1:9999".into(),
+        upstream_model: "gpt-4o".into(),
+        provider_type: "openai".into(),
+        settings: serde_json::Value::Null,
+    });
+    ctx
+}
+
+/// max=1 全流程：占槽 → 槽满拒绝 → drop ctx（请求结束）归还 → 重新可占。
+/// 验证核心不变量：permit 的生命周期完全跟随 ctx，无需任何显式 release。
 #[tokio::test]
-async fn concurrency_blocks_when_slots_full() {
+async fn concurrency_permit_released_when_ctx_drops() {
     let state = Arc::new(ConcurrencyState::default());
     let gate = ConcurrencyGate::new(state.clone());
     // 槽位按 channel_key 索引（对齐 RouteUnitRecord.channel_key），不是数字 id。
     let channel = "ch-42";
     gate.register_channel(channel, 1);
 
-    let h1 = gate.try_hold(channel).expect("slot 1");
-    assert!(gate.try_hold(channel).is_none());
+    // 请求 1：抢到唯一槽位，Continue；permit 挂在 ctx.drop_guards 上。
+    let mut ctx1 = ctx_with_channel(channel);
+    assert!(matches!(
+        gate.handle(&mut ctx1).await.unwrap(),
+        StageOutcome::Continue
+    ));
+    assert_eq!(gate.available_permits(channel), 0, "唯一槽位已被占");
 
-    gate.release(h1);
-    assert!(gate.try_hold(channel).is_some());
+    // 请求 1 尚未结束、请求 2 并发进入（两个 ctx 同时存活）：
+    // 槽满 → try_acquire 失败 → RateLimited（不排队、不阻塞）。
+    let mut ctx2 = ctx_with_channel(channel);
+    assert!(matches!(
+        gate.handle(&mut ctx2).await.unwrap_err(),
+        StageError::RateLimited
+    ));
+
+    // 请求 1 结束：ctx drop → RAII permit drop → 槽位归还。
+    drop(ctx1);
+    assert_eq!(gate.available_permits(channel), 1, "ctx drop 后槽位应归还");
+
+    // 请求 3 可以重新占用归还后的槽位。
+    let mut ctx3 = ctx_with_channel(channel);
+    assert!(matches!(
+        gate.handle(&mut ctx3).await.unwrap(),
+        StageOutcome::Continue
+    ));
+    assert_eq!(gate.available_permits(channel), 0);
+}
+
+/// 未注册渠道：直接放行不限并发；available_permits 查询返回 0 且无 panic。
+/// （回归护栏：旧实现 or_insert_with(Semaphore::new(0)) + acquire_owned 会让
+/// 首个请求永久死锁——这里第二次请求仍秒回 Continue 即证明不再挂起。）
+#[tokio::test]
+async fn concurrency_unregistered_channel_passes_through() {
+    let state = Arc::new(ConcurrencyState::default());
+    let gate = ConcurrencyGate::new(state.clone());
+
+    let mut ctx = ctx_with_channel("ghost-channel");
+    assert!(matches!(
+        gate.handle(&mut ctx).await.unwrap(),
+        StageOutcome::Continue
+    ));
+    // 未注册渠道不产生 Semaphore entry，查询 0 不 panic。
+    assert_eq!(gate.available_permits("ghost-channel"), 0);
+    assert!(
+        !state.semaphores.contains_key("ghost-channel"),
+        "handle 不得为未注册渠道插入 Semaphore entry（旧实现的死锁根源）"
+    );
+
+    let mut ctx2 = ctx_with_channel("ghost-channel");
+    assert!(matches!(
+        gate.handle(&mut ctx2).await.unwrap(),
+        StageOutcome::Continue
+    ));
+}
+
+/// StageError::RateLimited → HTTP 429 映射（router 已有实现，这里钉住契约：
+/// concurrency 槽满复用该变体，不得悄悄降级成 500）。
+#[test]
+fn stage_error_rate_limited_maps_to_429() {
+    let resp = gateway_pipeline::error_to_response(StageError::RateLimited);
+    assert_eq!(resp.status(), http::StatusCode::TOO_MANY_REQUESTS);
 }
 
 // ---------------------------------------------------------------------------

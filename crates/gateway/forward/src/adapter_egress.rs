@@ -238,6 +238,7 @@ impl AdapterEgress {
             code: contract::error::code::UPSTREAM_ERROR,
             status: 502,
             retryable: false,
+            channel_scoped: false,
             message: format!("invalid upstream url `{url}`: {e}"),
         })?;
         let header_map = build_header_map(headers)?;
@@ -256,6 +257,7 @@ impl AdapterEgress {
             code: contract::error::code::UPSTREAM_ERROR,
             status: 502,
             retryable: false,
+            channel_scoped: false,
             message: format!("build request: {e}"),
         })?;
 
@@ -266,6 +268,7 @@ impl AdapterEgress {
                 code: contract::error::code::UPSTREAM_ERROR,
                 status: 504,
                 retryable: true,
+                channel_scoped: false,
                 message: "upstream total timeout".into(),
             })?
             .map_err(|e| {
@@ -279,6 +282,7 @@ impl AdapterEgress {
                     code: contract::error::code::UPSTREAM_ERROR,
                     status: if is_timeout { 504 } else { 502 },
                     retryable: e.is_connect() || is_timeout,
+                    channel_scoped: false,
                     message: e.to_string(),
                 }
             })?;
@@ -311,6 +315,7 @@ impl AdapterEgress {
                 code: contract::error::code::UPSTREAM_ERROR,
                 status: 504,
                 retryable: true,
+                channel_scoped: false,
                 message: "upstream first-byte timeout".into(),
             })?;
 
@@ -326,6 +331,7 @@ impl AdapterEgress {
                         code: contract::error::code::UPSTREAM_ERROR,
                         status: 502,
                         retryable: true,
+                        channel_scoped: false,
                         message: format!("upstream stream error: {e}"),
                     });
                 }

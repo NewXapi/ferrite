@@ -102,6 +102,15 @@ impl Dispatch for MockDispatch {
             .unwrap()
             .push((unit_key.to_string(), outcome));
     }
+
+    /// 展示名回查：`name-{unit_key}`，供归因回写断言（查不到的 key 返回
+    /// None，覆盖降级路径）。
+    fn channel_name(&self, channel_key: &str) -> Option<String> {
+        self.candidates
+            .iter()
+            .find(|c| c.unit.channel_key == channel_key)
+            .map(|c| format!("name-{}", c.unit.meta.key))
+    }
 }
 
 /// 脚本化 egress mock：按 url 里的候选标记返回固定结果。
@@ -165,6 +174,7 @@ impl Egress for ScriptedEgress {
                     code: contract::error::code::UPSTREAM_ERROR,
                     status,
                     retryable,
+                    channel_scoped: matches!(status, 401 | 403 | 404) && !retryable,
                     message: format!("upstream {status}"),
                 };
                 Box::pin(async move { Err(err) })
@@ -202,6 +212,7 @@ fn ctx_with_route(route: Candidate) -> gateway_pipeline::RequestCtx {
         upstream: None,
         streamed: StreamedAccum::default(),
         error: None,
+        drop_guards: Vec::new(),
     }
 }
 
@@ -385,4 +396,56 @@ async fn fatal_4xx_does_not_switch_candidate() {
     let calls = egress.calls.lock().unwrap();
     assert_eq!(calls.len(), 1, "只允许触碰 c1 一次");
     assert!(calls[0].contains("upstream-c1"), "c2 不得被请求");
+}
+
+// ---------- 用例 4: failover 获胜后 ctx 归因回写 ----------
+
+#[tokio::test]
+async fn failover_winner_writes_back_ctx_attribution() {
+    // 归因契约（#140 链路）：usage 落库的 channel_key 来自 Pipeline::run 从
+    // ctx.route/selected_channel_* 打包的 RouteAttribution。retry 换候选后
+    // ctx 若仍停留在 DispatchStage 的初选（c1），usage 会记到失败渠道上——
+    // 本用例钉住：获胜后 ctx.route / selected_channel_key / selected_channel_name
+    // 必须等于获胜候选 c2（route 预置成失败的 c1 以放大错位）。
+    let c1 = candidate("c1");
+    let c2 = candidate("c2");
+    let dispatch = Arc::new(MockDispatch::new(vec![c1.clone(), c2.clone()]));
+    let egress = Arc::new(ScriptedEgress::new(vec![
+        (
+            "upstream-c1",
+            Plan::Fail {
+                status: 502,
+                retryable: true,
+            },
+        ),
+        (
+            "upstream-c2",
+            Plan::Ok {
+                body: b"{\"from\":\"c2\"}",
+            },
+        ),
+    ]));
+    let stage = stage_with_retry(egress.clone(), dispatch.clone(), 3);
+
+    // route 预置为失败的 c1：若 handle 不回写归因，断言会当场抓住。
+    let mut ctx = ctx_with_route(c1.clone());
+    let outcome = stage.handle(&mut ctx).await.expect("c2 应成功");
+    assert!(matches!(outcome, StageOutcome::Continue));
+
+    // 归因三件套必须全部指向获胜候选 c2。
+    assert_eq!(
+        ctx.selected_channel_key.as_deref(),
+        Some("ch-c2"),
+        "获胜候选的 channel_key 必须回写 ctx，否则 usage 记到失败的初选渠道"
+    );
+    assert_eq!(
+        ctx.selected_channel_name.as_deref(),
+        Some("name-c2"),
+        "展示名来自 Dispatcher 快照回查（MockDispatch::channel_name）"
+    );
+    assert_eq!(
+        ctx.route.as_ref().map(|r| r.unit.meta.key.as_str()),
+        Some("c2"),
+        "ctx.route 必须换成获胜候选，Pipeline::run 的 RouteAttribution 以它为准"
+    );
 }

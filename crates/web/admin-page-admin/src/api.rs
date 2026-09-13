@@ -92,9 +92,43 @@ pub async fn delete_channel_api(client: &ApiClient, key: &str) -> ApiResult<serd
 // Groups
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/group (分组列表)
+// 后端列表端点统一包装 `{"items":[...]}`(分组端点裸对象则直接 decode)。
+#[derive(Debug, Default, serde::Deserialize)]
+struct GroupItems {
+    #[serde(default)]
+    items: Vec<GroupDto>,
+}
+
+/// 真实调用: GET /api/group (分组列表,响应为 `{"items":[...]}`)
 pub async fn list_groups_api(client: &ApiClient) -> ApiResult<Vec<GroupDto>> {
-    client.get("/api/group").await
+    let r: GroupItems = client.get("/api/group").await?;
+    Ok(r.items)
+}
+
+// ---------------------------------------------------------------------------
+// Models (别名/模型目录)
+// ---------------------------------------------------------------------------
+
+/// 模型目录 DTO — 对齐 admin-catalog /api/models 的 `ModelView` 投影。
+/// `name` 是别名/对外模型名,网络拓扑的中间层(Mapping)即用它;
+/// 价格/倍率字段该端点暂未提供,拓扑层一律取 0/1.0。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelView {
+    pub name: String,
+}
+
+/// 后端列表端点统一包装 `{"items":[...]}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct ModelItems {
+    #[serde(default)]
+    items: Vec<ModelView>,
+}
+
+/// 真实调用: GET /api/models?size=100 (模型/别名列表,按 name 升序)
+pub async fn list_models_api(client: &ApiClient) -> ApiResult<Vec<ModelView>> {
+    let r: ModelItems = client.get("/api/models?size=100").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: POST /api/group (创建)
@@ -192,4 +226,47 @@ pub async fn disable_redemption_api(client: &ApiClient, key: &str) -> ApiResult<
         .delete::<serde_json::Value>(&format!("/api/redemption/{key}"))
         .await?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 系统选项 (admin-ops options)
+// ---------------------------------------------------------------------------
+
+/// 单条运行时选项,对齐后端 `OptionsService::list` 返回的 OptionView。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionView {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub updated_at: String,
+}
+
+/// 后端列表端点统一包装 `{"items":[...]}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct OptionItems {
+    #[serde(default)]
+    items: Vec<OptionView>,
+}
+
+/// 真实调用: GET /api/option (全部选项,库值回退注册表默认值)
+pub async fn list_options_api(client: &ApiClient) -> ApiResult<Vec<OptionView>> {
+    let r: OptionItems = client.get("/api/option").await?;
+    Ok(r.items)
+}
+
+/// 真实调用: PUT /api/option {key, value} — 写入(未知 key 或非法值域被拒)。
+/// 返回更新后的值(后端 echo)。
+pub async fn update_option_api(
+    client: &ApiClient,
+    key: &str,
+    value: &serde_json::Value,
+) -> ApiResult<serde_json::Value> {
+    #[derive(Default, serde::Deserialize)]
+    struct UpdateResp {
+        #[serde(default)]
+        value: serde_json::Value,
+    }
+    let req = serde_json::json!({ "key": key, "value": value });
+    let r: UpdateResp = client.put("/api/option", &req).await?;
+    Ok(r.value)
 }

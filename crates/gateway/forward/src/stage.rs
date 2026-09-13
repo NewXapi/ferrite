@@ -25,6 +25,7 @@ use gateway_protocol_bridge::adaptor::AdaptorRegistry;
 use gateway_proxy::ProxyManager;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 /// 转发 stage — 依赖 egress（测试 mock / 无代理）或 [`ProxyManager`] 租约 Client。
 pub struct ForwardStage {
@@ -45,6 +46,13 @@ pub struct ForwardStage {
     /// 结算产物落地通道（apps 实现，写 usage_logs / 扣内存 quota）；
     /// 与 `price_table` 成对注入。
     sink: Option<Arc<dyn metering::SettleSink>>,
+    /// 全局并发闸（v2 挂载）：`with_concurrency` 注入的整体并发上限信号量。
+    /// `None` = 不限（行为与未挂载时完全一致）。这是**全局**上限，不分渠道——
+    /// 分渠道挂载属后续项，需 per-channel `DashMap<channel_key, Semaphore>`；
+    /// gate 的 stage 版本（`gate::concurrency`）即 per-channel 设计，但它为
+    /// pipeline 挂载而写，`with_retry` 模式下 `ctx.route` 永不写回，pipeline
+    /// 层拿不到选路结果，故并发闸只能挂在 ForwardStage 内部 attempt 路径。
+    concurrency: Option<Arc<Semaphore>>,
 }
 
 /// meow `ProxyAdapter` → [`StreamDialer`] 适配。
@@ -114,6 +122,18 @@ impl tokio::io::AsyncWrite for MeowConn {
     }
 }
 
+/// 单次尝试失败的内部载体：[`NormalizedError`] + P1-C 降级标记。
+///
+/// 不进 contract：degraded 是 forward 租约与节点账本的局部事实，只有
+/// `handle_with_retry` 的尝试闭包消费，客户端侧不可见。
+#[derive(Debug)]
+struct AttemptError {
+    error: NormalizedError,
+    /// 本次尝试的租约回落直连（`Lease.node_id == 0`），且该渠道绑定的代理节点
+    /// 全部处于节点冷却——直连是降级兜底而非预期路径（P1-C 双账本桥接）。
+    degraded: bool,
+}
+
 impl ForwardStage {
     /// 使用注入的 [`crate::egress::Egress`]（测试或无代理池）。
     pub fn new(egress: Arc<dyn crate::egress::Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
@@ -126,6 +146,7 @@ impl ForwardStage {
             retry_policy: RetryPolicy::default(),
             price_table: None,
             sink: None,
+            concurrency: None,
         }
     }
 
@@ -141,6 +162,22 @@ impl ForwardStage {
     pub fn with_retry(mut self, dispatch: Arc<dyn Dispatch>, policy: RetryPolicy) -> Self {
         self.dispatch = Some(dispatch);
         self.retry_policy = policy;
+        self
+    }
+
+    /// 挂全局并发闸：整个 ForwardStage 共享一个 `Semaphore(max)`（MVP：整体
+    /// 并发上限，不分渠道；分渠道挂载属后续项，需 per-channel DashMap）。
+    ///
+    /// acquire 点在每条转发路径的 `forward_task` 之前，`try` 语义不排队：
+    /// 重试模式在 attempt 闭包内（permit 随 attempt 结束释放），单次模式在
+    /// `handle` 内（permit 持到 `commit_forwarded` 完成）。槽满立即以
+    /// `rate_limited`(429, retryable, degraded) 拒绝本 attempt——健康表不记
+    /// 真实失败、不落 `submit_failed` 观测事件。
+    ///
+    /// 注意：`max = 0` 的信号量会拒绝一切请求；装配侧约定 0 = 不限并发，
+    /// 即不调用本 builder（`concurrency` 保持 `None`）。
+    pub fn with_concurrency(mut self, max: usize) -> Self {
+        self.concurrency = Some(Arc::new(Semaphore::new(max)));
         self
     }
 
@@ -181,7 +218,7 @@ impl ForwardStage {
         }
     }
 
-    async fn forward_task(&self, task: &ForwardTask) -> Result<crate::Forwarded, NormalizedError> {
+    async fn forward_task(&self, task: &ForwardTask) -> Result<crate::Forwarded, AttemptError> {
         let Some(proxies) = self.proxies.as_ref() else {
             return crate::pipeline::forward_once(
                 task,
@@ -189,7 +226,11 @@ impl ForwardStage {
                 &self.adaptors,
                 &self.timeouts,
             )
-            .await;
+            .await
+            .map_err(|error| AttemptError {
+                error,
+                degraded: false,
+            });
         };
 
         let lease = proxies.acquire(&task.candidate.unit.channel_key);
@@ -207,11 +248,16 @@ impl ForwardStage {
             crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await
         } else {
             proxies.feedback(node_id, 502, false);
-            return Err(contract::error::NormalizedError {
-                code: contract::error::code::UPSTREAM_ERROR,
-                status: 502,
-                retryable: true,
-                message: "lease produced neither reqwest client nor adapter".into(),
+            return Err(AttemptError {
+                error: contract::error::NormalizedError {
+                    code: contract::error::code::UPSTREAM_ERROR,
+                    status: 502,
+                    retryable: true,
+                    channel_scoped: false,
+                    message: "lease produced neither reqwest client nor adapter".into(),
+                },
+                // 选出了节点却产不出出口 = 节点账本无责（配置/装配错误），不记降级。
+                degraded: false,
             });
         };
         match &result {
@@ -221,7 +267,29 @@ impl ForwardStage {
                 proxies.feedback(node_id, err.status, transport_err);
             }
         }
-        result
+        // P1-C：仅失败路径读两份账本快照（成功直连不记——见规格 P1-C 的挂点）。
+        result.map_err(|error| AttemptError {
+            degraded: node_id == 0 && self.channel_proxy_degraded(&task.candidate.unit.channel_key),
+            error,
+        })
+    }
+
+    /// 渠道绑定的代理节点是否全部处于节点冷却（且非「本就无绑定」）。
+    ///
+    /// 全冷却 ⇒ [`ProxyManager::acquire`] 必然回落直连（`node_id == 0`），
+    /// 此时该渠道的「直连成功/失败」都在掩盖代理账本已判死的事实；调用方
+    /// 据此把失败记到 route unit 健康上（见 `handle_with_retry` 尝试闭包）。
+    fn channel_proxy_degraded(&self, channel_key: &str) -> bool {
+        let Some(proxies) = self.proxies.as_ref() else {
+            return false;
+        };
+        let cooled: std::collections::HashSet<i64> = proxies
+            .node_cooldowns()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let bound = proxies.channel_node_ids(channel_key);
+        !bound.is_empty() && bound.iter().all(|id| cooled.contains(id))
     }
 }
 
@@ -267,10 +335,25 @@ impl Stage for ForwardStage {
         };
         let task = Self::build_task(&candidate, ctx.request.path.clone(), body, stream);
 
-        let forwarded = self
-            .forward_task(&task)
-            .await
-            .map_err(normalized_to_stage_error)?;
+        // 并发闸（v2 挂载）：forward_task 之前 try_acquire，permit 随本函数
+        // 作用域存活——成功路径持到 commit_forwarded 完成（覆盖响应体读取/
+        // 结算窗口），失败提前 return 时立即 drop。槽满：不 submit_failed
+        // （并发拒绝不是上游错误，无 status_code 可报），直接按 429 语义短路。
+        let _permit = match try_acquire_concurrency(&self.concurrency) {
+            Ok(permit) => permit,
+            Err(e) => return Err(normalized_to_stage_error(e)),
+        };
+
+        let forwarded = match self.forward_task(&task).await {
+            Ok(f) => f,
+            Err(a) => {
+                // 上游已应答/传输失败且有候选：先落一条零成本观测事件再短路。
+                // （P1-C：AttemptError 载体带 degraded 标记，单次模式不进重试
+                // 闭包，只消费其内层 NormalizedError。）
+                self.submit_failed(ctx, &candidate, &a.error, stream);
+                return Err(normalized_to_stage_error(a.error));
+            }
+        };
 
         self.commit_forwarded(ctx, forwarded, &task.candidate, task.stream, &task.body)
             .await
@@ -311,6 +394,9 @@ impl ForwardStage {
         // 获胜尝试的 Forwarded 与最近一次失败, 短临界区 std Mutex (不跨 await 持锁)。
         let result_slot: Arc<Mutex<Option<crate::Forwarded>>> = Arc::new(Mutex::new(None));
         let error_slot: Arc<Mutex<Option<NormalizedError>>> = Arc::new(Mutex::new(None));
+        // 失败观测需要 ctx 的归因字段：循环期间共享借用 ctx（循环 future
+        // 结束即释放），之后 commit_forwarded 才能继续用 &mut ctx。
+        let ctx_ref: &RequestCtx = ctx;
 
         let dsel = Arc::clone(&dispatch);
         let drep = Arc::clone(&dispatch);
@@ -329,17 +415,49 @@ impl ForwardStage {
                 let slot = Arc::clone(&slot);
                 let eslot = Arc::clone(&eslot);
                 async move {
+                    // 并发闸（v2 挂载）：forward_task 之前 try_acquire；permit
+                    // 留在闭包局部变量，本 attempt 结束（Ok 或 Err）即随作用域
+                    // drop 释放槽位——**不进 ctx.drop_guards**（attempt 结束就
+                    // 该释放，不是整个响应结束）。槽满：并发拒绝不是上游错误，
+                    // 不 submit_failed；健康按 degraded 语义走 Retryable 臂
+                    // （同 P1-C：驱动换候选、健康表不记真实上游失败）；错误
+                    // 暂存 eslot，预算耗尽时透传 429。
+                    let _permit = match try_acquire_concurrency(&self.concurrency) {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            let retryable = e.retryable;
+                            *lock(&eslot) = Some(e);
+                            if retryable {
+                                return AttemptOutcome::Retryable(FailureClass::Retryable);
+                            }
+                            // 理论不可达臂（信号量 Closed）：按 Fatal 终止。
+                            return AttemptOutcome::Fatal(FailureClass::Fatal);
+                        }
+                    };
                     match self.forward_task(&task).await {
                         Ok(forwarded) => {
                             let status = forwarded.status;
                             *lock(&slot) = Some(forwarded);
                             AttemptOutcome::Done { status }
                         }
-                        Err(e) => {
+                        Err(AttemptError { error: e, degraded }) => {
                             let retryable = e.retryable;
+                            let switchable = e.channel_scoped;
+                            // 每次失败尝试各落一条零成本观测事件：预算耗尽 /
+                            // Fatal 终止时，排障侧也要有"请求发生过"的痕迹。
+                            // 必须在 e 移入 error_slot 之前调用。
+                            self.submit_failed(ctx_ref, &task.candidate, &e, stream);
                             *lock(&eslot) = Some(e);
-                            if retryable {
+                            if retryable || degraded {
+                                // P1-C 双账本桥: degraded = 渠道绑定的代理节点全在
+                                // 节点冷却、本次实为直连兜底失败。健康按 Retryable 记到
+                                // route unit(驱动失败 streak,连续 N 次后 unit 进冷却,
+                                // select 不再反复选中"代理全挂"的渠道),并强制换候选。
                                 AttemptOutcome::Retryable(FailureClass::Retryable)
+                            } else if switchable {
+                                // 渠道相关 4xx (P1-B 降层): 健康载荷走 Fatal ——
+                                // health::classify(Err(Fatal)) 落 Neutral, 不改分不记 streak。
+                                AttemptOutcome::FatalButSwitchable(FailureClass::Fatal)
                             } else {
                                 AttemptOutcome::Fatal(FailureClass::Fatal)
                             }
@@ -353,15 +471,32 @@ impl ForwardStage {
 
         match loop_result {
             Ok((attempt, outcome)) => {
+                // 归因回写：retry 可能换候选，ctx 还带着 DispatchStage 的初选；
+                // Pipeline::run 据此打包 RouteAttribution，不回写会把 usage 记到
+                // 失败的初选渠道上。名字回查快照，查不到降级 key-only（与
+                // DispatchStage 同款纪律）。
+                let channel_key = attempt.candidate.unit.channel_key.clone();
+                let channel_name = dispatch.channel_name(&channel_key);
+                if channel_name.is_none() {
+                    tracing::debug!(
+                        channel_key = %channel_key,
+                        "channel name not found in dispatch snapshot; retry attribution carries key only"
+                    );
+                }
+                ctx.route = Some(attempt.candidate.clone());
+                ctx.selected_channel_key = Some(channel_key);
+                ctx.selected_channel_name = channel_name;
+
                 let forwarded = lock(&result_slot).take();
                 match (forwarded, outcome) {
                     (Some(f), _) => {
                         self.commit_forwarded(ctx, f, &attempt.candidate, stream, &commit_body)
                             .await
                     }
-                    // 理论上只有 Fatal 会走到这里: 循环以客户端错误终止, 没有
-                    // 成功响应可提交, 用暂存的 NormalizedError 透传上游状态码。
-                    (None, AttemptOutcome::Fatal(_)) => {
+                    // Fatal (请求相关问题) 与 FatalButSwitchable (最后一个候选,
+                    // 已无可换渠道——retry 循环把它作为终态带回) 都透传暂存的
+                    // NormalizedError 上游状态码, 没有成功响应可提交。
+                    (None, AttemptOutcome::Fatal(_) | AttemptOutcome::FatalButSwitchable(_)) => {
                         let e = lock(&error_slot).take().ok_or_else(|| {
                             StageError::Internal(anyhow::anyhow!("forward produced no result"))
                         })?;
@@ -559,6 +694,8 @@ impl ForwardStage {
         };
         let event = metering::settle_event(
             counts,
+            // 本函数只在非流式提交点调用（流式经 stream::finish 结算）。
+            false,
             &group,
             group_ratio,
             &hold,
@@ -571,6 +708,58 @@ impl ForwardStage {
             0,
             status,
             None,
+        );
+        sink.submit(event);
+    }
+
+    /// 失败结算 — 上游已应答（4xx/5xx）或传输失败但**有候选**时，产出一条
+    /// **零成本观测事件**交给 sink，让"这次请求发生过、被哪个候选拒了"在
+    /// usage_logs 留下痕迹。
+    ///
+    /// 纯观测不参与扣费：counts 全 0 → cost 必为 0；status/error 取自
+    /// [`NormalizedError`]；`is_stream` 记录请求意图（与成功路径同源）。
+    /// 归因键（user/token/group）与 `settle_non_stream` 一致，均来自
+    /// `ctx.token`。pt/sink 未挂载或归因缺失时静默跳过——绝不产出无主账单，
+    /// 也不改变调用方照常返回 [`StageError`] 的控制流。
+    fn submit_failed(
+        &self,
+        ctx: &RequestCtx,
+        candidate: &SelectedRoute,
+        err: &NormalizedError,
+        stream: bool,
+    ) {
+        let (Some(pt), Some(sink)) = (self.price_table.as_ref(), self.sink.as_ref()) else {
+            return;
+        };
+        let (user_key, token_key, group) = match ctx.token.as_ref() {
+            Some(t) => (t.id.clone(), t.id.clone(), t.group.clone()),
+            // 归因缺失（理论上 gates 已保证 Some）：跳过观测，同成功路径语义。
+            None => return,
+        };
+        // 库层不做预扣：amount=0 表"事后结算非预扣"（同 settle_non_stream）。
+        let hold = metering::ledger::Hold {
+            id: 0,
+            amount: 0,
+            user_key,
+            token_key,
+        };
+        // counts 全 0 → price_of 结果为 0，观测事件不产生账单。
+        let event = metering::settle_event(
+            metering::scanner::TokenCounts::default(),
+            stream,
+            &group,
+            // group ratio 由 apps 注入，库层默认 1.0（同 settle_non_stream）。
+            1.0,
+            &hold,
+            pt.as_ref(),
+            &candidate.unit.channel_key,
+            &candidate.unit.meta.key,
+            &candidate.unit.public_model,
+            &candidate.upstream_model,
+            0,
+            0,
+            err.status,
+            Some(&err.message),
         );
         sink.submit(event);
     }
@@ -598,6 +787,39 @@ fn normalized_to_stage_error(e: NormalizedError) -> StageError {
         code: e.status,
         body_preview: e.message.into_bytes(),
     })
+}
+
+/// 并发闸 acquire（v2 挂载点）：`concurrency` 未挂载 → `Ok(None)`，行为不变。
+///
+/// 槽满（`NoPermits`）→ `Err(NormalizedError)`：`rate_limited`/429/`retryable`
+/// /非渠道相关——调用方据此走 degraded 语义（同 P1-C：健康表不记真实失败），
+/// 且**不调 `submit_failed`**（并发拒绝不是上游错误，没有 status_code 可报）。
+/// permit 是 owned（持有 `Arc<Semaphore>`），可安全跨 await 持有、随作用域
+/// drop 归还槽位。
+fn try_acquire_concurrency(
+    concurrency: &Option<Arc<Semaphore>>,
+) -> Result<Option<OwnedSemaphorePermit>, NormalizedError> {
+    let Some(sem) = concurrency.as_ref() else {
+        return Ok(None);
+    };
+    match sem.clone().try_acquire_owned() {
+        Ok(permit) => Ok(Some(permit)),
+        Err(TryAcquireError::NoPermits) => Err(NormalizedError {
+            code: contract::error::code::RATE_LIMITED,
+            status: 429,
+            retryable: true,
+            channel_scoped: false,
+            message: "concurrency limit reached".into(),
+        }),
+        // 本模块从不 close() 信号量，Closed 理论不可达；兜底按内部错误终止。
+        Err(e) => Err(NormalizedError {
+            code: contract::error::code::INTERNAL,
+            status: 500,
+            retryable: false,
+            channel_scoped: false,
+            message: format!("semaphore closed: {e}"),
+        }),
+    }
 }
 
 /// 请求体是否要求流式响应 —— 读顶层 `stream` 布尔字段。

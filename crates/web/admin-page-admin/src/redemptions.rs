@@ -26,15 +26,31 @@ enum RedModalState {
 }
 
 /// 页面内兑换码视图模型 (金额已换算为 ¥)。
-#[derive(Clone, PartialEq)]
-struct RedRowFE {
-    key: String,
-    code_preview: String,
-    quota_cny: f64,
-    status: u8, // 1 未用 / 2 停用 / 3 已核销
-    redeemed_by: Option<String>,
-    redeemed_at: String,
-    created: String,
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedRowFE {
+    pub key: String,
+    pub code_preview: String,
+    pub quota_cny: f64,
+    pub status: u8, // 1 未用 / 2 停用 / 3 已核销
+    pub redeemed_by: Option<String>,
+    pub redeemed_at: String,
+    pub created: String,
+}
+
+/// 把后端 `RedemptionView` 映射为页面视图模型。
+///
+/// 金额换算:后端 `quota` 是内部计费单位(500000 = ¥1),
+/// 页面统一以 ¥ 展示。`redeemed_at` 缺省为空串(卡片据此隐藏核销时间行)。
+pub fn map_redemption_view(v: RedemptionView) -> RedRowFE {
+    RedRowFE {
+        key: v.key,
+        code_preview: v.code_preview,
+        quota_cny: v.quota as f64 / 500_000.0,
+        status: v.status as u8,
+        redeemed_by: v.redeemed_by,
+        redeemed_at: v.redeemed_at.unwrap_or_default(),
+        created: v.created_at,
+    }
 }
 
 #[component]
@@ -62,20 +78,7 @@ pub fn RedemptionsPage() -> Element {
             let client = ApiClient::shared().clone();
             match list_redemptions_api(&client, None, Some(1), Some(100)).await {
                 Ok((items, _total)) => {
-                    reds.set(
-                        items
-                            .into_iter()
-                            .map(|v: RedemptionView| RedRowFE {
-                                key: v.key,
-                                code_preview: v.code_preview,
-                                quota_cny: v.quota as f64 / 500_000.0,
-                                status: v.status as u8,
-                                redeemed_by: v.redeemed_by,
-                                redeemed_at: v.redeemed_at.unwrap_or_default(),
-                                created: v.created_at,
-                            })
-                            .collect(),
-                    );
+                    reds.set(items.into_iter().map(map_redemption_view).collect());
                     loading.set(false);
                 }
                 Err(e) => {
@@ -192,7 +195,12 @@ pub fn RedemptionsPage() -> Element {
     rsx! {
             div { class: "flex flex-col gap-6",
                 // 1. 概览统计区
-                section { id: "reds-sec-stats", "data-testid": "redemptions-panel", class: "scroll-mt-8 space-y-3",
+                section {
+                    id: "reds-sec-stats",
+                    "data-testid": "redemptions-stats",
+                    role: "region",
+                    "aria-label": "兑换码概览",
+                    class: "scroll-mt-8 space-y-3",
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                         for (value, label) in stats {
@@ -204,6 +212,9 @@ pub fn RedemptionsPage() -> Element {
                 // 2. 筛选与操作区
                 section {
                     id: "reds-sec-filter",
+                    "data-testid": "redemptions-filter",
+                    role: "search",
+                    "aria-label": "兑换码筛选与操作",
                     class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
                     div { class: "flex items-center justify-between gap-3",
                         div { class: "flex items-center gap-2",
@@ -211,6 +222,7 @@ pub fn RedemptionsPage() -> Element {
                             span { class: "text-xs text-zinc-500", "按状态分级筛选;停用后不可重新启用" }
                         }
                         button {
+                            "data-testid": "generate-redemptions",
                             class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                             onclick: move |_| {
                                 f_count.set("1".to_string());
@@ -222,6 +234,7 @@ pub fn RedemptionsPage() -> Element {
                     }
 
                     input {
+                        "data-testid": "redemptions-search",
                         class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                         r#type: "text",
                         placeholder: "搜索兑换码预览 (如 fx-086c****) ...",
@@ -238,7 +251,12 @@ pub fn RedemptionsPage() -> Element {
                 }
 
                 // 3. 卡片网格区
-                section { id: "reds-sec-list", class: "scroll-mt-8 space-y-4",
+                section {
+                    id: "reds-sec-list",
+                    "data-testid": "redemptions-list",
+                    role: "list",
+                    "aria-label": "兑换码列表",
+                    class: "scroll-mt-8 space-y-4",
                     div { class: "flex items-center justify-between",
                         h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
                         if loading() {
@@ -251,10 +269,15 @@ pub fn RedemptionsPage() -> Element {
                     }
 
                     if let Some(e) = err() {
-                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                        div {
+                            "data-testid": "redemptions-error",
+                            role: "alert",
+                            "aria-label": "兑换码加载失败",
+                            class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
                             p { class: "text-sm text-red-300", "加载兑换码失败" }
                             p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                             button {
+                                "data-testid": "retry-redemptions",
                                 class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                                 onclick: move |_| reload.set(reload() + 1),
                                 "重试"
@@ -265,7 +288,9 @@ pub fn RedemptionsPage() -> Element {
                             p { class: "text-zinc-400", "正在加载兑换码…" }
                         }
                     } else if filtered_rows.is_empty() {
-                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                        div {
+                            "data-testid": "redemptions-empty",
+                            class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
                             p { class: "text-zinc-400", "没有匹配的兑换码" }
                         }
                     } else {
@@ -347,7 +372,11 @@ fn RedemptionCard(
     let disable_key = item.key.clone();
 
     rsx! {
-        div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+        div {
+            "data-testid": "redemption-card",
+            role: "listitem",
+            "aria-label": "兑换码 {item.key}",
+            class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
             div { class: "space-y-3",
                 // 头部
                 div { class: "flex items-start gap-3",
@@ -401,8 +430,10 @@ fn RedemptionCard(
             }
 
             // 底部操作区: [复制预览] [停用] — 后端仅支持停用(无硬删/无重新启用)
-            div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
+            div {
+                class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
+                    "data-testid": "copy-redemption",
                     class: if is_just_copied {
                         "flex-1 rounded-lg border border-emerald-500/80 bg-emerald-950/60 py-1.5 text-xs text-emerald-300 transition-colors font-medium"
                     } else {
@@ -413,18 +444,21 @@ fn RedemptionCard(
                 }
                 if item.status == 1 {
                     button {
+                        "data-testid": "disable-redemption",
                         class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
                         onclick: move |_| on_disable.call(disable_key.clone()),
                         "停用"
                     }
                 } else if item.status == 2 {
                     button {
+                        "data-testid": "disabled-redemption",
                         class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "已停用"
                     }
                 } else {
                     button {
+                        "data-testid": "redeemed-redemption",
                         class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "已核销"
@@ -461,23 +495,25 @@ fn RedemptionGenerateModal(
                 div { class: "grid grid-cols-2 gap-3",
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "生成数量 (1-100)" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                            r#type: "number",
-                            min: "1",
-                            max: "100",
-                            value: "{count}",
-                            oninput: move |e| count.set(e.value()),
-                        }
+                    input {
+                        "data-testid": "redemption-count",
+                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        r#type: "number",
+                        min: "1",
+                        max: "100",
+                        value: "{count}",
+                        oninput: move |e| count.set(e.value()),
+                    }
                     }
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "单张面额 (元)" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                            placeholder: "50",
-                            value: "{quota}",
-                            oninput: move |e| quota.set(e.value()),
-                        }
+                    input {
+                        "data-testid": "redemption-quota",
+                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        placeholder: "50",
+                        value: "{quota}",
+                        oninput: move |e| quota.set(e.value()),
+                    }
                     }
                 }
 
@@ -526,11 +562,13 @@ fn RedemptionGenerateModal(
 
             div { class: "mt-6 flex gap-3",
                 button {
+                    "data-testid": "cancel-generate",
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
                     "取消"
                 }
                 button {
+                    "data-testid": "submit-generate",
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_submit.call(()),
                     "立即批量生成"
@@ -550,12 +588,15 @@ fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> Elemen
                 p { class: "text-xs text-amber-400",
                     "以下明文卡密关闭本窗口后无法再次查看,请立即复制保存。"
                 }
-                pre { class: "max-h-72 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 select-all",
+                pre {
+                    "data-testid": "generated-codes",
+                    class: "max-h-72 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 select-all",
                     "{joined}"
                 }
             }
             div { class: "mt-6 flex",
                 button {
+                    "data-testid": "close-codes",
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_close.call(()),
                     "我已保存,关闭"

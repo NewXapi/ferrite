@@ -1,20 +1,23 @@
-//! client — shared HTTP client for the New API backend.
+//! client — 共享的 New API 后端 HTTP 客户端。
 //!
-//! Same-origin requests with automatic `Authorization: Bearer` injection and
-//! one-shot 401 token refresh, mirroring the React axios client contract.
+//! 同源请求,自动注入 `Authorization: Bearer`,401 静默刷新一次,
+//! 镜像 React axios client 契约。
 
 mod manage_auth_token;
 mod setup_client;
+mod wire;
 
 #[doc(hidden)]
 pub use manage_auth_token::AuthState;
 pub use manage_auth_token::{Refresher, TokenFuture};
 pub use setup_client::ApiClient;
+pub use wire::fetch_gateway_health;
+pub use wire::{GatewayHealthItem, GatewayHealthView, HealthItemState};
 
 use serde::Deserialize;
 
-/// Backend response envelope: every `/api` endpoint answers
-/// `{"success": bool, "message": str, "data": ...}`.
+/// 后端响应信封:所有 `/api` 端点回答
+/// `{"success": bool, "message": str, "data": ...}`。
 #[derive(Debug, Deserialize)]
 pub struct Envelope<T> {
     pub success: bool,
@@ -24,18 +27,18 @@ pub struct Envelope<T> {
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
-/// Every way a request can fail.
+/// 请求失败的所有可能方式。
 #[derive(Debug)]
 pub enum ApiError {
-    /// Network-level failure (fetch rejected, CORS, offline).
+    /// 网络层失败 (fetch 被拒、CORS、断网)。
     Transport(String),
-    /// Non-2xx HTTP status (except recovered 401s).
+    /// 非 2xx HTTP 状态码 (已恢复的 401 除外)。
     Http { status: u16, message: String },
-    /// Envelope arrived but `success == false`.
+    /// 信封到达但 `success == false`。
     Business(String),
-    /// 401 that refresh could not recover (or no refresher registered).
+    /// 401 且刷新无法恢复 (或未注册 refresher)。
     Unauthorized,
-    /// Body could not be decoded into the expected type.
+    /// 响应体无法解码为期望类型。
     Decode(String),
 }
 

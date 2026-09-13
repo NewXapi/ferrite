@@ -10,19 +10,27 @@
 //!    非空 → Some），并确认其进入 `TokenEntry::new` 后被 gate 链路可见；
 //! 3. **组级白名单**：`build_group_snapshot` 把 `api_groups` 行拼成 `GroupSnapshot`，
 //!    `GroupModelGate::check` 对 vip+命中通配放行 / vip+非白名单拒绝 /
-//!    未配置组 fail-open。
+//!    未配置组 fail-open / 禁用组（status≠1）整组拒绝。
 //!
 //! PG 读取链路本身由 e2e（`tests-e2e` 的 reload 用例）覆盖，这里只锁纯函数语义，
 //! 与 `reload_counts.rs` 的离线测试策略一致。
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use api::snapshot::{build_group_snapshot, expand_models_json, parse_token_allowed_models};
+use api::billing::NameDirectory;
+use api::snapshot::{
+    ReloadInput, Snapshots, apply_snapshot_reload, build_group_snapshot, expand_models_json,
+    parse_token_allowed_models,
+};
 use arc_swap::ArcSwap;
 use bytes::Bytes;
+use dispatch::{Dispatcher, MemoryHealthTable, Snapshot as DispatchSnapshot};
 use gateway_gate::chain::GateCtx;
-use gateway_gate::snapshot::TokenEntry;
+use gateway_gate::snapshot::{
+    GroupSnapshot, QuotaSnapshot, TokenEntry, TokenSnapshot, UserSnapshot,
+};
 use gateway_gate::{Gate, GroupModelGate, Rejection};
 use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta};
 use serde_json::json;
@@ -197,12 +205,14 @@ fn gate_ctx(group: Option<&str>, model: Option<&str>) -> GateCtx {
     }
 }
 
-/// api_groups 行 → GroupSnapshot：白名单与倍率都落进快照。
+/// api_groups 行 → GroupSnapshot：白名单、倍率与启用位（status==1）都落进快照。
 #[test]
 fn build_group_snapshot_maps_whitelist_and_ratio() {
     let snapshot = build_group_snapshot(&[
-        ("vip".into(), 0.8, json!(["gpt-4*"])),
-        ("free".into(), 1.5, json!([])),
+        ("vip".into(), 0.8, json!(["gpt-4*"]), true),
+        ("free".into(), 1.5, json!([]), true),
+        // 禁用组（status≠1 → enabled=false）：行进快照，供 gate 整组拒绝
+        ("blocked".into(), 1.0, json!([]), false),
     ]);
 
     assert_eq!(
@@ -223,13 +233,22 @@ fn build_group_snapshot_maps_whitelist_and_ratio() {
     // 未配置组 → None / 中性 1.0（gate 据此 fail-open）
     assert_eq!(snapshot.allowed_models("ghost"), None);
     assert!((snapshot.multiplier("ghost") - 1.0).abs() < f64::EPSILON);
+    // 启用位映射：status==1 的组不禁用；status≠1 的组进快照且 is_disabled 命中；
+    // 未知组 is_disabled 恒 false（fail-open 语义不变）。
+    assert!(!snapshot.is_disabled("vip"));
+    assert!(snapshot.is_disabled("blocked"));
+    assert!(!snapshot.is_disabled("ghost"));
 }
 
 /// GroupModelGate 接线语义：vip+命中通配 → 放行；vip+白名单外 →
-/// ModelNotAllowedForGroup；未配置组 → fail-open 放行。
+/// ModelNotAllowedForGroup；未配置组 → fail-open 放行；禁用组 → GroupDisabled。
 #[tokio::test]
 async fn group_model_gate_enforces_snapshot() {
-    let snapshot = build_group_snapshot(&[("vip".into(), 0.8, json!(["gpt-4*"]))]);
+    let snapshot = build_group_snapshot(&[
+        ("vip".into(), 0.8, json!(["gpt-4*"]), true),
+        // 空白名单 + 禁用：拒绝必须来自禁用位而非白名单匹配
+        ("blocked".into(), 1.0, json!([]), false),
+    ]);
     let gate = GroupModelGate::new(Arc::new(ArcSwap::from_pointee(snapshot)));
 
     // vip + gpt-4o：`gpt-4*` 通配命中 → 放行
@@ -254,4 +273,79 @@ async fn group_model_gate_enforces_snapshot() {
     // 空组名同样 fail-open
     let mut c = gate_ctx(Some(""), Some("claude-3.5"));
     gate.check(&mut c).await.expect("空组名应放行");
+
+    // 禁用组 → 整组拒绝（GroupDisabled），与请求模型无关
+    let mut c = gate_ctx(Some("blocked"), Some("gpt-4o"));
+    let err = gate.check(&mut c).await.expect_err("禁用组应整组拒绝");
+    assert!(
+        matches!(&err, Rejection::GroupDisabled { group } if group == "blocked"),
+        "拒绝变体应为 GroupDisabled(blocked)，实得 {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 4. channel_names 热更：apply_snapshot_reload store 新名单，持句柄方现读生效
+// ---------------------------------------------------------------------------
+
+/// 渠道改名免重启：`Snapshots.channel_names` 是共享句柄，reload 向同一实例
+/// store 新映射后，持句柄的结算 sink（`PgSettleSink` submit 的读取姿势：
+/// `channel_names.load().get(key)`）立刻看到新名。
+///
+/// 回归背景：旧实现把 `HashMap<String, String>` 在 boot 时从 dispatch 快照
+/// 投影成定稿值传给 sink，渠道改名必须重启进程。本测试钉住新语义：
+/// 两次 `apply_snapshot_reload`（boot 名单 → 改名名单）之间不重建任何组件，
+/// 句柄现读即新名。纯离线（ReloadInput 手构），不碰 PG。
+#[test]
+fn apply_snapshot_reload_hot_swaps_channel_names() {
+    // boot 等价物：全部空快照句柄 + 空 Dispatcher（同 reload_counts.rs 的
+    // empty_target，这里只需要 channel_names 维度的最小装配）
+    let target = Snapshots {
+        dispatch: DispatchSnapshot::default(),
+        token_snapshot: Arc::new(ArcSwap::from_pointee(TokenSnapshot::default())),
+        user_snapshot: Arc::new(ArcSwap::from_pointee(UserSnapshot::default())),
+        quota_snapshot: Arc::new(ArcSwap::from_pointee(QuotaSnapshot::default())),
+        group_snapshot: Arc::new(ArcSwap::from_pointee(GroupSnapshot::default())),
+        price_rows: Arc::new(ArcSwap::from_pointee(Vec::new())),
+        name_directory: Arc::new(ArcSwap::from_pointee(NameDirectory::default())),
+        channel_names: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+    };
+    let dispatcher = Dispatcher::new(None, Arc::new(MemoryHealthTable::new()));
+
+    // 渠道 key 必须是 UUID 字符串形态——真实链路里名单键来自
+    // `uuid::Uuid::to_string()`（load_channels_and_units），结算事件
+    // `UsageEventRecord.channel_key` 同形，两侧都不做解析。
+    let channel_key = uuid::Uuid::new_v4().to_string();
+
+    let reload_input = |name: &str| ReloadInput {
+        channels: vec![],
+        route_units: vec![],
+        token_records: vec![],
+        token_snapshot: TokenSnapshot::default(),
+        user_records: vec![],
+        user_snapshot: UserSnapshot::default(),
+        group_snapshot: GroupSnapshot::default(),
+        group_count: 0,
+        price_rows: vec![],
+        name_directory: NameDirectory::default(),
+        channel_names: HashMap::from([(channel_key.clone(), name.to_string())]),
+    };
+
+    // sink 视角：装配时 clone 的同一句柄（PgSettleSink::new 收的就是它）
+    let sink_view = target.channel_names.clone();
+
+    // boot 名单落位
+    apply_snapshot_reload(&target, &dispatcher, reload_input("ch-old-name"));
+    assert_eq!(
+        sink_view.load().get(&channel_key).map(String::as_str),
+        Some("ch-old-name"),
+        "boot 名单应经句柄可查"
+    );
+
+    // 改名后走 reload：不重启、不重建 sink，句柄现读即新名
+    apply_snapshot_reload(&target, &dispatcher, reload_input("ch-renamed"));
+    assert_eq!(
+        sink_view.load().get(&channel_key).map(String::as_str),
+        Some("ch-renamed"),
+        "渠道改名必须经 reload 免重启生效（sink 持句柄现读）"
+    );
 }
