@@ -15,7 +15,7 @@ pub use aliases::AliasesPage;
 pub use channels::ChannelsPage;
 pub use gateway::GatewayHealthPanel;
 pub use groups::GroupsPage;
-pub use network::NetworkPanel;
+pub use network::{GraphView, NetworkPanel, NodeKey, channel_models, edges_of};
 pub use pages::{SubscriptionsPage, parse_url_key};
 pub use redemptions::RedemptionsPage;
 pub use system::SystemPage;

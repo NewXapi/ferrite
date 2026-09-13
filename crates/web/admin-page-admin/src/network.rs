@@ -2,9 +2,17 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use dioxus::prelude::*;
 
+use client::ApiClient;
+use contract::api::admin::{ChannelDto, GroupDto};
+use ui::ScrollSpyNav;
+
+use crate::api::{ModelView, list_channels_api, list_groups_api, list_models_api};
 use crate::entities::EntitiesPanel;
 use crate::state::EntityStore;
-use ui::ScrollSpyNav;
+
+/// 拓扑数据源三态:loading → 成功后带 Some(view),error → 保留错误信息,
+/// empty 由调用方对 `GraphView` 的层数判断(三组全空)。
+pub type NetworkResult = Result<GraphView, String>;
 
 /// 从 store 派生的图快照：拓扑图、抽屉、设置页共用同一事实源，
 /// 任一侧改名/增删，其他侧立即反映。
@@ -19,10 +27,14 @@ pub struct GraphView {
     pub channels: Vec<String>,
     /// 调度模型：(渠道序号, 模型名)，展开自每个渠道的 dispatch
     pub dispatch: Vec<(usize, String)>,
+    /// 每个渠道服务的分组名(与后端 ChannelDto.groups 对齐;
+    /// 空 Vec = 该渠道不服务任何分组,不产生 分组→别名 边)
+    pub channel_groups: Vec<Vec<String>>,
 }
 
 impl GraphView {
     fn from_store(store: &EntityStore) -> Self {
+        let channels = store.channels.read();
         let groups: Vec<String> = store.groups.read().iter().map(|g| g.name.clone()).collect();
         let aliases: Vec<String> = store
             .aliases
@@ -30,26 +42,116 @@ impl GraphView {
             .iter()
             .map(|a| a.alias.clone())
             .collect();
-        let channels: Vec<String> = store
-            .channels
-            .read()
-            .iter()
-            .map(|c| c.name.clone())
-            .collect();
-        let dispatch: Vec<(usize, String)> = store
-            .channels
-            .read()
+        let channel_names: Vec<String> = channels.iter().map(|c| c.name.clone()).collect();
+        let dispatch: Vec<(usize, String)> = channels
             .iter()
             .enumerate()
             .flat_map(|(ci, c)| c.dispatch.iter().map(move |m| (ci, m.clone())))
             .collect();
+        // 本地 store 的 ChannelRow.group 是逗号分隔字符串,按后端
+        // ChannelDto.groups 的 Vec 形状展开
+        let channel_groups: Vec<Vec<String>> = channels
+            .iter()
+            .map(|c| c.group.split(',').map(|s| s.trim().to_string()).collect())
+            .collect();
         Self {
             groups,
             aliases,
-            channels,
+            channels: channel_names,
             dispatch,
+            channel_groups,
         }
     }
+
+    /// 真实数据版:从分组/模型/渠道三组 DTO 直接组快照(不经过本地 store)。
+    /// 渠道的 `models` JSONB 形状与快照展开规则一致:
+    /// - 字符串数组 `["gpt-4o"]` → dispatch 模型名即该字符串;
+    /// - 对象数组 `[{"alias":"gpt-4o","upstream":"gpt-4o-2024-05"}]` → 用 `alias`(对外名)。
+    ///
+    /// 解析失败/形状不符的条目静默跳过,不阻塞整图。
+    pub fn from_dtos(groups: &[GroupDto], models: &[ModelView], channels: &[ChannelDto]) -> Self {
+        Self {
+            groups: groups.iter().map(|g| g.name.clone()).collect(),
+            aliases: models.iter().map(|m| m.name.clone()).collect(),
+            channels: channels.iter().map(|c| c.name.clone()).collect(),
+            dispatch: channels
+                .iter()
+                .enumerate()
+                .flat_map(|(ci, c)| channel_models(&c.models).into_iter().map(move |m| (ci, m)))
+                .collect(),
+            channel_groups: channels.iter().map(|c| c.groups.clone()).collect(),
+        }
+    }
+}
+
+/// 展开渠道的 `models` JSONB → 对外模型名列表(对象取 alias,字符串直用)。
+/// 纯函数,DTO 形状断言见 tests/network_wire.rs。
+pub fn channel_models(models: &serde_json::Value) -> Vec<String> {
+    models
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| {
+                    m.as_str().map(|s| s.to_string()).or_else(|| {
+                        m.get("alias")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 三组端点并发拉取真实拓扑数据。全 401/网络错时统一返回 Err(错误摘要),
+/// 由调用方渲染错误态。纯异步,无 UI 依赖。
+pub async fn load_network_data(client: &ApiClient) -> NetworkResult {
+    let groups = list_groups_api(client)
+        .await
+        .map_err(|e| format!("拉取分组失败: {e}"))?;
+    let channels = list_channels_api(client)
+        .await
+        .map_err(|e| format!("拉取渠道失败: {e}"))?;
+    let models = list_models_api(client)
+        .await
+        .map_err(|e| format!("拉取模型失败: {e}"))?;
+    Ok(GraphView::from_dtos(&groups, &models, &channels))
+}
+
+/// 边推导:与后端快照展开规则(admin snapshot `expand_models_json`)一致 ——
+/// 每个渠道按 `channel_groups` 笛卡尔积挂到它服务的每个分组,每个对外模型
+/// (dispatch)挂到同名别名节点(没有同名别名时该模型悬空,不产生边);
+/// 渠道 groups 为空则不服务任何分组,只留 别名→调度模型 边。
+/// 纯函数,形状断言见 tests/network_wire.rs。
+pub fn edges_of(view: &GraphView) -> Vec<(NodeKey, NodeKey)> {
+    let alias_of = |name: &str| -> Option<usize> { view.aliases.iter().position(|a| a == name) };
+    let mut out: Vec<(NodeKey, NodeKey)> = Vec::new();
+    for ci in 0..view.channels.len() {
+        let models: Vec<String> = view
+            .dispatch
+            .iter()
+            .filter_map(|(c, m)| if *c == ci { Some(m.clone()) } else { None })
+            .collect();
+        for m in &models {
+            let Some(ai) = alias_of(m) else {
+                continue;
+            };
+            // 渠道服务的每个分组都拿到它的对外模型(笛卡尔积)
+            for g in view
+                .channel_groups
+                .get(ci)
+                .map(|v| v.as_slice())
+                .unwrap_or_default()
+            {
+                if let Some(gi) = view.groups.iter().position(|x| x == g) {
+                    out.push((NodeKey::Group(gi), NodeKey::Mapping(ai)));
+                }
+            }
+            // 别名 → 调度模型(按渠道序号挂到该渠道的 dispatch 节点)
+            out.push((NodeKey::Mapping(ai), NodeKey::Dispatch(ci)));
+        }
+    }
+    out
 }
 
 /// 调色板：store 里条目可增删，颜色按序号取模循环，不存进 store。
@@ -139,27 +241,6 @@ impl NodeKey {
     }
 }
 
-// Seed wires: mapping↔group and model↔mapping, mirroring the mock channels.
-const SEED_EDGES: &[(NodeKey, NodeKey)] = &[
-    (NodeKey::Group(0), NodeKey::Mapping(0)), // default — gpt-4o
-    (NodeKey::Group(0), NodeKey::Mapping(3)), // default — gemini-2.5-pro
-    (NodeKey::Group(1), NodeKey::Mapping(2)), // claude — claude-sonnet-4
-    (NodeKey::Group(2), NodeKey::Mapping(1)), // gpt-5 — gpt-5
-    (NodeKey::Group(3), NodeKey::Mapping(0)), // vip — gpt-4o
-    (NodeKey::Group(3), NodeKey::Mapping(1)), // vip — gpt-5
-    (NodeKey::Group(3), NodeKey::Mapping(2)), // vip — claude-sonnet-4
-    (NodeKey::Group(3), NodeKey::Mapping(3)), // vip — gemini-2.5-pro
-    (NodeKey::Mapping(0), NodeKey::Dispatch(0)),
-    (NodeKey::Mapping(0), NodeKey::Dispatch(2)),
-    (NodeKey::Mapping(0), NodeKey::Dispatch(3)),
-    (NodeKey::Mapping(1), NodeKey::Dispatch(1)),
-    (NodeKey::Mapping(1), NodeKey::Dispatch(4)),
-    (NodeKey::Mapping(2), NodeKey::Dispatch(5)),
-    (NodeKey::Mapping(2), NodeKey::Dispatch(6)),
-    (NodeKey::Mapping(2), NodeKey::Dispatch(7)),
-    (NodeKey::Mapping(3), NodeKey::Dispatch(8)),
-];
-
 #[doc(hidden)]
 pub const MARGIN: f64 = 110.0;
 const COL_GAP: f64 = 130.0;
@@ -207,10 +288,11 @@ pub fn initial_positions(view: &GraphView) -> HashMap<NodeKey, (f64, f64)> {
     }
     // rows 1..2: barycenter of upper-layer neighbors (raw edges, folded onto
     // channel cards when the channel is collapsed), fallback to even spread
+    let edges = edges_of(view);
     for l in 1..3 {
         let mut placed: Vec<(NodeKey, f64)> = Vec::new();
         for &k in &layers[l] {
-            let xs: Vec<f64> = SEED_EDGES
+            let xs: Vec<f64> = edges
                 .iter()
                 .filter_map(|&(u, lo)| {
                     if lo == k {
@@ -640,12 +722,14 @@ const EXAMPLE_CHANNEL: &str = "OpenAI 官方";
 #[component]
 pub fn NetworkPanel() -> Element {
     let store = use_context::<EntityStore>();
-    let mut edges = use_signal(|| {
-        SEED_EDGES
-            .iter()
-            .copied()
-            .collect::<HashSet<(NodeKey, NodeKey)>>()
-    });
+    // 真实数据三态:挂载时拉 /api/group + /api/channel + /api/models。
+    // 期间画布渲染 skeleton;失败保留错误摘要渲染柔和红边错误条;
+    // 成功且三组全空 → 占位「暂无调度数据」。
+    let mut net_state = use_signal(|| None::<NetworkResult>);
+    // 节点初始边:先用 store 快照算(启动布局用),拉取成功后切真实数据。
+    let view_seed = GraphView::from_store(&store);
+    let seed_edges = edges_of(&view_seed);
+    let mut edges = use_signal(|| seed_edges.iter().copied().collect::<HashSet<_>>());
     let mut drag = use_signal(|| None::<Drag>);
     let mut hover_wire = use_signal(|| None::<(NodeKey, NodeKey)>);
     let mut hover = use_signal(|| None::<NodeKey>);
@@ -726,6 +810,25 @@ pub fn NetworkPanel() -> Element {
             // nodes as one logical layer would undo the stacked layout.
             *positions.write() = p;
         }
+        // 真实数据拉取:成功后把初始边换成数据驱动的边,并唤醒物理 tick。
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            let res = load_network_data(&client).await;
+            match res {
+                Ok(view) => {
+                    let new_edges = edges_of(&view).into_iter().collect::<HashSet<_>>();
+                    let p = initial_positions(&view);
+                    edges.set(new_edges);
+                    *positions.write() = p;
+                    *net_state.write() = Some(Ok(view));
+                    let next = *wake.peek() + 1;
+                    *wake.write() = next;
+                }
+                Err(msg) => {
+                    *net_state.write() = Some(Err(msg));
+                }
+            }
+        });
         spawn(async move {
             let mut velocities = HashMap::<NodeKey, (f64, f64)>::new();
             let mut seen_wake = *wake.peek();
@@ -792,7 +895,11 @@ pub fn NetworkPanel() -> Element {
                     dodge_active = false;
                     continue;
                 }
-                let view_now = GraphView::from_store(&store);
+                // 事实源优先级:真实数据拉取成功 → 用拉取快照;否则回退本地 store。
+                let view_now = match &*net_state.peek() {
+                    Some(Ok(v)) => v.clone(),
+                    _ => GraphView::from_store(&store),
+                };
                 let layers = visible_layers_of(&view_now);
                 let pairs = display_edge_pairs(&edges.peek());
                 let pairs_xy: Vec<(NodeKey, NodeKey)> =
@@ -864,8 +971,11 @@ pub fn NetworkPanel() -> Element {
     // ---- Visible nodes per layer (collapse-aware) ----
     let cone_now = focus_space();
     // 焦点态：无关节点直接不渲染（不是变暗），物理仍照全图跑，
-    // 退出时才需要它们的位置。
-    let view_now = GraphView::from_store(&store);
+    // 退出时才需要它们的位置。事实源优先级同 ticker:真实数据 > store。
+    let view_now = match net_state() {
+        Some(Ok(ref v)) => v.clone(),
+        _ => GraphView::from_store(&store),
+    };
     let mut layers = visible_layers_of(&view_now);
     if let Some(cone) = &cone_now {
         for row in layers.iter_mut() {
@@ -883,7 +993,6 @@ pub fn NetworkPanel() -> Element {
             .unwrap_or((VIEW_W / 2.0, ROW_Y[key.layer() as usize]))
     };
 
-    let view_now = GraphView::from_store(&store);
     let display_edges: Vec<(NodeKey, NodeKey, (NodeKey, NodeKey))> = {
         let all = display_edge_pairs(&edges());
         match &cone_now {
@@ -993,7 +1102,10 @@ pub fn NetworkPanel() -> Element {
                 let wb = ((b.0 - px) / z, (b.1 - py) / z);
                 let (wx0, wx1) = (wa.0.min(wb.0), wa.0.max(wb.0));
                 let (wy0, wy1) = (wa.1.min(wb.1), wa.1.max(wb.1));
-                let view_m = GraphView::from_store(&store);
+                let view_m = match &*net_state.peek() {
+                    Some(Ok(v)) => v.clone(),
+                    _ => GraphView::from_store(&store),
+                };
                 let layers = visible_layers_of(&view_m);
                 let hit: HashSet<NodeKey> = layers
                     .iter()
@@ -1099,9 +1211,62 @@ pub fn NetworkPanel() -> Element {
                     style: "right: {hint_right}px",
                     "{hint}"
                 }
-                div { class: "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
-                svg {
-                    view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
+                // 三态浮层:加载中 skeleton / 错误柔和红边 / 全空占位。
+                // 提取为局部 let 避免在 rsx! 里嵌 match(各臂类型不一致)。
+                {
+                    let net_overlay = match &net_state() {
+                        None => rsx! {
+                            div { class: "absolute inset-0 z-20 flex items-center justify-center",
+                                "data-testid": "net-loading",
+                                "role": "status",
+                                "aria-label": "正在加载调度数据",
+                                div { class: "flex flex-col items-center gap-2",
+                                    div {
+                                        class: "h-4 w-40 animate-pulse rounded-full bg-zinc-800",
+                                    }
+                                    div {
+                                        class: "h-4 w-24 animate-pulse rounded-full bg-zinc-800/70",
+                                    }
+                                    p { class: "text-[11px] text-zinc-500", "正在加载调度数据…" }
+                                }
+                            }
+                        },
+                        Some(Err(msg)) => {
+                            let m = msg.clone();
+                            rsx! {
+                                div {
+                                    class: "absolute inset-x-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2",
+                                    "data-testid": "net-error",
+                                    "role": "alert",
+                                    p { class: "text-[11px] text-red-300/80", "{m}" }
+                                }
+                            }
+                        }
+                        Some(Ok(view)) if view.groups.is_empty()
+                            && view.aliases.is_empty()
+                            && view.channels.is_empty() =>
+                        {
+                            rsx! {
+                                div { class: "absolute inset-0 z-20 flex items-center justify-center",
+                                    "data-testid": "net-empty",
+                                    "role": "status",
+                                    "aria-label": "暂无调度数据",
+                                    p { class: "text-xs text-zinc-600", "暂无调度数据" }
+                                }
+                            }
+                        }
+                        _ => {
+                            rsx! { Fragment {} }
+                        }
+                    };
+                    {net_overlay}
+                }
+                div {
+                    class: match &net_state() {
+                        Some(Err(_)) => "h-full overflow-hidden rounded-xl border border-red-900/50 bg-zinc-950",
+                        _ => "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
+                    },
+                svg {                    view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
                     width: "100%",
                     height: "100%",
                     preserve_aspect_ratio: "xMidYMid meet",
@@ -1659,6 +1824,15 @@ pub fn NetworkPanel() -> Element {
                             on_tab: move |t: DrawerTab| drawer_tab.set(t),
                         }
                         div { class: "relative min-h-0 flex-1",
+                            // 数据供给:拉取失败时实体卡片读到的 store 是旧/空快照,
+                            // 顶部提示避免对着错误数据编辑。
+                            if matches!(&net_state(), Some(Err(_))) {
+                                div {
+                                    class: "px-4 py-2",
+                                    "data-testid": "ent-blocked",
+                                    p { class: "text-[11px] text-red-300/80", "调度数据拉取失败,设置页显示的是本地缓存" }
+                                }
+                            }
                             // 导航钉在抽屉上，不随内容滚动
                             ScrollSpyNav {
                                 container: "ent-scroll",
@@ -2098,17 +2272,15 @@ fn GroupInspect(index: usize) -> Element {
     // 与「设置」tab 共享 store：这里改名，那边立即可见。
     let mut store = use_context::<EntityStore>();
     let row = store.groups.read().get(index).cloned();
-    let aliases: Vec<String> = store
-        .aliases
-        .read()
+    // 别名列表 = 当前数据驱动边里 Group(index) 的出边映射
+    let view = GraphView::from_store(&store);
+    let edges = edges_of(&view);
+    let aliases: Vec<String> = edges
         .iter()
-        .enumerate()
-        .filter(|(i, _)| {
-            SEED_EDGES
-                .iter()
-                .any(|(u, l)| *u == NodeKey::Group(index) && *l == NodeKey::Mapping(*i))
+        .filter_map(|&(u, l)| {
+            (u == NodeKey::Group(index) && matches!(l, NodeKey::Mapping(_))).then_some(l)
         })
-        .map(|(_, a)| a.alias.clone())
+        .map(|l| view_title(&view, l))
         .collect();
     let Some(r) = row else {
         return rsx! { p { class: "text-xs text-zinc-600", "该分组不存在" } };
@@ -2135,23 +2307,23 @@ fn GroupInspect(index: usize) -> Element {
 fn AliasInspect(index: usize) -> Element {
     let mut store = use_context::<EntityStore>();
     let row = store.aliases.read().get(index).cloned();
-    let groups: Vec<String> = store
-        .groups
-        .read()
+    let view = GraphView::from_store(&store);
+    let edges = edges_of(&view);
+    // 所属分组 = Group(i)→Mapping(index) 的边
+    let groups: Vec<String> = edges
         .iter()
-        .enumerate()
-        .filter(|(i, _)| {
-            SEED_EDGES
-                .iter()
-                .any(|(u, l)| *u == NodeKey::Group(*i) && *l == NodeKey::Mapping(index))
+        .filter_map(|&(u, l)| {
+            (l == NodeKey::Mapping(index) && matches!(u, NodeKey::Group(_))).then_some(u)
         })
-        .map(|(_, g)| g.name.clone())
+        .map(|u| view_title(&view, u))
         .collect();
-    let dispatch: Vec<String> = store
-        .channels
-        .read()
+    // 路由到的调度模型 = Mapping(index)→Dispatch(ci) 的边
+    let dispatch: Vec<String> = edges
         .iter()
-        .flat_map(|c| c.dispatch.clone())
+        .filter_map(|&(u, l)| {
+            (u == NodeKey::Mapping(index) && matches!(l, NodeKey::Dispatch(_))).then_some(l)
+        })
+        .map(|l| view_title(&view, l))
         .collect();
     let Some(r) = row else {
         return rsx! { p { class: "text-xs text-zinc-600", "该别名不存在" } };
@@ -2179,23 +2351,20 @@ fn AliasInspect(index: usize) -> Element {
 fn DispatchInspect(index: usize) -> Element {
     let mut store = use_context::<EntityStore>();
     let view = GraphView::from_store(&store);
+    let edges = edges_of(&view);
     let (ci, model_name) = view
         .dispatch
         .get(index)
         .cloned()
         .unwrap_or((0, String::new()));
     let row = store.channels.read().get(ci).cloned();
-    let aliases: Vec<String> = store
-        .aliases
-        .read()
+    // 被哪些别名路由 = Mapping(i)→Dispatch(index) 的边
+    let aliases: Vec<String> = edges
         .iter()
-        .enumerate()
-        .filter(|(i, _)| {
-            SEED_EDGES
-                .iter()
-                .any(|(u, l)| *u == NodeKey::Mapping(*i) && *l == NodeKey::Dispatch(index))
+        .filter_map(|&(u, l)| {
+            (l == NodeKey::Dispatch(index) && matches!(u, NodeKey::Mapping(_))).then_some(u)
         })
-        .map(|(_, a)| a.alias.clone())
+        .map(|u| view_title(&view, u))
         .collect();
 
     rsx! {
