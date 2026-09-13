@@ -77,14 +77,19 @@ pub fn ctx_with_body(body: &'static [u8], route: Candidate) -> RequestCtx {
         }),
         requested_model: Some("m".to_string()),
         route: Some(route),
-        selected_channel_key: None,
-        selected_channel_name: None,
+        drop_guards: Vec::new(),
         upstream: None,
         streamed: StreamedAccum::default(),
-        // #165 给 RequestCtx 加了 drop_guards（RAII 并发闸），此字面量补齐
-        drop_guards: Vec::new(),
+        selected_channel_key: None,
+        selected_channel_name: None,
         error: None,
     }
+}
+
+/// 构造仅含 route 的请求 ctx（无 body 解析需求；retry-attribution 用例用）。
+#[allow(dead_code)] // 仅 retry_wiring 使用
+pub fn ctx_with_route(route: Candidate) -> RequestCtx {
+    ctx_with_body(NON_STREAM_BODY, route)
 }
 
 // ---------- egress mock ----------
