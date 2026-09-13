@@ -78,11 +78,28 @@ async fn assemble(
     };
     let auth_svc = Arc::new(auth::AuthService::new(pool.clone(), secret.into_bytes())?);
 
+    // 从 PG 加载快照 → Dispatcher（#170 渠道健康端点需要与数据面共享同一批 Arc，
+    // 故在 admin router 之前构造；gate / 计费 / reload 与 ForwardStage 复用同一批）。
+    let snapshots = Arc::new(snapshot::load_snapshots(&pool).await?);
+    let health = Arc::new(MemoryHealthTable::new());
+    let dispatcher = Arc::new(Dispatcher::new(
+        Some(Arc::new(snapshots.dispatch.clone())),
+        health.clone(),
+    ));
+
     // admin-api 聚合路由（内部已含 auth，不再单独挂载 auth::router）；
     // auth_svc 同时留给 reload 路由的 bearer 鉴权（见 ReloadState）。
-    let admin = admin_router::router(pool.clone(), auth_svc.clone(), proxies.clone())
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
+    // dispatcher/health 与数据面 ForwardStage / reload 路由共享同一批 Arc，
+    // 查询面 /api/gateway/health 才能读到运行期实时冷却/慢启动状态。
+    let admin = admin_router::router(
+        pool.clone(),
+        auth_svc.clone(),
+        proxies.clone(),
+        dispatcher.clone(),
+        health.clone(),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
 
     // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
     // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
@@ -93,16 +110,6 @@ async fn assemble(
 
     // 酒馆域路由
     let tavern = tavern::router(&tavern::TavernConfig::default())?;
-
-    // 从 PG 加载快照 → Dispatcher + gates → Pipeline
-    // Arc 包装是 reload 的前提：ReloadState 与 gate / 计费组件必须共享同一批
-    // Shared* 实例，reload 时 store 新值双方才自动可见。
-    let snapshots = Arc::new(snapshot::load_snapshots(&pool).await?);
-    let health = Arc::new(MemoryHealthTable::new());
-    let dispatcher = Arc::new(Dispatcher::new(
-        Some(Arc::new(snapshots.dispatch.clone())),
-        health.clone(),
-    ));
 
     // 快照已是 Shared*（Arc<ArcSwap<T>>），直接喂给 gate
     let gates = GateChain::new()

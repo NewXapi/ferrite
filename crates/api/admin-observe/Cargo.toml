@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 contract = { path = "../../contract" }
+dispatch = { path = "../../gateway/dispatch" }
 auth     = { path = "../auth" }
 reqwest  = { workspace = true }
 axum     = { workspace = true }
