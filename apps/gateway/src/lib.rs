@@ -43,14 +43,21 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let snapshot: Arc<Snapshot> = load_snapshot(cfg);
     let dispatcher = Arc::new(Dispatcher::new(Some(snapshot), health.clone()));
     let gates = build_gates(cfg);
+    let forward_stage = ForwardStage::new(egress, adaptors.clone())
+        .with_proxies(proxies)
+        .with_retry(dispatcher.clone(), build_retry_policy(cfg));
+    // 全局并发闸（v2 挂载）：cfg.channels 的 max_concurrency 求和作为整体
+    // 并发上限；和为 0（含全部渠道未配置）= 不挂闸。这是**全局**上限而非
+    // per-channel——分渠道挂载属后续项（需 per-channel DashMap，见
+    // ForwardStage::concurrency 字段文档）。
+    let forward_stage = match global_concurrency_limit(cfg) {
+        Some(max) => forward_stage.with_concurrency(max),
+        None => forward_stage,
+    };
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
-            .push(
-                ForwardStage::new(egress, adaptors.clone())
-                    .with_proxies(proxies)
-                    .with_retry(dispatcher.clone(), build_retry_policy(cfg)),
-            )
+            .push(forward_stage)
             .push(ProtocolBridgeStage::new(adaptors)),
     );
     gateway_pipeline::router::build_router(pipeline)
@@ -71,6 +78,21 @@ pub fn build_retry_policy(cfg: &GatewayConfig) -> dispatch::RetryPolicy {
         max_attempts: cfg.retry.max_attempts,
         ..dispatch::RetryPolicy::default()
     }
+}
+
+/// 全局并发上限：所有渠道 `max_concurrency` 之和（`None` = 不挂闸）。
+///
+/// 这是**全局**上限而非 per-channel：求和保证全局容量不低于任一渠道的
+/// 单独配置（改取 max 会在多渠道时人为收紧到单渠道额度）。和为 0（渠道
+/// 全部未配置或显式为 0）→ `None`，装配侧不调用 `with_concurrency`——
+/// 零容量信号量会拒绝一切请求，等价于"渠道配置 0 = 不限"的语义。
+pub fn global_concurrency_limit(cfg: &GatewayConfig) -> Option<usize> {
+    let total: usize = cfg
+        .channels
+        .iter()
+        .map(|c| c.max_concurrency as usize)
+        .sum();
+    (total > 0).then_some(total)
 }
 
 /// 组装准入闸链。
