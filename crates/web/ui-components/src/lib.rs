@@ -26,6 +26,7 @@ pub mod session;
 pub use auth_modal::{AuthModal, UserBadge};
 pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
+pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use dialog::Dialog;
 pub use feedback::{Avatar, EmptyState, IconButton, Loading};
 pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};

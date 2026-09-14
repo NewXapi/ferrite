@@ -430,11 +430,15 @@ fn GroupCard(
                         div { class: "flex items-center justify-between gap-2",
                             h3 { class: "truncate text-sm font-medium text-zinc-100", "{group.name}" }
                             if is_default {
-                                span { class: "shrink-0 rounded bg-blue-950/60 border border-blue-800/60 px-1.5 py-0.5 text-[10px] font-mono text-blue-300",
+                                // 与 ID 徽章同款收缩约束;短标签实际不受影响,统一防凸出
+                                span { class: "min-w-0 max-w-[140px] truncate rounded bg-blue-950/60 border border-blue-800/60 px-1.5 py-0.5 text-[10px] font-mono text-blue-300",
+                                    title: "默认",
                                     "默认"
                                 }
                             } else {
-                                span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+                                // UUID 全串不可断:允许收缩并截断,悬停 title 看全值,避免凸出卡片
+                                span { class: "min-w-0 max-w-[140px] truncate rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+                                    title: "{group.key}",
                                     "#{group.key}"
                                 }
                             }

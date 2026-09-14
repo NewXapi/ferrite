@@ -390,7 +390,9 @@ fn ChannelCard(
                     div { class: "min-w-0 flex-1",
                         div { class: "flex items-center justify-between gap-2",
                             h3 { class: "truncate text-sm font-medium text-zinc-100", "{channel.name}" }
-                            span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+                            // UUID 全串不可断:允许收缩并截断,悬停 title 看全值,避免凸出卡片
+                            span { class: "min-w-0 max-w-[140px] truncate rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+                                title: "{channel.key}",
                                 "#{channel.key}"
                             }
                         }
