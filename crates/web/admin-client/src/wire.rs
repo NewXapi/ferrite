@@ -147,9 +147,9 @@ pub struct WalletResponse {
 
 /// 拉人统计视图 — 对齐后端 `admin-billing/affiliate.rs::AffiliateOverview` (camelCase)。
 ///
-/// 后端侧 `invite_count` / `total_reward` 当前是占位统计 (真实统计待
-/// affiliate_links 表, affiliate.rs `TODO(affiliate-stats)`);前端接的是真端点,
-/// 0 即真实值,前端不造数。
+/// 后端真实统计落地于 PR #188 (0009 affiliate_links 表);本分支基线上
+/// `invite_count` / `total_reward` 是占位 0,合并 #188 后即为真实值。
+/// 前端接的是真端点,0 即后端返回值,前端不造数。
 #[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AffiliateOverviewView {
