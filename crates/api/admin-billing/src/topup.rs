@@ -4,7 +4,8 @@
 //! - `billing_topups(key PK, user_key, currency, amount, state, provider, created_at, settled_at)`
 //!
 //! 状态机：pending(未支付) → paid|failed|refunded。
-//! open_topup：建 pending 行，返回订单 id。
+//! open_topup：建 pending 行，返回订单 id（`POST /api/user/topup/order`——
+//! `/api/user/topup` 归兑换码核销，见 router 文档）。
 //! settle_topup：手工 settle → 调 WalletService.credit_topup 入金 + 更新状态。
 
 use axum::{
@@ -148,6 +149,12 @@ pub struct TopupAppState {
     pub auth: std::sync::Arc<auth::AuthService>,
 }
 
+/// 充值路由。
+///
+/// **路径不能是 `/api/user/topup`**：那条被 [`crate::redeem`] 的兑换码核销
+/// 占用（new-api 惯例，前端已按该形状接线）。axum 0.8 的 `Router::merge`
+/// 对同 path 同 method 重叠会直接 panic，admin-router 聚合时两条一起 merge
+/// 会让 `apps/api` 启动即崩——开单因此挂在 `/api/user/topup/order`。
 pub fn router(state: TopupAppState) -> Router {
     Router::new()
         // 订单式开单走 /orders：/api/user/topup 已被 redeem 兑换码核销占用
