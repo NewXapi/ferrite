@@ -140,6 +140,7 @@ fn ctx_with_route(route: Candidate) -> gateway_pipeline::RequestCtx {
         request: meta,
         token: Some(TokenInfo {
             id: "tok-1".into(),
+            user_key: "user-test".to_string(),
             group: "g".to_string(),
             enabled: true,
             allowed_models: None,

@@ -723,6 +723,7 @@ fn dispatch_stage_fills_selected_channel_fields() {
     });
     ctx.token = Some(gateway_pipeline::TokenInfo {
         id: "tok-1".into(),
+            user_key: "user-test".to_string(),
         group: "g".into(),
         enabled: true,
         allowed_models: None,

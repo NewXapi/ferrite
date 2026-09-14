@@ -12,6 +12,7 @@ auth          = { path = "../crates/api/auth" }
 api           = { path = "../apps/api" }
 observe       = { path = "../crates/api/admin-observe" }
 db-bootstrap  = { path = "../crates/api/db-bootstrap" }
+billing     = { path = "../crates/api/admin-billing" }
 ui-components = { path = "../crates/web/ui-components" }
 
 # Gateway crates
@@ -64,3 +65,7 @@ path = "usage_log_type.rs"
 [[test]]
 name = "web_wire_contract"
 path = "web_wire_contract.rs"
+
+[[test]]
+name = "billing_lifecycle"
+path = "billing_lifecycle.rs"

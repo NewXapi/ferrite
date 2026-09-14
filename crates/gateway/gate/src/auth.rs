@@ -46,6 +46,7 @@ impl Gate for AuthGate {
         ctx.user_key = Some(token_record.user_key().to_string());
         ctx.token = Some(TokenInfo {
             id: token_record.meta.key.clone(),
+            user_key: token_record.user_key().to_string(),
             user_id: 0, // 真实值由 state gate 用 user_key 查回再补
             id_hash: hash,
             group: token_record.group().unwrap_or("").to_string(),

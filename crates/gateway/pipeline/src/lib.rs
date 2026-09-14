@@ -39,6 +39,8 @@ pub use stage::{Stage, StageOutcome};
 pub struct TokenInfo {
     /// token 身份主键：`TokenRecord.meta.key`（UUID 字符串）
     pub id: String,
+    /// 所属用户 UUID 字符串（结算扣费按它查 user_balances，见 gate::TokenInfo）
+    pub user_key: String,
     pub group: String,
     pub enabled: bool,
     pub allowed_models: Option<Vec<String>>,

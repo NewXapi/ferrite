@@ -70,6 +70,7 @@ pub fn ctx_with_body(body: &'static [u8], route: Candidate) -> RequestCtx {
         },
         token: Some(TokenInfo {
             id: "tok-1".into(),
+            user_key: "user-test".to_string(),
             group: "g".to_string(),
             enabled: true,
             allowed_models: None,

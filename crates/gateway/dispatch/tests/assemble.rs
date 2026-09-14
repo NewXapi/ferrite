@@ -64,6 +64,7 @@ fn mk_ctx() -> gateway_pipeline::RequestCtx {
         request: meta,
         token: Some(gateway_pipeline::TokenInfo {
             id: "tok-1".into(),
+            user_key: "user-test".to_string(),
             group: "default".to_string(),
             enabled: true,
             allowed_models: None,
