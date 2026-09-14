@@ -8,10 +8,13 @@
 //! - settle_topup CAS 幂等：首次 pending→settling→paid 入金；二次 settle 拒绝（already settled）
 //! - settle 非 pending 订单拒绝
 //! - credit_reward 拉人奖励入账 FREE
-//! - user_overview 占位（当前返回 0，affiliate_links 表未建，TODO 挂账）
+//! - bind_inviter 幂等 / 拒绝自邀请（0009 affiliate_links）
+//! - reward_invite_referral 同一 invitee 只领一次、无绑定关系拒绝、入账与审计同事务
+//! - user_overview 真实统计（affiliate_links COUNT + affiliate_rewards SUM）
 //!
 //! 每个测试说明测什么行为、为什么是这个预期。
 
+use billing::currency::BillingErr;
 use billing::{AffiliateService, TopupService, WalletService};
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
@@ -24,23 +27,31 @@ fn db_url() -> String {
         .unwrap_or_else(|_| "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite".into())
 }
 
-async fn make_svcs() -> (TopupService, AffiliateService, WalletService, sqlx::PgPool) {
+/// 建服务与池；**PG 不可达返回 `None` 让调用方 skip**。
+///
+/// 为什么不是 `expect` + `#[ignore]`：CI 跑的是 `cargo test -p <pkg>`（见
+/// `scripts/ci-affected.sh`），**不带 `--ignored`**——`#[ignore]` 的测试在 CI
+/// 上永远不执行，等于没写。改成 skip 模式后，有 PG 的环境（CI service
+/// container / 本地 dev 库）真跑断言，无 PG 的环境静默跳过。
+/// 与 `apps/api/tests/billing_authority.rs::pg_pool` 同款约定。
+async fn make_svcs() -> Option<(TopupService, AffiliateService, WalletService, sqlx::PgPool)> {
     let _guard = INIT.lock().await;
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .acquire_timeout(Duration::from_secs(5))
         .connect(&db_url())
         .await
-        .expect("PG connect");
+        .map_err(|e| eprintln!("skipping: postgres unreachable at {}: {e}", db_url()))
+        .ok()?;
     db_bootstrap::run_migrations(&pool)
         .await
-        .expect("migrations");
-    (
+        .expect("migrations must apply once PG is reachable");
+    Some((
         TopupService::new(pool.clone()),
         AffiliateService::new(pool.clone(), WalletService::new(pool.clone())),
         WalletService::new(pool.clone()),
         pool,
-    )
+    ))
 }
 
 async fn make_user(pool: &sqlx::PgPool) -> Uuid {
@@ -58,7 +69,8 @@ async fn make_user(pool: &sqlx::PgPool) -> Uuid {
     key
 }
 
-/// 清理某用户所有 topup 订单 + 余额行。
+/// 清理某用户全部 billing/affiliate 痕迹（topup 订单、余额行、邀请关系、奖励审计）。
+/// 邀请两表按 inviter/invitee 双角色删——测试里同一用户常兼两角。
 async fn cleanup(pool: &sqlx::PgPool, user: Uuid) {
     sqlx::query("DELETE FROM billing_topups WHERE user_key = $1")
         .bind(user)
@@ -70,6 +82,27 @@ async fn cleanup(pool: &sqlx::PgPool, user: Uuid) {
         .execute(pool)
         .await
         .ok();
+    sqlx::query("DELETE FROM affiliate_links WHERE inviter_key = $1 OR invitee_key = $1")
+        .bind(user)
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM affiliate_rewards WHERE inviter_key = $1 OR invitee_key = $1")
+        .bind(user)
+        .execute(pool)
+        .await
+        .ok();
+}
+
+/// 用户 FREE 余额；无行按 0（make_user 直插 auth_users，不走注册 seed hook）。
+async fn free_balance(pool: &sqlx::PgPool, user: Uuid) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COALESCE((SELECT amount FROM user_balances WHERE user_key = $1 AND currency_code = 'FREE'), 0)",
+    )
+    .bind(user)
+    .fetch_one(pool)
+    .await
+    .expect("free balance")
 }
 
 /// 直接插一条 pending 订单（绕过 open_topup，专注 settle 的 CAS 语义）。
@@ -96,9 +129,10 @@ async fn make_pending_order(
 
 /// open_topup：启用货币建 pending 订单，返回 order id；未启用货币拒绝。
 #[tokio::test]
-#[ignore]
 async fn open_topup_validates_currency() {
-    let (topup, _aff, _wallet, pool) = make_svcs().await;
+    let Some((topup, _aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
 
     // FREE 默认 seed 启用 → 开单成功
@@ -126,9 +160,10 @@ async fn open_topup_validates_currency() {
 /// - 二次 settle 同订单 → 拒绝（already settled，不重复入金）
 /// 预期：入金只发生一次，第二次是 no-op 报错。
 #[tokio::test]
-#[ignore]
 async fn settle_topup_cas_idempotent() {
-    let (topup, _aff, _wallet, pool) = make_svcs().await;
+    let Some((topup, _aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     let order = make_pending_order(&pool, user, "FREE", 500).await;
 
@@ -165,9 +200,10 @@ async fn settle_topup_cas_idempotent() {
 
 /// settle 不存在的订单 → 拒绝。
 #[tokio::test]
-#[ignore]
 async fn settle_topup_missing_order() {
-    let (topup, _aff, _wallet, pool) = make_svcs().await;
+    let Some((topup, _aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     let missing = Uuid::new_v4().to_string();
     assert!(
@@ -179,9 +215,10 @@ async fn settle_topup_missing_order() {
 
 /// credit_reward：拉人奖励入账 FREE（kind 区分来源），两次叠加。
 #[tokio::test]
-#[ignore]
 async fn credit_reward_accumulates() {
-    let (_topup, _aff, wallet, pool) = make_svcs().await;
+    let Some((_topup, _aff, wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
 
     let v1 = wallet
@@ -209,17 +246,182 @@ async fn credit_reward_accumulates() {
     cleanup(&pool, user).await;
 }
 
-/// user_overview 占位：affiliate_links 表未建前返回 0（不是报错，是诚实占位）。
+/// bind_inviter 幂等：同一 invitee 绑两次（含换人重绑）。
+/// 预期：首次 true（新建）、二次 false（invitee_key PK + ON CONFLICT DO
+/// NOTHING——归属先到先得，重复调用/他人抢绑都不覆盖首邀人），表里仍 1 行。
 #[tokio::test]
-#[ignore]
-async fn user_overview_placeholder() {
-    let (_topup, aff, _wallet, pool) = make_svcs().await;
-    let user = make_user(&pool).await;
-    let overview = aff.user_overview(user).await.expect("overview");
-    assert_eq!(
-        overview.invite_count, 0,
-        "affiliate_links 表未建，invite_count 诚实占位 0（TODO）"
+async fn bind_inviter_idempotent() {
+    let Some((_topup, aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
+    let inviter = make_user(&pool).await;
+    let invitee = make_user(&pool).await;
+    let other = make_user(&pool).await;
+
+    assert!(
+        aff.bind_inviter(inviter, invitee).await.expect("bind1"),
+        "首次绑定应成功"
     );
-    assert_eq!(overview.total_reward, 0, "同上，total_reward 占位 0");
+    assert!(
+        !aff.bind_inviter(inviter, invitee).await.expect("bind2"),
+        "同一 invitee 二次绑定返回 false（幂等，不报错）"
+    );
+    assert!(
+        !aff.bind_inviter(other, invitee).await.expect("bind3"),
+        "换邀请人重绑同 invitee 返回 false（一人一主）"
+    );
+    let rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM affiliate_links WHERE invitee_key = $1")
+            .bind(invitee)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows, 1, "被邀人恒一行归属记录");
+    let held_by: Uuid =
+        sqlx::query_scalar("SELECT inviter_key FROM affiliate_links WHERE invitee_key = $1")
+            .bind(invitee)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(held_by, inviter, "首邀人保留，不被后来者覆盖");
+
+    for u in [inviter, invitee, other] {
+        cleanup(&pool, u).await;
+    }
+}
+
+/// bind_inviter 拒绝自邀请：inviter == invitee → Err(BadRequest)。
+/// 自邀是刷奖路径，必须在入口拦下且表里不留行（不是靠 PK 兜底成 no-op）。
+#[tokio::test]
+async fn bind_inviter_rejects_self() {
+    let Some((_topup, aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
+    let user = make_user(&pool).await;
+
+    let e = aff
+        .bind_inviter(user, user)
+        .await
+        .expect_err("自邀请必须报错而非静默 no-op");
+    assert!(
+        matches!(e, BillingErr::BadRequest(_)),
+        "期望 BadRequest，实际 {e:?}"
+    );
+    let rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM affiliate_links WHERE invitee_key = $1")
+            .bind(user)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows, 0, "自邀请不写归属行");
+
     cleanup(&pool, user).await;
+}
+
+/// reward_invite_referral 幂等 + 事务原子性：同一 invitee 领两次。
+/// 预期：首次返回入账额 r1(>0)，二次返回 0；affiliate_rewards 仍 1 行且
+/// 行内 amount == 余额实际增量（审计行数 == 余额增量次数 → 入账与审计
+/// 同事务成对，不存在「加了钱没审计」或「有审计没加钱」）。
+#[tokio::test]
+async fn reward_invite_referral_once_per_invitee() {
+    let Some((_topup, aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
+    let inviter = make_user(&pool).await;
+    let invitee = make_user(&pool).await;
+    aff.bind_inviter(inviter, invitee).await.expect("bind");
+
+    let before = free_balance(&pool, inviter).await;
+    let r1 = aff
+        .reward_invite_referral(inviter, invitee)
+        .await
+        .expect("首次领奖");
+    assert!(r1 > 0, "首次领奖应入账，实际 {r1}");
+    let r2 = aff
+        .reward_invite_referral(inviter, invitee)
+        .await
+        .expect("二次领奖应幂等成功（不是错误）");
+    assert_eq!(r2, 0, "同一 invitee 只能领一次，二次返回 0");
+
+    let after = free_balance(&pool, inviter).await;
+    assert_eq!(after - before, r1, "余额只加了首次那一份");
+    let audit: Vec<(i64,)> = sqlx::query_as(
+        "SELECT amount FROM affiliate_rewards WHERE kind = 'invite' AND invitee_key = $1",
+    )
+    .bind(invitee)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audit.len(), 1, "审计行仍 1 条（与余额增量次数一致）");
+    assert_eq!(audit[0].0, r1, "审计金额 == 实际入账额（同事务，不可分家）");
+
+    for u in [inviter, invitee] {
+        cleanup(&pool, u).await;
+    }
+}
+
+/// reward_invite_referral 无绑定关系 → Err(BadRequest)。
+/// 选 Err 而非返回 0：缺关系是调用方误用（应先 bind），返回 0 会和
+/// 「已领过」的合法幂等混在一起吞掉 bug。报错路径事务回滚：
+/// 余额为 0、审计 0 行。
+#[tokio::test]
+async fn reward_without_link_rejected() {
+    let Some((_topup, aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
+    let inviter = make_user(&pool).await;
+    let stranger = make_user(&pool).await;
+
+    let e = aff
+        .reward_invite_referral(inviter, stranger)
+        .await
+        .expect_err("未绑定直接领奖应报错");
+    assert!(
+        matches!(e, BillingErr::BadRequest(_)),
+        "期望 BadRequest，实际 {e:?}"
+    );
+    assert_eq!(free_balance(&pool, inviter).await, 0, "报错路径不入账");
+    let rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM affiliate_rewards WHERE inviter_key = $1")
+            .bind(inviter)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows, 0, "报错路径不留审计行（事务整体回滚）");
+
+    for u in [inviter, stranger] {
+        cleanup(&pool, u).await;
+    }
+}
+
+/// user_overview 真实统计：绑 2 个被邀人 + 对其中 1 人领奖。
+/// 预期 invite_count=2、total_reward==首次入账额——断言统计真的查了两张
+/// 表（占位版恒 0/0 区分不出回归）。另查未获奖的被邀人 b：统计为 0/0，
+/// 断言 inviter 维度的行不污染他人总览。
+#[tokio::test]
+async fn user_overview_real_stats() {
+    let Some((_topup, aff, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
+    let inviter = make_user(&pool).await;
+    let a = make_user(&pool).await;
+    let b = make_user(&pool).await;
+    aff.bind_inviter(inviter, a).await.expect("bind a");
+    aff.bind_inviter(inviter, b).await.expect("bind b");
+    let r = aff
+        .reward_invite_referral(inviter, a)
+        .await
+        .expect("reward a");
+
+    let ov = aff.user_overview(inviter).await.expect("overview");
+    assert_eq!(ov.invite_count, 2, "绑了 2 个被邀人");
+    assert_eq!(ov.total_reward, r, "累计奖励 = 领奖一次的实际入账额");
+
+    let ov_b = aff.user_overview(b).await.expect("overview b");
+    assert_eq!(ov_b.invite_count, 0, "被邀人自己没邀人，计数为 0");
+    assert_eq!(ov_b.total_reward, 0, "inviter 维度的奖励行不计入他人总览");
+
+    for u in [inviter, a, b] {
+        cleanup(&pool, u).await;
+    }
 }

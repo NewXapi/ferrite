@@ -28,22 +28,23 @@ fn db_url() -> String {
 /// 建 pool + 跑迁移 + 建两个服务（currency/wallet 共享 pool）。
 /// 清理：测试自建 user_key/currency_code，结束时按 key 删 user_balances，
 /// 删测试 currency_defs（FREE 不动，它是 seed 的）。
-async fn make_svcs() -> (CurrencyService, WalletService, sqlx::PgPool) {
+async fn make_svcs() -> Option<(CurrencyService, WalletService, sqlx::PgPool)> {
     let _guard = INIT.lock().await;
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .acquire_timeout(Duration::from_secs(5))
         .connect(&db_url())
         .await
-        .expect("PG connect");
+        .map_err(|e| eprintln!("skipping: postgres unreachable at {}: {e}", db_url()))
+        .ok()?;
     db_bootstrap::run_migrations(&pool)
         .await
-        .expect("migrations");
-    (
+        .expect("migrations must apply once PG is reachable");
+    Some((
         CurrencyService::new(pool.clone()),
         WalletService::new(pool.clone()),
         pool,
-    )
+    ))
 }
 
 /// 建测试用户 + 清掉该用户的所有余额行（幂等前置）。
@@ -103,9 +104,10 @@ async fn make_currency(pool: &sqlx::PgPool, code: &str, rate: f64) {
 
 /// seed_for_user 幂等：调两次，该用户的余额行数不变（ON CONFLICT DO NOTHING）。
 #[tokio::test]
-#[ignore]
 async fn seed_for_user_idempotent() {
-    let (cur, _wallet, pool) = make_svcs().await;
+    let Some((cur, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     cur.seed_for_user(user).await.expect("seed 1");
     cur.seed_for_user(user).await.expect("seed 2");
@@ -129,9 +131,10 @@ async fn seed_for_user_idempotent() {
 /// available_i64 多货币折算：FREE(rate=1) 有 100 + TEST_RATE2(rate=2) 有 30
 /// → 综合可用 = 100×1 + 30×2 = 160。
 #[tokio::test]
-#[ignore]
 async fn available_i64_multi_currency() {
-    let (cur, _wallet, pool) = make_svcs().await;
+    let Some((cur, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     cur.seed_for_user(user).await.expect("seed");
     make_currency(&pool, "TEST_RATE2", 2.0).await;
@@ -164,9 +167,10 @@ async fn available_i64_multi_currency() {
 
 /// upsert_def 新增货币 + internal_rate 校验（<=0 / NaN 拒绝）。
 #[tokio::test]
-#[ignore]
 async fn upsert_def_new_and_rate_validation() {
-    let (cur, _wallet, pool) = make_svcs().await;
+    let Some((cur, _wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
 
     // 合法新增
@@ -197,9 +201,10 @@ async fn upsert_def_new_and_rate_validation() {
 
 /// deduct_by_cost 正常扣：FREE(rate=1) 余额 1000，扣 300 → 剩 700，实扣 300，fully=true。
 #[tokio::test]
-#[ignore]
 async fn deduct_by_cost_normal() {
-    let (_cur, wallet, pool) = make_svcs().await;
+    let Some((_cur, wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     sqlx::query(
         "INSERT INTO user_balances (user_key, currency_code, amount) VALUES ($1, 'FREE', 1000)
@@ -227,9 +232,10 @@ async fn deduct_by_cost_normal() {
 
 /// deduct_by_cost 不足 clamp：FREE 余额 100，扣 1000 → clamp 到 0，实扣 100，fully=false。
 #[tokio::test]
-#[ignore]
 async fn deduct_by_cost_clamp() {
-    let (_cur, wallet, pool) = make_svcs().await;
+    let Some((_cur, wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     sqlx::query(
         "INSERT INTO user_balances (user_key, currency_code, amount) VALUES ($1, 'FREE', 100)
@@ -257,9 +263,10 @@ async fn deduct_by_cost_clamp() {
 
 /// credit_redeem ON CONFLICT 叠加：两次入账 = 总和（幂等叠加，非覆盖）。
 #[tokio::test]
-#[ignore]
 async fn credit_redeem_accumulates() {
-    let (_cur, wallet, pool) = make_svcs().await;
+    let Some((_cur, wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
 
     let after1 = wallet.credit_redeem(user, 500).await.expect("credit1");
@@ -280,9 +287,10 @@ async fn credit_redeem_accumulates() {
 
 /// credit_topup 指定货币入账 + 未启用货币拒绝。
 #[tokio::test]
-#[ignore]
 async fn credit_topup_currency() {
-    let (_cur, wallet, pool) = make_svcs().await;
+    let Some((_cur, wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     make_currency(&pool, "TEST_PAID", 5.0).await;
 
@@ -311,9 +319,10 @@ async fn credit_topup_currency() {
 
 /// balance_view：各货币余额 + available_i64 一致；deduct 后 view 更新。
 #[tokio::test]
-#[ignore]
 async fn balance_view_reflects_deduct() {
-    let (cur, wallet, pool) = make_svcs().await;
+    let Some((cur, wallet, pool)) = make_svcs().await else {
+        return;
+    };
     let user = make_user(&pool).await;
     cur.seed_for_user(user).await.expect("seed");
     sqlx::query(
