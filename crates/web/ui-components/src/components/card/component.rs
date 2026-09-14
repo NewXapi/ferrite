@@ -17,7 +17,8 @@ use dioxus::prelude::*;
 /// 相比 shadcn ui/card.tsx:9 去掉 shadow-sm：dsh 卡片层次靠明度阶梯（base→layer-1/2/3）、
 /// 阴影只给浮层，PluginCard 无 box-shadow（D16）；rounded-xl 14px 保留（dsh r12，差 2px，
 /// 不调 --radius 以免波及全 radius 阶梯，见 spec §2）。
-const CARD_BASE_CLASS: &str = "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground";
+const CARD_BASE_CLASS: &str =
+    "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground";
 
 /// `hoverable=true` 时叠加的悬停 class：仅边框变亮，无阴影无上浮。
 ///

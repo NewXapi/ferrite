@@ -119,10 +119,7 @@ pub fn size_parts(size: ButtonSize) -> (&'static str, &'static str) {
         ButtonSize::Icon => ("icon", "size-9"),
         // icon-xs 键名沿用 shadcn data-size（ui/button.tsx:28）：size-6 方形 + svg 缩到
         // size-3，与我们多出的 IconXs 枚举一一对应，无需自造等价组合。
-        ButtonSize::IconXs => (
-            "icon-xs",
-            "size-6 [&_svg:not([class*='size-'])]:size-3",
-        ),
+        ButtonSize::IconXs => ("icon-xs", "size-6 [&_svg:not([class*='size-'])]:size-3"),
         ButtonSize::IconSm => ("icon-sm", "size-7"),
         ButtonSize::IconLg => ("icon-lg", "size-10"),
     }
