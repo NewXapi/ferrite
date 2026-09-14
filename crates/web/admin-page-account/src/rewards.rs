@@ -3,7 +3,7 @@
 //! - 拉人统计: GET /api/affiliate/overview (inviteCount / totalReward;
 //!   后端统计侧仍是占位值,0 即真实值,前端不造数)
 //! - 兑换码: POST /api/user/topup `{"key"}` (CAS 核销入账) → 成功后刷新钱包
-//! - 充值开单: POST /api/user/topup/order — 支付 provider 为占位、无支付页,
+//! - 充值开单: POST /api/user/topup/orders — 支付 provider 为占位、无支付页,
 //!   开单只建 pending 订单,入账需 admin 手工 settle
 //!   (`POST /api/user/topup/{key}/settle`),故成功提示为「订单已创建,
 //!   待管理员确认后入账」,不给假支付成功。
@@ -88,7 +88,7 @@ pub fn RewardsPanel() -> Element {
     let overview_loaded = use_signal(|| false);
     let overview_err = use_signal(String::new);
 
-    // ---- 充值开单 (POST /api/user/topup/order, pending 单) ----
+    // ---- 充值开单 (POST /api/user/topup/orders, pending 单) ----
     let mut order_currency = use_signal(String::new);
     let mut order_amount = use_signal(String::new);
     let mut order_busy = use_signal(|| false);

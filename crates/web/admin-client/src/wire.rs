@@ -229,5 +229,5 @@ pub async fn redeem_code(client: &ApiClient, req: &RedeemRequest) -> ApiResult<s
 /// merge 同 path 同 method 直接 panic;Main 定稿 hotfix 后开单挪到 `/order`
 /// 子路径 (2026-09-14 契约),后端合入前该端点 404,面板按错误态诚实展示。
 pub async fn open_topup(client: &ApiClient, req: &OpenTopupRequest) -> ApiResult<TopupOrder> {
-    client.post("/api/user/topup/order", req).await
+    client.post("/api/user/topup/orders", req).await
 }
