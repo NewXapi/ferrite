@@ -118,8 +118,8 @@ async fn redeem_and_topup_order_paths_coexist() {
         "命中 redeem handler：Json 提取器因缺 key 字段返回 422"
     );
 
-    // `/api/user/topup/order` = 充值开单（从 /api/user/topup 让出来的新路径）
-    let order_status = post_status(merged_billing_router(), "/api/user/topup/order").await;
+    // `/api/user/topup/orders` = 充值开单（从 /api/user/topup 让出来的新路径，#191 定为复数 /orders）
+    let order_status = post_status(merged_billing_router(), "/api/user/topup/orders").await;
     assert_ne!(
         order_status,
         StatusCode::NOT_FOUND,
@@ -140,7 +140,7 @@ async fn redeem_and_topup_order_paths_coexist() {
 
 /// admin 手工结算路径（带 `{key}` 占位）同样必须存活。
 ///
-/// 它与 `/api/user/topup/order` 共享 `/api/user/topup` 前缀，容易在"解冲突"
+/// 它与 `/api/user/topup/orders` 共享 `/api/user/topup` 前缀，容易在"解冲突"
 /// 时被顺手改坏，所以单独钉一条。
 #[tokio::test]
 async fn topup_settle_path_survives() {
