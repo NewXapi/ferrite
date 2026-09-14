@@ -7,214 +7,22 @@
 //! 3. Fatal (retryable=false) 不换渠道：单次尝试即终止，上游状态码透传。
 //!
 //! Dispatch 用手写 mock（记录 select 的 exclude 与 report 调用序列）；
-//! egress 用脚本化 mock（按候选 base_url 返回固定成功体 / 分类错误），
-//! 与 forward/tests 现有 mock 风格一致（Egress trait 注入, 不发真实网络）。
+//! egress 用脚本化 mock（按候选 base_url 返回固定成功体 / 分类错误）。
+//! mock 与请求构造器提取在 `tests/common/mod.rs` 共享（Egress trait 注入,
+//! 不发真实网络）。
+
+mod common;
 
 use bytes::Bytes;
-use contract::error::NormalizedError;
-use contract::records::{RouteUnitRecord, SyncMeta};
+use dispatch::RetryPolicy;
 use dispatch::health::FailureClass;
-use dispatch::{Candidate, Dispatch, DispatchError, RetryPolicy};
 use forward::ForwardStage;
-use forward::egress::{Egress, ForwardedResponse, Timeouts};
-use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, SelectedRoute, StreamedAccum};
-use gateway_pipeline::{Stage, StageError, StageOutcome, TokenInfo, UpstreamError};
-use std::sync::{Arc, Mutex};
+use gateway_pipeline::{Stage, StageError, StageOutcome, UpstreamError};
+use std::sync::Arc;
+
+use common::*;
 
 // ---------- 测试辅助 ----------
-
-fn candidate(key: &str) -> Candidate {
-    SelectedRoute {
-        unit: RouteUnitRecord {
-            meta: SyncMeta {
-                key: key.to_string(),
-                schema_version: 1,
-                logical_version: 1,
-                origin: "test".to_string(),
-                updated_at: chrono::Utc::now(),
-            },
-            group: "g".to_string(),
-            public_model: "m".to_string(),
-            channel_key: format!("ch-{key}"),
-            key_index: 0,
-            upstream_model: "m".to_string(),
-            priority: 10,
-            weight: 10,
-            status: 1,
-        },
-        secret: "sk-test".to_string(),
-        // base_url 含 key 标记, ScriptedEgress 据此区分候选。
-        base_url: format!("http://upstream-{key}.invalid"),
-        upstream_model: "m".to_string(),
-        provider_type: "openai".to_string(),
-        settings: serde_json::Value::Null,
-    }
-}
-
-/// 手写 mock Dispatch：按 exclude 顺序吐 c1 → c2，并把每次 select 收到的
-/// exclude 集与每次 report 原样记录，供断言接线行为。
-struct MockDispatch {
-    candidates: Vec<Candidate>,
-    selects: Mutex<Vec<Vec<String>>>,
-    reports: Mutex<Vec<(String, Result<u16, FailureClass>)>>,
-}
-
-impl MockDispatch {
-    fn new(candidates: Vec<Candidate>) -> Self {
-        Self {
-            candidates,
-            selects: Mutex::new(Vec::new()),
-            reports: Mutex::new(Vec::new()),
-        }
-    }
-    fn selects(&self) -> Vec<Vec<String>> {
-        self.selects.lock().unwrap().clone()
-    }
-    fn reports(&self) -> Vec<(String, Result<u16, FailureClass>)> {
-        self.reports.lock().unwrap().clone()
-    }
-}
-
-impl Dispatch for MockDispatch {
-    fn select(
-        &self,
-        group: &str,
-        model: &str,
-        exclude: &[String],
-    ) -> Result<Candidate, DispatchError> {
-        self.selects
-            .lock()
-            .unwrap()
-            .push(exclude.iter().map(|s| s.to_string()).collect());
-        self.candidates
-            .iter()
-            .find(|c| !exclude.contains(&c.unit.meta.key))
-            .cloned()
-            .ok_or_else(|| DispatchError::NoCandidate {
-                group: group.to_string(),
-                model: model.to_string(),
-            })
-    }
-
-    fn report(&self, unit_key: &str, outcome: Result<u16, FailureClass>) {
-        self.reports
-            .lock()
-            .unwrap()
-            .push((unit_key.to_string(), outcome));
-    }
-
-    /// 展示名回查：`name-{unit_key}`，供归因回写断言（查不到的 key 返回
-    /// None，覆盖降级路径）。
-    fn channel_name(&self, channel_key: &str) -> Option<String> {
-        self.candidates
-            .iter()
-            .find(|c| c.unit.channel_key == channel_key)
-            .map(|c| format!("name-{}", c.unit.meta.key))
-    }
-}
-
-/// 脚本化 egress mock：按 url 里的候选标记返回固定结果。
-/// `Fail` 构造的 NormalizedError 与真实 egress::classify_status 的输出同构
-/// （502 → retryable，400 → 非 retryable），forward 只见 trait 返回值。
-enum Plan {
-    Ok { body: &'static [u8] },
-    Fail { status: u16, retryable: bool },
-}
-
-struct ScriptedEgress {
-    plans: Vec<(String, Plan)>,
-    calls: Mutex<Vec<String>>,
-}
-
-impl ScriptedEgress {
-    fn new(plans: Vec<(&str, Plan)>) -> Self {
-        Self {
-            plans: plans.into_iter().map(|(k, p)| (k.to_string(), p)).collect(),
-            calls: Mutex::new(Vec::new()),
-        }
-    }
-}
-
-impl Egress for ScriptedEgress {
-    fn execute<'a>(
-        &'a self,
-        url: &'a str,
-        _headers: &'a [(String, String)],
-        _body: Bytes,
-        _timeouts: &'a Timeouts,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<ForwardedResponse, contract::error::NormalizedError>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        self.calls.lock().unwrap().push(url.to_string());
-        let (_, plan) = self
-            .plans
-            .iter()
-            .find(|(marker, _)| url.contains(marker))
-            .unwrap_or_else(|| panic!("ScriptedEgress: unexpected url {url}"));
-        match plan {
-            Plan::Ok { body } => {
-                let body = Bytes::from_static(body);
-                let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(body)]);
-                Box::pin(async move {
-                    Ok(ForwardedResponse::from_stream(
-                        200,
-                        "application/json",
-                        stream,
-                    ))
-                })
-            }
-            Plan::Fail { status, retryable } => {
-                let (status, retryable) = (*status, *retryable);
-                let err = NormalizedError {
-                    code: contract::error::code::UPSTREAM_ERROR,
-                    status,
-                    retryable,
-                    channel_scoped: matches!(status, 401 | 403 | 404) && !retryable,
-                    message: format!("upstream {status}"),
-                };
-                Box::pin(async move { Err(err) })
-            }
-        }
-    }
-}
-
-/// 非流式请求 ctx。route 预置为获胜候选 c2 以验证 with_retry 后
-/// handle **忽略** ctx.route（若读 route 会直接打 c2，不会先打 c1）。
-fn ctx_with_route(route: Candidate) -> gateway_pipeline::RequestCtx {
-    let meta = RequestMeta {
-        method: "POST".to_string(),
-        path: "/v1/chat/completions".to_string(),
-        headers: http::HeaderMap::new(),
-        body: BodySource::InMemory(Bytes::from_static(b"{\"model\":\"m\"}")),
-        client_ip: "127.0.0.1".parse().unwrap(),
-        request_id: uuid::Uuid::now_v7(),
-        inbound_protocol: ProtocolKind::OpenAI,
-    };
-    gateway_pipeline::RequestCtx {
-        request: meta,
-        token: Some(TokenInfo {
-            id: "tok-1".into(),
-            group: "g".to_string(),
-            enabled: true,
-            allowed_models: None,
-            auth_version: 1,
-        }),
-        requested_model: Some("m".to_string()),
-        route: Some(route),
-        // #140 归因字段：本测试只验证 retry 行为，渠道归因留空。
-        selected_channel_key: None,
-        selected_channel_name: None,
-        upstream: None,
-        streamed: StreamedAccum::default(),
-        error: None,
-        drop_guards: Vec::new(),
-    }
-}
 
 fn stage_with_retry(
     egress: Arc<ScriptedEgress>,
@@ -258,7 +66,7 @@ async fn retryable_failure_switches_candidate_and_reports_health() {
     let stage = stage_with_retry(egress.clone(), dispatch.clone(), 3);
 
     // route 指向 c2: 若 handle 仍读 ctx.route 就会跳过 c1。
-    let mut ctx = ctx_with_route(c2.clone());
+    let mut ctx = ctx_with_body(NON_STREAM_BODY, c2.clone());
     let outcome = stage.handle(&mut ctx).await.expect("c2 应成功");
     assert!(
         matches!(outcome, StageOutcome::Continue),
@@ -319,7 +127,7 @@ async fn all_retryable_failures_exhaust_budget_to_502() {
     ]));
     let stage = stage_with_retry(egress.clone(), dispatch.clone(), 2);
 
-    let mut ctx = ctx_with_route(c1.clone());
+    let mut ctx = ctx_with_body(NON_STREAM_BODY, c1.clone());
     let err = stage
         .handle(&mut ctx)
         .await
@@ -346,11 +154,7 @@ async fn all_retryable_failures_exhaust_budget_to_502() {
         ],
         "每次失败尝试都要回报 Retryable"
     );
-    assert_eq!(
-        egress.calls.lock().unwrap().len(),
-        2,
-        "两次尝试各发一次上游"
-    );
+    assert_eq!(egress.calls().len(), 2, "两次尝试各发一次上游");
 }
 
 // ---------- 用例 3: c1 返 4xx (Fatal) → 不换渠道, 状态透传 ----------
@@ -374,7 +178,7 @@ async fn fatal_4xx_does_not_switch_candidate() {
     ]));
     let stage = stage_with_retry(egress.clone(), dispatch.clone(), 3);
 
-    let mut ctx = ctx_with_route(c1.clone());
+    let mut ctx = ctx_with_body(NON_STREAM_BODY, c1.clone());
     let err = stage
         .handle(&mut ctx)
         .await
@@ -393,7 +197,7 @@ async fn fatal_4xx_does_not_switch_candidate() {
         vec![("c1".to_string(), Err(FailureClass::Fatal))],
         "Fatal 回报必须记录, 否则健康表永远空"
     );
-    let calls = egress.calls.lock().unwrap();
+    let calls = egress.calls();
     assert_eq!(calls.len(), 1, "只允许触碰 c1 一次");
     assert!(calls[0].contains("upstream-c1"), "c2 不得被请求");
 }

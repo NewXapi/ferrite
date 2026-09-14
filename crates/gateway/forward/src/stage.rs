@@ -335,6 +335,9 @@ impl Stage for ForwardStage {
         };
         let task = Self::build_task(&candidate, ctx.request.path.clone(), body, stream);
 
+        // 失败观测事件的计时起点（单次模式）：含并发闸等待与上游请求，
+        // 成功路径的 duration_ms 由响应侧统计，这里只补失败路径。
+        let started = std::time::Instant::now();
         // 并发闸（v2 挂载）：forward_task 之前 try_acquire，permit 随本函数
         // 作用域存活——成功路径持到 commit_forwarded 完成（覆盖响应体读取/
         // 结算窗口），失败提前 return 时立即 drop。槽满：不 submit_failed
@@ -350,7 +353,7 @@ impl Stage for ForwardStage {
                 // 上游已应答/传输失败且有候选：先落一条零成本观测事件再短路。
                 // （P1-C：AttemptError 载体带 degraded 标记，单次模式不进重试
                 // 闭包，只消费其内层 NormalizedError。）
-                self.submit_failed(ctx, &candidate, &a.error, stream);
+                self.submit_failed(ctx, &candidate, &a.error, stream, started.elapsed());
                 return Err(normalized_to_stage_error(a.error));
             }
         };
@@ -375,6 +378,10 @@ impl ForwardStage {
         body: Bytes,
         stream: bool,
     ) -> Result<StageOutcome, StageError> {
+        // 失败观测事件的计时起点（重试模式）：从进入重试循环起累计，
+        // 每条失败事件的 duration_ms = "进入重试 → 该次失败" 的墙钟毫秒
+        // （含此前尝试与选路耗时）。
+        let started = std::time::Instant::now();
         let group = ctx
             .token
             .as_ref()
@@ -446,7 +453,13 @@ impl ForwardStage {
                             // 每次失败尝试各落一条零成本观测事件：预算耗尽 /
                             // Fatal 终止时，排障侧也要有"请求发生过"的痕迹。
                             // 必须在 e 移入 error_slot 之前调用。
-                            self.submit_failed(ctx_ref, &task.candidate, &e, stream);
+                            self.submit_failed(
+                                ctx_ref,
+                                &task.candidate,
+                                &e,
+                                stream,
+                                started.elapsed(),
+                            );
                             *lock(&eslot) = Some(e);
                             if retryable || degraded {
                                 // P1-C 双账本桥: degraded = 渠道绑定的代理节点全在
@@ -716,6 +729,11 @@ impl ForwardStage {
     /// **零成本观测事件**交给 sink，让"这次请求发生过、被哪个候选拒了"在
     /// usage_logs 留下痕迹。
     ///
+    /// `elapsed` 是失败事件的耗时量纲：调用方计时起点到本调用的墙钟时长
+    /// （单次模式 = `forward_task` 调用前起算；重试模式 = 进入
+    /// `handle_with_retry` 起累计），内部转毫秒填事件的 `duration_ms`，
+    /// 超过 u32 毫秒上限（约 49.7 天）时饱和截断。
+    ///
     /// 纯观测不参与扣费：counts 全 0 → cost 必为 0；status/error 取自
     /// [`NormalizedError`]；`is_stream` 记录请求意图（与成功路径同源）。
     /// 归因键（user/token/group）与 `settle_non_stream` 一致，均来自
@@ -727,6 +745,7 @@ impl ForwardStage {
         candidate: &SelectedRoute,
         err: &NormalizedError,
         stream: bool,
+        elapsed: Duration,
     ) {
         let (Some(pt), Some(sink)) = (self.price_table.as_ref(), self.sink.as_ref()) else {
             return;
@@ -744,6 +763,8 @@ impl ForwardStage {
             token_key,
         };
         // counts 全 0 → price_of 结果为 0，观测事件不产生账单。
+        // 失败耗时 → duration_ms（u32 毫秒，饱和截断）。
+        let duration_ms = u32::try_from(elapsed.as_millis()).unwrap_or(u32::MAX);
         let event = metering::settle_event(
             metering::scanner::TokenCounts::default(),
             stream,
@@ -756,8 +777,8 @@ impl ForwardStage {
             &candidate.unit.meta.key,
             &candidate.unit.public_model,
             &candidate.upstream_model,
-            0,
-            0,
+            0, // first_token_ms：失败观测无首字计时
+            duration_ms,
             err.status,
             Some(&err.message),
         );
