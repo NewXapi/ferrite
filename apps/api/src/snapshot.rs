@@ -83,10 +83,16 @@ pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64
 /// 返回 `user UUID 字符串 → i64`；user_balances 无行的用户不进 map
 /// （消费方 `unwrap_or(0)`，语义 = 没充值就拦截）。
 async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>> {
+    // LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
+    // 乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
+    // 夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
     let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
         r#"
         SELECT ub.user_key,
-               COALESCE(SUM(ub.amount * cd.internal_rate), 0)::BIGINT AS available
+               LEAST(
+                   COALESCE(SUM(ub.amount * cd.internal_rate), 0),
+                   9223372036854775807::double precision
+               )::BIGINT AS available
         FROM user_balances ub
         JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
         GROUP BY ub.user_key
@@ -686,15 +692,20 @@ pub fn build_group_snapshot(rows: &[(String, f64, Value, bool)]) -> GroupSnapsho
 /// 构建**纯值** quota 快照（包装成 `SharedQuota` 归调用方）。
 ///
 /// 桶键 = token 的 UUID `meta.key`（与 `QuotaGate` 查询键 `TokenInfo.id`
-/// 一致——预检与扣费同桶），但**值 = 该 token 所属用户的综合可用值**：
-/// 多货币模型下余额在 user 级（`user_balances`，#179），同一用户所有 token
-/// 共享货币余额，所以每个 token 桶都灌入所属用户的折算可用值。
+/// 一致——预检与扣费同桶）。
 ///
-/// `user_quotas`：`user UUID 字符串 → available_i64`（调用方从
-/// `billing::CurrencyService::available_i64` 批量取，或 reload 时逐用户算）。
-/// `token.unlimited_quota` 的桶灌 `i64::MAX`（不限额 token 不做余额拦截）。
-/// `token.user_key` 解析失败的行跳过（不建桶 → 该 token prehold 恒 402，
-/// 宁可拒绝服务也不放无主流量）。
+/// **值 = min(token 剩余限额, 用户货币可用值)** —— 两层额度都要卡：
+/// - token 层（`api_tokens.quota - used_quota`）：令牌自己的独立限额，
+///   同一用户可以给不同 token 配不同上限（new-api token quota 语义）；
+/// - user 层（`user_balances × internal_rate` 求和，#179 多货币）：真实
+///   资金，同一用户所有 token 共享。
+///
+/// 取小值的理由：token 限额 500 但用户只剩 100 → 只能花 100；用户有 5000
+/// 但该 token 限 500 → 只能花 500。任一层不足都该拦。
+///
+/// `token.unlimited_quota = true`：跳过 token 层，只受用户余额约束
+/// （不限额 ≠ 不要钱；要完全免费需给用户灌足余额或单独建免费货币）。
+/// 用户不在 `user_quotas`（没充值）→ 0（prehold 恒拦截）。
 fn build_quota_snapshot(
     token_records: &[TokenRecord],
     user_quotas: &HashMap<String, i64>,
@@ -702,10 +713,12 @@ fn build_quota_snapshot(
     let quota_snapshot = QuotaSnapshot::default();
 
     for token in token_records {
+        let user_available = user_quotas.get(&token.user_key).copied().unwrap_or(0);
         let remaining = if token.unlimited_quota {
-            i64::MAX
+            user_available
         } else {
-            user_quotas.get(&token.user_key).copied().unwrap_or(0)
+            let token_left = (token.quota - token.used_quota).max(0);
+            token_left.min(user_available)
         };
         quota_snapshot.upsert(token.meta.key.clone(), remaining);
     }

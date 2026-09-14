@@ -16,7 +16,11 @@ use crate::service::AuthService;
 // 注册后置 hook（#179 多货币）：billing 实现本 trait 做货币 seed。
 // auth 不依赖 billing（反向依赖会成环），hook 经 trait object 注入。
 pub trait OnUserRegistered: Send + Sync {
-    /// 用户注册成功后调用（key 为 auth_users.key UUID 字符串）。
+    /// 用户注册成功后调用（`user_key` = auth_users.key）。
+    ///
+    /// **实现必须立即返回**：本方法在注册请求的响应路径上被同步调用，
+    /// 任何 DB IO 都要 `tokio::spawn` 到后台（注册不该被货币层拖慢或
+    /// 拖死）。失败由实现侧记 warn，注册流程不感知。
     fn on_registered(&self, user_key: uuid::Uuid);
 }
 

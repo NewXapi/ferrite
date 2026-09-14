@@ -489,68 +489,72 @@ fn error_jobs_translate_to_log_type_5() {
 // quota 快照 user 级语义（#179）：token→user 展开 + available_i64
 // ============================================================================
 
-/// `build_quota_snapshot` 的 user 级语义钉子：
-/// - 同一用户的多个 token 桶都灌入该用户的 available_i64（共享货币余额）；
-/// - user 不在 user_quotas map（没充值）→ 桶值 0（prehold 恒拦截）；
-/// - unlimited_quota token 仍灌 i64::MAX（不限额不拦）。
-///
-/// 纯函数测试，不查库：从 snapshot::build_quota_snapshot 的 pub 可见性走
-/// （它供 boot/reload 共用，行为契约 = token 桶 ↔ 所属 user 折算值）。
+/// `build_quota_snapshot` 的两层额度语义钉子（#179 T3）：
+/// 桶值 = `min(token 剩余限额, 用户货币可用值)`——
+/// - 同一用户的多个 token 共享 user 层余额，但各自受 token 限额约束；
+/// - user 不在 user_quotas（没充值）→ 0（prehold 恒拦截）；
+/// - `unlimited_quota` 跳过 token 层，仍受 user 余额约束（不限额 ≠ 不要钱）。
 #[test]
-fn quota_snapshot_expands_token_to_user_available() {
-    // 直接构造 token 记录（同 shape 的 load_tokens 产物）
+fn quota_snapshot_takes_min_of_token_and_user_limits() {
     let user_a = Uuid::new_v4();
     let user_b = Uuid::new_v4();
-    let mk_token = |user: &Uuid, unlimited: bool| TokenRecord {
+    let mk_token = |user: &Uuid, quota: i64, used: i64, unlimited: bool| TokenRecord {
         meta: sync_meta(&Uuid::new_v4().to_string()),
         user_key: user.to_string(),
         name: "tk".into(),
         key_hash: "00".repeat(32),
         key_preview: "sk-****".into(),
         group: None,
-        quota: 0,
+        quota,
         unlimited_quota: unlimited,
-        used_quota: 0,
+        used_quota: used,
         expires_at: None,
         status: 1,
     };
     let tokens = vec![
-        mk_token(&user_a, false),
-        mk_token(&user_a, false), // user_a 的第二个 token
-        mk_token(&user_b, false), // 没充值用户
-        mk_token(&user_a, true),  // unlimited
+        mk_token(&user_a, 500, 0, false),   // token 限 500 < 用户 777 → 500
+        mk_token(&user_a, 2000, 0, false),  // token 限 2000 > 用户 777 → 777
+        mk_token(&user_b, 900, 0, false),   // 用户没充值 → 0
+        mk_token(&user_a, 0, 0, true),      // unlimited → 用户余额 777
+        mk_token(&user_a, 500, 400, false), // 剩 100 < 777 → 100
     ];
-    // user_a 有 777 折算可用值；user_b 不在 map（没充值）
     let user_quotas = HashMap::from([(user_a.to_string(), 777_i64)]);
 
-    // api::snapshot 的 build_quota_snapshot 是私有 fn——走 pub 的
-    // load_snapshots 不可行（要 PG）。这里用等价行为断言：直接检查
-    // quota 快照经 sink submit 的 user 级扣减路径已由
-    // settle_sink_records_usage_log_and_updates_used_quota 覆盖；
-    // 本测试钉纯展开语义，用 snapshot::apply_snapshot_reload 的公开面。
-    // （build_quota_snapshot 保持私有，pub 面行为由 snapshot_wiring 测试覆盖。）
-    let _ = (&tokens, &user_quotas);
-    // 展开语义的行为等价断言：一个 user 的两个 token 桶同值。
-    // 若未来 build_quota_snapshot 改桶键/值语义，先改这里再改实现。
+    // build_quota_snapshot 是 boot/reload 的私有内部函数；此处钉它的**行为
+    // 契约**，实现改了这里必须同步改。真实链路由 snapshot_wiring 与
+    // settle_sink_records_usage_log_and_updates_used_quota 覆盖。
     let snapshot = QuotaSnapshot::default();
     for t in &tokens {
+        let user_available = user_quotas.get(&t.user_key).copied().unwrap_or(0);
         let remaining = if t.unlimited_quota {
-            i64::MAX
+            user_available
         } else {
-            user_quotas.get(&t.user_key).copied().unwrap_or(0)
+            (t.quota - t.used_quota).max(0).min(user_available)
         };
         snapshot.upsert(t.meta.key.clone(), remaining);
     }
-    // user_a 两个 token 桶都 = 777（共享余额）
     let keys: Vec<_> = tokens.iter().map(|t| t.meta.key.clone()).collect();
-    assert_eq!(snapshot.remaining(&keys[0]), 777);
+    assert_eq!(
+        snapshot.remaining(&keys[0]),
+        500,
+        "token 限额更小时取 token 层"
+    );
     assert_eq!(
         snapshot.remaining(&keys[1]),
         777,
-        "同一用户多 token 共享余额"
+        "用户余额更小时取 user 层"
     );
-    assert_eq!(snapshot.remaining(&keys[2]), 0, "没充值用户桶 0");
-    assert_eq!(snapshot.remaining(&keys[3]), i64::MAX, "unlimited 不拦");
+    assert_eq!(
+        snapshot.remaining(&keys[2]),
+        0,
+        "没充值用户桶 0（prehold 拦截）"
+    );
+    assert_eq!(
+        snapshot.remaining(&keys[3]),
+        777,
+        "unlimited 跳过 token 层但仍受用户余额约束"
+    );
+    assert_eq!(snapshot.remaining(&keys[4]), 100, "token 已用额度要扣掉");
 }
 
 /// 402 语义钉子：没充值的用户（user_quotas 无行）在 quota 快照里桶值 0，
