@@ -212,32 +212,40 @@ impl AffiliateService {
     async fn fetch_invite_reward(&self) -> i64 {
         // ponytail: options 表 site.affiliate_reward 未配置则常量占位（= $2 @ 500_000/$1）。
         const DEFAULT_INVITE_REWARD: i64 = 1_000_000;
-        let value: Option<String> =
-            sqlx::query_scalar("SELECT value FROM options WHERE key = 'site.affiliate_reward'")
-                .fetch_optional(&self.pool)
-                .await
-                .unwrap_or(None);
-        value
-            .as_deref()
-            .and_then(|v| v.parse().ok())
+        fetch_option_i64(&self.pool, "site.affiliate_reward")
+            .await
             .unwrap_or(DEFAULT_INVITE_REWARD)
     }
 
     /// 奖励冻结时长（小时）：options `site.affiliate_reward_freeze_hours`。
     /// 未配置/解析失败/非正 → 0 = 不冻结（钱路径上「保守不动」优于误冻用户余额）。
     async fn fetch_freeze_hours(&self) -> i32 {
-        let value: Option<String> = sqlx::query_scalar(
-            "SELECT value FROM options WHERE key = 'site.affiliate_reward_freeze_hours'",
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .unwrap_or(None);
-        value
-            .as_deref()
-            .and_then(|v| v.parse().ok())
-            .filter(|h: &i32| *h > 0)
+        fetch_option_i64(&self.pool, "site.affiliate_reward_freeze_hours")
+            .await
+            .and_then(|h| i32::try_from(h).ok())
+            .filter(|h| *h > 0)
             .unwrap_or(0)
     }
+}
+
+/// 读 options 表的数值型配置（JSONB 列）。
+///
+/// `value` 是 JSONB（迁移 0005）：按 `String` decode 会因 sqlx 类型映射
+/// 不兼容而恒 Err，被 `unwrap_or(None)` 静默吞掉——表现为「配置永远不
+/// 生效，恒回落默认」（e2e 实锤过一次，别再犯）。这里用 `#>> '{}'` 把
+/// JSONB 展平成 text（数字 `1` → "1"、字符串 `"1"` → `1`，两种写法都
+/// 能配），再走 `parse::<i64>()`。
+///
+/// 行不存在 / 非数值 / 溢出 → `None`（调用方给各自语义的默认）。
+async fn fetch_option_i64(pool: &sqlx::PgPool, key: &str) -> Option<i64> {
+    let value: Option<String> =
+        sqlx::query_scalar("SELECT value #>> '{}' FROM options WHERE key = $1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    value.and_then(|v| v.trim().parse::<i64>().ok())
 }
 
 // ---------- axum 路由（对齐 redeem.rs 鉴权/err_json 约定）----------
