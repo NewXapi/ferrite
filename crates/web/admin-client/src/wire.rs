@@ -104,3 +104,130 @@ pub struct GatewayHealthView {
 pub async fn fetch_gateway_health(client: &ApiClient) -> ApiResult<GatewayHealthView> {
     client.get("/api/gateway/health").await
 }
+
+// ---------- billing (#179/#187): 钱包 / 拉人统计 / 兑换码 / 充值开单 ----------
+
+/// 钱包内单币种余额行 — 对齐后端 `contract::api::billing::UserBalanceDto` (camelCase)。
+///
+/// `amount` 为该币种单位的原始数量 (非内部单位)。结构级 `default`:字段缺省
+/// (含信封 `data: null` 走 Default 的路径) 落空值,前端渲染 0 余额而非解码炸。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UserBalanceDto {
+    /// 货币 code (`currency_defs.code` 外键, 如 "FREE")。
+    pub currency_code: String,
+    /// 余额 (该币种单位的原始数量)。
+    pub amount: i64,
+}
+
+/// 用户钱包视图 — 对齐后端 `contract::api::billing::WalletView` (camelCase)。
+///
+/// `available_i64` 为折算后的可用内部单位 (各币种 amount × internal_rate 向下
+/// 取整之和),即计费配额第二层的取数口径。`balances` 为空 = 账号尚未 seed 的
+/// 正常空态,面板渲染虚线占位。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WalletView {
+    /// 登录用户 UUID。
+    pub user_key: String,
+    /// 各币种余额行。
+    pub balances: Vec<UserBalanceDto>,
+    /// 折算可用内部单位。
+    pub available_i64: i64,
+}
+
+/// `GET /api/user/wallet` 的原始响应体 — 后端返回裸 `{"wallet": {...}}`
+/// (无 `success` 信封),走 [`crate::ApiClient`] 的裸 JSON 解码分支。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WalletResponse {
+    /// 钱包视图。
+    pub wallet: WalletView,
+}
+
+/// 拉人统计视图 — 对齐后端 `admin-billing/affiliate.rs::AffiliateOverview` (camelCase)。
+///
+/// 后端侧 `invite_count` / `total_reward` 当前是占位统计 (真实统计待
+/// affiliate_links 表, affiliate.rs `TODO(affiliate-stats)`);前端接的是真端点,
+/// 0 即真实值,前端不造数。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AffiliateOverviewView {
+    /// 登录用户 UUID。
+    pub user_key: String,
+    /// 邀请注册人数。
+    pub invite_count: i64,
+    /// 累计拉人奖励 (内部单位)。
+    pub total_reward: i64,
+}
+
+/// `GET /api/affiliate/overview` 的原始响应体 — 裸 `{"overview": {...}}`。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AffiliateOverviewResponse {
+    /// 统计视图。
+    pub overview: AffiliateOverviewView,
+}
+
+/// 兑换码核销请求体 — 对齐后端 redeem.rs 本地 `TopupRequest { key }`
+/// (无 serde rename,wire 上有且只有 `key` 一个字段)。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RedeemRequest {
+    /// 兑换码明文。
+    pub key: String,
+}
+
+/// 充值开单请求体 — 对齐后端 `contract::api::billing::TopUpRequest`
+/// (camelCase: `userKey` / `currency` / `amount`)。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenTopupRequest {
+    /// 当前登录用户 UUID (后端校验只允许对本人开单)。
+    pub user_key: String,
+    /// 充值币种 code。
+    pub currency: String,
+    /// 充值金额 (该币种单位, >0)。
+    pub amount: i64,
+}
+
+/// 充值开单成功响应 — 裸 `{"order_id": "..."}`。
+///
+/// 注意 key 逐字是 snake_case `order_id` (后端 `json!` 字面量,非 camelCase)。
+/// 缺省时 `order_id = None`,调用方降级为通用文案,不假造单号。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(default)]
+pub struct TopupOrder {
+    /// pending 订单号 (UUID 字符串)。
+    pub order_id: Option<String>,
+}
+
+/// 拉取当前用户钱包:`GET /api/user/wallet` (self),解包 `{"wallet": ...}`。
+pub async fn fetch_wallet(client: &ApiClient) -> ApiResult<WalletView> {
+    let resp: WalletResponse = client.get("/api/user/wallet").await?;
+    Ok(resp.wallet)
+}
+
+/// 拉取拉人统计:`GET /api/affiliate/overview` (self),解包 `{"overview": ...}`。
+pub async fn fetch_affiliate_overview(client: &ApiClient) -> ApiResult<AffiliateOverviewView> {
+    let resp: AffiliateOverviewResponse = client.get("/api/affiliate/overview").await?;
+    Ok(resp.overview)
+}
+
+/// 兑换码充值:`POST /api/user/topup` `{ key }`。
+///
+/// 成功响应为裸 `{"quota": <i64 内部单位>, "success": true}` (无 message 字段,
+/// 信封解码必失败 → 走裸 JSON 分支);`quota` 提取与降级语义见调用方
+/// `admin-page-account::api::topup_credited_quota`。
+pub async fn redeem_code(client: &ApiClient, req: &RedeemRequest) -> ApiResult<serde_json::Value> {
+    client.post("/api/user/topup", req).await
+}
+
+/// 充值开单:`POST /api/user/topup/order` — 只建 pending 订单 (支付 provider
+/// 为占位,无支付页),入账需 admin 手工 settle (`POST /api/user/topup/{key}/settle`)。
+///
+/// 路径契约:兑换码核销与充值开单原本都注册在 `POST /api/user/topup` 且 axum
+/// merge 同 path 同 method 直接 panic;Main 定稿 hotfix 后开单挪到 `/order`
+/// 子路径 (2026-09-14 契约),后端合入前该端点 404,面板按错误态诚实展示。
+pub async fn open_topup(client: &ApiClient, req: &OpenTopupRequest) -> ApiResult<TopupOrder> {
+    client.post("/api/user/topup/order", req).await
+}

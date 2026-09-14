@@ -12,6 +12,11 @@ pub use manage_auth_token::AuthState;
 pub use manage_auth_token::{Refresher, TokenFuture};
 pub use setup_client::ApiClient;
 pub use wire::fetch_gateway_health;
+pub use wire::{
+    AffiliateOverviewResponse, AffiliateOverviewView, OpenTopupRequest, RedeemRequest, TopupOrder,
+    UserBalanceDto, WalletResponse, WalletView, fetch_affiliate_overview, fetch_wallet, open_topup,
+    redeem_code,
+};
 pub use wire::{GatewayHealthItem, GatewayHealthView, HealthItemState};
 
 use serde::Deserialize;

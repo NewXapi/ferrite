@@ -1,12 +1,12 @@
 //! 账户页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 //!
 //! 两类入口并存:
-//! - `fetch_*`: mock 直连 (同步返回 `mock` crate 静态数据), 覆盖尚无后端端点的
-//!   面板 (钱包 / 邀请分成), 接上后端时只改本文件;
-//! - `*_api`: 真实后端调用 (async, 走 `client::ApiClient`), 已覆盖密钥 / 用量 /
-//!   用户信息 / 会话 / 设置 / 兑换码充值。
+//! - `fetch_*`: mock 直连 (同步返回 `mock` crate 静态数据), 仅覆盖尚无后端
+//!   列表端点的面板区块 (充值记录 / 被邀人 / 邀请链接);
+//! - `*_api`: 真实后端调用 (async, 走 `client::ApiClient`), 覆盖密钥 / 用量 /
+//!   用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 兑换码充值 / 充值开单。
 
-pub use mock::account::{ApiKey, Invitee, Profile, Recharge, RewardStat, UsageLog, Wallet};
+pub use mock::account::{ApiKey, Invitee, Profile, Recharge, UsageLog, Wallet};
 
 // ---- 密钥·资料面板 ----
 
@@ -39,18 +39,16 @@ pub fn fetch_logs() -> &'static [UsageLog] {
     mock::account::LOGS
 }
 
-// ---- 邀请奖励面板 ----
+// ---- 邀请奖励面板 (mock 残留区块) ----
 
+/// mock 钱包 — 面板已切真端点 ([`fetch_wallet_api`]);本函数仅存
+/// tests/api_shapes.rs 的历史引用,待该测试更新后可连同 mock 一并移除。
 pub fn fetch_wallet() -> &'static Wallet {
     &mock::account::WALLET
 }
 
 pub fn fetch_recharges() -> &'static [Recharge] {
     mock::account::RECHARGES
-}
-
-pub fn fetch_reward_stats() -> &'static [RewardStat] {
-    mock::account::REWARD_STATS
 }
 
 pub fn fetch_invitees() -> &'static [Invitee] {
@@ -66,7 +64,7 @@ use contract::api::token::{
     CreateTokenRequest, CreateTokenResult, TokenDto, TokenList, UpdateTokenRequest,
 };
 use contract::api::usage::{UsageLogPage, UsageStatDto};
-use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto, UserTopupRequest};
+use contract::api::user::{SessionDto, UpdateSelfRequest, UserDto};
 
 /// 真实调用: GET /api/token (owner 模式, 后端按 token 属主过滤, 无 query 参数)。
 /// 列表为 `{items}` 信封, 拆包后返回 `Vec<TokenDto>`。
@@ -190,16 +188,15 @@ pub async fn update_settings_api(
     client.put("/api/user/self/setting", settings).await
 }
 
-// ---- 兑换码充值 (rewards 面板) ----
+// ---- billing 真实端点 (rewards 面板): wire DTO 与请求实现在 client crate ----
 
-/// 真实调用: POST /api/user/topup — 兑换码充值 (CAS 核销, 事务内入账用户 quota)。
-///
-/// 请求体 [`UserTopupRequest`] 与后端本地 `TopupRequest { key }` 逐字对齐;
-/// 成功响应为裸 JSON `{"quota": <入账额度, 内部单位>, "success": true}`,
-/// 用 [`topup_credited_quota`] 提取入账值展示。
-pub async fn topup_api(client: &ApiClient, req: &UserTopupRequest) -> ApiResult<serde_json::Value> {
-    client.post("/api/user/topup", req).await
-}
+/// 命名沿用本文件 `*_api` 约定;类型透传供面板构造请求 / 接响应。
+/// wire 层与后端形状的逐字对账见 `client::wire` 与 tests/rewards_wire.rs。
+pub use client::{
+    AffiliateOverviewView, OpenTopupRequest, RedeemRequest, WalletView,
+    fetch_affiliate_overview as fetch_affiliate_overview_api, fetch_wallet as fetch_wallet_api,
+    open_topup as open_topup_api, redeem_code as redeem_code_api,
+};
 
 /// 从 POST /api/user/topup 的成功响应提取入账额度。
 ///
