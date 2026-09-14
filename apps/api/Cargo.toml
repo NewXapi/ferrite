@@ -55,11 +55,11 @@ forward = { path = "../../crates/gateway/forward" }
 gateway-gate = { path = "../../crates/gateway/gate" }
 dispatch = { path = "../../crates/gateway/dispatch" }
 contract = { path = "../../crates/contract" }
+# assemble 先跑迁移再查快照（空库首启顺序）；billing_authority e2e 同用
+db-bootstrap = { path = "../../crates/api/db-bootstrap" }
 # base_url → host:port 解析（探测目标）
 url = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-# billing_authority 集成测试跑 PG 全链路前要先建表（e2e 库可能是空库）
-db-bootstrap = { path = "../../crates/api/db-bootstrap" }

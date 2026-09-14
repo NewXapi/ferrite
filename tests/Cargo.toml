@@ -60,3 +60,7 @@ path = "admin_gateway_flow.rs"
 [[test]]
 name = "usage_log_type"
 path = "usage_log_type.rs"
+
+[[test]]
+name = "web_wire_contract"
+path = "web_wire_contract.rs"
