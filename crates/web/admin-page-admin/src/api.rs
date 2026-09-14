@@ -42,9 +42,23 @@ pub async fn delete_token_api(client: &ApiClient, key: &str) -> ApiResult<serde_
 // Channels
 // ---------------------------------------------------------------------------
 
-/// 真实调用: GET /api/channel (列表，密钥已掩码)
+/// 后端列表端点统一包装 `{"items":[...]}`（渠道另带 `total`，未声明即忽略）。
+///
+/// 历史：admin-catalog 的 list handler 经 `ok_json` 返回**裸** map（无外层
+/// Envelope），`ApiClient` 剥壳后按裸 `Vec<Dto>` 解码会撞
+/// `decode error: invalid type: map, expected a sequence`——分组页曾因此
+/// 永远走 error 分支（#182 修），渠道端点同型（本结构 + `list_channels_api`
+/// 剥壳修，wire 契约见 `tests/list_envelope.rs`）。
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct Items<T> {
+    #[serde(default)]
+    pub items: Vec<T>,
+}
+
+/// 真实调用: GET /api/channel (列表，密钥已掩码；响应为 `{"items":[..],"total":n}`)
 pub async fn list_channels_api(client: &ApiClient) -> ApiResult<Vec<ChannelDto>> {
-    client.get("/api/channel").await
+    let r: Items<ChannelDto> = client.get("/api/channel").await?;
+    Ok(r.items)
 }
 
 /// 真实调用: GET /api/channel/{key} (单查，包含完整 keys)
