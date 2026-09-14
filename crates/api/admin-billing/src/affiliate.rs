@@ -3,12 +3,14 @@
 //! 表（0009 建）：
 //! - `affiliate_links(invitee_key PK, inviter_key, created_at)` — 邀请归属，
 //!   被邀人一人一主（PK 防多人重复绑定→重复领奖）。
-//! - `affiliate_rewards(key PK, inviter_key, invitee_key, kind, amount)` — 奖励
+//! - `affiliate_rewards(key PK, inviter_key, invitee_key, kind, amount, frozen_until)` — 奖励
 //!   入账审计，与 `user_balances` 入金同事务（金额与审计不可分家）；
-//!   局部唯一索引 `(invitee_key) WHERE kind='invite'` 做 DB 级幂等护栏。
+//!   局部唯一索引 `(invitee_key) WHERE kind='invite'` 做 DB 级幂等护栏；
+//!   `frozen_until`（0012）非空 = 该笔奖励冻结至到期时间，`thaw_frozen` 到期搬回可用。
 //!
 //! 奖励金额：先读 `options` 表 `site.affiliate_reward`（内部单位），未配置回落到常量
-//! 占位（`DEFAULT_INVITE_REWARD`）。真实配置表对齐 admin-ops options 语义。
+//! 占位（`DEFAULT_INVITE_REWARD`）。冻结时长：`site.affiliate_reward_freeze_hours`
+//! （小时，缺省 0 = 不冻结）。真实配置表对齐 admin-ops options 语义。
 //! 设计见 todo/billing-implementation.md 阶段 2。
 
 use axum::{
@@ -44,7 +46,8 @@ pub struct AffiliateOverview {
     pub user_key: String,
     /// 已归属绑定的被邀人数（`affiliate_links` 按 inviter_key 计数）。
     pub invite_count: i64,
-    /// 累计奖励入账额（`affiliate_rewards.amount` 求和，FREE 货币单位）。
+    /// 累计奖励入账额（`affiliate_rewards.amount` 求和，FREE 货币单位；
+    /// 含冻结部分——口径是累计已得，不管可用性）。
     pub total_reward: i64,
 }
 
@@ -106,7 +109,11 @@ impl AffiliateService {
     /// - 同一 invitee 全局只能领一次：先插审计行，撞局部唯一索引
     ///   `(invitee_key) WHERE kind='invite'` 即已领 → `Ok(0)`（单语句判定，
     ///   并发双领奖也只有第一条能入金）；
-    /// - 审计行与入金同事务提交：任一失败整体回滚，金额与审计不可分家。
+    /// - 审计行与入金同事务提交：任一失败整体回滚，金额与审计不可分家；
+    /// - 冻结：`site.affiliate_reward_freeze_hours` > 0 时审计行写
+    ///   `frozen_until = now() + hours` 且入金走冻结口径（amount 与
+    ///   frozen_amount 同加，可用不变，到期由 `WalletService::thaw_frozen`
+    ///   搬回）；缺省 0 = 立即可用（与历史行为一致）。
     ///
     /// 返回值：本次实际入账额（0 = 已领过 / 配置为非正值时不占名额）。
     pub async fn reward_invite_referral(
@@ -119,6 +126,7 @@ impl AffiliateService {
             // 站点把奖励配成 0 = 停用；不入账、也不烧掉被邀人的一次性领奖名额。
             return Ok(0);
         }
+        let freeze_hours = self.fetch_freeze_hours().await;
         let mut tx = self.pool.begin().await?;
         let linked: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM affiliate_links WHERE inviter_key = $1 AND invitee_key = $2)",
@@ -134,8 +142,10 @@ impl AffiliateService {
         }
         let claimed = sqlx::query(
             r#"
-            INSERT INTO affiliate_rewards (key, inviter_key, invitee_key, kind, amount)
-            VALUES ($1, $2, $3, 'invite', $4)
+            INSERT INTO affiliate_rewards
+                (key, inviter_key, invitee_key, kind, amount, frozen_until)
+            VALUES ($1, $2, $3, 'invite', $4,
+                    CASE WHEN $5 > 0 THEN now() + make_interval(hours => $5) ELSE NULL END)
             ON CONFLICT (invitee_key) WHERE kind = 'invite' DO NOTHING
             "#,
         )
@@ -143,19 +153,27 @@ impl AffiliateService {
         .bind(inviter_key)
         .bind(invitee_key)
         .bind(amount)
+        .bind(freeze_hours)
         .execute(&mut *tx)
         .await?
         .rows_affected();
         if claimed == 0 {
             return Ok(0);
         }
+        // 入金两口径：带冻结走 credit_reward_frozen_in_tx（frozen_amount 同加，
+        // 上面审计行的 frozen_until 是 thaw 的到期依据，跟踪与入账同一提交，
+        // 不存在「冻结了但没人解冻」的孤儿）；不冻结走原路径——
         // credit_redeem_in_tx 是 wallet 的通用「事务内入账 FREE」入口
         // （credit_reward/credit_topup 皆为同款 credit_in_tx 包装），复用不重造。
-        self.wallet
-            .credit_redeem_in_tx(&mut tx, inviter_key, amount)
-            .await?;
+        if freeze_hours > 0 {
+            WalletService::credit_reward_frozen_in_tx(&mut tx, inviter_key, amount).await?;
+        } else {
+            self.wallet
+                .credit_redeem_in_tx(&mut tx, inviter_key, amount)
+                .await?;
+        }
         tx.commit().await?;
-        tracing::info!(%inviter_key, %invitee_key, amount, "invite reward credited");
+        tracing::info!(%inviter_key, %invitee_key, amount, freeze_hours, "invite reward credited");
         Ok(amount)
     }
 
@@ -203,6 +221,22 @@ impl AffiliateService {
             .as_deref()
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_INVITE_REWARD)
+    }
+
+    /// 奖励冻结时长（小时）：options `site.affiliate_reward_freeze_hours`。
+    /// 未配置/解析失败/非正 → 0 = 不冻结（钱路径上「保守不动」优于误冻用户余额）。
+    async fn fetch_freeze_hours(&self) -> i32 {
+        let value: Option<String> = sqlx::query_scalar(
+            "SELECT value FROM options WHERE key = 'site.affiliate_reward_freeze_hours'",
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .unwrap_or(None);
+        value
+            .as_deref()
+            .and_then(|v| v.parse().ok())
+            .filter(|h: &i32| *h > 0)
+            .unwrap_or(0)
     }
 }
 
