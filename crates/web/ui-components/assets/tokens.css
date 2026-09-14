@@ -1,10 +1,28 @@
 /* shadcn 语义 token 桥（Tailwind v4）。
  *
- * 值来源：shadcn 官方 new-york v4 (neutral) `.dark` 段 oklch token
- * （shadcn-ui 仓库 init 模板主题；--destructive-foreground 取
- * apps/v4/app/globals.css `.dark` 段）。ferrite 为纯暗色站点，
- * dark 值同时作为 :root 默认；`.dark` 段保留内容相同的镜像，
- * 未来接入亮色主题时只需改 :root，组件层零改动。
+ * 值来源：dsh（deepseek-harness）design-platform.css 的暗色语义别名体系
+ * （packages/client/ui-theme/src/styles/design-platform.css，
+ * body[data-ds-dark-theme] 段 :248-338 的语义别名 + 其静态色阶 :80-154）。
+ * ferrite 变量名保持 shadcn 契约不变，值按 dsh 别名换算，关键依据：
+ *   --background ← bg-base（design-platform.css:249 ← neutral-bluish-950 :147）
+ *   --foreground ← label-primary（:299 ← neutral-bluish-50 :137）
+ *   --card / --popover ← bg-layer-3（:252 ← neutral-bluish-800 :143，
+ *     dsh 卡片与菜单实证层）
+ *   --primary ← button-primary-fill（:283 = brand-primary :271）
+ *   --secondary ← button-ghost-active-fill（:278 ← neutral-bluish-750 :141）
+ *   --secondary-hover ← button-ghost-active-hover（:279 ← neutral-bluish-700 :140）
+ *   --muted / --accent ← interactive-bg-hover（:292，白 8%）
+ *   --border / --input / --sidebar-border ← border-l2（:266，白 12%）
+ *   --destructive ← state-error-primary（:316 ← red-400 :149）
+ *   --success / --warning ← state-success / state-warn 的 tertiary 容器与
+ *     primary 前景配对（:318-324）
+ *   --sidebar ← specific-sidebar-fill（:333）、--sidebar-accent ←
+ *     specific-sidebar-nav-item-hover（:336）
+ * --destructive-foreground、--chart-1..5、--sidebar-primary(-foreground)
+ * 在 dsh 无对应别名，保留 shadcn 原值。
+ *
+ * ferrite 为纯暗色站点，dark 值同时作为 :root 默认；`.dark` 段保留
+ * 内容相同的镜像，未来接入亮色主题时只需改 :root，组件层零改动。
  *
  * @theme inline 把语义变量同构映射为 Tailwind 颜色 token，
  * 使 bg-primary / text-muted-foreground / border-border 等类可用。
@@ -14,75 +32,85 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  --background: rgb(21 21 23);
+  --foreground: rgb(249 250 251);
+  --card: rgb(53 54 56);
+  --card-foreground: rgb(249 250 251);
+  --popover: rgb(53 54 56);
+  --popover-foreground: rgb(249 250 251);
+  --primary: rgb(249 250 251);
+  --primary-foreground: rgb(15 17 21);
+  --secondary: rgb(67 69 74);
+  --secondary-foreground: rgb(249 250 251);
+  --secondary-hover: rgb(97 102 107);
+  --muted: rgb(255 255 255 / 8%);
+  --muted-foreground: rgb(173 178 184);
+  --accent: rgb(255 255 255 / 8%);
+  --accent-foreground: rgb(249 250 251);
+  --destructive: rgb(242 90 90);
   --destructive-foreground: oklch(0.58 0.22 27);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --success: rgb(35 60 44);
+  --success-foreground: rgb(34 197 94);
+  --warning: rgb(39 36 31);
+  --warning-foreground: rgb(245 158 11);
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 12%);
+  --ring: rgb(249 250 251);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar: rgb(27 27 28);
+  --sidebar-foreground: rgb(249 250 251);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-accent: rgb(44 44 46);
+  --sidebar-accent-foreground: rgb(249 250 251);
+  --sidebar-border: rgb(255 255 255 / 12%);
+  --sidebar-ring: rgb(249 250 251);
 }
 
 /* 与 :root 完全相同的暗色镜像；挂 .dark 类时生效。 */
 .dark {
   --radius: 0.625rem;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  --background: rgb(21 21 23);
+  --foreground: rgb(249 250 251);
+  --card: rgb(53 54 56);
+  --card-foreground: rgb(249 250 251);
+  --popover: rgb(53 54 56);
+  --popover-foreground: rgb(249 250 251);
+  --primary: rgb(249 250 251);
+  --primary-foreground: rgb(15 17 21);
+  --secondary: rgb(67 69 74);
+  --secondary-foreground: rgb(249 250 251);
+  --secondary-hover: rgb(97 102 107);
+  --muted: rgb(255 255 255 / 8%);
+  --muted-foreground: rgb(173 178 184);
+  --accent: rgb(255 255 255 / 8%);
+  --accent-foreground: rgb(249 250 251);
+  --destructive: rgb(242 90 90);
   --destructive-foreground: oklch(0.58 0.22 27);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --success: rgb(35 60 44);
+  --success-foreground: rgb(34 197 94);
+  --warning: rgb(39 36 31);
+  --warning-foreground: rgb(245 158 11);
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 12%);
+  --ring: rgb(249 250 251);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar: rgb(27 27 28);
+  --sidebar-foreground: rgb(249 250 251);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-accent: rgb(44 44 46);
+  --sidebar-accent-foreground: rgb(249 250 251);
+  --sidebar-border: rgb(255 255 255 / 12%);
+  --sidebar-ring: rgb(249 250 251);
 }
 
 @theme inline {
@@ -96,12 +124,17 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-hover: var(--secondary-hover);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

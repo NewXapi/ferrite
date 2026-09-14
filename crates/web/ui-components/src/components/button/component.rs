@@ -1,14 +1,21 @@
-//! Button — shadcn new-york-v4 风格按钮基元。
+//! Button — dsh（deepseek-harness）风格按钮基元。
 //!
-//! 样式不再走 dxc 的 css_module / `data-style`，而是把 shadcn `buttonVariants`
-//! （registry/new-york-v4/ui/button.tsx）的 Tailwind class 逐字拼进 `class`；
-//! 调用方传入的 `class` 由 [`with_class`] 追加到组件基串之后，其余属性原样透传。
+//! 视觉基准已由 shadcn new-york-v4 逐字串切换为 dsh 组件 CSS：几何与状态取自
+//! dsh `packages/client/ui-*/src/Button.module.css:4-17`（md/sm 几何、disabled、
+//! fill/hover）与 `PluginCard.module.css:37-40`（focus outline 惯例），映射与决策
+//! 记录见 `todo/web-ui-reference/dsh-visual-spec.md` §3.1/§4.1。调用方传入的
+//! `class` 由 [`with_class`] 追加到组件基串之后，其余属性原样透传。
 
 use dioxus::core::AttributeValue;
 use dioxus::prelude::*;
 
-/// shadcn new-york-v4 `buttonVariants` 基础 class（ui/button.tsx:7，逐字）。
-const BUTTON_BASE_CLASS: &str = "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
+/// dsh 基准的按钮基础 class（Button.module.css:4-17 几何 + PluginCard.module.css:37-40 focus 惯例）。
+///
+/// gap-1（:8）、rounded-full（:10，dsh md/sm 圆角均为半高胶囊，rounded-full 随高度自适应）、
+/// text-sm（fs14 :12）、font-medium（dsh base.css:1-3 wt510→500）；focus 由 ring 三段改为
+/// outline 2px offset -2（D10）；transition-colors duration-150 为保留微过渡的拍板项（D11，
+/// dsh 本体无 transition）；disabled:opacity-40（:19-22）；aria-invalid 的 ring 段同步降为 outline。
+const BUTTON_BASE_CLASS: &str = "inline-flex shrink-0 items-center justify-center gap-1 rounded-full text-sm font-medium whitespace-nowrap transition-colors duration-150 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-40 aria-invalid:border-destructive aria-invalid:outline-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 
 #[derive(Copy, Clone, PartialEq, Default)]
 #[non_exhaustive]
@@ -66,10 +73,13 @@ impl ButtonSize {
     }
 }
 
-/// 变体对应的 shadcn `data-variant` 键名与 class 串（ui/button.tsx:11-20，逐字）。
+/// 变体对应的 `data-variant` 键名与 class 串（键名沿用 shadcn slug，class 按 dsh 行为改写）。
 ///
-/// 公开为组件视觉契约的一部分（等价于 shadcn 导出的 `buttonVariants`），
-/// 供 `tests/` 契约测试与需要按变体取样的调用方使用。
+/// dsh 行为出处：Button.module.css:38-71（fill/hover）、design-platform.css:278-279/:292/:288
+/// （语义别名）。secondary hover 用 `--secondary-hover`（D5，dsh button-ghost-active-hover :279）；
+/// ghost active 白 14% 取最近标准刻度 white/15（:51-53/:288）；outline 去 shadow/dark: 段，
+/// dsh hover 只变底色（:56-63）；destructive 保留 shadcn 红底串不变（D9，dsh 无红底变体）。
+/// 公开为组件视觉契约的一部分，供 `tests/` 契约测试与需要按变体取样的调用方使用。
 pub fn variant_parts(variant: ButtonVariant) -> (&'static str, &'static str) {
     match variant {
         ButtonVariant::Primary => (
@@ -78,49 +88,47 @@ pub fn variant_parts(variant: ButtonVariant) -> (&'static str, &'static str) {
         ),
         ButtonVariant::Secondary => (
             "secondary",
-            "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+            "bg-secondary text-secondary-foreground hover:bg-secondary-hover",
         ),
         ButtonVariant::Destructive => (
             "destructive",
             "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         ),
-        ButtonVariant::Outline => (
-            "outline",
-            "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-        ),
-        ButtonVariant::Ghost => (
-            "ghost",
-            "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        ),
+        ButtonVariant::Outline => ("outline", "border bg-transparent hover:bg-accent"),
+        ButtonVariant::Ghost => ("ghost", "hover:bg-accent active:bg-white/15"),
         ButtonVariant::Link => ("link", "text-primary underline-offset-4 hover:underline"),
     }
 }
 
-/// 尺寸对应的 shadcn `data-size` 键名与 class 串（ui/button.tsx:23-30，逐字）。
+/// 尺寸对应的 `data-size` 键名与 class 串（键名沿用 shadcn slug，class 按 dsh 几何改写）。
 ///
-/// 公开理由同 [`variant_parts`]。
+/// dsh 几何出处：Button.module.css:30-36（sm h28/pad 10px/fs12）、:16（default pad 14px
+/// → px-3.5）、:28-29（icon-only 容器 28×28 → icon-sm size-7，D8）；xs/lg 为 ferrite
+/// 独有档位（dsh 无 24px/38px 公用规格，D7），仅随基串调整。所有尺寸串不再带
+/// rounded-md：基串已改 rounded-full，同属性 utility 的胜负由样式表顺序决定而非
+/// class 串顺序，残留会随机覆盖胶囊（spec §2）。公开理由同 [`variant_parts`]。
 pub fn size_parts(size: ButtonSize) -> (&'static str, &'static str) {
     match size {
         ButtonSize::Xs => (
             "xs",
-            "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+            "h-6 gap-1 px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
         ),
-        ButtonSize::Sm => ("sm", "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5"),
-        ButtonSize::Default => ("default", "h-9 px-4 py-2 has-[>svg]:px-3"),
-        ButtonSize::Lg => ("lg", "h-10 rounded-md px-6 has-[>svg]:px-4"),
+        ButtonSize::Sm => ("sm", "h-7 gap-1 px-2.5 text-xs has-[>svg]:px-2"),
+        ButtonSize::Default => ("default", "h-9 px-3.5 py-2 has-[>svg]:px-3"),
+        ButtonSize::Lg => ("lg", "h-10 px-6 has-[>svg]:px-4"),
         ButtonSize::Icon => ("icon", "size-9"),
-        // shadcn 原生带 icon-xs（ui/button.tsx:28）：size-6 方形 + svg 缩到 size-3，
-        // 与我们多出的 IconXs 枚举一一对应，无需自造等价组合。
+        // icon-xs 键名沿用 shadcn data-size（ui/button.tsx:28）：size-6 方形 + svg 缩到
+        // size-3，与我们多出的 IconXs 枚举一一对应，无需自造等价组合。
         ButtonSize::IconXs => (
             "icon-xs",
-            "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
+            "size-6 [&_svg:not([class*='size-'])]:size-3",
         ),
-        ButtonSize::IconSm => ("icon-sm", "size-8"),
+        ButtonSize::IconSm => ("icon-sm", "size-7"),
         ButtonSize::IconLg => ("icon-lg", "size-10"),
     }
 }
 
-/// 把调用方传入的 `class` 追加到组件 shadcn 基串之后，其余属性原样保留。
+/// 把调用方传入的 `class` 追加到组件基串之后，其余属性原样保留。
 ///
 /// 取代 dxc 的 `dioxus_primitives::merge_attributes`：只摘出 `class` 属性做字符串
 /// 拼接（先组件基串、后调用方串；Tailwind 语义下拼接顺序不影响命中），非 `class`
@@ -148,7 +156,7 @@ fn with_class(attributes: Vec<Attribute>, extra: &str) -> Vec<Attribute> {
     rest
 }
 
-/// shadcn new-york-v4 风格按钮。
+/// dsh（deepseek-harness）风格按钮。
 #[component]
 pub fn Button(
     #[props(default)] variant: ButtonVariant,
