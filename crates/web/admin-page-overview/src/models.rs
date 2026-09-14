@@ -1,5 +1,6 @@
 //! 模型卡片网格 — 数据来自真实 `GET /api/models`(见 [`crate::api::list_models_api`])。
-//! 后端没有的字段(价格、趋势、分组报价)不展示,不造数据;
+//! 卡牌视觉恢复 #154 前的「模型展示卡」分区样式: 渐变玻璃容器 + 头部名称区 + 分区线
+//! 加大数字统计块与 MiniStat 网格; 后端没有的字段(价格、趋势、分组报价)不展示,不造数据;
 //! loading / error / empty 三态诚实,写法与 health.rs / overview.rs 一致。
 
 use dioxus::prelude::*;
@@ -8,8 +9,9 @@ use client::ApiClient;
 
 use crate::api::{self, ModelCardView};
 
-/// One model = one card. 只展示后端 `ModelView` 里页面真实消费的字段。
-/// Width and flow come from the parent layout; the card is self-contained.
+/// One model = one card. 数据只来自真实 `ModelCardView` 字段(来源与 #154 接线版一致),
+/// 卡面结构恢复 #154 前的「模型展示卡」: 头部(名称/归属/状态) + 分区线 + 大数字统计块
+/// + 三列 MiniStat。Width and flow come from the parent layout; the card is self-contained.
 #[component]
 pub fn ModelCard(model: ModelCardView) -> Element {
     let card_cls = "flex flex-col gap-3 rounded-2xl border border-white/10 \
@@ -25,7 +27,7 @@ pub fn ModelCard(model: ModelCardView) -> Element {
 
     rsx! {
         section { class: "{card_cls}",
-            // Top bar: name + status
+            // Top bar: name + 归属/类型 + status(旧版头部槽位: 名称 + 厂商)
             header { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0",
                     h3 { class: "truncate text-base font-semibold tracking-tight text-zinc-50", "{model.name}" }
@@ -34,24 +36,18 @@ pub fn ModelCard(model: ModelCardView) -> Element {
                 span { class: "shrink-0 {status_cls} text-xs font-medium", "{status_text}" }
             }
 
-            // 能力标签:只标注后端声明的布尔能力,两者皆无则不渲染
-            if model.is_vision || model.is_tool {
-                div { class: "flex flex-wrap gap-1.5",
-                    if model.is_vision {
-                        span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400", "视觉" }
-                    }
-                    if model.is_tool {
-                        span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400", "工具调用" }
-                    }
-                }
-            }
-
             div { class: "border-t border-white/5" }
 
-            // 真实用量字段(usage_count / max_tokens),价格与六维后端未提供
-            div { class: "grid grid-cols-2 gap-2",
-                MiniStat { label: "累计调用", value: model.usage_count.to_string() }
-                MiniStat { label: "最大上下文", value: format!("{} tokens", model.max_tokens) }
+            // 大数字统计块(旧版「24H TOKENS」槽位): 累计调用为主数 + 三列关键指标。
+            // 能力布尔为 false 时含后端缺省(serde default)的情形,用「—」表示未声明,不武断展示「不支持」。
+            div {
+                p { class: "text-[11px] uppercase tracking-wider text-zinc-600", "累计调用" }
+                p { class: "mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-50", "{model.usage_count}" }
+                div { class: "mt-3 grid grid-cols-3 gap-2",
+                    MiniStat { label: "最大上下文", value: format!("{} tokens", model.max_tokens) }
+                    MiniStat { label: "视觉", value: if model.is_vision { "支持".to_string() } else { "—".to_string() } }
+                    MiniStat { label: "工具调用", value: if model.is_tool { "支持".to_string() } else { "—".to_string() } }
+                }
             }
         }
     }
