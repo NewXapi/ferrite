@@ -124,7 +124,7 @@ impl WalletService {
             // 金额 i64 上限内无浮点误差（单货币 rate=1 时纯整数运算）。
             // 升级路径：需精确十进制时改 NUMERIC + 定点，见 todo/billing-implementation.md 阶段 2。
             let eff_rate = row.internal_rate * row.group_mult;
-            if !(eff_rate > 0.0) {
+            if eff_rate.partial_cmp(&0.0) != Some(core::cmp::Ordering::Greater) {
                 // 配置错（倍率 0/负/NaN）的货币不参与扣减，防除零/负扣。
                 continue;
             }
