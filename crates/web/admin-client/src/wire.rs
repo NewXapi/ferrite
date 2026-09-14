@@ -222,7 +222,7 @@ pub async fn redeem_code(client: &ApiClient, req: &RedeemRequest) -> ApiResult<s
     client.post("/api/user/topup", req).await
 }
 
-/// 充值开单:`POST /api/user/topup/order` — 只建 pending 订单 (支付 provider
+/// 充值开单:`POST /api/user/topup/orders` — 只建 pending 订单 (支付 provider
 /// 为占位,无支付页),入账需 admin 手工 settle (`POST /api/user/topup/{key}/settle`)。
 ///
 /// 路径契约:兑换码核销与充值开单原本都注册在 `POST /api/user/topup` 且 axum

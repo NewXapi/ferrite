@@ -13,7 +13,7 @@
 
 真实端点:钱包 `GET /api/user/wallet`、拉人统计 `GET /api/affiliate/overview`、
 兑换码 `POST /api/user/topup` (核销入账后刷新钱包)、充值开单
-`POST /api/user/topup/order` (仅建 pending 单,支付 provider 占位,admin settle 后入账)。
+`POST /api/user/topup/orders` (仅建 pending 单,支付 provider 占位,admin settle 后入账)。
 
 保持 mock 的区块 (无后端列表端点,UI 内有「演示数据」标注):充值记录、邀请链接、被邀人列表。
 
