@@ -320,7 +320,11 @@ struct TopupRequest {
     key: String,
 }
 
-/// 用户兑换 — POST /api/user/topup { key }，入账 auth_users.quota。
+/// 用户兑换 — `POST /api/user/topup { key }`，入账 `user_balances(FREE)`。
+///
+/// 本路径是**兑换码核销**（沿用 new-api 惯例）；充值开单是
+/// `POST /api/user/topup/order`（见 [`crate::topup`]），两者不可同路径——
+/// axum 0.8 `Router::merge` 同 path 同 method 重叠会 panic。
 async fn topup(
     State(s): State<RedeemAppState>,
     h: HeaderMap,

@@ -28,3 +28,6 @@ auth     = { path = "../auth" }
 [dev-dependencies]
 db-bootstrap = { path = "../db-bootstrap" }
 tokio = { workspace = true }
+# router_paths.rs：用 oneshot 打真实请求断言路由存在（而非只靠 merge 不 panic）
+tower = { workspace = true }
+http = { workspace = true }

@@ -576,6 +576,7 @@ dependencies = [
  "contract",
  "db-bootstrap",
  "hex",
+ "http",
  "rand 0.8.8",
  "serde",
  "serde_json",
@@ -583,6 +584,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]
