@@ -18,7 +18,7 @@
 - `billing_topups(key PK, user_key, currency, amount, state, provider)` — 充值订单
 - `affiliate_links(invitee_key PK, inviter_key)` — 邀请归属，一人一主防重复绑定/领奖
 - `affiliate_rewards(key PK, inviter_key, invitee_key, kind, amount)` — 奖励入账审计；局部唯一索引 `(invitee_key) WHERE kind='invite'` 做领奖幂等护栏
-- 迁移：`db/migrations/0007_currency_wallet.sql`、`0008_topups.sql`、`0009_affiliate_links.sql`
+- 迁移：`db/migrations/0007_currency_wallet.sql`、`0008_topups.sql`、`0010_affiliate_links.sql`
 
 ## 边界
 
