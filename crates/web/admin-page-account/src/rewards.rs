@@ -1,15 +1,74 @@
-use contract::api::user::UserTopupRequest;
+//! 奖励面板 — 钱包 / 拉人统计 / 兑换码充值 / 充值开单接真实端点:
+//! - 钱包: GET /api/user/wallet (多币种余额 + 折算 availableI64)
+//! - 拉人统计: GET /api/affiliate/overview (inviteCount / totalReward;
+//!   后端统计侧仍是占位值,0 即真实值,前端不造数)
+//! - 兑换码: POST /api/user/topup `{"key"}` (CAS 核销入账) → 成功后刷新钱包
+//! - 充值开单: POST /api/user/topup/orders — 支付 provider 为占位、无支付页,
+//!   开单只建 pending 订单,入账需 admin 手工 settle
+//!   (`POST /api/user/topup/{key}/settle`),故成功提示为「订单已创建,
+//!   待管理员确认后入账」,不给假支付成功。
+//!
+//! 充值记录 / 邀请链接 / 被邀人三块无后端列表端点,保持 mock 演示数据,
+//! 每块有显式「演示数据」标注 (见各 section 内 note)。
+
 use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
 
-use crate::api::{self, Invitee, Recharge, RewardStat};
+use crate::api::{
+    self, AffiliateOverviewView, Invitee, OpenTopupRequest, Recharge, RedeemRequest, WalletView,
+};
 use crate::usage_support::{fmt_num, fmt_quota};
 
-// NOTE: 兑换码充值已接真实后端 (POST /api/user/topup, 兑换码 CAS 核销入账)。
-// 面板其余数据 (钱包 / 充值记录 / 奖励统计 / 被邀人 / 邀请链接) 仍无对应后端
-// 端点, 保持 mock (`api::fetch_wallet` / `fetch_recharges` / `fetch_reward_stats`
-// / `fetch_invitees` / `fetch_invite_link`); 接真实后端时,参照 KeysPanel /
-// UsageLogsPanel 的 `use_effect` + `spawn` + `ApiClient::shared()` 模式改写。
+/// 拉取钱包 (GET /api/user/wallet) 并写回三个 Signal。
+/// 首载与兑换码入账后的刷新共用此入口;`Signal` 是 Rc 句柄 (Copy),按值传。
+fn load_wallet(
+    mut w: Signal<Option<WalletView>>,
+    mut loaded: Signal<bool>,
+    mut err: Signal<String>,
+) {
+    let client = client::ApiClient::shared().clone();
+    spawn(async move {
+        match api::fetch_wallet_api(&client).await {
+            Ok(v) => {
+                err.set(String::new());
+                w.set(Some(v));
+                loaded.set(true);
+            }
+            Err(e) => err.set(e.to_string()),
+        }
+    });
+}
+
+/// 拉取拉人统计 (GET /api/affiliate/overview) 并写回三个 Signal。
+fn load_overview(
+    mut o: Signal<Option<AffiliateOverviewView>>,
+    mut loaded: Signal<bool>,
+    mut err: Signal<String>,
+) {
+    let client = client::ApiClient::shared().clone();
+    spawn(async move {
+        match api::fetch_affiliate_overview_api(&client).await {
+            Ok(v) => {
+                err.set(String::new());
+                o.set(Some(v));
+                loaded.set(true);
+            }
+            Err(e) => err.set(e.to_string()),
+        }
+    });
+}
+
+/// 错误态统一渲染:柔和红边卡片 (非满屏红),对齐 keys.rs 的诚实降级文案。
+fn err_card(testid: &'static str, what: &'static str, msg: String) -> Element {
+    rsx! {
+        div {
+            class: "rounded-xl border border-red-500/40 bg-zinc-900 p-4",
+            "data-testid": testid,
+            p { class: "text-sm text-red-300", "无法加载{what} (未登录或请求失败): {msg}" }
+        }
+    }
+}
+
 #[component]
 pub fn RewardsPanel() -> Element {
     let mut show_copied = use_signal(|| false);
@@ -19,11 +78,44 @@ pub fn RewardsPanel() -> Element {
     let mut topup_ok = use_signal(|| None::<String>);
     let mut topup_err = use_signal(String::new);
 
-    let wallet = api::fetch_wallet();
+    // ---- 钱包 (GET /api/user/wallet): loading skeleton / error 红边卡 / 空态虚线 ----
+    let wallet = use_signal(|| None::<WalletView>);
+    let wallet_loaded = use_signal(|| false);
+    let wallet_err = use_signal(String::new);
+
+    // ---- 拉人统计 (GET /api/affiliate/overview) ----
+    let overview = use_signal(|| None::<AffiliateOverviewView>);
+    let overview_loaded = use_signal(|| false);
+    let overview_err = use_signal(String::new);
+
+    // ---- 充值开单 (POST /api/user/topup/orders, pending 单) ----
+    let mut order_currency = use_signal(String::new);
+    let mut order_amount = use_signal(String::new);
+    let mut order_busy = use_signal(|| false);
+    let mut order_ok = use_signal(|| None::<String>);
+    let mut order_err = use_signal(String::new);
+
+    use_hook(move || {
+        load_wallet(wallet, wallet_loaded, wallet_err);
+        load_overview(overview, overview_loaded, overview_err);
+    });
+
     let recharges = api::fetch_recharges();
-    let stats = api::fetch_reward_stats();
     let invitees = api::fetch_invitees();
     let invite_link = api::fetch_invite_link();
+
+    // 开单币种候选 = 钱包内已有余额的币种;未加载时禁用 (不给假选项)。
+    // Rc 共享：open_order 闭包与 rsx 渲染都要读，Vec 不能 Copy。
+    let currency_options: std::rc::Rc<Vec<String>> = std::rc::Rc::new(match wallet() {
+        Some(w) if w.balances.is_empty() => vec!["FREE".to_string()],
+        Some(w) => w.balances.iter().map(|b| b.currency_code.clone()).collect(),
+        None => vec![],
+    });
+    let order_currency_active = if order_currency().is_empty() {
+        currency_options.first().cloned().unwrap_or_default()
+    } else {
+        order_currency()
+    };
 
     let copy_link = move |_| {
         show_copied.set(true);
@@ -47,24 +139,87 @@ pub fn RewardsPanel() -> Element {
         topup_err.set(String::new());
         topup_ok.set(None);
         let client = client::ApiClient::shared().clone();
-        let req = UserTopupRequest { key: code };
+        let req = RedeemRequest { key: code };
         let mut code_s = redeem_code;
         let mut b = topup_busy;
         let mut ok = topup_ok;
         let mut er = topup_err;
         spawn(async move {
-            match api::topup_api(&client, &req).await {
+            match api::redeem_code_api(&client, &req).await {
                 // 后端成功响应 {"quota": <内部额度单位>, "success": true}:
                 // 用真实入账值提示; 缺字段时降级为通用文案, 不假造数值。
                 Ok(v) => {
                     let msg = match api::topup_credited_quota(&v) {
                         Some(q) => {
-                            format!("充值成功,已入账 {} 额度(约 {})", fmt_num(q), fmt_quota(q))
+                            format!("兑换成功,已入账 {} 额度(约 {})", fmt_num(q), fmt_quota(q))
                         }
-                        None => "充值成功,兑换码已核销".into(),
+                        None => "兑换成功,兑换码已核销".into(),
                     };
                     ok.set(Some(msg));
                     code_s.set(String::new());
+                    // 入账改变余额 → 刷新钱包区 (失败时钱包自带错误态)。
+                    load_wallet(wallet, wallet_loaded, wallet_err);
+                }
+                Err(e) => er.set(e.to_string()),
+            }
+            b.set(false);
+        });
+    };
+
+    // 闭包内读 signal 现值（而非捕获快照）：下单时才解析币种，
+    // 避免 String 被 move 进闭包导致外层渲染拿不到值。
+    // Rc 先 clone 一份给闭包，rsx 侧保留原引用。
+    let closure_currency_options = std::rc::Rc::clone(&currency_options);
+    let open_order = move |_| {
+        if order_busy() {
+            return;
+        }
+        order_err.set(String::new());
+        order_ok.set(None);
+        // 钱包未就绪时拿不到本人 user_key (后端也只允许对本人开单)。
+        let Some(w) = wallet() else {
+            order_err.set("钱包未加载,无法开单".into());
+            return;
+        };
+        let amount: i64 = match order_amount().trim().parse() {
+            Ok(n) if n > 0 => n,
+            _ => {
+                order_err.set("请输入正整数充值金额".into());
+                return;
+            }
+        };
+        let currency = if order_currency().is_empty() {
+            closure_currency_options
+                .first()
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            order_currency()
+        };
+        if currency.is_empty() {
+            order_err.set("无可用充值币种".into());
+            return;
+        }
+        order_busy.set(true);
+        let client = client::ApiClient::shared().clone();
+        let req = OpenTopupRequest {
+            user_key: w.user_key.clone(),
+            currency,
+            amount,
+        };
+        let mut b = order_busy;
+        let mut ok = order_ok;
+        let mut er = order_err;
+        spawn(async move {
+            match api::open_topup_api(&client, &req).await {
+                // provider 占位:只建 pending 单,入账走 admin 手工 settle,
+                // 提示如实写「待管理员确认」,不假装支付已完成。
+                Ok(order) => {
+                    let msg = match order.order_id {
+                        Some(id) => format!("订单已创建({id}),待管理员确认后入账"),
+                        None => "订单已创建,待管理员确认后入账".to_string(),
+                    };
+                    ok.set(Some(msg));
                 }
                 Err(e) => er.set(e.to_string()),
             }
@@ -75,70 +230,162 @@ pub fn RewardsPanel() -> Element {
     rsx! {
             div { class: "flex flex-col gap-6",
                     // 钱包区
-                    section { id: "rewards-sec-wallet", class: "scroll-mt-8 space-y-4",
+                    section {
+                        id: "rewards-sec-wallet",
+                        class: "scroll-mt-8 space-y-4",
+                        role: "region",
+                        "aria-label": "钱包",
                         h2 { class: "text-lg font-medium text-zinc-100", "钱包" }
-                        // 诚实声明: 钱包/充值记录尚无后端端点, 仍为 mock 演示数据;
-                        // 兑换码入账结果以 topup 成功提示里的真实 quota 为准。
-                        p { class: "mt-1 text-xs text-zinc-500",
-                            "data-testid": "wallet-demo-note",
-                            "以下余额与充值记录为演示数据, 实际余额以后端入账为准"
-                        }
 
-                        // 钱包大卡 + 兑换码充值
+                        // 余额卡 — 三态: error 红边 / loading 骨架 / 数据(空余额虚线占位)
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
-                            div { class: "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
-                                div {
-                                    p { class: "text-xs text-zinc-500", "当前余额" }
-                                    p { class: "mt-1 text-6xl font-semibold tracking-tighter text-emerald-400", "{wallet.balance}" }
-                                    p { class: "mt-1 text-xl text-zinc-400", "{wallet.currency}" }
+                            if !wallet_err().is_empty() {
+                                {err_card("wallet-error", "钱包", wallet_err())}
+                            } else if !wallet_loaded() {
+                                div { class: "space-y-3", "data-testid": "wallet-skeleton",
+                                    div { class: "h-10 w-48 animate-pulse rounded bg-zinc-800" }
+                                    div { class: "h-4 w-32 animate-pulse rounded bg-zinc-800/70" }
+                                    div { class: "h-4 w-24 animate-pulse rounded bg-zinc-800/50" }
                                 }
-                                div { class: "flex items-center gap-2 self-start rounded-3xl bg-emerald-950/80 px-5 py-2 text-xs font-medium text-emerald-400",
-                                    span { class: "text-lg leading-none text-emerald-400", "●" }
-                                    "可用"
-                                }
-                            }
-
-                            div { class: "mt-10 border-t border-dashed border-zinc-700 pt-6",
-                                div { role: "group", "aria-label": "兑换码充值",
-                                    p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
-                                    div { class: "flex flex-col gap-3 sm:flex-row",
-                                        input {
-                                            class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
-                                            placeholder: "请输入兑换码",
-                                            value: redeem_code(),
-                                            "data-testid": "topup-code",
-                                            oninput: move |e| redeem_code.set(e.value()),
+                            } else if let Some(w) = wallet() {
+                                div { class: "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
+                                    div {
+                                        p { class: "text-xs text-zinc-500", "可用额度 (内部单位折算)" }
+                                        p {
+                                            class: "mt-1 text-6xl font-semibold tracking-tighter text-emerald-400 tabular-nums",
+                                            "data-testid": "wallet-available",
+                                            "{fmt_num(w.available_i64)}"
                                         }
-                                        button {
-                                            class: "w-full shrink-0 rounded-2xl bg-white px-10 py-3.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100 sm:w-auto",
-                                            onclick: redeem,
-                                            disabled: topup_busy(),
-                                            "data-testid": "topup-submit",
-                                            "aria-label": "立即充值",
-                                            if topup_busy() { "充值中…" } else { "立即充值" }
-                                        }
+                                        p { class: "mt-1 text-xl text-zinc-400", "≈ {fmt_quota(w.available_i64)}" }
+                                    }
+                                    div { class: "flex items-center gap-2 self-start rounded-3xl bg-emerald-950/80 px-5 py-2 text-xs font-medium text-emerald-400",
+                                        span { class: "text-lg leading-none text-emerald-400", "●" }
+                                        "已连后端"
                                     }
                                 }
-                                if let Some(msg) = topup_ok() {
-                                    p { class: "mt-4 flex items-center gap-2 text-sm text-emerald-400",
-                                        "data-testid": "topup-result",
-                                        "{msg}"
+                                // 多币种余额逐行: 币种 code + 该币种单位余额
+                                if w.balances.is_empty() {
+                                    div {
+                                        class: "mt-6 rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
+                                        "data-testid": "wallet-empty",
+                                        p { class: "text-sm text-zinc-500", "暂无币种余额 (新账号未 seed 或已全部消耗)" }
                                     }
-                                }
-                                if !topup_err().is_empty() {
-                                    p { class: "mt-4 text-sm text-red-400",
-                                        "data-testid": "topup-error",
-                                        "充值失败: {topup_err()}"
+                                } else {
+                                    div { class: "mt-6 divide-y divide-zinc-800 border-t border-zinc-800",
+                                        for b in &w.balances {
+                                            div {
+                                                class: "flex justify-between py-3 text-sm first:pt-0 last:pb-0",
+                                                "data-testid": format!("wallet-balance-{}", b.currency_code),
+                                                span { class: "text-zinc-400", "{b.currency_code.clone()}" }
+                                                span { class: "font-medium text-zinc-100 tabular-nums", "{fmt_num(b.amount)}" }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        // 最近充值记录
+                        // 充值开单 — provider 占位无支付页,建 pending 单等 admin settle
+                        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+                            div { role: "group", "aria-label": "充值开单",
+                                p { class: "mb-1 text-sm font-medium text-zinc-100", "充值开单" }
+                                p { class: "mb-4 text-xs text-zinc-500",
+                                    "在线支付通道未开通:开单仅生成待确认订单,管理员确认后入账"
+                                }
+                                div { class: "flex flex-col gap-3 sm:flex-row",
+                                    select {
+                                        class: "rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 text-sm focus:border-zinc-500 focus:outline-none disabled:opacity-50",
+                                        "data-testid": "topup-currency",
+                                        "aria-label": "充值币种",
+                                        value: "{order_currency_active}",
+                                        onchange: move |e| order_currency.set(e.value()),
+                                        disabled: currency_options.is_empty(),
+                                        if currency_options.is_empty() {
+                                            option { value: "", "钱包未加载" }
+                                        } else {
+                                            for code in currency_options.iter() {
+                                                option { value: "{code}", "{code}" }
+                                            }
+                                        }
+                                    }
+                                    input {
+                                        r#type: "number",
+                                        class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
+                                        placeholder: "充值金额 (币种单位,正整数)",
+                                        min: "1",
+                                        value: order_amount(),
+                                        "data-testid": "topup-amount",
+                                        oninput: move |e| order_amount.set(e.value()),
+                                    }
+                                    button {
+                                        class: "w-full shrink-0 rounded-2xl border border-zinc-600 bg-zinc-800 px-8 py-3.5 text-sm font-semibold text-zinc-100 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto",
+                                        onclick: open_order,
+                                        disabled: order_busy() || wallet().is_none(),
+                                        "data-testid": "topup-order-submit",
+                                        "aria-label": "充值开单",
+                                        if order_busy() { "开单中…" } else { "创建充值订单" }
+                                    }
+                                }
+                            }
+                            if let Some(msg) = order_ok() {
+                                p { class: "mt-4 flex items-center gap-2 text-sm text-emerald-400",
+                                    "data-testid": "topup-order-result",
+                                    "{msg}"
+                                }
+                            }
+                            if !order_err().is_empty() {
+                                p { class: "mt-4 text-sm text-red-400",
+                                    "data-testid": "topup-order-error",
+                                    "开单失败: {order_err()}"
+                                }
+                            }
+                        }
+
+                        // 兑换码充值
+                        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+                            div { role: "group", "aria-label": "兑换码充值",
+                                p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
+                                div { class: "flex flex-col gap-3 sm:flex-row",
+                                    input {
+                                        class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
+                                        placeholder: "请输入兑换码",
+                                        value: redeem_code(),
+                                        "data-testid": "topup-code",
+                                        oninput: move |e| redeem_code.set(e.value()),
+                                    }
+                                    button {
+                                        class: "w-full shrink-0 rounded-2xl bg-white px-10 py-3.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100 sm:w-auto",
+                                        onclick: redeem,
+                                        disabled: topup_busy(),
+                                        "data-testid": "topup-submit",
+                                        "aria-label": "兑换",
+                                        if topup_busy() { "兑换中…" } else { "兑换" }
+                                    }
+                                }
+                            }
+                            if let Some(msg) = topup_ok() {
+                                p { class: "mt-4 flex items-center gap-2 text-sm text-emerald-400",
+                                    "data-testid": "topup-result",
+                                    "{msg}"
+                                }
+                            }
+                            if !topup_err().is_empty() {
+                                p { class: "mt-4 text-sm text-red-400",
+                                    "data-testid": "topup-error",
+                                    "兑换失败: {topup_err()}"
+                                }
+                            }
+                        }
+
+                        // 最近充值记录 — 无后端列表端点,mock 演示
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
                             div { class: "mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between",
                                 h3 { class: "text-sm font-medium text-zinc-200", "最近充值记录" }
                                 span { class: "text-xs text-zinc-500", "仅展示最近 3 笔" }
+                            }
+                            p { class: "mb-3 text-xs text-zinc-500",
+                                "data-testid": "recharge-demo-note",
+                                "演示数据:充值记录尚无后端列表端点,入账结果以钱包余额与开单提示为准"
                             }
                             div { class: "divide-y divide-zinc-800",
                                 for Recharge { date, method, amount } in recharges {
@@ -147,7 +394,7 @@ pub fn RewardsPanel() -> Element {
                                             div { class: "text-zinc-400", "{date}" }
                                             div { class: "mt-0.5 text-xs text-zinc-500", "{method}" }
                                         }
-                                        div { class: "text-right font-medium text-emerald-400", "{amount} {wallet.currency}" }
+                                        div { class: "text-right font-medium text-emerald-400", "{amount}" }
                                     }
                                 }
                             }
@@ -158,40 +405,80 @@ pub fn RewardsPanel() -> Element {
                     section { id: "rewards-sec-invite", class: "scroll-mt-8 space-y-4",
                         h2 { class: "text-lg font-medium text-zinc-100", "邀请" }
 
-                        // 邀请链接
+                        // 邀请链接 — 链接生成规则待 affiliate_links 表,mock 演示
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
                             h3 { class: "mb-4 text-sm font-medium text-zinc-200", "邀请好友得奖励" }
                             div { class: "flex flex-col gap-3 sm:flex-row",
                                 div {
                                     class: "flex-1 break-all rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-4 font-mono text-sm text-zinc-400",
+                                    "data-testid": "invite-link",
                                     "{invite_link}"
                                 }
                                 button {
                                     class: "w-full shrink-0 rounded-2xl bg-white px-8 py-4 font-medium text-zinc-900 transition-colors hover:bg-amber-200 active:bg-amber-300 sm:w-auto",
                                     onclick: copy_link,
+                                    "data-testid": "invite-copy",
+                                    "aria-label": "复制邀请链接",
                                     if show_copied() { "已复制 ✓" } else { "复制链接" }
                                 }
                             }
-                            p { class: "mt-4 text-xs text-zinc-500", "通过此链接注册的用户将为您贡献奖励分成,实时到账钱包" }
+                            p { class: "mt-4 text-xs text-zinc-500",
+                                "data-testid": "invite-demo-note",
+                                "演示数据:邀请链接生成规则待后端落地;奖励按站点配置以拉人统计真实值为准"
+                            }
                         }
 
-                        // 奖励统计 - 1/3/5 栅格
-                        section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            for RewardStat { value, label, desc } in stats {
+                        // 拉人统计 (GET /api/affiliate/overview) — 三态同钱包区
+                        section {
+                            class: "grid grid-cols-1 gap-3 md:grid-cols-3",
+                            role: "region",
+                            "aria-label": "拉人统计",
+                            if !overview_err().is_empty() {
+                                {err_card("affiliate-error", "拉人统计", overview_err())}
+                            } else if !overview_loaded() {
+                                for _ in 0..2 {
+                                    div {
+                                        class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+                                        "data-testid": "affiliate-skeleton",
+                                        div { class: "h-8 w-20 animate-pulse rounded bg-zinc-800" }
+                                        div { class: "mt-3 h-4 w-28 animate-pulse rounded bg-zinc-800/70" }
+                                    }
+                                }
+                            } else if let Some(ov) = overview() {
                                 div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
-                                    p { class: "text-4xl font-semibold tracking-tight text-amber-300 tabular-nums", "{value}" }
-                                    p { class: "mt-3 text-sm font-medium text-zinc-100", "{label}" }
-                                    p { class: "mt-6 text-xs leading-snug text-zinc-500", "{desc}" }
+                                    p {
+                                        class: "text-4xl font-semibold tracking-tight text-amber-300 tabular-nums",
+                                        "data-testid": "affiliate-invite-count",
+                                        "{fmt_num(ov.invite_count)}"
+                                    }
+                                    p { class: "mt-3 text-sm font-medium text-zinc-100", "已邀人数" }
+                                    p { class: "mt-6 text-xs leading-snug text-zinc-500", "通过邀请完成注册的用户数" }
+                                }
+                                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+                                    p {
+                                        class: "text-4xl font-semibold tracking-tight text-amber-300 tabular-nums",
+                                        "data-testid": "affiliate-total-reward",
+                                        "{fmt_num(ov.total_reward)}"
+                                    }
+                                    p { class: "mt-3 text-sm font-medium text-zinc-100", "累计奖励 (内部单位)" }
+                                    p { class: "mt-6 text-xs leading-snug text-zinc-500", "≈ {fmt_quota(ov.total_reward)} · 拉人奖励累计" }
                                 }
                             }
                         }
                     }
 
-                    // 被邀人列表 - 纯卡片式
+                    // 被邀人列表 — 无后端列表端点,mock 演示
                     section { id: "rewards-sec-list", class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-6",
-                        div { class: "mb-6 flex items-center justify-between",
+                        div { class: "mb-2 flex items-center justify-between",
                             h3 { class: "text-sm font-medium text-zinc-200", "被邀请用户" }
-                            div { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{invitees.len()} 人" }
+                            div { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
+                                "data-testid": "invitee-count",
+                                "{invitees.len()} 人"
+                            }
+                        }
+                        p { class: "mb-4 text-xs text-zinc-500",
+                            "data-testid": "invitee-demo-note",
+                            "演示数据:被邀人明细尚无后端端点"
                         }
                         div { class: "space-y-3",
                             for Invitee { name, date, reward } in invitees {
