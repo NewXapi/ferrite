@@ -41,7 +41,7 @@ use gateway_gate::graylist::GrayListGate;
 use gateway_gate::model::{GroupModelGate, ModelGate};
 use gateway_gate::quota::QuotaGate;
 use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
-use gateway_gate::snapshot::{IpPolicy, PricingSnapshot};
+use gateway_gate::snapshot::IpPolicy;
 use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
