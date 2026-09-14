@@ -376,11 +376,30 @@ async fn record_settlement(
         }
         Err(e) => tracing::warn!(error = %e, token_key = %token_key, "token key is not a uuid"),
     }
-    // 货币扣费（钱包层，#179 多货币）：按 internal_rate 折算后扣 user_balances。
-    // 不足时 clamp 到 0 并返回实扣——网关语义是"尽力扣，余账由下次请求的
-    // prehold 拦截兜底"，这里不因余额不足而追讨已转发的 token。
+    // 货币扣费（钱包层，#179 多货币 + #188 阶段 2 组倍率）：按
+    // internal_rate × 用户组倍率折算后扣 user_balances。组取自 auth_users
+    // （gate 侧快照的 group 同源）；查不到组的用户按 None（缺省 1.0）扣，
+    // 不因组查询失败漏扣费。不足时 clamp 到 0 并返回实扣——网关语义是
+    // "尽力扣，余账由下次请求的 prehold 拦截兜底"，不追讨已转发 token。
+    let group: Option<String> = match sqlx::query_scalar::<_, String>(
+        "SELECT group_id FROM auth_users WHERE key = $1",
+    )
+    .bind(user_uuid)
+    .fetch_one(pool)
+    .await
+    {
+        Ok(g) => Some(g),
+        Err(sqlx::Error::RowNotFound) => None,
+        Err(e) => {
+            tracing::warn!(error = %e, user_key = %user_uuid, "group lookup failed; deducting at default rate");
+            None
+        }
+    };
     if cost > 0 {
-        match wallet.deduct_by_cost(user_uuid, cost).await {
+        match wallet
+            .deduct_by_cost_group(user_uuid, cost, group.as_deref())
+            .await
+        {
             Ok((deducted, fully)) => {
                 if !fully {
                     tracing::warn!(
@@ -394,10 +413,12 @@ async fn record_settlement(
             Err(e) => tracing::warn!(error = %e, user_key = %user_uuid, "wallet deduction failed"),
         }
     }
-    // 内存 quota 快照桶键 = user 的 UUID 字符串（user 级折算可用值；
-    // 与 QuotaGate 查询键 TokenInfo.id 不同层——快照加载时按 token→user
-    // 展开，同一用户所有 token 共享货币余额，见 snapshot::build_quota_snapshot）
-    quota_snapshot
-        .load()
-        .add(&event.user_key.to_string(), -cost);
+    // 内存 quota 快照扣减：打在**本事件的 token 桶**上。
+    //
+    // 桶键必须是 token_key（QuotaGate 查询键 TokenInfo.id = token UUID；
+    // build_quota_snapshot 按 token 建桶、灌用户级值）。曾误扣 user_key
+    // 桶——那是无人读的桶，settle 后网关余额虚高到 reload 才校正（#187
+    // 引入、本 PR 修复；CI 未抓到是 e2e 库不可达时测试整体 skip）。
+    // 同用户其余 token 的桶不即时联动 = 既有 prehold 漂移语义（reload 收敛）。
+    quota_snapshot.load().add(&token_key, -cost);
 }

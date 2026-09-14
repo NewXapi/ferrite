@@ -83,18 +83,27 @@ pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64
 /// 返回 `user UUID 字符串 → i64`；user_balances 无行的用户不进 map
 /// （消费方 `unwrap_or(0)`，语义 = 没充值就拦截）。
 async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>> {
-    // LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
-    // 乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
-    // 夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
+    // 口径对齐 WalletService::available_i64(user, group)（#188 阶段 2 接线）：
+    // - 冻结不可用：每行只计 (amount - frozen_amount)；
+    // - 组倍率：currency_defs.group_rates 按用户 auth_users.group_id 取
+    //   （COALESCE 缺组/NULL = 1.0，行为与无配置完全一致）；
+    // - LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
+    //   乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
+    //   夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
     let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
         r#"
         SELECT ub.user_key,
                LEAST(
-                   COALESCE(SUM(ub.amount * cd.internal_rate), 0),
+                   COALESCE(SUM(
+                       (ub.amount - ub.frozen_amount)
+                       * cd.internal_rate
+                       * COALESCE((cd.group_rates->>u.group_id)::float8, 1.0)
+                   ), 0),
                    9223372036854775807::double precision
                )::BIGINT AS available
         FROM user_balances ub
         JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
+        JOIN auth_users u ON u.key = ub.user_key
         GROUP BY ub.user_key
         "#,
     )
