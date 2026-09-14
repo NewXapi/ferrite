@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS billing_topups (
     state         TEXT NOT NULL DEFAULT 'pending', -- pending | settling | paid | failed | refunded
     provider      TEXT NOT NULL DEFAULT '',      -- 支付渠道占位，如 "epay"
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    settled_at    TIMESTAMPTZ,                    -- 充值到账时间（手工 settle 时写入）
-    PRIMARY KEY (key)
+    settled_at    TIMESTAMPTZ                    -- 充值到账时间（手工 settle 时写入）
 );
 
 CREATE INDEX IF NOT EXISTS idx_billing_topups_user ON billing_topups(user_key);

@@ -73,8 +73,12 @@ async fn assemble(
     egress: Arc<dyn forward::egress::Egress>,
     wire_proxy_pool: bool,
 ) -> anyhow::Result<Router> {
-    // 建表必须先于任何查询：admin_router::router 内部跑 db_bootstrap::run_migrations，
-    // 而 load_proxy_snapshot 查 proxy_nodes（迁移 0005 才建）。顺序颠倒则空库首启失败。
+    // 建表必须先于任何查询：本函数在 admin_router::router（其内部也跑一遍
+    // run_migrations，幂等）之前就调 load_snapshots 查 api_channels 等表，
+    // 空库首启会直接 "relation does not exist"（e2e wire-contract 首跑实锤：
+    // CI 无 PG 全程 skip 掩盖了这条顺序）。这里显式先跑迁移兜底。
+    db_bootstrap::run_migrations(&pool).await?;
+
     let proxies = Arc::new(gateway_proxy::ProxyManager::new());
 
     // JWT secret 属组装关注点：admin-router 只接收现成的 AuthService，不读环境变量。

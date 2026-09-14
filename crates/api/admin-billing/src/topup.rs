@@ -150,7 +150,10 @@ pub struct TopupAppState {
 
 pub fn router(state: TopupAppState) -> Router {
     Router::new()
-        .route("/api/user/topup", post(open_topup))
+        // 订单式开单走 /orders：/api/user/topup 已被 redeem 兑换码核销占用
+        // （#152，main 前端 rewards 面板消费中），同路径双注册会让 axum
+        // merge 直接 panic —— apps/api 整体起不来（e2e wire-contract 实锤）。
+        .route("/api/user/topup/orders", post(open_topup))
         .route("/api/user/topup/{key}/settle", post(settle_topup))
         .with_state(state)
 }
