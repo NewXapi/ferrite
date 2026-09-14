@@ -15,18 +15,19 @@ fn db_url() -> String {
         .unwrap_or_else(|_| "postgres://ferrite:ferrite@127.0.0.1:5433/ferrite".into())
 }
 
-async fn make_svc() -> (RedeemService, sqlx::PgPool) {
+async fn make_svc() -> Option<(RedeemService, sqlx::PgPool)> {
     let _guard = INIT.lock().await;
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .acquire_timeout(Duration::from_secs(5))
         .connect(&db_url())
         .await
-        .expect("PG connect");
+        .map_err(|e| eprintln!("skipping: postgres unreachable at {}: {e}", db_url()))
+        .ok()?;
     db_bootstrap::run_migrations(&pool)
         .await
-        .expect("migrations");
-    (RedeemService::new(pool.clone()), pool)
+        .expect("migrations must apply once PG is reachable");
+    Some((RedeemService::new(pool.clone()), pool))
 }
 
 /// 建一个测试用户（直接 SQL，独立于 auth 集成测试的清理策略）。
@@ -47,9 +48,10 @@ async fn make_user(pool: &sqlx::PgPool) -> Uuid {
 
 /// 生成 → 兑换 → 余额增加；重复核销同一码 → NotFound。
 #[tokio::test]
-#[ignore]
 async fn redeem_generate_and_redeem_flow() {
-    let (svc, pool) = make_svc().await;
+    let Some((svc, pool)) = make_svc().await else {
+        return;
+    };
     let user_key = make_user(&pool).await;
 
     let codes = svc.generate(500, 3).await.expect("generate");
@@ -62,19 +64,24 @@ async fn redeem_generate_and_redeem_flow() {
     let again = svc.redeem(&codes[0], user_key).await;
     assert!(matches!(again, Err(auth::AuthError::NotFound(_))));
 
-    let (balance,): (i64,) = sqlx::query_as("SELECT quota FROM auth_users WHERE key = $1")
-        .bind(user_key)
-        .fetch_one(&pool)
-        .await
-        .expect("fetch user");
+    // #179 起核销入账 user_balances(FREE)（不再写 auth_users.quota）；
+    // 断言换到新口径：钱包行 = 500。
+    let (balance,): (i64,) = sqlx::query_as(
+        "SELECT amount FROM user_balances WHERE user_key = $1 AND currency_code = 'FREE'",
+    )
+    .bind(user_key)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch FREE balance row (redeem seeds it)");
     assert_eq!(balance, 500);
 }
 
 /// 并发核销同一码 → 只有一个成功（CAS 语义）。
 #[tokio::test]
-#[ignore]
 async fn redeem_concurrent_single_winner() {
-    let (svc, pool) = make_svc().await;
+    let Some((svc, pool)) = make_svc().await else {
+        return;
+    };
     let user_key = make_user(&pool).await;
     let codes = svc.generate(100, 1).await.expect("generate");
     let code = codes[0].clone();
@@ -87,9 +94,10 @@ async fn redeem_concurrent_single_winner() {
 
 /// 非法输入：quota<=0 拒绝、空码拒绝。
 #[tokio::test]
-#[ignore]
 async fn redeem_validation_rejected() {
-    let (svc, _pool) = make_svc().await;
+    let Some((svc, _pool)) = make_svc().await else {
+        return;
+    };
     assert!(svc.generate(0, 1).await.is_err());
     assert!(svc.generate(-5, 1).await.is_err());
     assert!(svc.redeem("", Uuid::new_v4()).await.is_err());
@@ -97,9 +105,10 @@ async fn redeem_validation_rejected() {
 
 /// admin 列表分页 + 禁用后兑换失败；未禁用码兑换成功。
 #[tokio::test]
-#[ignore]
 async fn redeem_list_and_disable() {
-    let (svc, pool) = make_svc().await;
+    let Some((svc, pool)) = make_svc().await else {
+        return;
+    };
     let user_key = make_user(&pool).await;
     let codes = svc.generate(50, 2).await.expect("generate");
     let (a, b) = (&codes[0], &codes[1]);
@@ -133,9 +142,10 @@ async fn redeem_list_and_disable() {
 
 /// 兑换目标用户不存在 → NotFound 且码保持未核销（资金不丢）。
 #[tokio::test]
-#[ignore]
 async fn redeem_missing_user_keeps_code_alive() {
-    let (svc, pool) = make_svc().await;
+    let Some((svc, pool)) = make_svc().await else {
+        return;
+    };
     let codes = svc.generate(200, 1).await.expect("generate");
 
     // 随机 user（不存在）→ NotFound

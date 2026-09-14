@@ -3,7 +3,7 @@
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS billing_topups (
-    key           TEXT PRIMARY KEY,               -- UUID 字符串，如 "550e8400-e29b-41d4-a716-446655440000"
+    key           TEXT PRIMARY KEY,               -- UUID 字符串，如 "550e8400-e29b-41d4-a716-446655440000"；PK 声明在列上
     user_key      UUID NOT NULL,                 -- → auth_users.key
     currency      TEXT NOT NULL,                 -- 对应 currency_defs.code
     amount        BIGINT NOT NULL,               -- 充值金额（该货币单位，不是内部单位）

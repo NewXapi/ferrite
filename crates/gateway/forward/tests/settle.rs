@@ -174,7 +174,8 @@ async fn commit_forwarded_settles_non_streamed_into_sink() {
     // (100×15 + 50×60)/1e6 × 500_000 = 2_250
     assert_eq!(ev.cost, 2_250);
     assert_eq!(ev.status_code, 200);
-    assert_eq!(ev.user_key, "tok-1");
+    // user_key 是用户 UUID（stage 修复后取 ctx.token.user_key），token_key 才是 tok-1
+    assert_eq!(ev.user_key, "user-test");
     assert_eq!(ev.token_key, "tok-1");
     assert_eq!(ev.channel_key, "ch-c1");
     assert_eq!(ev.route_unit_key, "c1");

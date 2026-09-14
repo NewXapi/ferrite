@@ -106,19 +106,38 @@ async fn insert_test_user(pool: &sqlx::PgPool) -> uuid::Uuid {
     .execute(pool)
     .await
     .unwrap();
+    // 多货币计费（#179/#187）后 /v1 有两层额度闸：min(token 限额, 用户
+    // user_balances 折算可用)。直插 auth_users 绕过注册 hook，没有货币行
+    // → 可用恒 0 → prehold 402。转发路径的 e2e 必须给测试用户种余额，
+    // 这本身就是新功能契约的一部分（没充值 = 不放行）。
+    sqlx::query(
+        r#"INSERT INTO user_balances (user_key, currency_code, amount)
+           VALUES ($1, 'FREE', 100000000) ON CONFLICT DO NOTHING"#,
+    )
+    .bind(user_key)
+    .execute(pool)
+    .await
+    .unwrap();
     user_key
 }
 
 /// 插入渠道；返回 (key_uuid, name)，供用量归因断言比对。
-async fn insert_channel(pool: &sqlx::PgPool) -> (uuid::Uuid, String) {
+///
+/// `model`：渠道服务的对外模型名。归因断言的测试**必须传每运行唯一值**
+/// （如 `gpt-<uuid>`）——共享 e2e 库会积累历史渠道，同样服务 gpt-4o 的
+/// 旧渠道会被 dispatch 合法选中，归因断言就比对到别人的 UUID 上
+/// （并发 + 跨运行数据残留，非归因 bug）。
+async fn insert_channel(pool: &sqlx::PgPool, model: &str) -> (uuid::Uuid, String) {
     let key = uuid::Uuid::new_v4();
     let name = format!("ch_{}", &key.to_string()[..8]);
+    let models = serde_json::to_string(&[model]).unwrap();
     sqlx::query(
         r#"INSERT INTO api_channels (key, name, channel_type, base_url, keys, models, groups, status)
-           VALUES ($1, $2, 'openai', 'http://mock', '["sk"]', '["gpt-4o"]', '{default}', 1)"#,
+           VALUES ($1, $2, 'openai', 'http://mock', '["sk"]', $3::jsonb, '{default}', 1)"#,
     )
     .bind(key)
     .bind(&name)
+    .bind(&models)
     .execute(pool)
     .await
     .unwrap();
@@ -152,12 +171,24 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
     let _app = build_test_app(&pool).await;
 
     let user_key = insert_test_user(&pool).await;
-    let (channel_key, channel_name) = insert_channel(&pool).await;
+    // 每运行唯一模型名：让本渠道成为该模型唯一路由，归因断言才确定
+    // （共享 e2e 库的历史渠道若同服务 gpt-4o 会被 dispatch 选中）。
+    let model = format!("gpt-{}", uuid::Uuid::new_v4().simple());
+    let (channel_key, channel_name) = insert_channel(&pool, &model).await;
+    // 计费断言（used_quota >= 15）需要该模型有价格行——settle 对缺价模型
+    // 按免费落账（cost 0，文档化语义），价格行不种则计费断言恒 0。
+    sqlx::query(
+        r#"INSERT INTO model_prices (model, input, output, cache) VALUES ($1, 5.0, 10.0, 0.0)"#,
+    )
+    .bind(&model)
+    .execute(&pool)
+    .await
+    .unwrap();
     let (_token_key, plaintext) = insert_token(&pool, user_key).await;
 
     let app = build_test_app(&pool).await;
 
-    let body = serde_json::json!({"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"hi"}]});
+    let body = serde_json::json!({"model": model, "stream":true, "messages":[{"role":"user","content":"hi"}]});
     let req = Request::builder()
         .method("POST")
         .uri("/v1/chat/completions")
@@ -183,14 +214,19 @@ async fn e2e_create_channel_token_call_v1_records_usage() {
         .unwrap();
     assert!(count >= 1, "usage_logs rows: {}", count);
 
-    // 渠道归因回归闸：最新一行必须是本请求的，且带着 Dispatch 实际命中的渠道
-    // （pipeline 响应 extensions → usage 中间件 → usage_logs）。历史上这两列
-    // 恒为 NULL/空（中间件在 pipeline 外拿不到选中路由），渠道维度分析全废。
-    let (row_channel_key, row_channel_name): (Option<uuid::Uuid>, String) =
-        sqlx::query_as("SELECT channel_key, channel_name FROM usage_logs ORDER BY id DESC LIMIT 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    // 渠道归因回归闸：本请求的行必须带着 Dispatch 实际命中的渠道（pipeline
+    // 响应 extensions → usage 中间件 → usage_logs）。历史上这两列恒为
+    // NULL/空（中间件在 pipeline 外拿不到选中路由），渠道维度分析全废。
+    // 按 token_key 过滤：共享 e2e 库 + 并行测试会互抢 "最新一行"
+    // （ORDER BY id DESC LIMIT 1 曾拿到别的测试的行——并发数据竞争，非归因 bug）。
+    let (row_channel_key, row_channel_name): (Option<uuid::Uuid>, String) = sqlx::query_as(
+        "SELECT channel_key, channel_name FROM usage_logs \
+             WHERE token_key = $1 ORDER BY id DESC LIMIT 1",
+    )
+    .bind(_token_key)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(
         row_channel_key,
         Some(channel_key),

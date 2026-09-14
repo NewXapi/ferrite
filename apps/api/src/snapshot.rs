@@ -83,18 +83,27 @@ pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64
 /// 返回 `user UUID 字符串 → i64`；user_balances 无行的用户不进 map
 /// （消费方 `unwrap_or(0)`，语义 = 没充值就拦截）。
 async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>> {
-    // LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
-    // 乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
-    // 夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
+    // 口径对齐 WalletService::available_i64(user, group)（#188 阶段 2 接线）：
+    // - 冻结不可用：每行只计 (amount - frozen_amount)；
+    // - 组倍率：currency_defs.group_rates 按用户 auth_users.group_id 取
+    //   （COALESCE 缺组/NULL = 1.0，行为与无配置完全一致）；
+    // - LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
+    //   乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
+    //   夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
     let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
         r#"
         SELECT ub.user_key,
                LEAST(
-                   COALESCE(SUM(ub.amount * cd.internal_rate), 0),
+                   COALESCE(SUM(
+                       (ub.amount - ub.frozen_amount)
+                       * cd.internal_rate
+                       * COALESCE((cd.group_rates->>u.group_id)::float8, 1.0)
+                   ), 0),
                    9223372036854775807::double precision
                )::BIGINT AS available
         FROM user_balances ub
         JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
+        JOIN auth_users u ON u.key = ub.user_key
         GROUP BY ub.user_key
         "#,
     )
@@ -119,6 +128,8 @@ pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
         user_snapshot: shared(input.user_snapshot),
         quota_snapshot: shared(quota_snapshot),
         group_snapshot: shared(input.group_snapshot),
+        // 先按引用构建 gate 价格快照，再把 rows move 给计费侧句柄。
+        pricing_snapshot: shared(build_pricing_snapshot(&input.price_rows)),
         price_rows: shared(input.price_rows),
         name_directory: shared(input.name_directory),
         channel_names: shared(input.channel_names),
@@ -235,6 +246,31 @@ fn build_dispatch_and_quota(
     (dispatch_snapshot, quota_snapshot)
 }
 
+/// price_rows（(model, input, output, cache) $/M）→ gate 的 [`PricingSnapshot`]。
+///
+/// gate 的 lookup 是 `(model, group)` 双键 + default 回退，而价格表按 model
+/// 全局定价（组差异走 group_ratio，不重复建行）——这里全部 upsert 到
+/// `"default"` 组：任何组查询经 default 回退命中，组倍率由 QuotaGate 的
+/// group_ratio 参数另行折算（两层语义见 gate/quota.rs 文档）。
+fn build_pricing_snapshot(
+    price_rows: &[(String, f64, f64, f64)],
+) -> gateway_gate::snapshot::PricingSnapshot {
+    use gateway_gate::snapshot::{PriceRow, PricingSnapshot};
+    let snapshot = PricingSnapshot::default();
+    for (model, input, output, cache) in price_rows {
+        snapshot.upsert(
+            model.clone(),
+            "default".to_string(),
+            PriceRow {
+                input_per_m: *input,
+                output_per_m: *output,
+                cache_per_m: *cache,
+            },
+        );
+    }
+    snapshot
+}
+
 /// 把纯值包成 `Arc<ArcSwap<T>>`（即 gate / 计费组件持有的 `Shared*` 形状）。
 fn shared<T>(value: T) -> Arc<arc_swap::ArcSwap<T>> {
     Arc::new(arc_swap::ArcSwap::from_pointee(value))
@@ -297,6 +333,11 @@ pub fn apply_snapshot_reload(
     // 计费快照随 reload 换新：价格行 / 展示名目录 / 渠道名映射。三者的消费方
     // （PgPriceTable、PgSettleSink）都持同一批 ArcSwap 句柄、读取时现 load，
     // store 后下一次 lookup / submit 即读到新值——改价、改名都免重启。
+    // QuotaGate 价格快照同步换新：只 store price_rows 会让 prehold 继续
+    // 用旧价（改价不重启的另一半，sink 侧早已同源）。
+    target
+        .pricing_snapshot
+        .store(Arc::new(build_pricing_snapshot(&input.price_rows)));
     target.price_rows.store(Arc::new(input.price_rows));
     target.name_directory.store(Arc::new(input.name_directory));
     target.channel_names.store(Arc::new(input.channel_names));
@@ -750,4 +791,8 @@ pub struct Snapshots {
     /// 渠道 UUID 字符串 → 展示名（reload 换新；sink submit 时现读，
     /// 渠道改名免重启生效）。
     pub channel_names: SharedChannelNames,
+    /// QuotaGate 的价格快照（prehold 预估成本用）。boot 由 price_rows
+    /// 构建、reload 同步 store——曾传就地新建的空快照，预估成本恒 0，
+    /// 「余额 < 预估 → 402」整挡失效（e2e 实锤，本 PR 修复）。
+    pub pricing_snapshot: gateway_gate::snapshot::SharedPricing,
 }

@@ -124,6 +124,7 @@ fn make_ctx() -> gateway_pipeline::RequestCtx {
         },
         token: Some(TokenInfo {
             id: "tok-e2e".into(),
+            user_key: "user-e2e".into(),
             group: "default".into(),
             enabled: true,
             allowed_models: None,

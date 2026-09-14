@@ -565,11 +565,14 @@ impl ForwardStage {
         req_body: &Bytes,
     ) -> Result<StageOutcome, StageError> {
         if stream {
-            // 流式路径经 SseScanner + StreamScanner 扫描链，流结束时自动结算
+            // 流式路径经 SseScanner + StreamScanner 扫描链，流结束时自动结算。
+            // user_key 必须取 AuthGate 写入的用户 UUID（ctx.user_key）——曾误取
+            // token.id：settle 按用户键扣 user_balances，token 键查无行 → 钱包
+            // 永远扣不到、usage_logs.user_key 也错（e2e 实锤）。
             let user_key = ctx
                 .token
                 .as_ref()
-                .map(|t| t.id.to_string())
+                .map(|t| t.user_key.clone())
                 .unwrap_or_default();
             let token_key = ctx
                 .token
@@ -691,8 +694,10 @@ impl ForwardStage {
                 completion: resp_body.len() as u64 / 4,
                 cached: 0,
             });
+        // user_key = AuthGate 写入的用户 UUID（ctx.user_key）；token_key 才是
+        // token.id。两者曾同为 token.id → settle 按错误键扣钱包（e2e 实锤）。
         let (user_key, token_key, group) = match ctx.token.as_ref() {
-            Some(t) => (t.id.clone(), t.id.clone(), t.group.clone()),
+            Some(t) => (t.user_key.clone(), t.id.clone(), t.group.clone()),
             // 归因缺失（理论上 gates 已保证 Some）：跳过结算，绝不产出无主账单。
             None => return,
         };
@@ -750,8 +755,9 @@ impl ForwardStage {
         let (Some(pt), Some(sink)) = (self.price_table.as_ref(), self.sink.as_ref()) else {
             return;
         };
+        // 同 settle_non_stream：user_key 是用户 UUID，不是 token.id。
         let (user_key, token_key, group) = match ctx.token.as_ref() {
-            Some(t) => (t.id.clone(), t.id.clone(), t.group.clone()),
+            Some(t) => (t.user_key.clone(), t.id.clone(), t.group.clone()),
             // 归因缺失（理论上 gates 已保证 Some）：跳过观测，同成功路径语义。
             None => return,
         };

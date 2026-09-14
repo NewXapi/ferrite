@@ -110,6 +110,7 @@ fn ctx_with_token(raw: &str, user_key: &str, snapshot: &TokenSnapshot) -> GateCt
     ctx.user_key = Some(user_key.into());
     ctx.token = Some(gateway_gate::TokenInfo {
         id: token.meta.key.clone(),
+        user_key: "user-test".to_string(),
         user_id: 0,
         id_hash: hash,
         group: token.group().unwrap_or("").to_string(),
@@ -272,6 +273,7 @@ async fn quota_rejects_insufficient_remaining() {
     let mut ctx = make_ctx(make_meta(HeaderMap::new(), b"{}".to_vec()));
     ctx.token = Some(gateway_gate::TokenInfo {
         id: "tok-1".into(),
+        user_key: "user-test".to_string(),
         user_id: 1,
         id_hash: [0; 32],
         group: "default".into(),
@@ -337,6 +339,7 @@ async fn ratelimit_gate_rejects_with_rejection() {
     let mut ctx = make_ctx(make_meta(HeaderMap::new(), b"{}".to_vec()));
     ctx.token = Some(gateway_gate::TokenInfo {
         id: "tok-1".into(),
+        user_key: "user-test".to_string(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -366,6 +369,7 @@ async fn model_allows_whitelisted_and_blocks_others() {
     ));
     ctx.token = Some(gateway_gate::TokenInfo {
         id: "tok-1".into(),
+        user_key: "user-test".to_string(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -384,6 +388,7 @@ async fn model_allows_whitelisted_and_blocks_others() {
     ));
     ctx.token = Some(gateway_gate::TokenInfo {
         id: "tok-1".into(),
+        user_key: "user-test".to_string(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -400,6 +405,7 @@ async fn model_allows_whitelisted_and_blocks_others() {
     ));
     ctx.token = Some(gateway_gate::TokenInfo {
         id: "tok-1".into(),
+        user_key: "user-test".to_string(),
         user_id: 1,
         id_hash: [0; 32],
         group: "g".into(),
@@ -430,6 +436,7 @@ async fn graylist_blocks_after_streak_threshold() {
     let mut ctx = make_ctx(make_meta(HeaderMap::new(), b"{}".to_vec()));
     ctx.token = Some(gateway_gate::TokenInfo {
         id: "tok-1".into(),
+        user_key: "user-test".to_string(),
         user_id: 1,
         id_hash: hash,
         group: "g".into(),

@@ -140,6 +140,18 @@ impl RedeemService {
                 "redemption code invalid or used".into(),
             ))?
             .0;
+        // 用户存在性校验（事务内）：旧实现写 auth_users 时 UPDATE 0 行
+        // 自然挡掉幽灵用户；#179 改写 user_balances 后表间无 FK，这个
+        // 校验必须显式补回——否则不存在的用户能烧码，资金挂到幽灵账户。
+        let user_exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM auth_users WHERE key = $1)")
+                .bind(user_key)
+                .fetch_one(&mut *tx)
+                .await?;
+        if !user_exists {
+            // 回滚：码保持未核销（CAS 的 UPDATE 随事务回滚），资金不丢。
+            return Err(AuthError::NotFound("user not found".into()));
+        }
         // 入账到 user_balances(FREE)（0007 多货币系统），同事务原子提交。
         // credit_in_tx 内部 ON CONFLICT 叠加，幂等。
         let _ = self

@@ -55,7 +55,8 @@ fn assert_zero_cost_observation(ev: &UsageEventRecord, unit_key: &str) {
         "观测事件 counts 必须全 0"
     );
     assert_eq!(ev.cost, 0, "观测事件不得产生账单");
-    assert_eq!(ev.user_key, "tok-1");
+    // user_key 是用户 UUID（stage 修复后取 ctx.token.user_key），token_key 才是 tok-1
+    assert_eq!(ev.user_key, "user-test");
     assert_eq!(ev.token_key, "tok-1");
     assert_eq!(ev.channel_key, format!("ch-{unit_key}"));
     assert_eq!(ev.route_unit_key, unit_key);

@@ -41,7 +41,7 @@ use gateway_gate::graylist::GrayListGate;
 use gateway_gate::model::{GroupModelGate, ModelGate};
 use gateway_gate::quota::QuotaGate;
 use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
-use gateway_gate::snapshot::{IpPolicy, PricingSnapshot};
+use gateway_gate::snapshot::IpPolicy;
 use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::adaptor::AdaptorRegistry;
@@ -133,9 +133,12 @@ async fn assemble(
         // 组白名单再过）。GroupModelGate 依赖 ModelGate 已解析出的 ctx.requested_model，
         // 自身不解析请求体；组未配置 / 白名单空 → fail-open（见 gate crate 文档）。
         .push(GroupModelGate::new(snapshots.group_snapshot.clone()))
+        // QuotaGate 价格快照与计费同源（boot 由 price_rows 构建、reload 同步
+        // store）：曾就地新建空快照，预估成本恒 0，「余额 < 预估 → 402」
+        // 整挡失效——配价模型的超支请求被放行、事后扣成 0（e2e 实锤）。
         .push(QuotaGate::new(
             snapshots.quota_snapshot.clone(),
-            Arc::new(arc_swap::ArcSwap::from_pointee(PricingSnapshot::default())),
+            snapshots.pricing_snapshot.clone(),
         ))
         .push(RateLimitGate::new(Arc::new(RateLimiter::new(100, 60))))
         .push(GrayListGate::new(Arc::new(

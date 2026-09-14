@@ -61,6 +61,10 @@ pub use snapshot::{
 pub struct TokenInfo {
     /// token 身份主键：`TokenRecord.meta.key`（UUID 字符串），quota/限流桶直接按它分桶
     pub id: String,
+    /// token 所属用户的 UUID 字符串（`TokenRecord.user_key`）。settle 扣费按
+    /// 用户键查 user_balances——forward 层曾只有 token.id 可用导致扣错键
+    /// （钱包永远扣不到，e2e 实锤），此字段就是补这条归因链的。
+    pub user_key: String,
     pub user_id: i64,
     pub id_hash: [u8; 32], // sha256(raw_key)
     pub group: String,
