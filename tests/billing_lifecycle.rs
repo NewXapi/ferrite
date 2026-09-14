@@ -278,7 +278,7 @@ async fn insert_price(pool: &sqlx::PgPool, model: &str, input: f64, output: f64)
 /// token：quota 给足，让余额层（user available）成为唯一约束层。
 async fn insert_token(pool: &sqlx::PgPool, user: Uuid, quota: i64) -> (Uuid, String) {
     let key = Uuid::new_v4();
-    let plaintext = format!("sk-{}", uuid::Uuid::new_v4().to_string());
+    let plaintext = format!("sk-{}", uuid::Uuid::new_v4());
     let key_hash = {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
@@ -575,7 +575,7 @@ async fn forward_request_deducts_wallet() {
 
     // 网关数据在 settle 之后 seed + 重建 app：boot 快照（token/渠道/余额）
     // 必须含本场景全部前置（额度桶在快照里，admin_gateway_flow 同法）。
-    let model = format!("life-m3-{}", Uuid::new_v4().to_string());
+    let model = format!("life-m3-{}", Uuid::new_v4());
     let channel = insert_channel(&pool, &model, None).await;
     insert_price(&pool, &model, 100.0, 100.0).await;
     let (_tk, token) = insert_token(&pool, user, 10_000_000).await;
@@ -656,7 +656,7 @@ async fn insufficient_balance_returns_402() {
     let username = format!("life_402_{}", &Uuid::new_v4().to_string()[..8]);
     let user = register_user(&app, &username).await;
 
-    let model = format!("life-m4-{}", Uuid::new_v4().to_string());
+    let model = format!("life-m4-{}", Uuid::new_v4());
     let channel = insert_channel(&pool, &model, None).await;
     insert_price(&pool, &model, 100.0, 100.0).await;
     // token 限额给足 10M：唯一约束层必须是用户余额（两层取 min 的 user 层）。
@@ -886,7 +886,7 @@ async fn group_rate_discounts_gateway_view() {
     // < 2_000_000 ≤ 未打折余额 → 402 且数字可精确定位折算口径。
     const AVAIL_VIP: i64 = 1_920_000;
     const COST: i64 = 2_000_000;
-    let model = format!("life-m6-{}", Uuid::new_v4().to_string());
+    let model = format!("life-m6-{}", Uuid::new_v4());
     let channel = insert_channel(&pool, &model, Some("vip")).await;
     insert_price(&pool, &model, 100.0, 500.0).await;
     let (_tk, token) = insert_token(&pool, user, 10_000_000).await;
