@@ -308,6 +308,9 @@ fn apply_snapshot_reload_hot_swaps_channel_names() {
         price_rows: Arc::new(ArcSwap::from_pointee(Vec::new())),
         name_directory: Arc::new(ArcSwap::from_pointee(NameDirectory::default())),
         channel_names: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+        pricing_snapshot: Arc::new(ArcSwap::from_pointee(
+            gateway_gate::snapshot::PricingSnapshot::default(),
+        )),
     };
     let dispatcher = Dispatcher::new(None, Arc::new(MemoryHealthTable::new()));
 

@@ -118,6 +118,9 @@ fn empty_target() -> (Snapshots, Arc<Dispatcher>) {
         price_rows: Arc::new(ArcSwap::from_pointee(Vec::new())),
         name_directory: Arc::new(ArcSwap::from_pointee(NameDirectory::default())),
         channel_names: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+        pricing_snapshot: Arc::new(ArcSwap::from_pointee(
+            gateway_gate::snapshot::PricingSnapshot::default(),
+        )),
     };
     // boot 时 Dispatcher 可能拿 None 快照（SnapshotNotReady）；reload 必须让它就绪
     let dispatcher = Arc::new(Dispatcher::new(None, Arc::new(MemoryHealthTable::new())));
