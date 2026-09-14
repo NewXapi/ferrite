@@ -589,9 +589,10 @@ async fn forward_request_deducts_wallet() {
     );
 
     // 账单落一条，且金额 > 0（缺价免费语义不适用于本场景——已配价）。
-    // 归因按 token_key 断言：user_key 列实测落的也是 token 键（疑似实现
-    // 列错位，已报 Main），不在测试里钉死可疑行为。
-    let (log_id, cost, _log_user, log_token): (i64, i64, Uuid, Uuid) =
+    // 归因双键都要对：token_key=本次 token、user_key=token 的归属用户
+    // （5b02934 补通 gate→pipeline→forward 归因链后的用户可见承诺：账单
+    // 要记在账户主人名下，不是凭证名下）。
+    let (log_id, cost, log_user, log_token): (i64, i64, Uuid, Uuid) =
         poll("settle 未落 usage_logs", || {
             let pool = pool.clone();
             let model = model.clone();
@@ -607,6 +608,7 @@ async fn forward_request_deducts_wallet() {
         })
         .await;
     assert_eq!(log_token, _tk, "账单归因到本次调用的 token");
+    assert_eq!(log_user, user, "账单归因到 token 的归属用户（非凭证）");
     assert!(cost > 0, "配价模型的 cost 必须 > 0，实际 {cost}");
     // 精算锚点：(10×100 + 5×100)/1e6 × 500_000 = 750 内部单位。
     assert_eq!(cost, 750, "cost 应=usage×价格折算");
