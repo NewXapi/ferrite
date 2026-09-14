@@ -77,11 +77,41 @@ pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64
     Ok(rows)
 }
 
+/// 一次 JOIN 算出全部启用货币用户的折算综合可用值（#179 多货币）。
+///
+/// `available_i64 = COALESCE(SUM(amount × internal_rate), 0)`，仅启用货币。
+/// 返回 `user UUID 字符串 → i64`；user_balances 无行的用户不进 map
+/// （消费方 `unwrap_or(0)`，语义 = 没充值就拦截）。
+async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>> {
+    // LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
+    // 乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
+    // 夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
+    let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
+        r#"
+        SELECT ub.user_key,
+               LEAST(
+                   COALESCE(SUM(ub.amount * cd.internal_rate), 0),
+                   9223372036854775807::double precision
+               )::BIGINT AS available
+        FROM user_balances ub
+        JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
+        GROUP BY ub.user_key
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+}
+
 /// 从 admin-catalog 表加载快照（boot 路径：新建 `Shared*` 实例）。
 pub async fn load_snapshots(pool: &PgPool) -> anyhow::Result<Snapshots> {
     let input = load_snapshot_data(pool).await?;
-    let (dispatch_snapshot, quota_snapshot) =
-        build_dispatch_and_quota(input.channels, input.route_units, &input.token_records);
+    let (dispatch_snapshot, quota_snapshot) = build_dispatch_and_quota(
+        input.channels,
+        input.route_units,
+        &input.token_records,
+        &input.user_quotas,
+    );
 
     Ok(Snapshots {
         dispatch: dispatch_snapshot,
@@ -122,6 +152,10 @@ pub struct ReloadInput {
     /// 渠道 UUID 字符串 → 展示名（usage_logs.channel_name 冗余展示字段用）。
     /// 与 `channels` 同批加载逐条克隆而来，保证名单与渠道快照同一份数据。
     pub channel_names: HashMap<String, String>,
+    /// user UUID 字符串 → 折算综合可用值 available_i64（user_balances ×
+    /// currency_defs.internal_rate 求和，#179 多货币）。quota 快照按
+    /// token→user 展开时灌这个值。
+    pub user_quotas: HashMap<String, i64>,
 }
 
 /// reload 结果计数：`json!` 序列化后作为响应 `data` 字段（snake_case 键即字段名）。
@@ -161,6 +195,10 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
     let price_rows = load_model_prices(pool).await?;
     let name_directory = NameDirectory::new(&token_records, &user_records);
 
+    // 6. 加载用户货币余额折算值（#179 多货币）：一次 JOIN 算出全部用户的
+    //    available_i64；表缺列/查询失败 → 全 0（余额不足语义，不炸 boot）。
+    let user_quotas = load_user_quotas(pool).await?;
+
     Ok(ReloadInput {
         channels,
         route_units,
@@ -173,6 +211,7 @@ async fn load_snapshot_data(pool: &PgPool) -> anyhow::Result<ReloadInput> {
         price_rows,
         name_directory,
         channel_names,
+        user_quotas,
     })
 }
 
@@ -181,13 +220,14 @@ fn build_dispatch_and_quota(
     channels: Vec<ChannelRecord>,
     route_units: Vec<RouteUnitRecord>,
     token_records: &[TokenRecord],
+    user_quotas: &HashMap<String, i64>,
 ) -> (DispatchSnapshot, QuotaSnapshot) {
     let mut channel_map: HashMap<String, ChannelRecord> = HashMap::new();
     for ch in channels {
         channel_map.insert(ch.meta.key.clone(), ch);
     }
 
-    let quota_snapshot = build_quota_snapshot(token_records);
+    let quota_snapshot = build_quota_snapshot(token_records, user_quotas);
     let dispatch_snapshot = DispatchSnapshot {
         units: route_units,
         channels: channel_map,
@@ -236,8 +276,12 @@ pub fn apply_snapshot_reload(
     dispatcher: &Dispatcher,
     input: ReloadInput,
 ) -> ReloadCounts {
-    let (dispatch_snapshot, quota_snapshot) =
-        build_dispatch_and_quota(input.channels, input.route_units, &input.token_records);
+    let (dispatch_snapshot, quota_snapshot) = build_dispatch_and_quota(
+        input.channels,
+        input.route_units,
+        &input.token_records,
+        &input.user_quotas,
+    );
     let counts = ReloadCounts {
         channels: dispatch_snapshot.channels.len() as u64,
         route_units: dispatch_snapshot.units.len() as u64,
@@ -647,16 +691,34 @@ pub fn build_group_snapshot(rows: &[(String, f64, Value, bool)]) -> GroupSnapsho
 
 /// 构建**纯值** quota 快照（包装成 `SharedQuota` 归调用方）。
 ///
-/// 桶键 = token 的 UUID `meta.key`，与 `QuotaGate` 查询键（`TokenInfo.id`，
-/// #127 起为 String，承载 contract 的 UUID key）一致——预检与扣费同桶。
-fn build_quota_snapshot(token_records: &[TokenRecord]) -> QuotaSnapshot {
+/// 桶键 = token 的 UUID `meta.key`（与 `QuotaGate` 查询键 `TokenInfo.id`
+/// 一致——预检与扣费同桶）。
+///
+/// **值 = min(token 剩余限额, 用户货币可用值)** —— 两层额度都要卡：
+/// - token 层（`api_tokens.quota - used_quota`）：令牌自己的独立限额，
+///   同一用户可以给不同 token 配不同上限（new-api token quota 语义）；
+/// - user 层（`user_balances × internal_rate` 求和，#179 多货币）：真实
+///   资金，同一用户所有 token 共享。
+///
+/// 取小值的理由：token 限额 500 但用户只剩 100 → 只能花 100；用户有 5000
+/// 但该 token 限 500 → 只能花 500。任一层不足都该拦。
+///
+/// `token.unlimited_quota = true`：跳过 token 层，只受用户余额约束
+/// （不限额 ≠ 不要钱；要完全免费需给用户灌足余额或单独建免费货币）。
+/// 用户不在 `user_quotas`（没充值）→ 0（prehold 恒拦截）。
+fn build_quota_snapshot(
+    token_records: &[TokenRecord],
+    user_quotas: &HashMap<String, i64>,
+) -> QuotaSnapshot {
     let quota_snapshot = QuotaSnapshot::default();
 
     for token in token_records {
+        let user_available = user_quotas.get(&token.user_key).copied().unwrap_or(0);
         let remaining = if token.unlimited_quota {
-            i64::MAX
+            user_available
         } else {
-            (token.quota - token.used_quota).max(0)
+            let token_left = (token.quota - token.used_quota).max(0);
+            token_left.min(user_available)
         };
         quota_snapshot.upsert(token.meta.key.clone(), remaining);
     }

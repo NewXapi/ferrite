@@ -189,6 +189,9 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
             price_rows: vec![("gpt-4o".into(), 15.0, 60.0, 0.0)],
             name_directory: NameDirectory::new(&tokens, &users),
             channel_names,
+            // 两层额度（#187 T3）：user 层灌 5000 → 与 token 层 1000-100=900
+            // 取小得 900，钉住"token 限额更小时以 token 层为准"。
+            user_quotas: HashMap::from([("u-1".to_string(), 5000_i64)]),
         },
     );
 
@@ -220,7 +223,7 @@ fn apply_snapshot_reload_stores_new_values_and_counts() {
     assert_eq!(
         target.quota_snapshot.load().remaining("1001"),
         900,
-        "quota 应等于 quota - used_quota"
+        "两层取小：token 层 1000-100=900 < user 层 5000（#187）"
     );
 
     // 2b. 计费快照换新生效：价格行与展示名目录 store 后立即可读（价格表
@@ -286,6 +289,7 @@ fn reload_replaces_snapshot_wholesale() {
             price_rows: Vec::new(),
             name_directory: NameDirectory::default(),
             channel_names: channel_names_of(&[channel("ch-1")]),
+            user_quotas: HashMap::new(),
         },
     );
     assert_eq!(counts_a.tokens, 1);
@@ -315,6 +319,7 @@ fn reload_replaces_snapshot_wholesale() {
             price_rows: Vec::new(),
             name_directory: NameDirectory::default(),
             channel_names: channel_names_of(&[channel("ch-2"), channel("ch-3")]),
+            user_quotas: HashMap::new(),
         },
     );
     assert_eq!(counts_b.tokens, 1, "tokens 计数应是新输入规模");

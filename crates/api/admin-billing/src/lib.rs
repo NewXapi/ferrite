@@ -36,7 +36,7 @@ pub mod topup;
 pub mod wallet;
 
 pub use affiliate::{AffiliateAppState, AffiliateService, router as affiliate_router};
-pub use currency::{CurrencyAppState, CurrencyService, router as currency_router};
+pub use currency::{CurrencyAppState, CurrencyService, WalletSeedHook, router as currency_router};
 pub use redeem::{RedeemAppState, RedeemService, router};
 pub use topup::{TopupAppState, TopupService, router as topup_router};
 pub use wallet::{WalletAppState, WalletService, router as wallet_router};

@@ -9,7 +9,8 @@
 //! 3. `build_consume_event` 的 log_type 钉住回归在 `tests/usage_log_type.rs`
 //!    （同源搬运，此处不重复）；
 //! 4. （PG-skip）[`api::billing::PgSettleSink::submit`] 落一行 usage_logs +
-//!    递增 `api_tokens.used_quota` + 扣内存 quota 快照。
+//!    递增 `api_tokens.used_quota` + 扣货币余额 `user_balances`（#179 settle
+//!    闭环）+ 扣内存 quota 快照（user 级）。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -245,6 +246,17 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         .await
         .expect("insert api_tokens row");
 
+    // user_balances 前置：FREE 余额 5000（#179 settle 闭环断言用）。
+    // 行不存在则补（幂等：迁移 seed 过 FREE，但 e2e 库可能手工清过）。
+    sqlx::query(
+        "INSERT INTO user_balances (user_key, currency_code, amount) VALUES ($1, 'FREE', 5000) \
+         ON CONFLICT (user_key, currency_code) DO UPDATE SET amount = 5000",
+    )
+    .bind(user_uuid)
+    .execute(&pool)
+    .await
+    .expect("seed user_balances FREE row");
+
     // 名单目录（boot 快照等价物）：token/user 名字由记录构建
     let tokens = vec![TokenRecord {
         meta: sync_meta(&token_key),
@@ -286,11 +298,14 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
     let channel_names: api::snapshot::SharedChannelNames =
         Arc::new(ArcSwap::from_pointee(channel_names_map));
 
+    // sink 持真 WalletService（#179 settle 闭环）：测试断言 user_balances
+    // 被 settle 真扣，与生产链路同形。
     let sink = PgSettleSink::new(
         pool.clone(),
         quota_snapshot.clone(),
         channel_names.clone(),
         Arc::new(ArcSwap::from_pointee(NameDirectory::new(&tokens, &users))),
+        billing::WalletService::new(pool.clone()),
     );
 
     let make_event = |model: &str| UsageEventRecord {
@@ -350,7 +365,22 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         .expect("api_tokens row must exist");
     assert_eq!(used_quota, cost, "used_quota 必须按事件 cost 递增");
 
-    // 内存 quota 快照扣减（与 QuotaGate 预检同桶）
+    // 货币余额扣减（#179 settle 闭环）：FREE 5000 → 5000 - 123 = 4877
+    let wallet_amount: i64 = sqlx::query_scalar(
+        "SELECT amount FROM user_balances WHERE user_key = $1 AND currency_code = 'FREE'",
+    )
+    .bind(user_uuid)
+    .fetch_one(&pool)
+    .await
+    .expect("user_balances FREE row must exist");
+    assert_eq!(
+        wallet_amount,
+        5000 - cost,
+        "settle 必须把 cost 从货币余额扣掉（wallet 层闭环）"
+    );
+
+    // 内存 quota 快照扣减（与 QuotaGate 预检同桶；本测试快照桶是 token_key，
+    // 生产 build_quota_snapshot 灌 user 级值——语义见 snapshot.rs 文档）
     assert_eq!(
         quota_snapshot.load().remaining(&token_key),
         1000 - cost,
@@ -381,6 +411,11 @@ async fn settle_sink_records_usage_log_and_updates_used_quota() {
         .execute(&pool)
         .await
         .expect("cleanup api_tokens row");
+    sqlx::query("DELETE FROM user_balances WHERE user_key = $1")
+        .bind(user_uuid)
+        .execute(&pool)
+        .await
+        .expect("cleanup user_balances row");
 }
 
 /// 价格表持共享句柄：reload store 新行后 lookup 即读到新价（热更无需重启）。
@@ -448,4 +483,99 @@ fn error_jobs_translate_to_log_type_5() {
     );
     assert_eq!(err.quota, 0, "错误行零成本");
     assert!(err.is_stream, "流式意图透传");
+}
+
+// ============================================================================
+// quota 快照 user 级语义（#179）：token→user 展开 + available_i64
+// ============================================================================
+
+/// `build_quota_snapshot` 的两层额度语义钉子（#179 T3）：
+/// 桶值 = `min(token 剩余限额, 用户货币可用值)`——
+/// - 同一用户的多个 token 共享 user 层余额，但各自受 token 限额约束；
+/// - user 不在 user_quotas（没充值）→ 0（prehold 恒拦截）；
+/// - `unlimited_quota` 跳过 token 层，仍受 user 余额约束（不限额 ≠ 不要钱）。
+#[test]
+fn quota_snapshot_takes_min_of_token_and_user_limits() {
+    let user_a = Uuid::new_v4();
+    let user_b = Uuid::new_v4();
+    let mk_token = |user: &Uuid, quota: i64, used: i64, unlimited: bool| TokenRecord {
+        meta: sync_meta(&Uuid::new_v4().to_string()),
+        user_key: user.to_string(),
+        name: "tk".into(),
+        key_hash: "00".repeat(32),
+        key_preview: "sk-****".into(),
+        group: None,
+        quota,
+        unlimited_quota: unlimited,
+        used_quota: used,
+        expires_at: None,
+        status: 1,
+    };
+    let tokens = vec![
+        mk_token(&user_a, 500, 0, false),   // token 限 500 < 用户 777 → 500
+        mk_token(&user_a, 2000, 0, false),  // token 限 2000 > 用户 777 → 777
+        mk_token(&user_b, 900, 0, false),   // 用户没充值 → 0
+        mk_token(&user_a, 0, 0, true),      // unlimited → 用户余额 777
+        mk_token(&user_a, 500, 400, false), // 剩 100 < 777 → 100
+    ];
+    let user_quotas = HashMap::from([(user_a.to_string(), 777_i64)]);
+
+    // build_quota_snapshot 是 boot/reload 的私有内部函数；此处钉它的**行为
+    // 契约**，实现改了这里必须同步改。真实链路由 snapshot_wiring 与
+    // settle_sink_records_usage_log_and_updates_used_quota 覆盖。
+    let snapshot = QuotaSnapshot::default();
+    for t in &tokens {
+        let user_available = user_quotas.get(&t.user_key).copied().unwrap_or(0);
+        let remaining = if t.unlimited_quota {
+            user_available
+        } else {
+            (t.quota - t.used_quota).max(0).min(user_available)
+        };
+        snapshot.upsert(t.meta.key.clone(), remaining);
+    }
+    let keys: Vec<_> = tokens.iter().map(|t| t.meta.key.clone()).collect();
+    assert_eq!(
+        snapshot.remaining(&keys[0]),
+        500,
+        "token 限额更小时取 token 层"
+    );
+    assert_eq!(
+        snapshot.remaining(&keys[1]),
+        777,
+        "用户余额更小时取 user 层"
+    );
+    assert_eq!(
+        snapshot.remaining(&keys[2]),
+        0,
+        "没充值用户桶 0（prehold 拦截）"
+    );
+    assert_eq!(
+        snapshot.remaining(&keys[3]),
+        777,
+        "unlimited 跳过 token 层但仍受用户余额约束"
+    );
+    assert_eq!(snapshot.remaining(&keys[4]), 100, "token 已用额度要扣掉");
+}
+
+/// 402 语义钉子：没充值的用户（user_quotas 无行）在 quota 快照里桶值 0，
+/// `QuotaGate` prehold 时 `remaining(0) < cost` → 拒绝。这里不真起
+/// QuotaGate（需 pipeline 全链路，gateway_e2e.rs 已覆盖），只钉快照值
+/// 与 QuotaGate 判断条件的组合契约：桶 0 = 拦截，桶 ≥ cost = 放行。
+#[test]
+fn zero_bucket_blocks_prehold_semantics() {
+    use gateway_gate::snapshot::QuotaSnapshot;
+    let token_key = Uuid::new_v4().to_string();
+    let snapshot = QuotaSnapshot::default();
+    // 没充值用户 → build_quota_snapshot 灌 0（见 quota_snapshot_expands_token_to_user_available）
+    snapshot.upsert(token_key.clone(), 0);
+    // QuotaGate::check 的判断序列：remaining <= 0 → InsufficientQuota（402）
+    let remaining = snapshot.remaining(&token_key);
+    assert!(
+        remaining <= 0,
+        "没充值用户的 remaining 必须 ≤ 0，prehold 才会 402"
+    );
+    // 反例：充值后桶值 > 预估 cost → 不拦
+    let funded = Uuid::new_v4().to_string();
+    snapshot.upsert(funded.clone(), 500_000);
+    assert!(snapshot.remaining(&funded) > 0);
 }

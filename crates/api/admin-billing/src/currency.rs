@@ -32,6 +32,34 @@ pub struct CurrencyService {
     pool: PgPool,
 }
 
+/// 注册后置 hook（auth::routes::OnUserRegistered 实现）：
+/// 新用户注册成功 → seed 全部启用货币（幂等，amount=0）。
+///
+/// 放在 billing 而非 auth：依赖方向 billing→auth，trait 由 auth 定义、
+/// 本侧实现并经 admin-router 注入（#179 多货币）。
+pub struct WalletSeedHook {
+    pool: PgPool,
+}
+
+impl WalletSeedHook {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl auth::routes::OnUserRegistered for WalletSeedHook {
+    fn on_registered(&self, user_key: uuid::Uuid) {
+        // fire-and-forget：注册路径不该被货币层拖慢/拖死，seed 失败有
+        // warn 可追，钱包首次入账时 available_i64 查无行按 0 兜底。
+        let currency = CurrencyService::new(self.pool.clone());
+        tokio::spawn(async move {
+            if let Err(e) = currency.seed_for_user(user_key).await {
+                tracing::warn!(error = %e, user_key = %user_key, "currency seed for new user failed");
+            }
+        });
+    }
+}
+
 /// 本域统一错误（wallet/affiliate/topup 复用；handler 边界转 AuthError 响应）。
 #[derive(Debug, thiserror::Error)]
 pub enum BillingErr {
