@@ -67,7 +67,7 @@ pub fn ModelCard(model: ModelInfo) -> Element {
 }
 
 /// 模型页入口: 演示卡网格(页头 + ModelCard), 数据源为 admin-mock 演示数值。
-/// 遵循页面响应式约定 (手机 1 栏 / 平板 md 3 栏 / Web xl 5 栏)。
+/// 遵循页面响应式约定 (手机 1 栏 / 平板 md 3 栏 / Web lg 5 栏)。
 #[component]
 pub fn ModelsPanel() -> Element {
     let models = MODELS;

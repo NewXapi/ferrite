@@ -97,7 +97,7 @@ pub fn StatTabsCard(
     headline: HeadlineStat,
     /// 三列迷你统计(标签 + 数值)。
     mini_stats: Vec<MiniStatItem>,
-    /// 趋势 sparkline 点列(0..=100, 原实现 24 点; 需至少 1 点)。
+    /// 趋势 sparkline 点列(0..=100, 原实现 24 点; 为空时不渲染曲线, 热力条等其余内容不受影响)。
     trend: Vec<u8>,
     /// 热力条档位(0..=4, 原实现 24 格)。
     heat: Vec<u8>,
@@ -125,8 +125,16 @@ pub fn StatTabsCard(
         .collect::<Vec<_>>()
         .join(" ");
     let area = format!("0,56 {line} 200,56");
-    let (last_x, last_y) = *pts.last().unwrap();
-    let gid = format!("fill-{}", title.replace(['.', '-'], "_"));
+    let (last_x, last_y) = pts.last().copied().unwrap_or((0.0, 0.0));
+    // SVG id 只允许字母数字与连字符: 名称可能来自任意调用方, 统一压成 [A-Za-z0-9_],
+    // 防止空格/标点破坏 url(#id) 引用或与相邻卡撞 id。
+    let gid = format!(
+        "fill-{}",
+        title
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect::<String>()
+    );
     let hover_cls = HOVER_BORDER_BRIGHT;
     let region_role = aria_label.as_ref().map(|_| "region");
 
@@ -146,8 +154,12 @@ pub fn StatTabsCard(
                     p { class: "mt-0.5 text-xs text-zinc-500", "{subtitle}" }
                 }
                 div { class: "flex shrink-0 gap-1.5",
+                    role: "tablist",
+                    "aria-label": "卡内视图切换",
                     for i in 0..3u8 {
                         button {
+                            role: "tab",
+                            "aria-selected": tab() == i,
                             class: if tab() == i {
                                 "flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/10 text-zinc-100 shadow-inner"
                             } else {
@@ -188,22 +200,24 @@ pub fn StatTabsCard(
 
                 div { class: "border-t border-white/5" }
 
-                // 画图展示
+                // 画图展示 (trend 为空时跳过曲线, 热力条照常)
                 div {
                     div { class: "mb-2 flex items-baseline justify-between",
                         p { class: "text-[11px] uppercase tracking-wider text-zinc-600", "趋势" }
                         span { class: "text-[11px] text-zinc-600", "近 24 小时" }
                     }
-                    svg { class: "w-full", view_box: "0 0 200 56", preserve_aspect_ratio: "none",
-                        defs {
-                            linearGradient { id: "{gid}", x1: "0", y1: "0", x2: "0", y2: "1",
-                                stop { offset: "0%", stop_color: "#ffffff", stop_opacity: "0.14" }
-                                stop { offset: "100%", stop_color: "#ffffff", stop_opacity: "0" }
+                    if !trend.is_empty() {
+                        svg { class: "w-full", view_box: "0 0 200 56", preserve_aspect_ratio: "none",
+                            defs {
+                                linearGradient { id: "{gid}", x1: "0", y1: "0", x2: "0", y2: "1",
+                                    stop { offset: "0%", stop_color: "#ffffff", stop_opacity: "0.14" }
+                                    stop { offset: "100%", stop_color: "#ffffff", stop_opacity: "0" }
+                                }
                             }
+                            polygon { points: "{area}", fill: "url(#{gid})" }
+                            polyline { points: "{line}", fill: "none", stroke: "#e4e4e7", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round", vector_effect: "non-scaling-stroke" }
+                            circle { cx: "{last_x}", cy: "{last_y}", r: "3", fill: "#09090b", stroke: "#e4e4e7", stroke_width: "2" }
                         }
-                        polygon { points: "{area}", fill: "url(#{gid})" }
-                        polyline { points: "{line}", fill: "none", stroke: "#e4e4e7", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round", vector_effect: "non-scaling-stroke" }
-                        circle { cx: "{last_x}", cy: "{last_y}", r: "3", fill: "#09090b", stroke: "#e4e4e7", stroke_width: "2" }
                     }
                     // 热力条
                     div { class: "mt-2 flex gap-[3px]",
