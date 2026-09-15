@@ -43,6 +43,13 @@ struct SubmitPayload {
     remember: bool,
 }
 
+/// 当前页面 query 串 (`?invite=…`),无 window / 非 wasm 时返回空串。
+fn search_query() -> String {
+    web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .unwrap_or_default()
+}
+
 #[component]
 pub fn AuthPage() -> Element {
     let active = auth_tab();
@@ -80,7 +87,13 @@ pub fn AuthPage() -> Element {
     // 提交处理：登录或注册（wasm 真调用），成功 → set_token + 回 console。
     let mut handle_submit = move |payload: SubmitPayload| {
         state.busy.set(true);
-        state.error.set(None);
+        // 注册时透传 URL ?invite=<inviter user_key> (邀请链接落地页),
+        // 后端 OnUserRegistered 建立归属; 解析失败按无邀请码继续, 不阻断注册。
+        let invite = if payload.register {
+            api::parse_invite_query(&search_query())
+        } else {
+            None
+        };
         spawn(async move {
             let client = ApiClient::shared().clone();
             // 注册成功后自动登录拿 access_token（register 本身只回 SelfView）
@@ -91,6 +104,7 @@ pub fn AuthPage() -> Element {
                         username: payload.username.clone(),
                         password: payload.password.clone(),
                         email: (!payload.email.is_empty()).then(|| payload.email.clone()),
+                        invite: invite.clone(),
                     },
                 )
                 .await

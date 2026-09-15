@@ -43,12 +43,6 @@ fn log_models_contain_all_label() {
 }
 
 #[test]
-fn invite_link_starts_with_scheme() {
-    let link = api::fetch_invite_link();
-    assert!(link.starts_with("http"), "邀请链接 {link} 以 http 开头");
-}
-
-#[test]
 fn wallet_balance_is_display_string() {
     let wallet = api::fetch_wallet();
     // mock 的 balance 是展示字符串("¥1,234.56"),非空即可

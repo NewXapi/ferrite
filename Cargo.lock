@@ -21,6 +21,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui-components",
+ "web-sys",
 ]
 
 [[package]]

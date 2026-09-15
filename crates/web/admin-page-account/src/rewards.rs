@@ -12,7 +12,7 @@
 //! - 被邀人: GET /api/affiliate/invitees (joinedAt + 累计贡献奖励)
 //!
 //! 两块列表均三态渲染 (error 红边卡 / loading 骨架 / 空态虚线 / 真数据),
-//! 空数组是正常空态。仅「邀请链接」生成规则仍待后端落地,保留 mock。
+//! 空数组是正常空态。邀请链接由钱包 user_key 现拼,无需后端链接端点。
 
 use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
@@ -111,6 +111,14 @@ fn err_card(testid: &'static str, what: &'static str, msg: String) -> Element {
     }
 }
 
+/// 当前页面 origin (`https://host[:port]`),非 wasm / 无 window 时返回空串,
+/// 邀请链接退化为相对路径,仍可被注册页同源解析。
+fn current_origin() -> String {
+    web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_default()
+}
+
 #[component]
 pub fn RewardsPanel() -> Element {
     let mut show_copied = use_signal(|| false);
@@ -154,7 +162,14 @@ pub fn RewardsPanel() -> Element {
         load_invitees(invitees, invitees_loaded, invitees_err);
     });
 
-    let invite_link = api::fetch_invite_link();
+    // 邀请链接 = 当前站点 origin + 本人 user_key (钱包加载后才有,未加载时留空,
+    // 链接区显示占位文案,不造假链接)。
+    let invite_link = match wallet() {
+        Some(w) => api::invite_link(&current_origin(), &w.user_key),
+        None => String::new(),
+    };
+    // 闭包要持有链接,rsx 也要渲染;String 不能 Copy,clone 一份给闭包。
+    let copy_invite_link = invite_link.clone();
 
     // 开单币种候选 = 钱包内已有余额的币种;未加载时禁用 (不给假选项)。
     // Rc 共享：open_order 闭包与 rsx 渲染都要读，Vec 不能 Copy。
@@ -170,11 +185,13 @@ pub fn RewardsPanel() -> Element {
     };
 
     let copy_link = move |_| {
-        show_copied.set(true);
-        spawn(async move {
-            TimeoutFuture::new(2_000).await;
-            show_copied.set(false);
-        });
+        if !copy_invite_link.is_empty() && ui::copy_text_to_clipboard(&copy_invite_link) {
+            show_copied.set(true);
+            spawn(async move {
+                TimeoutFuture::new(2_000).await;
+                show_copied.set(false);
+            });
+        }
     };
 
     let redeem = move |_| {
@@ -481,26 +498,27 @@ pub fn RewardsPanel() -> Element {
                     section { id: "rewards-sec-invite", class: "scroll-mt-8 space-y-4",
                         h2 { class: "text-lg font-medium text-zinc-100", "邀请" }
 
-                        // 邀请链接 — 链接生成规则待 affiliate_links 表,mock 演示
+                        // 邀请链接 — origin + 钱包 user_key 现拼;钱包未加载时占位
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
                             h3 { class: "mb-4 text-sm font-medium text-zinc-200", "邀请好友得奖励" }
                             div { class: "flex flex-col gap-3 sm:flex-row",
                                 div {
                                     class: "flex-1 break-all rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-4 font-mono text-sm text-zinc-400",
                                     "data-testid": "invite-link",
-                                    "{invite_link}"
+                                    if invite_link.is_empty() {
+                                        "钱包加载后生成邀请链接"
+                                    } else {
+                                        "{invite_link}"
+                                    }
                                 }
                                 button {
                                     class: "w-full shrink-0 rounded-2xl bg-white px-8 py-4 font-medium text-zinc-900 transition-colors hover:bg-amber-200 active:bg-amber-300 sm:w-auto",
                                     onclick: copy_link,
+                                    disabled: invite_link.is_empty(),
                                     "data-testid": "invite-copy",
                                     "aria-label": "复制邀请链接",
                                     if show_copied() { "已复制 ✓" } else { "复制链接" }
                                 }
-                            }
-                            p { class: "mt-4 text-xs text-zinc-500",
-                                "data-testid": "invite-demo-note",
-                                "演示数据:邀请链接生成规则待后端落地;奖励按站点配置以拉人统计真实值为准"
                             }
                         }
 

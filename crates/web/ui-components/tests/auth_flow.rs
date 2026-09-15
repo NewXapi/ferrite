@@ -16,6 +16,8 @@ fn test_auth_requests_construction() {
         username: "ferrite_user".into(),
         password: "pass".into(),
         email: Some("user@ferrite.dev".into()),
+        // #197 邀请码：serde default 向后兼容，测试不带 invite
+        invite: None,
     };
     assert_eq!(reg.username, "ferrite_user");
     assert!(reg.email.is_some());

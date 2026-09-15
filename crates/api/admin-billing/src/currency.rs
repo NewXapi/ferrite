@@ -27,16 +27,20 @@ use auth::routes::bearer_user;
 use auth::service::AuthService;
 use serde_json::json;
 
+use crate::affiliate::AffiliateService;
+use crate::wallet::WalletService;
+
 /// 货币服务：注册 seed / 折算可用值 / 定义管理。
 pub struct CurrencyService {
     pool: PgPool,
 }
 
 /// 注册后置 hook（auth::routes::OnUserRegistered 实现）：
-/// 新用户注册成功 → seed 全部启用货币（幂等，amount=0）。
+/// 新用户注册成功 → seed 全部启用货币（幂等，amount=0）；若注册请求带
+/// 邀请码，校验邀请人存在后绑定邀请归属（affiliate_links）。
 ///
 /// 放在 billing 而非 auth：依赖方向 billing→auth，trait 由 auth 定义、
-/// 本侧实现并经 admin-router 注入（#179 多货币）。
+/// 本侧实现并经 admin-router 注入（#179 多货币；#197 邀请链接闭环）。
 pub struct WalletSeedHook {
     pool: PgPool,
 }
@@ -48,7 +52,7 @@ impl WalletSeedHook {
 }
 
 impl auth::routes::OnUserRegistered for WalletSeedHook {
-    fn on_registered(&self, user_key: uuid::Uuid) {
+    fn on_registered(&self, user_key: uuid::Uuid, invite: Option<&str>) {
         // fire-and-forget：注册路径不该被货币层拖慢/拖死，seed 失败有
         // warn 可追，钱包首次入账时 available_i64 查无行按 0 兜底。
         let currency = CurrencyService::new(self.pool.clone());
@@ -57,6 +61,61 @@ impl auth::routes::OnUserRegistered for WalletSeedHook {
                 tracing::warn!(error = %e, user_key = %user_key, "currency seed for new user failed");
             }
         });
+
+        // 邀请归属：独立 spawn，与 seed 并行——两边互不拖累，任一失败
+        // 都只是少一个旁路增益（钱/归属都能事后补），不回灌注册失败。
+        if let Some(inviter) = parse_invite_code(invite) {
+            let pool = self.pool.clone();
+            tokio::spawn(async move {
+                bind_invite_relation(&pool, inviter, user_key).await;
+            });
+        }
+    }
+}
+
+/// 邀请码 → 邀请人 user_key：`None`、空串、非 UUID 文本一律 `None`。
+///
+/// 邀请码即邀请人的 user_key（UUID），注册链接 `?invite=<uuid>` 直传。
+/// 解析失败静默丢弃——邀请是注册的旁路增益，脏输入/手改链接不该阻断
+/// 账号创建（恶意输入见 `bind_invite_relation`：连 DB 都不会碰）。
+pub fn parse_invite_code(invite: Option<&str>) -> Option<Uuid> {
+    Uuid::parse_str(invite?).ok()
+}
+
+/// 校验邀请人存在后绑定归属（fire-and-forget 任务载荷）。
+///
+/// 全程静默，理由见 trait 文档：邀请人不存在（脏/过期邀请码）→ debug，
+/// 这是可预期的脏数据，不值得 warn 污染日志；被邀人已归属他人 → warn，
+/// 先到先得是正常竞态但值得追查是否有重复发奖；绑定失败 → warn。
+/// 自邀请（inviter == invitee）由 `bind_inviter` 拒绝，此处不重复拦。
+async fn bind_invite_relation(pool: &PgPool, inviter: Uuid, invitee: Uuid) {
+    let exists: bool =
+        match sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM auth_users WHERE key = $1)")
+            .bind(inviter)
+            .fetch_one(pool)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, inviter = %inviter, "inviter existence check failed");
+                return;
+            }
+        };
+    if !exists {
+        tracing::debug!(inviter = %inviter, "invite code references nonexistent user, skipping bind");
+        return;
+    }
+    let svc = AffiliateService::new(pool.clone(), WalletService::new(pool.clone()));
+    match svc.bind_inviter(inviter, invitee).await {
+        Ok(true) => {
+            tracing::debug!(inviter = %inviter, invitee = %invitee, "invite attribution bound")
+        }
+        Ok(false) => {
+            tracing::warn!(inviter = %inviter, invitee = %invitee, "invite bind skipped: invitee already attributed to another inviter")
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, inviter = %inviter, invitee = %invitee, "invite bind failed")
+        }
     }
 }
 

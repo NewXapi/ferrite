@@ -2,7 +2,7 @@
 //!
 //! 两类入口并存:
 //! - `fetch_*`: mock 直连 (同步返回 `mock` crate 静态数据), 仅覆盖尚无后端
-//!   列表端点的面板区块 (充值记录 / 被邀人 / 邀请链接);
+//!   列表端点的面板区块 (充值记录 / 被邀人);
 //! - `*_api`: 真实后端调用 (async, 走 `client::ApiClient`), 覆盖密钥 / 用量 /
 //!   用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 兑换码充值 / 充值开单。
 
@@ -57,10 +57,6 @@ pub async fn fetch_recharges_api(client: &ApiClient) -> ApiResult<Vec<TopupOrder
 /// 裸 `{"items":[...]}` 信封,空数组 = 无人受邀的正常空态。
 pub async fn fetch_invitees_api(client: &ApiClient) -> ApiResult<Vec<InviteeView>> {
     client::fetch_invitees(client).await
-}
-
-pub fn fetch_invite_link() -> &'static str {
-    mock::account::INVITE_LINK
 }
 
 use client::{ApiClient, ApiResult};
@@ -205,4 +201,13 @@ pub use client::{
 /// 不假造入账数值。
 pub fn topup_credited_quota(resp: &serde_json::Value) -> Option<i64> {
     resp.get("quota").and_then(|q| q.as_i64())
+}
+
+/// 拼装邀请链接: `{origin}/register?invite={user_key}`。
+///
+/// 邀请码即邀请人的 `user_key` (UUID), 注册页原样回传, 后端 `OnUserRegistered`
+/// 建立归属。链接纯字符串拼装, 与 `topup_credited_quota` 同属无副作用纯函数,
+/// 便于 tests/ 直接断言。
+pub fn invite_link(origin: &str, user_key: &str) -> String {
+    format!("{origin}/register?invite={user_key}")
 }
