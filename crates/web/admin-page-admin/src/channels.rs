@@ -635,7 +635,14 @@ fn ChannelFormModal(
                                     .read()
                                     .iter()
                                     .filter(|(_, checked)| *checked)
-                                    .map(|(id, _)| serde_json::Value::String(id.clone()))
+                                    .map(|(id, _)| {
+                                        // validate 硬要求：每条须非空 alias+upstream，
+                                        // 裸字符串数组会被 400 拒绝。v1 语义：对外名 = 上游名
+                                        serde_json::json!({
+                                            "alias": id.clone(),
+                                            "upstream": id.clone(),
+                                        })
+                                    })
                                     .collect(),
                             )
                         }),
