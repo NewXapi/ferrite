@@ -231,3 +231,70 @@ pub async fn redeem_code(client: &ApiClient, req: &RedeemRequest) -> ApiResult<s
 pub async fn open_topup(client: &ApiClient, req: &OpenTopupRequest) -> ApiResult<TopupOrder> {
     client.post("/api/user/topup/orders", req).await
 }
+
+// ---------- 奖励面板列表 (#194): 充值记录 / 被邀人 ----------
+
+/// 充值订单视图 — 对齐后端 `contract::api::billing::TopupOrderView` (camelCase)。
+///
+/// `GET /api/user/topup/orders` 的列表项:当前用户的充值订单。`state` 为后端
+/// 状态机字符串 (pending|settling|paid|failed|refunded),前端只展示不解释;
+/// `amount` 为充值币种单位的原始数量 (非内部单位),`provider` 为空串即 manual。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TopupOrderView {
+    /// 订单 key (UUID)。
+    pub key: String,
+    /// 充值币种 code (如 "FREE")。
+    pub currency: String,
+    /// 充值金额 (币种单位)。
+    pub amount: i64,
+    /// 订单状态:pending|settling|paid|failed|refunded。
+    pub state: String,
+    /// 支付渠道 ("" = manual/未接真支付)。
+    pub provider: String,
+    /// 创建时间 (RFC3339)。
+    pub created_at: String,
+}
+
+/// 被邀人视图 — 对齐后端 `contract::api::billing::InviteeView` (camelCase)。
+///
+/// `GET /api/affiliate/invitees` 的列表项:通过当前用户邀请链接完成绑定的用户。
+/// `reward` 为该被邀人贡献的累计奖励 (FREE 内部单位,无奖励 = 0)。
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InviteeView {
+    /// 被邀人 key (UUID)。
+    pub user_key: String,
+    /// 展示名 (display_name 为空时回落 username)。
+    pub name: String,
+    /// 邀请归属建立时间 (RFC3339)。
+    pub joined_at: String,
+    /// 累计贡献奖励 (内部单位)。
+    pub reward: i64,
+}
+
+/// 两个列表端点共用的裸 `{"items": [...]}` 信封 (无 `success` 外层)。
+///
+/// 空数组 = 无记录的正常空态 (新账号无订单 / 无人受邀),不是错误。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ListEnvelope<T> {
+    /// 列表项。
+    pub items: Vec<T>,
+}
+
+/// 拉取当前用户充值订单:GET `/api/user/topup/orders` (self)。
+///
+/// 响应裸 `{"items":[...]}`,空数组 = 无订单的正常空态。
+pub async fn fetch_topup_orders(client: &ApiClient) -> ApiResult<Vec<TopupOrderView>> {
+    let resp: ListEnvelope<TopupOrderView> = client.get("/api/user/topup/orders").await?;
+    Ok(resp.items)
+}
+
+/// 拉取当前用户被邀人:GET `/api/affiliate/invitees` (self)。
+///
+/// 响应裸 `{"items":[...]}`,空数组 = 无人受邀的正常空态。
+pub async fn fetch_invitees(client: &ApiClient) -> ApiResult<Vec<InviteeView>> {
+    let resp: ListEnvelope<InviteeView> = client.get("/api/affiliate/invitees").await?;
+    Ok(resp.items)
+}

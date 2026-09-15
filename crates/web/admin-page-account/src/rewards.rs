@@ -1,4 +1,4 @@
-//! 奖励面板 — 钱包 / 拉人统计 / 兑换码充值 / 充值开单接真实端点:
+//! 奖励面板 — 钱包 / 拉人统计 / 兑换码充值 / 充值开单 / 列表均接真实端点:
 //! - 钱包: GET /api/user/wallet (多币种余额 + 折算 availableI64)
 //! - 拉人统计: GET /api/affiliate/overview (inviteCount / totalReward;
 //!   后端统计侧仍是占位值,0 即真实值,前端不造数)
@@ -7,17 +7,21 @@
 //!   开单只建 pending 订单,入账需 admin 手工 settle
 //!   (`POST /api/user/topup/{key}/settle`),故成功提示为「订单已创建,
 //!   待管理员确认后入账」,不给假支付成功。
+//! - 充值记录: GET /api/user/topup/orders (本人订单倒序,state 原样展示,
+//!   provider 空串展示为 manual)
+//! - 被邀人: GET /api/affiliate/invitees (joinedAt + 累计贡献奖励)
 //!
-//! 充值记录 / 邀请链接 / 被邀人三块无后端列表端点,保持 mock 演示数据,
-//! 每块有显式「演示数据」标注 (见各 section 内 note)。
+//! 两块列表均三态渲染 (error 红边卡 / loading 骨架 / 空态虚线 / 真数据),
+//! 空数组是正常空态。仅「邀请链接」生成规则仍待后端落地,保留 mock。
 
 use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
 
 use crate::api::{
-    self, AffiliateOverviewView, Invitee, OpenTopupRequest, Recharge, RedeemRequest, WalletView,
+    self, AffiliateOverviewView, InviteeView, OpenTopupRequest, RedeemRequest, TopupOrderView,
+    WalletView,
 };
-use crate::usage_support::{fmt_num, fmt_quota};
+use crate::usage_support::{fmt_num, fmt_quota, fmt_time};
 
 /// 拉取钱包 (GET /api/user/wallet) 并写回三个 Signal。
 /// 首载与兑换码入账后的刷新共用此入口;`Signal` 是 Rc 句柄 (Copy),按值传。
@@ -58,6 +62,44 @@ fn load_overview(
     });
 }
 
+/// 拉取充值记录 (GET /api/user/topup/orders) 并写回三个 Signal。
+fn load_recharges(
+    mut r: Signal<Option<Vec<TopupOrderView>>>,
+    mut loaded: Signal<bool>,
+    mut err: Signal<String>,
+) {
+    let client = client::ApiClient::shared().clone();
+    spawn(async move {
+        match api::fetch_recharges_api(&client).await {
+            Ok(v) => {
+                err.set(String::new());
+                r.set(Some(v));
+                loaded.set(true);
+            }
+            Err(e) => err.set(e.to_string()),
+        }
+    });
+}
+
+/// 拉取被邀人 (GET /api/affiliate/invitees) 并写回三个 Signal。
+fn load_invitees(
+    mut i: Signal<Option<Vec<InviteeView>>>,
+    mut loaded: Signal<bool>,
+    mut err: Signal<String>,
+) {
+    let client = client::ApiClient::shared().clone();
+    spawn(async move {
+        match api::fetch_invitees_api(&client).await {
+            Ok(v) => {
+                err.set(String::new());
+                i.set(Some(v));
+                loaded.set(true);
+            }
+            Err(e) => err.set(e.to_string()),
+        }
+    });
+}
+
 /// 错误态统一渲染:柔和红边卡片 (非满屏红),对齐 keys.rs 的诚实降级文案。
 fn err_card(testid: &'static str, what: &'static str, msg: String) -> Element {
     rsx! {
@@ -88,6 +130,16 @@ pub fn RewardsPanel() -> Element {
     let overview_loaded = use_signal(|| false);
     let overview_err = use_signal(String::new);
 
+    // ---- 充值记录 (GET /api/user/topup/orders) ----
+    let recharges = use_signal(|| None::<Vec<TopupOrderView>>);
+    let recharges_loaded = use_signal(|| false);
+    let recharges_err = use_signal(String::new);
+
+    // ---- 被邀人 (GET /api/affiliate/invitees) ----
+    let invitees = use_signal(|| None::<Vec<InviteeView>>);
+    let invitees_loaded = use_signal(|| false);
+    let invitees_err = use_signal(String::new);
+
     // ---- 充值开单 (POST /api/user/topup/orders, pending 单) ----
     let mut order_currency = use_signal(String::new);
     let mut order_amount = use_signal(String::new);
@@ -98,10 +150,10 @@ pub fn RewardsPanel() -> Element {
     use_hook(move || {
         load_wallet(wallet, wallet_loaded, wallet_err);
         load_overview(overview, overview_loaded, overview_err);
+        load_recharges(recharges, recharges_loaded, recharges_err);
+        load_invitees(invitees, invitees_loaded, invitees_err);
     });
 
-    let recharges = api::fetch_recharges();
-    let invitees = api::fetch_invitees();
     let invite_link = api::fetch_invite_link();
 
     // 开单币种候选 = 钱包内已有余额的币种;未加载时禁用 (不给假选项)。
@@ -377,24 +429,48 @@ pub fn RewardsPanel() -> Element {
                             }
                         }
 
-                        // 最近充值记录 — 无后端列表端点,mock 演示
+                        // 最近充值记录 — GET /api/user/topup/orders (真实端点)
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
                             div { class: "mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between",
                                 h3 { class: "text-sm font-medium text-zinc-200", "最近充值记录" }
-                                span { class: "text-xs text-zinc-500", "仅展示最近 3 笔" }
+                                span { class: "text-xs text-zinc-500", "订单倒序,最近在前" }
                             }
-                            p { class: "mb-3 text-xs text-zinc-500",
-                                "data-testid": "recharge-demo-note",
-                                "演示数据:充值记录尚无后端列表端点,入账结果以钱包余额与开单提示为准"
-                            }
-                            div { class: "divide-y divide-zinc-800",
-                                for Recharge { date, method, amount } in recharges {
-                                    div { class: "flex justify-between py-4 text-sm first:pt-0 last:pb-0",
-                                        div {
-                                            div { class: "text-zinc-400", "{date}" }
-                                            div { class: "mt-0.5 text-xs text-zinc-500", "{method}" }
+                            if !recharges_err().is_empty() {
+                                {err_card("recharge-error", "充值记录", recharges_err())}
+                            } else if !recharges_loaded() {
+                                div { class: "space-y-3", "data-testid": "recharge-skeleton",
+                                    div { class: "h-12 w-full animate-pulse rounded bg-zinc-800" }
+                                    div { class: "h-12 w-full animate-pulse rounded bg-zinc-800/70" }
+                                }
+                            } else if recharges().is_none_or(|r| r.is_empty()) {
+                                div {
+                                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
+                                    "data-testid": "recharge-empty",
+                                    p { class: "text-sm text-zinc-500", "暂无充值记录 (开单后待管理员确认入账)" }
+                                }
+                            } else if let Some(rows) = recharges() {
+                                div { class: "divide-y divide-zinc-800",
+                                    for o in &rows {
+                                        div { class: "flex justify-between py-4 text-sm first:pt-0 last:pb-0",
+                                            "data-testid": format!("recharge-row-{}", o.key),
+                                            div {
+                                                div { class: "text-zinc-400", "{fmt_time(&o.created_at)}" }
+                                                div { class: "mt-0.5 text-xs text-zinc-500",
+                                                    if o.provider.is_empty() {
+                                                        "{o.currency.clone()} · manual"
+                                                    } else {
+                                                        "{o.currency.clone()} · {o.provider}"
+                                                    }
+                                                }
+                                            }
+                                            div { class: "text-right",
+                                                div { class: "font-medium text-emerald-400 tabular-nums",
+                                                    "{fmt_num(o.amount)}"
+                                                }
+                                                // 状态机字符串原样展示,前端不解释
+                                                div { class: "mt-0.5 text-[10px] text-zinc-500", "{o.state}" }
+                                            }
                                         }
-                                        div { class: "text-right font-medium text-emerald-400", "{amount}" }
                                     }
                                 }
                             }
@@ -467,32 +543,50 @@ pub fn RewardsPanel() -> Element {
                         }
                     }
 
-                    // 被邀人列表 — 无后端列表端点,mock 演示
+                    // 被邀人列表 — GET /api/affiliate/invitees (真实端点)
                     section { id: "rewards-sec-list", class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-6",
                         div { class: "mb-2 flex items-center justify-between",
                             h3 { class: "text-sm font-medium text-zinc-200", "被邀请用户" }
                             div { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
                                 "data-testid": "invitee-count",
-                                "{invitees.len()} 人"
+                                "{invitees().map_or(0, |v| v.len())} 人"
                             }
                         }
-                        p { class: "mb-4 text-xs text-zinc-500",
-                            "data-testid": "invitee-demo-note",
-                            "演示数据:被邀人明细尚无后端端点"
-                        }
-                        div { class: "space-y-3",
-                            for Invitee { name, date, reward } in invitees {
-                                div { class: "group flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 hover:border-amber-900",
-                                    div { class: "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-900 to-zinc-700 text-xl font-semibold text-amber-200",
-                                        "{name.chars().next().unwrap_or_default()}"
-                                    }
-                                    div { class: "min-w-0 flex-1",
-                                        div { class: "font-medium text-zinc-100 group-hover:text-amber-100", "{name}" }
-                                        div { class: "mt-0.5 text-xs text-zinc-500", "注册时间:{date}" }
-                                    }
-                                    div { class: "text-right",
-                                        div { class: "font-semibold text-emerald-400", "{reward}" }
-                                        div { class: "mt-px text-[10px] text-zinc-500", "贡献奖励" }
+                        if !invitees_err().is_empty() {
+                            {err_card("invitee-error", "被邀人", invitees_err())}
+                        } else if !invitees_loaded() {
+                            div { class: "space-y-3", "data-testid": "invitee-skeleton",
+                                div { class: "h-16 w-full animate-pulse rounded-2xl bg-zinc-800" }
+                                div { class: "h-16 w-full animate-pulse rounded-2xl bg-zinc-800/70" }
+                            }
+                        } else if invitees().is_none_or(|v| v.is_empty()) {
+                            div {
+                                class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
+                                "data-testid": "invitee-empty",
+                                p { class: "text-sm text-zinc-500", "暂无被邀请用户 (通过链接注册后在此显示)" }
+                            }
+                        } else if let Some(rows) = invitees() {
+                            div { class: "space-y-3",
+                                for i in &rows {
+                                    div { class: "group flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 hover:border-amber-900",
+                                        "data-testid": format!("invitee-row-{}", i.user_key),
+                                        div { class: "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-900 to-zinc-700 text-xl font-semibold text-amber-200",
+                                            "{i.name.chars().next().unwrap_or_default()}"
+                                        }
+                                        div { class: "min-w-0 flex-1",
+                                            div { class: "font-medium text-zinc-100 group-hover:text-amber-100",
+                                                if i.name.is_empty() { "(未命名用户)" } else { "{i.name}" }
+                                            }
+                                            div { class: "mt-0.5 text-xs text-zinc-500",
+                                                "注册时间:{fmt_time(&i.joined_at)}"
+                                            }
+                                        }
+                                        div { class: "text-right",
+                                            div { class: "font-semibold text-emerald-400 tabular-nums",
+                                                "{fmt_num(i.reward)}"
+                                            }
+                                            div { class: "mt-px text-[10px] text-zinc-500", "贡献奖励" }
+                                        }
                                     }
                                 }
                             }

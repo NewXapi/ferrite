@@ -20,11 +20,13 @@ use axum::{
     response::Json,
     routing::{get, post},
 };
-use contract::api::billing::RewardRequest;
+use contract::api::billing::{InviteeView, RewardRequest};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
+use sqlx::FromRow;
 use sqlx::PgPool;
+use sqlx::types::chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use auth::error::AuthError;
@@ -209,6 +211,49 @@ impl AffiliateService {
         })
     }
 
+    /// 被邀人列表（`GET /api/affiliate/invitees`）— inviter 视角查本人邀请的人。
+    ///
+    /// `affiliate_links` JOIN `auth_users`（展示名：`display_name` 空则回落
+    /// `username`）LEFT JOIN `affiliate_rewards` 聚合该被邀人带来的累计奖励；
+    /// `created_at` 倒序取 `limit` 条。reward = 该 invitee 的 SUM(amount)，
+    /// 无奖励 = 0。`created_at` 输出 RFC3339 字符串（与 topup.rs 的
+    /// `list_orders` 同口径，DTO 持 String）。
+    pub async fn list_invitees(
+        &self,
+        inviter_key: Uuid,
+        limit: i64,
+    ) -> Result<Vec<InviteeView>, BillingErr> {
+        let rows = sqlx::query_as::<_, InviteeRow>(
+            r#"
+            SELECT
+                l.invitee_key,
+                COALESCE(NULLIF(u.display_name, ''), u.username) AS name,
+                l.created_at,
+                COALESCE(SUM(r.amount), 0)::BIGINT AS reward
+            FROM affiliate_links l
+            JOIN auth_users u ON u.key = l.invitee_key
+            LEFT JOIN affiliate_rewards r ON r.invitee_key = l.invitee_key
+            WHERE l.inviter_key = $1
+            GROUP BY l.invitee_key, name, l.created_at
+            ORDER BY l.created_at DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(inviter_key)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| InviteeView {
+                user_key: r.invitee_key.to_string(),
+                name: r.name,
+                joined_at: r.created_at.to_rfc3339(),
+                reward: r.reward,
+            })
+            .collect())
+    }
+
     async fn fetch_invite_reward(&self) -> i64 {
         // ponytail: options 表 site.affiliate_reward 未配置则常量占位（= $2 @ 500_000/$1）。
         const DEFAULT_INVITE_REWARD: i64 = 1_000_000;
@@ -226,6 +271,16 @@ impl AffiliateService {
             .filter(|h| *h > 0)
             .unwrap_or(0)
     }
+}
+
+/// 被邀人列表行的解码形状（`list_invitees` 用）；`created_at` 在转 DTO 时
+/// 走 `to_rfc3339()`，DTO 持 String（与 topup.rs 的 `TopupOrderRow` 同构）。
+#[derive(Debug, Clone, FromRow)]
+struct InviteeRow {
+    invitee_key: Uuid,
+    name: String,
+    created_at: DateTime<Utc>,
+    reward: i64,
 }
 
 /// 读 options 表的数值型配置（JSONB 列）。
@@ -261,6 +316,7 @@ pub fn router(state: AffiliateAppState) -> Router {
         .route("/api/affiliate/reward", post(reward))
         .route("/api/affiliate/bind", post(bind))
         .route("/api/affiliate/overview", get(overview))
+        .route("/api/affiliate/invitees", get(invitees))
         .with_state(state)
 }
 
@@ -337,4 +393,18 @@ async fn overview(
     let user_key = Uuid::parse_str(&u.key).map_err(|_| err_json(AuthError::InvalidToken))?;
     let ov = s.svc.user_overview(user_key).await.map_err(err_json)?;
     Ok(Json(json!({ "overview": ov })))
+}
+
+/// 被邀人列表 — GET /api/affiliate/invitees（self，查本人邀请的人）。
+/// 响应：`{ "items": [InviteeView] }`（前端奖励面板「被邀人列表」消费）。
+async fn invitees(
+    State(s): State<AffiliateAppState>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, ErrResp> {
+    let u = bearer_user(&s.auth, &h).await.map_err(err_json)?;
+    let user_key = Uuid::parse_str(&u.key).map_err(|_| err_json(AuthError::InvalidToken))?;
+    // ponytail: 无分页参数——奖励面板一屏列表，固定 50 条够用；
+    // 真要分页时加 axum Query<Page> 再在此处透传 limit。
+    let items = s.svc.list_invitees(user_key, 50).await.map_err(err_json)?;
+    Ok(Json(json!({ "items": items })))
 }

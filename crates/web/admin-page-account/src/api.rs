@@ -47,12 +47,16 @@ pub fn fetch_wallet() -> &'static Wallet {
     &mock::account::WALLET
 }
 
-pub fn fetch_recharges() -> &'static [Recharge] {
-    mock::account::RECHARGES
+/// 真实调用: GET /api/user/topup/orders — 当前用户充值订单列表,
+/// 裸 `{"items":[...]}` 信封,空数组 = 无订单的正常空态。
+pub async fn fetch_recharges_api(client: &ApiClient) -> ApiResult<Vec<TopupOrderView>> {
+    client::fetch_topup_orders(client).await
 }
 
-pub fn fetch_invitees() -> &'static [Invitee] {
-    mock::account::INVITEES
+/// 真实调用: GET /api/affiliate/invitees — 当前用户被邀人列表,
+/// 裸 `{"items":[...]}` 信封,空数组 = 无人受邀的正常空态。
+pub async fn fetch_invitees_api(client: &ApiClient) -> ApiResult<Vec<InviteeView>> {
+    client::fetch_invitees(client).await
 }
 
 pub fn fetch_invite_link() -> &'static str {
@@ -188,14 +192,10 @@ pub async fn update_settings_api(
     client.put("/api/user/self/setting", settings).await
 }
 
-// ---- billing 真实端点 (rewards 面板): wire DTO 与请求实现在 client crate ----
-
-/// 命名沿用本文件 `*_api` 约定;类型透传供面板构造请求 / 接响应。
-/// wire 层与后端形状的逐字对账见 `client::wire` 与 tests/rewards_wire.rs。
 pub use client::{
-    AffiliateOverviewView, OpenTopupRequest, RedeemRequest, WalletView,
-    fetch_affiliate_overview as fetch_affiliate_overview_api, fetch_wallet as fetch_wallet_api,
-    open_topup as open_topup_api, redeem_code as redeem_code_api,
+    AffiliateOverviewView, InviteeView, OpenTopupRequest, RedeemRequest, TopupOrderView,
+    WalletView, fetch_affiliate_overview as fetch_affiliate_overview_api,
+    fetch_wallet as fetch_wallet_api, open_topup as open_topup_api, redeem_code as redeem_code_api,
 };
 
 /// 从 POST /api/user/topup 的成功响应提取入账额度。
