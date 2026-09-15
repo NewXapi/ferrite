@@ -8,7 +8,8 @@
 //!   这是维护者定稿的语义（删按钮=停用）。
 //!
 //! 四态渲染（loading / error / empty / data）与 data-testid 对齐
-//! RedemptionsPage / RewardsPanel 惯例。
+//! RedemptionsPage / RewardsPanel 惯例；交互元素带 `data-testid`，容器带
+//! `role` + `aria-label`（仓库 UI 验证约定，PR smoke 走 ariaSnapshot）。
 
 use dioxus::prelude::*;
 
@@ -206,6 +207,9 @@ pub fn CurrencyPage() -> Element {
 
     rsx! {
         div { class: "space-y-4",
+            role: "region",
+            "aria-label": "货币管理",
+            "data-testid": "currency-page",
             h2 { class: "text-lg font-semibold text-zinc-100", "货币管理" }
             p { class: "text-sm text-zinc-500",
                 "kind=points 的货币进钱包余额并可扣费；kind=fiat 仅作计价/展示（不进余额）。基准 USD 的汇率恒为 1。"
@@ -238,6 +242,9 @@ pub fn CurrencyPage() -> Element {
 
             // ---------- 列表 ----------
             section { class: "space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
+                role: "region",
+                "aria-label": "货币定义列表",
+                "data-testid": "currency-list-section",
                 h3 { class: "text-sm font-semibold text-zinc-300", "{SEC_LIST}" }
                 if loading() {
                     div { class: "space-y-2",
@@ -311,6 +318,9 @@ pub fn CurrencyPage() -> Element {
 
             // ---------- 表单 ----------
             section { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
+                role: "region",
+                "aria-label": "货币表单",
+                "data-testid": "currency-form-section",
                 h3 { class: "text-sm font-semibold text-zinc-300",
                     if let Some(c) = editing() { "编辑货币 {c}" } else { "{SEC_FORM}" }
                 }
