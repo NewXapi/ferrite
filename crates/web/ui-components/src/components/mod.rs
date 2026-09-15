@@ -13,3 +13,6 @@ pub mod sidebar;
 pub mod skeleton;
 pub mod switch;
 pub mod toast;
+
+// 展示卡牌组件（feat/overview-card-styles #193）
+pub mod showcase;

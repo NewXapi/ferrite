@@ -1,12 +1,21 @@
-//! 排行榜页 — 数据来自真实 `GET /api/log/top?by=model`(按模型聚合的消费日志)。
+//! 排行榜页 — 「模型实力榜（演示）」与「真实用量榜」双区块并存。
 //!
-//! 旧的六维雷达/立绘翻牌卡为纯 mock 形态(data.rs / cards.rs / charts.rs 已移除):
-//! 后端没有价格、速度、上下文、成功率等维度,本页降级为「列表 + 条形」展示
-//! 真实存在的三个口径 —— tokens / 调用数 / 费用(quota),指标名与轴标签如实反映口径。
+//! - 模型实力榜(演示): 六维演示数据层 ([`data`]) + 立绘海报翻牌卡 ([`cards`]) + 汇总图表
+//!   ([`charts`])。后端暂无价格、速度、上下文、成功率等维度端点,演示数值的出处与免责
+//!   见 [`data`] 模块头声明,页面标题以「（演示）」字样标注,待真实源就绪后替换。
+//! - 真实用量榜: 数据来自真实 `GET /api/log/top?by=model`(按模型聚合的消费日志),
+//!   展示真实存在的三个口径 —— tokens / 调用数 / 费用(quota),指标名与轴标签如实反映口径。
+
+mod cards;
+mod charts;
+pub mod data;
 
 use dioxus::prelude::*;
 
 use crate::api::{UsageTopRow, top_usage_api, window_start};
+use cards::{MiniRadarCard, PosterImageCard};
+use charts::{GroupQuotaCard, ModelDistributionCard, PerformanceLatencyCard};
+use data::{MODELS, ModelStat, composite};
 
 /// 模型配色(内联 hex, 不走 Tailwind 扫描) — 沿用旧 charts.rs 的色板。
 const MODEL_COLORS: [&str; 10] = [
@@ -122,7 +131,52 @@ fn RankCard(
     }
 }
 
-/// 模型用量排行榜: 真实 /api/log/top(by=model) 聚合。
+/// 模型实力榜(演示)区块: 头牌翻牌卡 + 立绘海报卡阵列 + 汇总图表, 全部由 data 层演示数值推导。
+/// 排序口径与恢复前版本一致: 按六维综合分降序。
+#[component]
+fn DemoBoard() -> Element {
+    let mut ranked: Vec<&ModelStat> = MODELS.iter().collect();
+    ranked.sort_by(|a, b| composite(b).partial_cmp(&composite(a)).unwrap());
+
+    rsx! {
+        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": "模型实力榜（演示）",
+            class: "flex flex-col gap-6 md:gap-8",
+            div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
+                div {
+                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型实力榜（演示）" }
+                    p { class: "mt-1 text-xs text-zinc-400", "正面展示立绘与雷达图，点击卡牌可 3D 翻转查看六维综合评测与详细指标" }
+                }
+                span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
+                    "共收录 {ranked.len()} 款主流模型"
+                }
+            }
+            // 头牌翻牌卡: 综合分前五, 立绘交替斜角
+            section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4",
+                for (i, m) in ranked.iter().take(5).copied().enumerate() {
+                    MiniRadarCard {
+                        rank: i + 1,
+                        lean: if i % 2 == 0 { -4.0 } else { 0.0 },
+                        model: m,
+                    }
+                }
+            }
+            // 海报翻牌卡大阵列
+            section { class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5",
+                for (i, m) in ranked.iter().copied().enumerate() {
+                    PosterImageCard { rank: i + 1, model: m }
+                }
+            }
+            // 底部数据分析图表 (参考 new-api / sub2api / wildtoken)
+            section { class: "grid grid-cols-1 gap-4 xl:grid-cols-3 pt-2",
+                ModelDistributionCard {}
+                PerformanceLatencyCard {}
+                GroupQuotaCard {}
+            }
+        }
+    }
+}
+
+/// 模型用量排行榜: 真实 /api/log/top(by=model) 聚合 + 演示实力榜区块。
 /// 时间窗与总览页同口径(今天=24h / 本周=7d / 本月=30d / 今年=365d)。
 #[component]
 pub fn LeaderboardPanel() -> Element {
@@ -159,9 +213,13 @@ pub fn LeaderboardPanel() -> Element {
 
     rsx! {
         div { class: "flex flex-col gap-6 p-4 md:gap-8 md:p-6",
+            // 区块一: 模型实力榜(演示) — 恢复 #154 前的立绘卡牌阵列, 数值为演示数据
+            DemoBoard {}
+
+            // ===== 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留) =====
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
-                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型用量排行榜" }
+                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "真实用量榜" }
                     p { class: "mt-1 text-xs text-zinc-400", "按后端消费日志聚合(/api/log/top):窗口内各模型的 Token 消耗、调用次数与费用" }
                 }
                 span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",

@@ -9,7 +9,9 @@ publish.workspace = true
 chrono = { workspace = true }
 dioxus = { workspace = true }
 manganis = "0.7"
+mock = { path = "../admin-mock" }
 client = { path = "../admin-client" }
+ui = { package = "ui-components", path = "../ui-components" }
 contract = { path = "../../contract" }
 serde = { workspace = true }
 serde_json = { workspace = true }

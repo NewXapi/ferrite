@@ -114,9 +114,13 @@ html {
 
 /* Poster card tilt + matte frame */
 .card-tilt {
-    transition: transform 0.18s ease-out;
+    transition: transform 0.18s ease-out, border-color 0.15s ease-out;
     transform-style: preserve-3d;
     will-change: transform;
+}
+/* PosterCard hover: brighten the inset hairline frame, matching the card hover language. */
+.poster-flip:hover .card-frame::after {
+    border-color: rgba(255, 255, 255, 0.32);
 }
 /* Double frame: outer edge + inset hairline */
 .card-frame::after {

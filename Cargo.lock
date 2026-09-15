@@ -62,8 +62,10 @@ dependencies = [
  "contract",
  "dioxus",
  "manganis",
+ "mock",
  "serde",
  "serde_json",
+ "ui-components",
 ]
 
 [[package]]
