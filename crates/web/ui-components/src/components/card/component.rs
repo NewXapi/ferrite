@@ -1,23 +1,32 @@
-//! Card — shadcn new-york-v4 风格卡片基元（七件套）。
+//! Card — 卡片基元（七件套）。
 //!
-//! 样式不再走 dxc 的 css_module，而是把 shadcn ui/card.tsx 七个导出组件的
-//! Tailwind class 逐字写进 `class`；shadcn 源码里的 `data-slot` 原样保留
-//! （CardHeader 的 `has-data-[slot=card-action]` variant 依赖它命中）。
+//! 容器 `Card` 的基串与 hover 串按 dsh（deepseek-harness）组件 CSS 改写：几何与
+//! 状态取自 dsh `packages/client/ui-*/src/PluginCard.module.css:3-9`（1px 边框卡片、
+//! bg-layer-3、hover 仅变边框色无阴影），映射与决策见
+//! `todo/web-ui-reference/dsh-visual-spec.md` §3.3/§4.2；Header/Title/Description/
+//! Action/Content/Footer 六个子件仍为 shadcn new-york-v4（ui/card.tsx）逐字串，
+//! shadcn 源码里的 `data-slot` 原样保留（CardHeader 的
+//! `has-data-[slot=card-action]` variant 依赖它命中）。
 //! 调用方传入的 `class` 由 [`with_class`] 追加到组件基串之后，其余属性原样透传。
 
 use dioxus::core::AttributeValue;
 use dioxus::prelude::*;
 
-/// shadcn new-york-v4 Card 基础 class（ui/card.tsx:9，逐字）。
-const CARD_BASE_CLASS: &str =
-    "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm";
-
-/// `hoverable=true` 时叠加的悬停变亮 class。
+/// dsh 基准的 Card 基础 class（PluginCard.module.css:3-9）。
 ///
-/// shadcn 的 Card 本身是静态的、不含 hover 态；这一层是 ferrite 管理台面板的
-/// 统一交互（边框变亮 + 轻微上浮 + 阴影），与 overview/models 面板此前手写的
-/// 内联 hover 对齐。迁移完成后各面板改用 `<Card hoverable>` 取代裸 div + 内联 class。
-const CARD_HOVER_CLASS: &str = "transition-all duration-200 hover:border-zinc-700 hover:shadow-md";
+/// 相比 shadcn ui/card.tsx:9 去掉 shadow-sm：dsh 卡片层次靠明度阶梯（base→layer-1/2/3）、
+/// 阴影只给浮层，PluginCard 无 box-shadow（D16）；rounded-xl 14px 保留（dsh r12，差 2px，
+/// 不调 --radius 以免波及全 radius 阶梯，见 spec §2）。
+const CARD_BASE_CLASS: &str =
+    "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground";
+
+/// `hoverable=true` 时叠加的悬停 class：仅边框变亮，无阴影无上浮。
+///
+/// 对齐 dsh PluginCard 的 hover（PluginCard.module.css:8,11-13：border-color 过渡 .16s
+/// → duration-150，边框色 → label-dimmed neutral-bluish-750，与 --secondary token 同源
+/// 750）。shadcn 的 Card 本身是静态的、不含 hover 态；这一层是 ferrite 管理台面板的
+/// 统一交互，迁移完成后各面板改用 `<Card hoverable>` 取代裸 div + 内联 class。
+const CARD_HOVER_CLASS: &str = "transition-[border-color] duration-150 hover:border-secondary";
 
 /// shadcn new-york-v4 CardHeader 基础 class（ui/card.tsx:22，逐字）。
 const CARD_HEADER_BASE_CLASS: &str = "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6";
@@ -38,7 +47,7 @@ const CARD_CONTENT_BASE_CLASS: &str = "px-6";
 /// shadcn new-york-v4 CardFooter 基础 class（ui/card.tsx:77，逐字）。
 const CARD_FOOTER_BASE_CLASS: &str = "flex items-center px-6 [.border-t]:pt-6";
 
-/// 把调用方传入的 `class` 追加到组件 shadcn 基串之后，其余属性原样保留。
+/// 把调用方传入的 `class` 追加到组件基串之后，其余属性原样保留。
 ///
 /// 取代 dxc 的 `dioxus_primitives::merge_attributes`：只摘出 `class` 属性做字符串
 /// 拼接（先组件基串、后调用方串；Tailwind 语义下拼接顺序不影响命中），非 `class`
@@ -66,10 +75,10 @@ fn with_class(attributes: Vec<Attribute>, extra: &str) -> Vec<Attribute> {
     rest
 }
 
-/// shadcn new-york-v4 风格卡片容器。
+/// dsh 风格卡片容器。
 #[component]
 pub fn Card(
-    /// 悬停时边框变亮 + 阴影（管理台面板统一交互），默认 false。
+    /// 悬停时边框变亮（管理台面板统一交互），默认 false。
     #[props(default)]
     hoverable: bool,
     #[props(extends=GlobalAttributes)] attributes: Vec<Attribute>,
