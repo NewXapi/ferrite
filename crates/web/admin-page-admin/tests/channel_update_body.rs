@@ -25,6 +25,8 @@ fn base_body(keys: Option<Vec<String>>) -> UpdateChannelBody {
         remark: String::new(),
         test_model: None,
         keys,
+        // 未动「拉取模型」面板的基准形状：models 缺席 → 后端 COALESCE 保持现值。
+        models: None,
     }
 }
 

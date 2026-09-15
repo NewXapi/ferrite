@@ -107,6 +107,12 @@ pub struct UpdateChannelBody {
     /// 明文密钥列表——仅用户重输时携带；None = 字段缺席 = 后端保持现有密钥。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keys: Option<Vec<String>>,
+    /// 调度模型列表——仅「拉取模型」面板被使用过后携带（touched 语义）；
+    /// None = 字段缺席 = 后端 COALESCE 保持现有 models。元素为模型 id 字符串，
+    /// 写入会整体替换该列（保留既有条目的责任在调用方：打开面板时已把现值
+    /// 预填进候选池）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub models: Option<serde_json::Value>,
 }
 
 /// 真实调用: PUT /api/channel/{key} (更新) — 最小 diff 体，语义见

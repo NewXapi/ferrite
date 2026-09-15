@@ -153,6 +153,9 @@ pub async fn update_channel(
         remark: ch.remark.clone(),
         test_model: ch.test_model.clone(),
         keys: new_keys,
+        // 拓扑 drawer 不管理 models 列：字段缺席 = 后端 COALESCE 保持现值
+        // （models 通路属渠道管理页弹窗的「拉取模型」面板）。
+        models: None,
     };
     update_channel_api(&client, key, &body)
         .await
