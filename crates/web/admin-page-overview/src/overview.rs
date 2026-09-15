@@ -173,7 +173,8 @@ pub fn OverviewPanel() -> Element {
             }
 
             // Top 10 breakdowns —— 真实 /api/log/top 聚合
-            // 纯展示卡不加 hoverable; 调用方 py-0!/gap-0!/px-4!/py-3!/p-4! 覆盖 Card 基串的
+            // 面板卡挂 hoverable（维护者要求悬停边框变亮的动态全站回归）;
+            // 调用方 py-0!/gap-0!/px-4!/py-3!/p-4! 覆盖 Card 基串的
             // py-6/gap-6/px-6, 尾缀 ! 确保压过 Tailwind 同属性工具类, 保留原紧凑条头布局。
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
                 // Top 10 Models
@@ -239,7 +240,8 @@ pub fn OverviewPanel() -> Element {
 
 /// Compact single-stat card occupying one grid column.
 ///
-/// 纯展示统计卡（无点击/hoverable），原面板级 hover 位移/阴影装饰随 Card 化移除；
+/// 统计卡挂 hoverable：悬停边框变亮是管理台统一交互（维护者拍板），
+/// 原面板级 hover 位移/阴影装饰不回归（dsh 规格仅边框动态）；
 /// `py-3!`/`gap-0!` 覆盖 Card 基串的 py-6/gap-6，保留原紧凑单行布局。
 #[component]
 fn StatCard(value: String, label: &'static str) -> Element {
