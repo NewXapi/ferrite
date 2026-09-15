@@ -6,8 +6,10 @@
  * ferrite 变量名保持 shadcn 契约不变，值按 dsh 别名换算，关键依据：
  *   --background ← bg-base（design-platform.css:249 ← neutral-bluish-950 :147）
  *   --foreground ← label-primary（:299 ← neutral-bluish-50 :137）
- *   --card / --popover ← bg-layer-3（:252 ← neutral-bluish-800 :143，
- *     dsh 卡片与菜单实证层）
+ *   --card ← bg-layer-1（:250 ← neutral-bluish-875 :145）：大面板底色，
+ *     首版取 layer-3 过亮，border/hover 与底色糊在一起（维护者验收反馈
+ *     「border 搞成了背景」），降一档恢复明度阶梯；--popover ← 仍为
+ *     bg-layer-3（:252 ← neutral-bluish-800 :143，弹层/菜单实证层）
  *   --primary ← button-primary-fill（:283 = brand-primary :271）
  *   --secondary ← button-ghost-active-fill（:278 ← neutral-bluish-750 :141）
  *   --secondary-hover ← button-ghost-active-hover（:279 ← neutral-bluish-700 :140）
@@ -34,7 +36,7 @@
   --radius: 0.625rem;
   --background: rgb(21 21 23);
   --foreground: rgb(249 250 251);
-  --card: rgb(53 54 56);
+  --card: rgb(35 35 36);
   --card-foreground: rgb(249 250 251);
   --popover: rgb(53 54 56);
   --popover-foreground: rgb(249 250 251);
@@ -76,7 +78,7 @@
   --radius: 0.625rem;
   --background: rgb(21 21 23);
   --foreground: rgb(249 250 251);
-  --card: rgb(53 54 56);
+  --card: rgb(35 35 36);
   --card-foreground: rgb(249 250 251);
   --popover: rgb(53 54 56);
   --popover-foreground: rgb(249 250 251);
