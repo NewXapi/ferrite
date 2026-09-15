@@ -141,7 +141,8 @@ pub struct UpdateChannelBody {
     ///
     /// 携带时的形状必须是 `[{"alias":..,"upstream":..}]` 对象数组：后端
     /// `validate` 对 merged models 逐条要求 alias+upstream 非空，
-    /// 裸字符串数组（`["gpt-4o"]`）会被 400 拒绝。
+    /// 裸字符串数组（`["gpt-4o"]`）会被 400 拒绝。/// - 调用方责任：打开面板时已把渠道现有 models 预填进候选池，勾选集整体
+    ///   替换该列；未动面板（touched=false）一律缺席。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub models: Option<serde_json::Value>,
 }

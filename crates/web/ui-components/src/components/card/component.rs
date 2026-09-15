@@ -23,10 +23,13 @@ const CARD_BASE_CLASS: &str =
 /// `hoverable=true` 时叠加的悬停 class：仅边框变亮，无阴影无上浮。
 ///
 /// 对齐 dsh PluginCard 的 hover（PluginCard.module.css:8,11-13：border-color 过渡 .16s
-/// → duration-150，边框色 → label-dimmed neutral-bluish-750，与 --secondary token 同源
-/// 750）。shadcn 的 Card 本身是静态的、不含 hover 态；这一层是 ferrite 管理台面板的
+/// → duration-150，边框色 → dsh button-ghost-active-hover（neutral-bluish-700），
+/// 对应 --secondary-hover token：比 12% 白的常态边框亮一档，hover 反馈可感
+/// （首版用 --secondary，其明度与 --card 几乎相同，hover 无感知——维护者
+/// 验收反馈后更换）。shadcn 的 Card 本身是静态的、不含 hover 态；这一层是 ferrite 管理台面板的
 /// 统一交互，迁移完成后各面板改用 `<Card hoverable>` 取代裸 div + 内联 class。
-const CARD_HOVER_CLASS: &str = "transition-[border-color] duration-150 hover:border-secondary";
+const CARD_HOVER_CLASS: &str =
+    "transition-[border-color] duration-150 hover:border-secondary-hover";
 
 /// shadcn new-york-v4 CardHeader 基础 class（ui/card.tsx:22，逐字）。
 const CARD_HEADER_BASE_CLASS: &str = "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6";

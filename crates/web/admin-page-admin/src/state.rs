@@ -17,6 +17,8 @@ pub struct GroupRow {
     pub display: String,
     /// 分组倍率(≥0)
     pub multiplier: f64,
+    /// 服务端 key；seed 演示行为空串（写路径此时回退 find-by-name）
+    pub key: String,
 }
 
 #[derive(Clone, PartialEq)]
@@ -38,6 +40,8 @@ pub struct ChannelRow {
     pub ctype: String,
     pub url: String,
     pub keys: String,
+    /// 服务端 key；seed 演示行为空串（写路径此时回退 find-by-name）
+    pub key: String,
     /// 状态:1 启用 / 0 手动停用 / 2 自动停用(测速失败)
     pub status: u8,
     /// 所属分组(默认 default)
@@ -99,21 +103,25 @@ impl EntityStore {
                     name: "default".into(),
                     display: "默认分组".into(),
                     multiplier: 1.0,
+                    key: String::new(),
                 },
                 GroupRow {
                     name: "claude".into(),
                     display: "Claude 专用".into(),
                     multiplier: 1.2,
+                    key: String::new(),
                 },
                 GroupRow {
                     name: "gpt-5".into(),
                     display: "GPT-5".into(),
                     multiplier: 1.5,
+                    key: String::new(),
                 },
                 GroupRow {
                     name: "vip".into(),
                     display: "VIP".into(),
                     multiplier: 0.8,
+                    key: String::new(),
                 },
             ]),
             aliases: Signal::new(vec![
@@ -152,6 +160,7 @@ impl EntityStore {
                     ctype: "openai".into(),
                     url: "https://api.openai.com/v1".into(),
                     keys: "sk-**************************".into(),
+                    key: String::new(),
                     status: 1,
                     group: "default".into(),
                     latency_ms: Some(186),
@@ -163,6 +172,7 @@ impl EntityStore {
                     ctype: "openai-compat".into(),
                     url: "https://east.azure.example/openai".into(),
                     keys: "az-****".into(),
+                    key: String::new(),
                     status: 1,
                     group: "default".into(),
                     latency_ms: Some(243),
@@ -174,6 +184,7 @@ impl EntityStore {
                     ctype: "openai-compat".into(),
                     url: "https://oneapi.example/v1".into(),
                     keys: "oa-****".into(),
+                    key: String::new(),
                     status: 1,
                     group: "default".into(),
                     latency_ms: Some(312),
@@ -185,6 +196,7 @@ impl EntityStore {
                     ctype: "claude".into(),
                     url: "https://api.anthropic.com".into(),
                     keys: "ak-****".into(),
+                    key: String::new(),
                     status: 1,
                     group: "claude".into(),
                     latency_ms: Some(298),
@@ -196,6 +208,7 @@ impl EntityStore {
                     ctype: "openai-compat".into(),
                     url: "https://bedrock.us-east-1.amazonaws.com".into(),
                     keys: "aws-****".into(),
+                    key: String::new(),
                     status: 2,
                     group: "claude".into(),
                     latency_ms: None,
@@ -207,6 +220,7 @@ impl EntityStore {
                     ctype: "gemini".into(),
                     url: "https://generativelanguage.googleapis.com".into(),
                     keys: "gm-****".into(),
+                    key: String::new(),
                     status: 1,
                     group: "default".into(),
                     latency_ms: Some(156),
@@ -363,6 +377,7 @@ impl EntityStore {
         #[derive(Default, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct GroupDto {
+            key: String,
             name: String,
             ratio: f64,
             #[serde(default)]
@@ -386,6 +401,7 @@ impl EntityStore {
                 name: g.name,
                 display,
                 multiplier: g.ratio,
+                key: g.key,
             }
         }));
 
@@ -393,6 +409,7 @@ impl EntityStore {
         #[derive(Default, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct ChannelDto {
+            key: String,
             name: String,
             #[serde(default)]
             channel_type: String,
@@ -435,6 +452,7 @@ impl EntityStore {
                     .unwrap_or_default();
                 ChannelRow {
                     name: c.name,
+                    key: c.key,
                     ctype: if c.channel_type.is_empty() {
                         "openai".into()
                     } else {
