@@ -26,7 +26,7 @@ enum Kind {
 }
 
 impl Kind {
-    fn as_str(self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
             Kind::Points => "points",
             Kind::Fiat => "fiat",
@@ -367,11 +367,14 @@ pub fn CurrencyPage() -> Element {
                     label { class: "space-y-1 text-xs text-zinc-400",
                         "汇率（1 单位 = 多少内部单位，500_000 = $1）"
                         if f_code() == "USD" {
-                            input {
-                                class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-500",
-                                "data-testid": "currency-rate-input",
-                                value: "1",
-                                disabled: true,
+                            div { class: "space-y-1",
+                                input {
+                                    class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-500",
+                                    "data-testid": "currency-rate-input",
+                                    value: "1",
+                                    disabled: true,
+                                }
+                                p { class: "text-xs text-amber-400/90", "USD 是基准货币，汇率恒为 1，不可修改" }
                             }
                         } else {
                             input {

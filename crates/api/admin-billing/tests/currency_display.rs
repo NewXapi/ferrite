@@ -302,3 +302,30 @@ async fn upsert_seeds_only_points() {
         .ok();
     cleanup_user(&pool, user).await;
 }
+
+/// open_topup 拒绝 fiat 货币。为什么：fiat 永远无法入账（credit_topup 走
+/// points-only 校验），开了就是永远 settle 不了的僵尸单——settle 失败事务
+/// 回滚、订单退回 pending，可反复重试永远失败。在开单入口拦（0014 复查修复）。
+#[tokio::test]
+#[ignore = "needs PG; run with DATABASE_URL"]
+async fn open_topup_rejects_fiat() {
+    let Some((_cur, _wal, pool)) = make_svcs().await else {
+        return;
+    };
+    let topup = billing::TopupService::new(pool.clone());
+    let err = topup
+        .open_topup(contract::api::billing::TopUpRequest {
+            user_key: Uuid::new_v4().to_string(),
+            currency: "CNY".to_string(),
+            amount: 100,
+        })
+        .await
+        .expect_err("fiat topup order must be rejected at open time");
+    assert!(matches!(err, BillingErr::BadRequest(_)), "got {err:?}");
+    // 无订单行落库（在入口拒绝，而非建单后卡状态机）
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM billing_topups WHERE currency = 'CNY'")
+        .fetch_one(&pool)
+        .await
+        .expect("count orders");
+    assert_eq!(n, 0, "no pending fiat order row may be created");
+}

@@ -206,7 +206,7 @@ async fn upsert_def_new_and_rate_validation() {
 
     // 合法新增
     let view = cur
-        .upsert_def("TEST_NEW", "Test New", 3.0, true, "")
+        .upsert_def("TEST_NEW", "Test New", 3.0, true, "", "T", "points", 0)
         .await
         .expect("upsert ok");
     assert_eq!(view.code, "TEST_NEW");
@@ -214,14 +214,14 @@ async fn upsert_def_new_and_rate_validation() {
 
     // rate <= 0 拒绝
     assert!(
-        cur.upsert_def("TEST_NEW", "bad", 0.0, true, "")
+        cur.upsert_def("TEST_NEW", "bad", 0.0, true, "", "T", "points", 0)
             .await
             .is_err(),
         "rate=0 应拒绝"
     );
     // rate NaN 拒绝
     assert!(
-        cur.upsert_def("TEST_NEW", "bad", f64::NAN, true, "")
+        cur.upsert_def("TEST_NEW", "bad", f64::NAN, true, "", "T", "points", 0)
             .await
             .is_err(),
         "rate=NaN 应拒绝"
