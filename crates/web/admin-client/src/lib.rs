@@ -17,7 +17,10 @@ pub use wire::{
     UserBalanceDto, WalletResponse, WalletView, fetch_affiliate_overview, fetch_wallet, open_topup,
     redeem_code,
 };
-pub use wire::{GatewayHealthItem, GatewayHealthView, HealthItemState};
+pub use wire::{
+    GatewayHealthItem, GatewayHealthView, HealthItemState, InviteeView, ListEnvelope,
+    TopupOrderView, fetch_invitees, fetch_topup_orders,
+};
 
 use serde::Deserialize;
 
