@@ -527,6 +527,9 @@ fn ChannelFormModal(
                         remark: rm,
                         test_model: tm,
                         keys: (!k.is_empty()).then_some(k),
+                        // 渠道页弹窗本轮不管理 models 列（拉取面板属后续 PR）：
+                        // 缺席 = 后端 COALESCE 保持现值。
+                        models: None,
                     };
                     update_channel_api(&client, &kk, &body).await
                 }

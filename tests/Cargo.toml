@@ -67,5 +67,9 @@ name = "web_wire_contract"
 path = "web_wire_contract.rs"
 
 [[test]]
+name = "network_write_path"
+path = "network_write_path.rs"
+
+[[test]]
 name = "billing_lifecycle"
 path = "billing_lifecycle.rs"
