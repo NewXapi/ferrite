@@ -145,13 +145,15 @@ impl CurrencyService {
         Self { pool }
     }
 
-    /// 为注册用户 seed 所有 enabled 货币（amount = 0）。
+    /// 为注册用户 seed 所有 enabled 的 **points** 货币（amount = 0）。
+    /// fiat 货币（0014）只计价展示、不进余额，因此不 seed——否则新用户会
+    /// 长出 ¥0/$0 的"法币余额"行，前端展示造成语义污染。
     /// 幂等：`ON CONFLICT DO NOTHING`，重复调用无副作用。
     pub async fn seed_for_user(&self, user_key: Uuid) -> Result<(), BillingErr> {
         sqlx::query(
             r#"
             INSERT INTO user_balances (user_key, currency_code, amount)
-            SELECT $1, code, 0 FROM currency_defs WHERE enabled
+            SELECT $1, code, 0 FROM currency_defs WHERE enabled AND kind = 'points'
             ON CONFLICT (user_key, currency_code) DO NOTHING
             "#,
         )
@@ -162,13 +164,14 @@ impl CurrencyService {
     }
 
     /// 折算综合可用值（内部单位 i64），喂 QuotaGate/快照。
+    /// 仅 points 货币计入：fiat（0014）只是计价单位，不是可扣费余额。
     pub async fn available_i64(&self, user_key: Uuid) -> Result<i64, BillingErr> {
         let row: (i64,) = sqlx::query_as(
             r#"
             SELECT COALESCE(SUM(ub.amount * cd.internal_rate), 0)::BIGINT
             FROM user_balances ub
             JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
-            WHERE ub.user_key = $1
+            WHERE ub.user_key = $1 AND cd.kind = 'points'
             "#,
         )
         .bind(user_key)
@@ -180,7 +183,7 @@ impl CurrencyService {
     /// 货币定义列表（admin 查看）。
     pub async fn list_defs(&self) -> Result<Vec<CurrencyView>, BillingErr> {
         let rows = sqlx::query_as::<_, CurrencyDefRow>(
-            "SELECT code, name, internal_rate, enabled, remark FROM currency_defs ORDER BY code",
+            "SELECT code, name, internal_rate, enabled, remark, symbol, kind, precision FROM currency_defs ORDER BY code",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -188,7 +191,12 @@ impl CurrencyService {
     }
 
     /// 新增/更新货币定义（admin）。
-    /// 单事务：`ON CONFLICT DO UPDATE` 行锁；enabled 时顺带为缺余额行的现有用户补 seed 0（幂等）。
+    /// 单事务：`ON CONFLICT DO UPDATE` 行锁；enabled 且 points 时顺带为缺余额行的
+    /// 现有用户补 seed 0（幂等）。fiat 货币不补余额行（法币不进 user_balances）。
+    ///
+    /// 校验：kind=fiat 时 symbol 非空、precision ≥ 1（法币必有符号与小数位）；
+    /// USD 是基准货币（internal_rate 恒为 1），改它会让全盘换算失真，直接拒绝。
+    #[allow(clippy::too_many_arguments)]
     pub async fn upsert_def(
         &self,
         code: &str,
@@ -196,6 +204,9 @@ impl CurrencyService {
         internal_rate: f64,
         enabled: bool,
         remark: &str,
+        symbol: &str,
+        kind: &str,
+        precision: i16,
     ) -> Result<CurrencyView, BillingErr> {
         if code.trim().is_empty() {
             return Err(BillingErr::BadRequest("code required".into()));
@@ -207,18 +218,44 @@ impl CurrencyService {
                 "internal_rate must be finite and > 0".into(),
             ));
         };
+        if kind != "points" && kind != "fiat" {
+            return Err(BillingErr::BadRequest(format!(
+                "kind must be 'points' or 'fiat', got {kind}"
+            )));
+        }
+        if kind == "fiat" {
+            if symbol.trim().is_empty() {
+                return Err(BillingErr::BadRequest(
+                    "fiat currency requires symbol".into(),
+                ));
+            }
+            if precision < 1 {
+                return Err(BillingErr::BadRequest(
+                    "fiat currency requires precision >= 1".into(),
+                ));
+            }
+        }
+        if code == "USD" && internal_rate != 1.0 {
+            // 基准货币 rate 被改 = 全盘换算口径漂移（换算全部经 internal 单位中转）。
+            return Err(BillingErr::BadRequest(
+                "USD is the base currency; internal_rate is locked at 1".into(),
+            ));
+        }
         let mut tx = self.pool.begin().await?;
         let row: CurrencyDefRow = sqlx::query_as(
             r#"
-            INSERT INTO currency_defs (code, name, internal_rate, enabled, remark)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO currency_defs (code, name, internal_rate, enabled, remark, symbol, kind, precision)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (code) DO UPDATE SET
                 name = EXCLUDED.name,
                 internal_rate = EXCLUDED.internal_rate,
                 enabled = EXCLUDED.enabled,
                 remark = EXCLUDED.remark,
+                symbol = EXCLUDED.symbol,
+                kind = EXCLUDED.kind,
+                precision = EXCLUDED.precision,
                 updated_at = now()
-            RETURNING code, name, internal_rate, enabled, remark
+            RETURNING code, name, internal_rate, enabled, remark, symbol, kind, precision
             "#,
         )
         .bind(code)
@@ -226,10 +263,14 @@ impl CurrencyService {
         .bind(internal_rate)
         .bind(enabled)
         .bind(remark)
+        .bind(symbol)
+        .bind(kind)
+        .bind(precision)
         .fetch_one(&mut *tx)
         .await?;
-        // 启用新货币：现有用户缺余额行则补 0（ON CONFLICT DO NOTHING，幂等）。
-        if enabled {
+        // 启用 points 货币：现有用户缺余额行则补 0（幂等）。
+        // fiat 不补——法币只是计价单位，user_balances 只存 points 余额（0014 口径）。
+        if enabled && kind == "points" {
             sqlx::query(
                 r#"
                 INSERT INTO user_balances (user_key, currency_code, amount)
@@ -247,6 +288,57 @@ impl CurrencyService {
         tx.commit().await?;
         Ok(row.into())
     }
+
+    /// 金额换算：`amount` 个 `from` 货币单位 → 多少个 `to` 货币单位。
+    ///
+    /// 经内部单位中转（500_000 = $1）：`internal = amount × rate(from)`，
+    /// `result = internal / rate(to)`。两货币只要都注册且启用即可互换，
+    /// 无需两两直配汇率（0014 通用换算层核心）。
+    ///
+    /// 舍入：floor（保守口径——展示/计价宁少勿多）；扣费入账需要向上取整的
+    /// 场景由调用方自行 ceil（wallet.rs 的折算已各自带取整纪律）。
+    ///
+    /// 错误：`from`/`to` 不存在或未启用 → `BadRequest`；`from == to` 直接返回。
+    pub async fn convert(&self, amount: i64, from: &str, to: &str) -> Result<i64, BillingErr> {
+        if amount <= 0 {
+            return Ok(0);
+        }
+        if from == to {
+            return Ok(amount);
+        }
+        let rates: Vec<(String, f64)> = sqlx::query_as(
+            "SELECT code, internal_rate FROM currency_defs WHERE code IN ($1, $2) AND enabled",
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(&self.pool)
+        .await?;
+        let rate_of = |code: &str| -> Result<f64, BillingErr> {
+            rates
+                .iter()
+                .find(|(c, _)| c == code)
+                .map(|(_, r)| *r)
+                .ok_or_else(|| {
+                    BillingErr::BadRequest(format!("currency {code} not found or disabled"))
+                })
+        };
+        let rate_from = rate_of(from)?;
+        let rate_to = rate_of(to)?;
+        // f64 中转（同 wallet.rs deduct 口径）；rate 已由 upsert 校验 > 0 且有限，
+        // 但防御 partial_cmp，配置脏数据不 panic。
+        if rate_from.partial_cmp(&0.0) != Some(core::cmp::Ordering::Greater)
+            || rate_to.partial_cmp(&0.0) != Some(core::cmp::Ordering::Greater)
+        {
+            return Err(BillingErr::BadRequest("invalid currency rate".into()));
+        }
+        let internal = (amount as f64) * rate_from;
+        let converted = (internal / rate_to).floor();
+        // i64 域防护：转换结果超 BIGINT 时夹到 i64::MAX（与 snapshot.rs LEAST 同语义）。
+        if converted >= i64::MAX as f64 {
+            return Ok(i64::MAX);
+        }
+        Ok(converted as i64)
+    }
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -256,6 +348,9 @@ struct CurrencyDefRow {
     internal_rate: f64,
     enabled: bool,
     remark: String,
+    symbol: String,
+    kind: String,
+    precision: i16,
 }
 
 impl From<CurrencyDefRow> for CurrencyView {
@@ -266,6 +361,9 @@ impl From<CurrencyDefRow> for CurrencyView {
             internal_rate: r.internal_rate,
             enabled: r.enabled,
             remark: r.remark,
+            symbol: r.symbol,
+            kind: r.kind,
+            precision: r.precision,
         }
     }
 }
@@ -322,6 +420,18 @@ struct UpsertDefRequest {
     enabled: bool,
     #[serde(default)]
     remark: String,
+    #[serde(default)]
+    symbol: String,
+    /// points（默认）| fiat。
+    #[serde(default = "default_kind")]
+    kind: String,
+    #[serde(default)]
+    precision: i16,
+}
+
+/// kind 的 serde 默认值：存量调用方不传 kind 视为 points（向后兼容）。
+fn default_kind() -> String {
+    "points".to_string()
 }
 
 /// 新增/更新货币 — POST /api/currency（admin）。
@@ -339,6 +449,9 @@ async fn upsert_def(
             req.internal_rate,
             req.enabled,
             &req.remark,
+            &req.symbol,
+            &req.kind,
+            req.precision,
         )
         .await
         .map_err(err_json)?;

@@ -60,6 +60,31 @@ db-reset:
     docker exec -i {{PG_CONTAINER}} psql -U {{PG_USER}} -d {{PG_DB}} -v ON_ERROR_STOP=1 < db/dev/reset.sql
 
 
+# ---------- 多会话 worktree 堆积清理 (scripts/wt-clean.sh) ----------
+#   just wt-candidates       只列可清项(PR 已合并 + 无在跑进程), 不动文件
+#   just wt-clean            回收可清项(gio trash 进回收站) + 删已合并分支
+#   just wt-targets-clean    清所有 .wt/*/target 与根 target(编译产物, 可重建)
+# 场景: 多会话并行开发后 .wt/ 膨胀(每个 worktree 一份独立 cargo target)
+wt-candidates:
+    bash scripts/wt-clean.sh candidates
+
+wt-clean:
+    bash scripts/wt-clean.sh clean
+
+wt-clean-dry:
+    bash scripts/wt-clean.sh clean --dry-run
+
+wt-targets-clean:
+    #!/usr/bin/env bash
+    set -u; total=0
+    for t in .wt/*/target target; do
+      [ -d "$t" ] || continue
+      sz=$(du -sh "$t" | cut -f1); n=0
+      find "$t" -mindepth 1 -maxdepth 1 -exec sh -c 'gio trash "$1" 2>/dev/null && true' _ {} \; 2>/dev/null
+      gio trash "$t" 2>/dev/null && { echo "  ✓ trashed $t ($sz)"; total=$((total+1)); }
+    done
+    [ "$total" -eq 0 ] && echo "无可清 target"
+
 # 共享 dev 后端: start | update | stop | status
 #   start   首次拉起 (二进制缺失会先 cargo build -p api)
 #   update  改了 crates/api / apps/api 后重建并重启 (对前端透明, JWT/会话持久)

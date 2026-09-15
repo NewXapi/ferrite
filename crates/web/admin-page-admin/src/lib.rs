@@ -3,6 +3,7 @@
 pub mod aliases;
 pub mod api;
 pub mod channels;
+pub mod currency;
 pub mod entities;
 pub mod gateway;
 pub mod groups;
@@ -13,6 +14,7 @@ pub mod state;
 pub mod system;
 pub use aliases::AliasesPage;
 pub use channels::ChannelsPage;
+pub use currency::CurrencyPage;
 pub use gateway::GatewayHealthPanel;
 pub use groups::GroupsPage;
 pub use network::{GraphView, NetworkPanel, NodeKey, channel_models, edges_of};

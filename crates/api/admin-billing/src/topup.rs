@@ -131,10 +131,14 @@ impl TopupService {
 
     /// 开单（不接真支付），建 pending 订单，返回 order id。
     /// 直接写入 billing_topups 表（0008）state='pending'。
+    ///
+    /// 只收 `kind='points'` 货币（0014）：fiat 只是计价展示单位、永远无法入账，
+    /// 开了就是永远 settle 不了的僵尸单（settle 时 credit_topup 失败、事务
+    /// 回滚、订单退回 pending）。在开单入口拒绝，而不是让单据进状态机后卡死。
     pub async fn open_topup(&self, req: TopUpRequest) -> Result<String, BillingErr> {
-        // 验证货币是否存在且启用
+        // 验证货币存在、启用且为 points（fiat 不收）
         let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM currency_defs WHERE code = $1 AND enabled = true)",
+            "SELECT EXISTS(SELECT 1 FROM currency_defs WHERE code = $1 AND enabled = true AND kind = 'points')",
         )
         .bind(&req.currency)
         .fetch_one(&self.pool)

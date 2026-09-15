@@ -103,7 +103,8 @@ impl WalletService {
                    COALESCE((cd.group_rates ->> $2)::float8, 1.0) AS group_mult
             FROM user_balances ub
             JOIN currency_defs cd ON cd.code = ub.currency_code
-            WHERE ub.user_key = $1 AND cd.enabled AND ub.amount > ub.frozen_amount
+            WHERE ub.user_key = $1 AND cd.enabled AND cd.kind = 'points'
+              AND ub.amount > ub.frozen_amount
             ORDER BY cd.internal_rate DESC
             FOR UPDATE
             "#,
@@ -343,6 +344,7 @@ impl WalletService {
             .map(|b| UserBalanceDto {
                 currency_code: b.currency_code.clone(),
                 amount: b.amount,
+                symbol: b.symbol.clone(),
             })
             .collect();
         Ok(WalletView {
@@ -353,8 +355,7 @@ impl WalletService {
     }
 
     /// GET /api/user/wallet 响应体：contract WalletView 字段 + 每行 `frozenAmount`
-    /// （contract::UserBalanceDto 不可加字段——跨端契约冻结，这里 JSON 层扩展，
-    /// 消费方 serde 忽略未知字段，向后兼容）。
+    /// （JSON 层扩展，消费方 serde 忽略未知字段，向后兼容）。
     pub async fn balance_view_json(
         &self,
         user_key: Uuid,
@@ -366,6 +367,7 @@ impl WalletService {
             "userKey": user_key.to_string(),
             "balances": rows.iter().map(|b| json!({
                 "currencyCode": b.currency_code,
+                "symbol": b.symbol,
                 "amount": b.amount,
                 "frozenAmount": b.frozen_amount,
             })).collect::<Vec<_>>(),
@@ -382,10 +384,11 @@ impl WalletService {
         Ok(sqlx::query_as::<_, BalanceRow>(
             r#"
             SELECT ub.currency_code, ub.amount, ub.frozen_amount, cd.internal_rate,
+                   cd.symbol,
                    COALESCE((cd.group_rates ->> $2)::float8, 1.0) AS group_mult
             FROM user_balances ub
             JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
-            WHERE ub.user_key = $1
+            WHERE ub.user_key = $1 AND cd.kind = 'points'
             ORDER BY ub.currency_code
             "#,
         )
@@ -429,9 +432,12 @@ impl WalletService {
         Ok(row.0)
     }
 
+    /// 入账公共校验：货币存在、启用且 **kind='points'**（0014）。
+    /// fiat 只是计价展示单位，进 user_balances 会造出"法币余额"语义污染，
+    /// 所以 credit_topup 等 card 入账路径在此被拦。
     async fn currency_enabled(pool: &PgPool, code: &str) -> Result<bool, BillingErr> {
         Ok(sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM currency_defs WHERE code = $1 AND enabled)",
+            "SELECT EXISTS(SELECT 1 FROM currency_defs WHERE code = $1 AND enabled AND kind = 'points')",
         )
         .bind(code)
         .fetch_one(pool)
@@ -448,6 +454,8 @@ struct BalanceRow {
     internal_rate: f64,
     /// 该用户组对本货币的倍率（0011 group_rates，缺省 1.0），SQL 侧 COALESCE。
     group_mult: f64,
+    /// 展示符号（0014 currency_defs.symbol）。
+    symbol: String,
 }
 
 // ---------- axum 路由（对齐 redeem.rs 鉴权/err_json 约定）----------
