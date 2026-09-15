@@ -61,6 +61,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     // 写操作反馈（顶部 DrawerNoticeBar）与删除确认弹窗
     let mut notice = use_signal(|| DrawerNotice::Idle);
     let mut confirming = use_signal(|| None::<usize>);
+    let mut saving = use_signal(|| false);
     // 编辑态下分组名锁读（后端 UpdateGroupRequest 无 name 列），标签如实标注
     let name_label: &'static str = if editing.peek().is_some() {
         "分组名（锁读，后端无改名路径）"
@@ -69,10 +70,14 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     };
 
     let commit = move |_| {
+        if *saving.peek() {
+            return; // 上一次写还在途，防双击重复提交
+        }
         let n = name.peek().trim().to_string();
         if n.is_empty() {
             return;
         }
+        saving.set(true);
         let d = display.peek().trim().to_string();
         let m = parse_mult(&mult.peek());
         let mode = *editing.peek();
@@ -82,8 +87,9 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             let res: Result<(), String> = match mode {
                 // 新建：真实 POST /api/group
                 None => match create_group_write(&n, &d, m).await {
-                    Ok(_) => {
+                    Ok(g) => {
                         groups.write().push(crate::state::GroupRow {
+                            key: g.key,
                             name: n,
                             display: d,
                             multiplier: m,
@@ -131,6 +137,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 Ok(()) => ns.set(DrawerNotice::Ok),
                 Err(e) => ns.set(DrawerNotice::Err(format!("保存失败：{e}"))),
             }
+            saving.set(false);
         });
         name.set(String::new());
         display.set(String::new());
@@ -151,8 +158,21 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
         let Some(r) = row else {
             return;
         };
+        let local_key = r.key.clone();
         let mut ns = notice;
         spawn(async move {
+            // 行 key 优先；seed 演示行 key 为空才按名称找
+            if !local_key.is_empty() {
+                match delete_group(&local_key).await {
+                    Ok(()) => {
+                        groups.write().remove(i);
+                        bump_topo_refresh();
+                        ns.set(DrawerNotice::Ok);
+                    }
+                    Err(e) => ns.set(DrawerNotice::Err(format!("删除失败：{e}"))),
+                }
+                return;
+            }
             match find_group_by_name(&r.name).await {
                 Ok(Some(g)) => match delete_group(&g.key).await {
                     Ok(()) => {
@@ -188,6 +208,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    disabled: saving(),
                     onclick: commit,
                     if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
@@ -394,6 +415,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
     let mut is_new = use_signal(|| false);
     let mut notice = use_signal(|| DrawerNotice::Idle);
     let mut confirming = use_signal(|| None::<usize>);
+    let mut saving = use_signal(|| false);
 
     let idx = current();
     let row = channels.read().get(idx).cloned();
@@ -425,7 +447,11 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
     // keys 仅当用户本次重输时携带；未重输 = 请求体缺席 keys 字段 = 保留现值）。
     // 成功后 bump_topo_refresh() 刷画布。
     let save = move |_| {
+        if *saving.peek() {
+            return; // 上一次写还在途，防双击重复提交
+        }
         let n = name.peek().trim().to_string();
+        saving.set(true);
         if n.is_empty() {
             return;
         }
@@ -478,6 +504,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 };
                 ch_sig.write().push(crate::state::ChannelRow {
                     name: n.clone(),
+                    key: created.key.clone(),
                     ctype: ct.clone(),
                     url: u.clone(),
                     keys: created.keys.map(|v| v.join("\n")).unwrap_or_default(),
@@ -494,21 +521,31 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 new_sig.set(false);
                 Ok(())
             } else {
-                // 按名称找真实渠道取服务端 key。Ok(None)（列表成功但无此名）
-                // 才按导入兜底建渠道；Err（401/网络/5xx）直接报错——绝不能把
-                // 一次瞬时故障降级成新建，那会复制出重复渠道。
-                let key = match find_channel_by_name(&cur_name).await {
-                    Ok(Some(c)) => c.key,
-                    Ok(None) => match create_channel_import(&n, &u, &ct, &grp, &kvec).await {
-                        Ok(c) => c.key,
+                // 优先用行内服务端 key（hydrate/新建时已灌入，免一趟查询且无
+                // 外部改名竞态）；seed 演示行 key 为空才按名称找。Ok(None)
+                // （列表成功但无此名）才按导入兜底建渠道；Err（401/网络/5xx）
+                // 直接报错——绝不能把一次瞬时故障降级成新建，那会复制出重复渠道。
+                let local_key = ch_sig
+                    .read()
+                    .get(i)
+                    .map(|c| c.key.clone())
+                    .unwrap_or_default();
+                let key = if !local_key.is_empty() {
+                    local_key
+                } else {
+                    match find_channel_by_name(&cur_name).await {
+                        Ok(Some(c)) => c.key,
+                        Ok(None) => match create_channel_import(&n, &u, &ct, &grp, &kvec).await {
+                            Ok(c) => c.key,
+                            Err(e) => {
+                                ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                                return;
+                            }
+                        },
                         Err(e) => {
                             ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
                             return;
                         }
-                    },
-                    Err(e) => {
-                        ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
-                        return;
                     }
                 };
                 // 用户未重输 keys → 传 None（请求体缺席 keys 字段 = 保留现值）
@@ -533,6 +570,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 }
                 Err(e) => ns.set(DrawerNotice::Err(format!("保存失败：{e}"))),
             }
+            saving.set(false);
         });
     };
 
@@ -543,19 +581,25 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
         let Some(r) = cur else { return };
         let target: u8 = if r.status == 1 { 2 } else { 1 };
         let cur_name = r.name.clone();
+        let local_key = r.key.clone();
         let (mut ns, mut ch_sig) = (notice, channels);
         spawn(async move {
-            let key = match find_channel_by_name(&cur_name).await {
-                Ok(Some(c)) => c.key,
-                Ok(None) => {
-                    ns.set(DrawerNotice::Err(format!(
-                        "渠道「{cur_name}」不存在于后端（可能已被删除）"
-                    )));
-                    return;
-                }
-                Err(e) => {
-                    ns.set(DrawerNotice::Err(format!("启停失败：{e}")));
-                    return;
+            // 行 key 优先（无外部改名竞态）；seed 演示行 key 为空才按名称找
+            let key = if !local_key.is_empty() {
+                local_key
+            } else {
+                match find_channel_by_name(&cur_name).await {
+                    Ok(Some(c)) => c.key,
+                    Ok(None) => {
+                        ns.set(DrawerNotice::Err(format!(
+                            "渠道「{cur_name}」不存在于后端（可能已被删除）"
+                        )));
+                        return;
+                    }
+                    Err(e) => {
+                        ns.set(DrawerNotice::Err(format!("启停失败：{e}")));
+                        return;
+                    }
                 }
             };
             match set_channel_status(&key, target as i16).await {
@@ -584,9 +628,21 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
         let Some(r) = cur else {
             return;
         };
+        let local_key = r.key.clone();
         let (mut ns, mut ch_sig) = (notice, channels);
         spawn(async move {
-            // 本地草稿行（后端不存在）直接删本地；真实渠道走 DELETE
+            // 本地草稿行（后端不存在）直接删本地；真实渠道走 DELETE。
+            // 行 key 优先（免查询且无改名竞态），seed 演示行为空才按名称找
+            if !local_key.is_empty() {
+                if let Err(e) = delete_channel(&local_key).await {
+                    ns.set(DrawerNotice::Err(format!("删除失败：{e}")));
+                    return;
+                }
+                ch_sig.write().remove(i);
+                bump_topo_refresh();
+                ns.set(DrawerNotice::Ok);
+                return;
+            }
             match find_channel_by_name(&r.name).await {
                 Ok(Some(c)) => {
                     if let Err(e) = delete_channel(&c.key).await {
@@ -680,6 +736,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    disabled: saving(),
                     onclick: save,
                     "保存"
                 }
