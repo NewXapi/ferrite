@@ -62,9 +62,37 @@ pub async fn list_channels_api(client: &ApiClient) -> ApiResult<Vec<ChannelDto>>
     Ok(r.items)
 }
 
-/// 真实调用: GET /api/channel/{key} (单查，包含完整 keys)
+/// 真实调用: GET /api/channel/{key} (单查)
+///
+/// 与列表端点的差别只在 `keys`：单查走 `row_to_view(row, include_keys=true)`，
+/// 会带回 `keys: Some(掩码列表)`（`sk-a****b12` 形式，前 4 + `****` + 后 4，
+/// 长度 ≤8 则整体 `****`）与 `key_count`。**明文密钥永远不出后端**，因此
+/// 该字段只能用于只读展示，不得回填进任何写请求体（见
+/// [`UpdateChannelBody::keys`] 的语义）。
 pub async fn get_channel_api(client: &ApiClient, key: &str) -> ApiResult<ChannelDto> {
     client.get(&format!("/api/channel/{key}")).await
+}
+
+/// 真实调用: GET /api/channel/fetch_models/{key} —— 用该渠道自己的凭据打上游
+/// `/v1/models`，取回模型 id 列表（后端包装为 `{"data":["gpt-4o",..]}`）。
+///
+/// 只对**已落库**的渠道有效：后端取该行 keys 的首条明文做 bearer 认证，
+/// 无 key 时返回 400 `channel has no keys`，所以新建态（渠道尚未创建、无
+/// key）不存在可用的 `key`，调用方必须在 UI 上禁用入口而不是发请求。
+///
+/// 错误情况：key 非 UUID(400)、渠道不存在(404)、渠道无 key(400)、上游非 2xx
+/// 或超时（后端 10s 硬超时）→ `ApiError`。上游返回体里 `data` 缺失或非数组
+/// 时后端给出空列表（不是错误），调用方需自行区分「拉取成功但上游没有模型」。
+pub async fn fetch_channel_models_api(client: &ApiClient, key: &str) -> ApiResult<Vec<String>> {
+    #[derive(Default, serde::Deserialize)]
+    struct ModelsData {
+        #[serde(default)]
+        data: Vec<String>,
+    }
+    let r: ModelsData = client
+        .get(&format!("/api/channel/fetch_models/{key}"))
+        .await?;
+    Ok(r.data)
 }
 
 /// 真实调用: POST /api/channel (创建)
@@ -80,7 +108,7 @@ pub async fn create_channel_api(
 ///
 /// 设计依据（后端 `ChannelService::update` 实读）：
 /// - 多数列走 `COALESCE($n, col)`：字段缺席 = 保持现值。弹窗不管理的
-///   `models`/`priority`/`weight`/`status` 一律不发——历史上用裸
+///   `priority`/`weight`/`status` 一律不发——历史上用裸
 ///   [`ChannelUpsertRequest`] 全量 PUT 时这些列恒带 `[]`/`0`/`null`，
 ///   保存一次就把它们静默清零。
 /// - `keys`：缺席 = 后端保持现有密钥（svc.update 的 `None` 分支）。仅在用户
@@ -107,10 +135,14 @@ pub struct UpdateChannelBody {
     /// 明文密钥列表——仅用户重输时携带；None = 字段缺席 = 后端保持现有密钥。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keys: Option<Vec<String>>,
-    /// 调度模型列表——仅「拉取模型」面板被使用过后携带（touched 语义）；
-    /// None = 字段缺席 = 后端 COALESCE 保持现有 models。元素为模型 id 字符串，
-    /// 写入会整体替换该列（保留既有条目的责任在调用方：打开面板时已把现值
-    /// 预填进候选池）。
+    /// 模型调度候补——仅用户在「拉取模型」面板动过选择时携带；None = 字段缺席
+    /// = 后端 COALESCE 保持现值。缺席语义是硬要求：不管这个字段的调用方
+    /// （只改名称/分组的保存）绝不能把现有 models 清空。
+    ///
+    /// 携带时的形状必须是 `[{"alias":..,"upstream":..}]` 对象数组：后端
+    /// `validate` 对 merged models 逐条要求 alias+upstream 非空，
+    /// 裸字符串数组（`["gpt-4o"]`）会被 400 拒绝。/// - 调用方责任：打开面板时已把渠道现有 models 预填进候选池，勾选集整体
+    ///   替换该列；未动面板（touched=false）一律缺席。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub models: Option<serde_json::Value>,
 }
@@ -143,6 +175,15 @@ pub async fn set_channel_status_api(
 pub async fn delete_channel_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
     client.delete(&format!("/api/channel/{key}")).await
 }
+
+/// 真实调用: GET /api/channel/fetch_models/{key} — 拿该渠道**首条**凭据现打上游
+/// `/v1/models`，返回模型 id 列表（后端形状 `{"data":["gpt-4o",..]}`）。
+///
+/// 语义与边界（后端 `ChannelService::fetch_upstream_models` 实读）：
+/// - 只对已落库的渠道可用：`key` 必须是有效 UUID，否则 400；渠道不存在 404。
+/// - 渠道无密钥 → 400 "channel has no keys"；上游非 2xx → 后端包成
+///   "upstream returned {status}"；上游 10s 超时也走错误分支。
+/// - 上游返回体里 `data[].id` 缺失或形状不符的条目被后端静默跳过，
 
 // ---------------------------------------------------------------------------
 // Groups

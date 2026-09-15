@@ -3,7 +3,8 @@
 //! `channels` signal;启用/停用走 `set_channel_status_api`,删除走
 //! `delete_channel_api`,新建/编辑走 `create_channel_api` / `update_channel_api`。
 //! 编辑保存用最小 diff 体(`UpdateChannelBody`):密钥框留空 = 不触碰现有密钥,
-//! 弹窗不管理的列(models/priority/weight)不随请求发出、由后端 COALESCE 保持。
+//! `models` 仅在用户动过「拉取模型」面板时携带,priority/weight 不随请求发出、
+//! 由后端 COALESCE 保持。
 //! 拓扑测速、批量分组、快速导入是 mock 期的纯前端特性,已移除(后端暂无对应接口)。
 
 use dioxus::prelude::*;
@@ -11,11 +12,12 @@ use serde_json::json;
 use ui::SegmentedCapsule;
 
 use client::ApiClient;
-use contract::api::admin::{ChannelDto, ChannelUpsertRequest};
+use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto};
 
 use crate::api::{
-    UpdateChannelBody, create_channel_api, delete_channel_api, list_channels_api,
-    set_channel_status_api, update_channel_api,
+    UpdateChannelBody, create_channel_api, delete_channel_api, fetch_channel_models_api,
+    get_channel_api, list_channels_api, list_groups_api, set_channel_status_api,
+    update_channel_api,
 };
 use crate::groups::{Badge, Modal, StatCard};
 use crate::state::CHANNEL_TYPES;
@@ -86,6 +88,18 @@ pub fn ChannelsPage() -> Element {
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
     let mut channels = use_signal(Vec::<ChannelDto>::new);
     let mut loading = use_signal(|| true);
+    // 后台刷新态:与 `loading` 分离,渲染层不清空列表,只在计数徽标上提示。
+    // 合并成一个 loading 会让写操作后的重拉把列表换成占位卡 → 视觉闪烁。
+    let mut refreshing = use_signal(|| false);
+    // 弹窗「绑定分组」候选（真实分组列表,失败留空 → 弹窗内只读回退）。
+    let mut group_options = use_signal(Vec::<GroupDto>::new);
+    let mut group_err = use_signal(|| None::<String>);
+    // 弹窗「当前密钥（掩码）」与「拉取模型」面板状态。掩码值只读展示,
+    // 永不进入提交请求体;model_pool 为 (模型 id, 勾选) 候选池。
+    let mut existing_keys = use_signal(Vec::<String>::new);
+    let mut model_pool = use_signal(Vec::<(String, bool)>::new);
+    let mut models_touched = use_signal(|| false);
+    let mut fetching_models = use_signal(|| false);
     let mut err = use_signal(|| None::<String>);
     // 写操作进行中 / 成功提示
     let busy = use_signal(|| false);
@@ -102,28 +116,49 @@ pub fn ChannelsPage() -> Element {
     let mut f_ctype = use_signal(|| "openai".to_string());
     let mut f_url = use_signal(String::new);
     let mut f_keys = use_signal(String::new);
-    let mut f_group = use_signal(|| "default".to_string());
+    let mut f_group = use_signal(Vec::<String>::new);
     let mut f_remark = use_signal(String::new);
     // 测速模型：弹窗无编辑控件，但后端 test_model 列是 SQL 直绑（无 COALESCE），
     // 编辑保存必须原样回传现值，缺席即被清成 NULL。编辑打开时从列表行带入。
     let mut f_test_model = use_signal(|| None::<String>);
 
-    // 挂载即拉取真实列表;reload 变化时重拉
+    // 挂载即拉取真实列表;reload 变化时重拉。
+    // 首屏(列表为空)走 `loading` → 渲染占位卡;已有数据的重拉走 `refreshing`
+    // → 旧列表留在屏上,避免写操作后整块消失再出现的闪烁。
+    // `peek()` 读列表长度:普通 `channels()` 会让本 effect 订阅自己写入的信号 → 重拉死循环。
     use_effect(move || {
         let _ = reload();
-        loading.set(true);
+        let first_load = channels.peek().is_empty();
+        if first_load {
+            loading.set(true);
+        } else {
+            refreshing.set(true);
+        }
         err.set(None);
         spawn(async move {
             let client = ApiClient::shared().clone();
             match list_channels_api(&client).await {
+                Ok(list) => channels.set(list),
+                // 后台刷新失败也走 err:错误态优先于陈旧列表,避免用户对着过期数据操作
+                Err(e) => err.set(Some(e.to_string())),
+            }
+            loading.set(false);
+            refreshing.set(false);
+        });
+    });
+
+    // 分组候选:弹窗「绑定分组」多选用。与列表并行拉取,失败只记 err 文案,
+    // 不阻断弹窗——弹窗在候选为空时回退为只读展示当前分组值(见 ChannelFormModal)。
+    use_effect(move || {
+        let _ = reload();
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match list_groups_api(&client).await {
                 Ok(list) => {
-                    channels.set(list);
-                    loading.set(false);
+                    group_options.set(list);
+                    group_err.set(None);
                 }
-                Err(e) => {
-                    err.set(Some(e.to_string()));
-                    loading.set(false);
-                }
+                Err(e) => group_err.set(Some(e.to_string())),
             }
         });
     });
@@ -158,7 +193,11 @@ pub fn ChannelsPage() -> Element {
         f_ctype.set("openai".to_string());
         f_url.set("https://api.openai.com/v1".to_string());
         f_keys.set(String::new());
-        f_group.set("default".to_string());
+        f_group.set(vec!["default".to_string()]);
+        existing_keys.set(Vec::new());
+        model_pool.set(Vec::new());
+        models_touched.set(false);
+        fetching_models.set(false);
         f_remark.set(String::new());
         f_test_model.set(None);
         modal_state.set(ChannelModalState::New);
@@ -170,11 +209,41 @@ pub fn ChannelsPage() -> Element {
             f_ctype.set(c.channel_type.clone());
             f_url.set(c.base_url.clone());
             // 密钥编辑框留空：不回显掩码，最小 diff 语义是「留空 = 不改动现有密钥」。
+            // 当前密钥的掩码值单独只读展示（单查接口带回），让维护者知道配置了什么。
             f_keys.set(String::new());
-            f_group.set(c.groups.join(","));
+            f_group.set(c.groups.clone());
             f_remark.set(c.remark.clone());
             f_test_model.set(c.test_model.clone());
-            modal_state.set(ChannelModalState::Edit(key));
+            // 模型候选池预填渠道现有 models（字符串或 {alias} 对象，取别名），
+            // 全部勾选 = 现状；未动面板则 models 字段缺席（COALESCE 保持）。
+            let existing: Vec<String> = c
+                .models
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|m| {
+                            m.as_str().map(|s| s.to_string()).or_else(|| {
+                                m.get("alias")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            model_pool.set(existing.iter().cloned().map(|id| (id, true)).collect());
+            models_touched.set(false);
+            fetching_models.set(false);
+            existing_keys.set(Vec::new());
+            modal_state.set(ChannelModalState::Edit(key.clone()));
+            // 掩码密钥与分组候选并行拉取（失败静默：掩码区隐藏/候选区只读回退）
+            spawn(async move {
+                if let Ok(dto) = get_channel_api(&ApiClient::shared().clone(), &key).await
+                    && let Some(ks) = dto.keys
+                {
+                    existing_keys.set(ks);
+                }
+            });
         }
     };
 
@@ -342,6 +411,12 @@ pub fn ChannelsPage() -> Element {
                     url: f_url,
                     keys: f_keys,
                     group: f_group,
+                    group_options: group_options,
+                    group_err: group_err,
+                    existing_keys: existing_keys,
+                    model_pool: model_pool,
+                    models_touched: models_touched,
+                    fetching_models: fetching_models,
                     remark: f_remark,
                     test_model: f_test_model,
                     on_cancel: move |_| modal_state.set(ChannelModalState::Closed),
@@ -469,7 +544,13 @@ fn ChannelFormModal(
     ctype: Signal<String>,
     url: Signal<String>,
     keys: Signal<String>,
-    group: Signal<String>,
+    group: Signal<Vec<String>>,
+    group_options: Signal<Vec<GroupDto>>,
+    group_err: Signal<Option<String>>,
+    existing_keys: Signal<Vec<String>>,
+    model_pool: Signal<Vec<(String, bool)>>,
+    models_touched: Signal<bool>,
+    fetching_models: Signal<bool>,
     remark: Signal<String>,
     test_model: Signal<Option<String>>,
     on_cancel: EventHandler<()>,
@@ -480,6 +561,22 @@ fn ChannelFormModal(
     } else {
         "新建渠道"
     };
+    // 分组候选拉取失败/为空时的只读回退展示串（rsx 内不能嵌 let 语句）
+    let bound_groups = group.read().join(", ");
+    // chips 渲染数据（rsx 内不能嵌 let）：（分组名, 展示名, 是否已选）
+    let group_chip_data: Vec<(String, String, bool)> = group_options
+        .read()
+        .iter()
+        .map(|g| {
+            let label = if g.remark.is_empty() {
+                g.name.clone()
+            } else {
+                g.remark.clone()
+            };
+            let selected = group.read().contains(&g.name);
+            (g.name.clone(), label, selected)
+        })
+        .collect();
     let submit_label = if editing {
         "保存修改"
     } else {
@@ -496,6 +593,9 @@ fn ChannelFormModal(
     let submit_err2 = submit_err;
     let on_submit2 = on_submit;
     let channel_key2 = channel_key.clone();
+    let group2 = group;
+    let model_pool2 = model_pool;
+    let models_touched2 = models_touched;
     let do_submit = move |_| {
         let key = channel_key2.clone();
         let n = name.peek().trim().to_string();
@@ -505,7 +605,7 @@ fn ChannelFormModal(
         let ct = ctype.peek().clone();
         let u = url.peek().trim().to_string();
         let k = parse_keys_input(&keys.peek());
-        let gvec = parse_group_input(&group.peek());
+        let gvec = group2.peek().clone();
         let rm = remark.peek().clone();
         let tm = test_model.peek().clone();
         let (mut sub, mut serr, cb) = (submitting2, submit_err2, on_submit2);
@@ -527,9 +627,25 @@ fn ChannelFormModal(
                         remark: rm,
                         test_model: tm,
                         keys: (!k.is_empty()).then_some(k),
-                        // 渠道页弹窗本轮不管理 models 列（拉取面板属后续 PR）：
-                        // 缺席 = 后端 COALESCE 保持现值。
-                        models: None,
+                        // 仅当用户动过「拉取模型」面板才携带 models（勾选集整体
+                        // 替换该列）；未动 = 缺席 = 后端 COALESCE 保持现值。
+                        models: (*models_touched2.peek()).then(|| {
+                            serde_json::Value::Array(
+                                model_pool2
+                                    .read()
+                                    .iter()
+                                    .filter(|(_, checked)| *checked)
+                                    .map(|(id, _)| {
+                                        // validate 硬要求：每条须非空 alias+upstream，
+                                        // 裸字符串数组会被 400 拒绝。v1 语义：对外名 = 上游名
+                                        serde_json::json!({
+                                            "alias": id.clone(),
+                                            "upstream": id.clone(),
+                                        })
+                                    })
+                                    .collect(),
+                            )
+                        }),
                     };
                     update_channel_api(&client, &kk, &body).await
                 }
@@ -575,12 +691,41 @@ fn ChannelFormModal(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "绑定分组" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                            placeholder: "default",
-                            value: "{group}",
-                            oninput: move |e| group.set(e.value()),
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "绑定分组（点选，可多选）" }
+                        div { class: "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1.5",
+                            if group_options.read().is_empty() {
+                                // 候选拉取失败/为空：只读展示当前已绑分组，不阻断保存
+                                span { class: "text-xs text-zinc-500",
+                                    if let Some(e) = group_err.read().as_ref() {
+                                        "分组列表拉取失败（{e}）；当前绑定: {bound_groups}"
+                                    } else if group.read().is_empty() {
+                                        "暂无分组"
+                                    } else {
+                                        "{bound_groups}"
+                                    }
+                                }
+                            } else {
+                                for (gname, glabel, selected) in group_chip_data.iter().cloned() {
+                                    button {
+                                        key: "{gname}",
+                                        class: if selected {
+                                            "rounded-full border border-emerald-500/60 bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300"
+                                        } else {
+                                            "rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-0.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                                        },
+                                        onclick: move |_| {
+                                            let mut cur = group.read().clone();
+                                            if cur.contains(&gname) {
+                                                cur.retain(|x| x != &gname);
+                                            } else {
+                                                cur.push(gname.clone());
+                                            }
+                                            group.set(cur);
+                                        },
+                                        "{glabel}"
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -605,6 +750,18 @@ fn ChannelFormModal(
                     }
                 }
 
+                if editing && !existing_keys.read().is_empty() {
+                    // 掩码只读展示：明文永不出后端（单查接口也回掩码）。
+                    // 独立于下方 textarea，物理隔离保证掩码串不可能进入提交体。
+                    div { class: "space-y-1",
+                        span { class: "block text-[11px] text-zinc-500",
+                            "当前密钥（掩码，共 {existing_keys.read().len()} 条；明文不出后端）"
+                        }
+                        for mk in existing_keys.read().iter() {
+                            div { class: "rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 font-mono text-xs text-zinc-400", "{mk}" }
+                        }
+                    }
+                }
                 div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "API Key (多 Key 可换行)" }
                     textarea {
@@ -619,6 +776,82 @@ fn ChannelFormModal(
                     }
                 }
 
+                if editing {
+                    div { class: "space-y-1.5",
+                        div { class: "flex items-center gap-2",
+                            button {
+                                class: if *fetching_models.read() {
+                                    "rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs text-zinc-500"
+                                } else {
+                                    "rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+                                },
+                                disabled: *fetching_models.read(),
+                                onclick: move |_| {
+                                    let Some(k) = channel_key.clone() else { return };
+                                    if *fetching_models.peek() {
+                                        return;
+                                    }
+                                    fetching_models.set(true);
+                                    let mut pool = model_pool;
+                                    let mut touched = models_touched;
+                                    let mut flag = fetching_models;
+                                    let mut serr = submit_err;
+                                    spawn(async move {
+                                        let client = ApiClient::shared().clone();
+                                        flag.set(true);
+                                        match fetch_channel_models_api(&client, &k).await {
+                                            Ok(ids) => {
+                                                let mut cur = pool.read().clone();
+                                                let known: std::collections::HashSet<String> =
+                                                    cur.iter().map(|(id, _)| id.clone()).collect();
+                                                for id in ids {
+                                                    // 上游已有、池里没有的模型默认勾选；池里已有的保持用户勾选状态
+                                                    if !known.contains(&id) {
+                                                        cur.push((id, true));
+                                                    }
+                                                }
+                                                pool.set(cur);
+                                                touched.set(true);
+                                            }
+                                            Err(e) => {
+                                                // 弹窗内联展示（channel-save-error 区，role=alert）
+                                                serr.set(Some(format!("拉取上游模型失败：{e}")));
+                                            }
+                                        }
+                                        flag.set(false);
+                                    });
+                                },
+                                if *fetching_models.read() { "拉取中…" } else { "拉取上游模型" }
+                            }
+                            span { class: "text-[11px] text-zinc-500",
+                                "用该渠道凭据请求上游 /v1/models；勾选项随保存写入（整体替换该列，已含现有模型）"
+                            }
+                        }
+                        div { class: "max-h-40 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-2 space-y-1",
+                            if model_pool.read().is_empty() {
+                                span { class: "text-[11px] text-zinc-600", "暂无候选模型；点「拉取上游模型」获取" }
+                            } else {
+                                for (idx, (id, checked)) in model_pool.read().iter().enumerate() {
+                                    label { class: "flex items-center gap-2 rounded-md px-1.5 py-0.5 hover:bg-zinc-900",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: *checked,
+                                            onchange: move |_| {
+                                                let mut cur = model_pool.read().clone();
+                                                if let Some(entry) = cur.get_mut(idx) {
+                                                    entry.1 = !entry.1;
+                                                }
+                                                model_pool.set(cur);
+                                                models_touched.set(true);
+                                            },
+                                        }
+                                        span { class: "font-mono text-xs text-zinc-300", "{id}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "备注 (可选)" }
                     textarea {
