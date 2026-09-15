@@ -1,12 +1,21 @@
 //! 实体设置页：分组 / 模型别名 / 渠道 三张可折叠卡片，各占一行。
 //! 每张卡片上半是录入行，下半是该实体在拓扑里对应的节点内容。
 //!
-//! 数据在 `crate::state::EntityStore` 中，与拓扑抽屉共享：
-//! 进这里改，抽屉里也能看到；反过来也成立。
+//! 数据在 `crate::state::EntityStore` 中（拓扑启动布局兜底快照）；
+//! 写路径一律走 `crate::drawer_write` 的真实端点（分组/渠道 CRUD），
+//! 成功后由调用方重拉 `network::load_network_data` 刷新画布——
+//! #183 起画布不再由 store 行驱动，本地 store 行仅作启动布局兜底。
 
 use dioxus::prelude::*;
+use ui::Dialog;
 
-use crate::state::{ChannelRow, EntityStore};
+use crate::drawer_write::{
+    DrawerNotice, DrawerNoticeBar, create_channel_import, create_group_write, delete_channel,
+    delete_group, find_channel_by_name, find_group_by_name, set_channel_status, update_channel,
+    update_group_display,
+};
+use crate::network::bump_topo_refresh;
+use crate::state::EntityStore;
 
 #[component]
 pub fn EntitiesPanel() -> Element {
@@ -49,6 +58,15 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let mut display = use_signal(String::new);
     let mut mult = use_signal(String::new);
     let mut editing = use_signal(|| None::<usize>);
+    // 写操作反馈（顶部 DrawerNoticeBar）与删除确认弹窗
+    let mut notice = use_signal(|| DrawerNotice::Idle);
+    let mut confirming = use_signal(|| None::<usize>);
+    // 编辑态下分组名锁读（后端 UpdateGroupRequest 无 name 列），标签如实标注
+    let name_label: &'static str = if editing.peek().is_some() {
+        "分组名（锁读，后端无改名路径）"
+    } else {
+        "分组名"
+    };
 
     let commit = move |_| {
         let n = name.peek().trim().to_string();
@@ -56,25 +74,106 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             return;
         }
         let d = display.peek().trim().to_string();
-        match *editing.peek() {
-            Some(i) => {
-                groups.write()[i].name = n;
-                groups.write()[i].display = d;
-                groups.write()[i].multiplier = parse_mult(&mult.peek());
+        let m = parse_mult(&mult.peek());
+        let mode = *editing.peek();
+        let mut ns = notice;
+        spawn(async move {
+            // 写结果折算成 DrawerNotice（成功 / 失败摘要 / 进行中）
+            let res: Result<(), String> = match mode {
+                // 新建：真实 POST /api/group
+                None => match create_group_write(&n, &d, m).await {
+                    Ok(_) => {
+                        groups.write().push(crate::state::GroupRow {
+                            name: n,
+                            display: d,
+                            multiplier: m,
+                        });
+                        bump_topo_refresh();
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                },
+                // 编辑：分组名后端无更新路径（锁读），只有展示名/备注可写
+                Some(i) => {
+                    let current = groups.read().get(i).map(|r| r.name.clone());
+                    match current {
+                        Some(cn) => {
+                            let g = match find_group_by_name(&cn).await {
+                                Ok(Some(g)) => g,
+                                Ok(None) => {
+                                    ns.set(DrawerNotice::Err(format!(
+                                        "分组「{cn}」不存在于后端（可能已被删除）"
+                                    )));
+                                    return;
+                                }
+                                Err(e) => {
+                                    ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                                    return;
+                                }
+                            };
+                            match update_group_display(&g, &d).await {
+                                Ok(_) => {
+                                    groups.write()[i].display = d;
+                                    bump_topo_refresh();
+                                }
+                                Err(e) => {
+                                    ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                                    return;
+                                }
+                            }
+                            Ok(())
+                        }
+                        None => Err("分组行已失效，请刷新后重试".into()),
+                    }
+                }
+            };
+            match res {
+                Ok(()) => ns.set(DrawerNotice::Ok),
+                Err(e) => ns.set(DrawerNotice::Err(format!("保存失败：{e}"))),
             }
-            None => groups.write().push(crate::state::GroupRow {
-                name: n,
-                display: d,
-                multiplier: parse_mult(&mult.peek()),
-            }),
-        }
+        });
         name.set(String::new());
         display.set(String::new());
         mult.set(String::new());
         editing.set(None);
     };
 
+    let mut request_delete = move |i: usize| {
+        confirming.set(Some(i));
+    };
+
+    let confirm_delete = move |_| {
+        let Some(i) = *confirming.peek() else {
+            return;
+        };
+        confirming.set(None);
+        let row = groups.read().get(i).cloned();
+        let Some(r) = row else {
+            return;
+        };
+        let mut ns = notice;
+        spawn(async move {
+            match find_group_by_name(&r.name).await {
+                Ok(Some(g)) => match delete_group(&g.key).await {
+                    Ok(()) => {
+                        groups.write().remove(i);
+                        bump_topo_refresh();
+                        ns.set(DrawerNotice::Ok);
+                    }
+                    Err(e) => ns.set(DrawerNotice::Err(format!("删除失败：{e}"))),
+                },
+                // 后端已无此名 → 本地行是幻影（创建请求没落地/已被删），只清本地
+                Ok(None) => {
+                    groups.write().remove(i);
+                    ns.set(DrawerNotice::Ok);
+                }
+                Err(e) => ns.set(DrawerNotice::Err(format!("删除失败：{e}"))),
+            }
+        });
+    };
+
     rsx! {
+        DrawerNoticeBar { notice, on_clear: move |_| notice.set(DrawerNotice::Idle) }
         CardPanel {
             section_index: 0,
             title: "分组",
@@ -84,7 +183,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
             on_toggle: on_toggle,
 
             div { class: "flex flex-wrap items-end gap-2",
-                InputCell { label: "分组名", value: name, placeholder: "vip", grow: true }
+                InputCell { label: name_label, value: name, placeholder: "vip", grow: true }
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: "默认分组（可选）", grow: true }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
@@ -123,14 +222,30 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                     mult.set(format!("{}", r.multiplier));
                                     editing.set(Some(i));
                                 },
-                                on_remove: move |_| {
-                                    groups.write().remove(i);
-                                    if editing() == Some(i) { editing.set(None); }
-                                },
+                                on_remove: move |_| request_delete(i),
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // 删除确认弹窗（ui_components::dialog::Dialog）
+        {
+            let confirming_now = *confirming.peek();
+            if let Some(ci) = confirming_now {
+                let cname = groups.read().get(ci).map(|r| r.name.clone()).unwrap_or_default();
+                rsx! {
+                    Dialog {
+                        title: "删除分组".to_string(),
+                        open: true,
+                        on_confirm: confirm_delete,
+                        on_cancel: move |_| confirming.set(None),
+                        div { class: "text-xs text-zinc-400", "确认删除分组「{cname}」？该操作直接生效于后端，不可撤销。" }
+                    }
+                }
+            } else {
+                rsx! { Fragment {} }
             }
         }
     }
@@ -148,7 +263,11 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let mut output_rate = use_signal(String::new);
     let mut mult = use_signal(String::new);
     let mut editing = use_signal(|| None::<usize>);
-
+    // 别名卡维持演示态本地行（B1 范围外，不接后端）：后端 models 域只有
+    // name 列（display/价格/倍率无对应列，PUT 会静默丢弃），create 还必填
+    // owner 与 api_key（表单无来源）。接真实写路径需先把表单收成仅别名一列，
+    // 属独立改造；这里保留 store 本地行（刷新即丢，不伪装成功），
+    // 绝不用 todo! 占位——那会在用户可触发的提交路径上直接 panic。
     let commit = move |_| {
         let n = name.peek().trim().to_string();
         if n.is_empty() {
@@ -157,11 +276,13 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
         let d = display.peek().trim().to_string();
         match *editing.peek() {
             Some(i) => {
-                aliases.write()[i].alias = n;
-                aliases.write()[i].display = d;
-                aliases.write()[i].input_per_1k = parse_nonneg(&input_rate.peek());
-                aliases.write()[i].output_per_1k = parse_nonneg(&output_rate.peek());
-                aliases.write()[i].multiplier = parse_mult(&mult.peek());
+                if let Some(r) = aliases.write().get_mut(i) {
+                    r.alias = n;
+                    r.display = d;
+                    r.input_per_1k = parse_nonneg(&input_rate.peek());
+                    r.output_per_1k = parse_nonneg(&output_rate.peek());
+                    r.multiplier = parse_mult(&mult.peek());
+                }
             }
             None => aliases.write().push(crate::state::AliasRow {
                 alias: n,
@@ -235,6 +356,7 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                     editing.set(Some(i));
                                 },
                                 on_remove: move |_| {
+                                    // 演示态本地行：只删本地，不触后端（见 commit 处注释）
                                     aliases.write().remove(i);
                                     if editing() == Some(i) { editing.set(None); }
                                 },
@@ -264,10 +386,231 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
     let store = use_context::<EntityStore>();
     let mut channels = store.channels;
     let mut current = use_signal(|| 0usize);
+    let mut name = use_signal(String::new);
+    let mut ctype = use_signal(String::new);
+    let mut url = use_signal(String::new);
+    let mut keys = use_signal(String::new);
+    let mut status = use_signal(|| 0u8);
+    let mut is_new = use_signal(|| false);
+    let mut notice = use_signal(|| DrawerNotice::Idle);
+    let mut confirming = use_signal(|| None::<usize>);
+
     let idx = current();
     let row = channels.read().get(idx).cloned();
 
+    // 载入行到编辑区（新建渠道 = 空行 + is_new）
+    let mut load_row = move |i: usize| {
+        let binding = channels.read();
+        let Some(r) = binding.get(i) else {
+            return;
+        };
+        name.set(r.name.clone());
+        ctype.set(r.ctype.clone());
+        url.set(r.url.clone());
+        keys.set(String::new()); // 掩码值绝不回传：编辑区 keys 固定留空 = 不覆盖
+        status.set(r.status);
+        is_new.set(false);
+    };
+
+    let mut load_new = move |_| {
+        name.set("新渠道".into());
+        ctype.set("openai".into());
+        url.set(String::new());
+        keys.set(String::new());
+        status.set(1);
+        is_new.set(true);
+    };
+
+    // 保存：新建走 create_channel_import；编辑走 update_channel（最小 diff，
+    // keys 仅当用户本次重输时携带；未重输 = 请求体缺席 keys 字段 = 保留现值）。
+    // 成功后 bump_topo_refresh() 刷画布。
+    let save = move |_| {
+        let n = name.peek().trim().to_string();
+        if n.is_empty() {
+            return;
+        }
+        let ct = ctype.peek().trim().to_string();
+        let u = url.peek().trim().to_string();
+        let raw_keys = keys.peek().trim().to_string();
+        let kvec: Vec<String> = raw_keys
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let st = *status.peek();
+        let new = *is_new.peek();
+        let i = *current.peek();
+        // 新建渠道至少要一个明文 key（后端 validate 必 400，提前拦省一趟）
+        if new && kvec.is_empty() {
+            notice.set(DrawerNotice::Err("新建渠道至少填写一个 API Key".into()));
+            return;
+        }
+        // 新建 = default 分组；编辑取当前行既有分组
+        let grp: Vec<String> = if new {
+            vec!["default".to_string()]
+        } else {
+            channels
+                .read()
+                .get(i)
+                .map(|c| {
+                    c.group
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_else(|| vec!["default".to_string()])
+        };
+        let cur_name = channels
+            .read()
+            .get(i)
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
+        let (mut ns, mut ch_sig, mut cur_sig, mut new_sig) = (notice, channels, current, is_new);
+        spawn(async move {
+            let res: Result<(), String> = if new {
+                let created = match create_channel_import(&n, &u, &ct, &grp, &kvec).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                        return;
+                    }
+                };
+                ch_sig.write().push(crate::state::ChannelRow {
+                    name: n.clone(),
+                    ctype: ct.clone(),
+                    url: u.clone(),
+                    keys: created.keys.map(|v| v.join("\n")).unwrap_or_default(),
+                    status: st,
+                    group: grp.join(","),
+                    latency_ms: None,
+                    candidates: vec![],
+                    dispatch: crate::network::channel_models(&created.models),
+                });
+                // 落库成功后切到新行编辑态：否则 is_new 悬着，下一次保存
+                // 会再建一个重复渠道。
+                let last = ch_sig.read().len().saturating_sub(1);
+                cur_sig.set(last);
+                new_sig.set(false);
+                Ok(())
+            } else {
+                // 按名称找真实渠道取服务端 key。Ok(None)（列表成功但无此名）
+                // 才按导入兜底建渠道；Err（401/网络/5xx）直接报错——绝不能把
+                // 一次瞬时故障降级成新建，那会复制出重复渠道。
+                let key = match find_channel_by_name(&cur_name).await {
+                    Ok(Some(c)) => c.key,
+                    Ok(None) => match create_channel_import(&n, &u, &ct, &grp, &kvec).await {
+                        Ok(c) => c.key,
+                        Err(e) => {
+                            ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                        return;
+                    }
+                };
+                // 用户未重输 keys → 传 None（请求体缺席 keys 字段 = 保留现值）
+                let new_keys = (!kvec.is_empty()).then(|| kvec.clone());
+                if let Err(e) = update_channel(&key, &n, &u, new_keys).await {
+                    ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                    return;
+                }
+                if let Some(r) = ch_sig.write().get_mut(i) {
+                    r.name = n;
+                    r.url = u;
+                    if !kvec.is_empty() {
+                        r.keys = kvec.join("\n");
+                    }
+                }
+                Ok(())
+            };
+            match res {
+                Ok(()) => {
+                    ns.set(DrawerNotice::Ok);
+                    bump_topo_refresh();
+                }
+                Err(e) => ns.set(DrawerNotice::Err(format!("保存失败：{e}"))),
+            }
+        });
+    };
+
+    // 启停切换
+    let toggle_status = move |_| {
+        let i = *current.peek();
+        let cur = channels.read().get(i).cloned();
+        let Some(r) = cur else { return };
+        let target: u8 = if r.status == 1 { 2 } else { 1 };
+        let cur_name = r.name.clone();
+        let (mut ns, mut ch_sig) = (notice, channels);
+        spawn(async move {
+            let key = match find_channel_by_name(&cur_name).await {
+                Ok(Some(c)) => c.key,
+                Ok(None) => {
+                    ns.set(DrawerNotice::Err(format!(
+                        "渠道「{cur_name}」不存在于后端（可能已被删除）"
+                    )));
+                    return;
+                }
+                Err(e) => {
+                    ns.set(DrawerNotice::Err(format!("启停失败：{e}")));
+                    return;
+                }
+            };
+            match set_channel_status(&key, target as i16).await {
+                Ok(()) => {
+                    if let Some(r) = ch_sig.write().get_mut(i) {
+                        r.status = target;
+                    }
+                    ns.set(DrawerNotice::Ok);
+                    bump_topo_refresh();
+                }
+                Err(e) => ns.set(DrawerNotice::Err(format!("启停失败：{e}"))),
+            }
+        });
+    };
+
+    let mut request_delete = move |i: usize| {
+        confirming.set(Some(i));
+    };
+
+    let confirm_delete = move |_| {
+        let Some(i) = *confirming.peek() else {
+            return;
+        };
+        confirming.set(None);
+        let cur = channels.read().get(i).cloned();
+        let Some(r) = cur else {
+            return;
+        };
+        let (mut ns, mut ch_sig) = (notice, channels);
+        spawn(async move {
+            // 本地草稿行（后端不存在）直接删本地；真实渠道走 DELETE
+            match find_channel_by_name(&r.name).await {
+                Ok(Some(c)) => {
+                    if let Err(e) = delete_channel(&c.key).await {
+                        ns.set(DrawerNotice::Err(format!("删除失败：{e}")));
+                        return;
+                    }
+                    ch_sig.write().remove(i);
+                    bump_topo_refresh();
+                    ns.set(DrawerNotice::Ok);
+                }
+                // 后端已无此名 → 本地行是幻影，只清本地
+                Ok(None) => {
+                    ch_sig.write().remove(i);
+                    ns.set(DrawerNotice::Ok);
+                }
+                Err(e) => {
+                    ns.set(DrawerNotice::Err(format!("删除失败：{e}")));
+                }
+            }
+        });
+    };
+
     rsx! {
+        DrawerNoticeBar { notice, on_clear: move |_| notice.set(DrawerNotice::Idle) }
         CardPanel {
             section_index: 2,
             title: "渠道",
@@ -289,7 +632,10 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         rsx! {
                             button {
                                 class: "rounded-full border px-3 py-1 text-xs font-medium transition-colors {tone}",
-                                onclick: move |_| current.set(i),
+                                onclick: move |_| {
+                                    current.set(i);
+                                    load_row(i);
+                                },
                                 "{label}"
                             }
                         }
@@ -298,62 +644,66 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 button {
                     class: "rounded-full border border-dashed border-zinc-700 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-500 hover:text-zinc-300",
                     onclick: move |_| {
-                        channels.write().push(ChannelRow {
-                            name: "新渠道".into(),
-                            ctype: "openai".into(),
-                            url: String::new(),
-                            keys: String::new(),
-                            status: 1,
-                            group: "default".into(),
-                            latency_ms: None,
-                            candidates: vec![],
-                            dispatch: vec![],
-                        });
-                        let last = channels.read().len() - 1;
-                        current.set(last);
+                        // 只把表单置成草稿态（is_new），不动 current——
+                        // current 还指向已选渠道行，启停/删除按它定位，
+                        // 草稿期这两个按钮与 NodeArea 一并禁用（下方）。
+                        load_new(());
                     },
                     "＋ 新建渠道"
                 }
-                if channels.read().len() > 1 {
-                    button {
-                        class: "ml-auto rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400",
-                        onclick: move |_| {
-                            channels.write().remove(idx);
-                            current.set(0);
-                        },
-                        "删除此渠道"
-                    }
+            }
+
+            div { class: "flex flex-wrap items-center gap-2",
+                TextCell {
+                    label: "渠道名称",
+                    value: name(),
+                    placeholder: "OpenAI 官方",
+                    oninput: move |v: String| name.set(v),
+                }
+                SelectCell {
+                    label: "类型",
+                    value: ctype(),
+                    options: crate::state::CHANNEL_TYPES,
+                    oninput: move |v: String| ctype.set(v),
+                }
+                TextCell {
+                    label: "Base URL",
+                    value: url(),
+                    placeholder: "https://…",
+                    oninput: move |v: String| url.set(v),
+                }
+                TextCell {
+                    label: "API Key（留空 = 不改动现有密钥）",
+                    value: keys(),
+                    placeholder: "sk-…",
+                    oninput: move |v: String| keys.set(v),
+                }
+                button {
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    onclick: save,
+                    "保存"
+                }
+                button {
+                    class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                    disabled: is_new(),
+                    title: if is_new() { "草稿未保存，保存后才能启停" } else { "" },
+                    onclick: toggle_status,
+                    if status() == 1 { "停用" } else { "启用" }
+                }
+                button {
+                    class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-red-400 hover:border-red-700",
+                    disabled: is_new(),
+                    title: if is_new() { "草稿未保存，保存后才能删除" } else { "" },
+                    onclick: move |_| request_delete(idx),
+                    "删除此渠道"
                 }
             }
 
-            if let Some(c) = row {
-                div { class: "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4",
-                    TextCell {
-                        label: "渠道名称",
-                        value: c.name.clone(),
-                        placeholder: "OpenAI 官方",
-                        oninput: move |v: String| channels.write()[idx].name = v,
-                    }
-                    SelectCell {
-                        label: "类型",
-                        value: c.ctype.clone(),
-                        options: crate::state::CHANNEL_TYPES,
-                        oninput: move |v: String| channels.write()[idx].ctype = v,
-                    }
-                    TextCell {
-                        label: "Base URL",
-                        value: c.url.clone(),
-                        placeholder: "https://…",
-                        oninput: move |v: String| channels.write()[idx].url = v,
-                    }
-                    TextCell {
-                        label: "API Key",
-                        value: c.keys.clone(),
-                        placeholder: "sk-…",
-                        oninput: move |v: String| channels.write()[idx].keys = v,
-                    }
+            if is_new() {
+                NodeArea {
+                    EmptyHint { text: "草稿渠道：填好 URL + Key 保存后，这里才会显示候补池与调度模型" }
                 }
-
+            } else if let Some(c) = row {
                 NodeArea {
                     div { class: "grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-2",
                         // 候补池
@@ -362,27 +712,6 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                                 div {
                                     p { class: "text-xs text-zinc-300", "候补池" }
                                     p { class: "text-[11px] text-zinc-600", "拉取结果，尚未进入拓扑" }
-                                }
-                                button {
-                                    class: "rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-500",
-                                    onclick: move |_| {
-                                        // mock 拉取：只补上游存在但本地没有的名字
-                                        let pool = ["gpt-4o", "gpt-4o-mini", "gpt-5", "o3", "o3-mini"];
-                                        let mut w = channels.write();
-                                        let c2 = &mut w[idx];
-                                        let have: Vec<String> = c2
-                                            .candidates
-                                            .iter()
-                                            .map(|(n, _)| n.clone())
-                                            .chain(c2.dispatch.iter().cloned())
-                                            .collect();
-                                        for m in pool {
-                                            if !have.iter().any(|x| x == m) {
-                                                c2.candidates.push((m.to_string(), false));
-                                            }
-                                        }
-                                    },
-                                    "拉取模型"
                                 }
                             }
                             if c.candidates.is_empty() {
@@ -475,6 +804,25 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         }
                     }
                 }
+            }
+        }
+
+        // 删除确认弹窗
+        {
+            let confirming_now = *confirming.peek();
+            if let Some(ci) = confirming_now {
+                let cname = channels.read().get(ci).map(|r| r.name.clone()).unwrap_or_default();
+                rsx! {
+                    Dialog {
+                        title: "删除渠道".to_string(),
+                        open: true,
+                        on_confirm: confirm_delete,
+                        on_cancel: move |_| confirming.set(None),
+                        div { class: "text-xs text-zinc-400", "确认删除渠道「{cname}」？该操作直接生效于后端，不可撤销。" }
+                    }
+                }
+            } else {
+                rsx! { Fragment {} }
             }
         }
     }
