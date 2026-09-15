@@ -11,6 +11,7 @@ dioxus = { workspace = true }
 ui = { package = "ui-components", path = "../ui-components" }
 mock = { path = "../admin-mock" }
 gloo-timers = { version = "0.3", features = ["futures"] }
+web-sys = { version = "0.3", features = ["Window", "Location"] }
 client = { path = "../admin-client" }
 contract = { path = "../../contract" }
 serde = { workspace = true }

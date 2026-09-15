@@ -45,6 +45,7 @@ pub fn AuthModal(
                     username: u,
                     password: p,
                     email: if em.is_empty() { None } else { Some(em) },
+                    invite: None,
                 })
                 .await
             } else {

@@ -39,6 +39,25 @@ pub async fn register_api(
     client.post("/api/user/register", req).await
 }
 
+/// 从 location.search 中取 `invite` 参数 (邀请人的 user_key)。
+///
+/// 输入形如 `?invite=xxx` / `?a=1&invite=xxx` / `invite=xxx` (有无 `?` 前缀均可);
+/// 命中首个非空 `invite` 值。空值 / 无该参数 / 无 window 时返回 `None`,
+/// 调用方按无邀请码注册处理, 不阻断流程。
+/// ponytail: 手写 `&`/`=` 切分, 不引 url crate; invite 码是 UUID, 无需百分号解码。
+pub fn parse_invite_query(search: &str) -> Option<String> {
+    let search = search.strip_prefix('?').unwrap_or(search);
+    for pair in search.split('&') {
+        let Some((key, value)) = pair.split_once('=') else {
+            continue;
+        };
+        if key == "invite" && !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
 #[cfg(target_arch = "wasm32")]
 pub async fn login(req: LoginRequest) -> ApiResult<LoginResponse> {
     let client = ApiClient::new();
@@ -73,6 +92,7 @@ pub async fn register(username: String, password: String) -> ApiResult<()> {
         username: username.clone(),
         password,
         email: None,
+        invite: None,
     };
     register_api(&client, &contract_req).await.map(|_| ())
 }
