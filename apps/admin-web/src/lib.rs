@@ -11,8 +11,8 @@ use wasm_bindgen::prelude::*;
 // Page roots that implement each panel.
 use page_account::{KeysPanel, RewardsPanel, SessionsPanel, SettingsPanel, UsageLogsPanel};
 use page_admin::{
-    AliasesPage, ChannelsPage, GatewayHealthPanel, GroupsPage, NetworkPanel, RedemptionsPage,
-    SubscriptionsPage, SystemPage, state::EntityStore,
+    AliasesPage, ChannelsPage, CurrencyPage, GatewayHealthPanel, GroupsPage, NetworkPanel,
+    RedemptionsPage, SubscriptionsPage, SystemPage, state::EntityStore,
 };
 use page_overview::{LeaderboardPanel, ModelsPanel, OverviewPanel};
 use page_users::UsersPanel;
@@ -479,6 +479,7 @@ pub fn HomePage() -> Element {
                         (Section::Manage, 5) => rsx! { SubscriptionsPage {} },
                         (Section::Manage, 6) => rsx! { RedemptionsPage {} },
                         (Section::Manage, 7) => rsx! { SystemPage {} },
+                        (Section::Manage, 9) => rsx! { CurrencyPage {} },
                         (Section::Manage, 8) => rsx! {
                             GatewayHealthPanel {}
                         },

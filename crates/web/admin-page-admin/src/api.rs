@@ -376,3 +376,35 @@ pub async fn update_option_api(
     let r: UpdateResp = client.put("/api/option", &req).await?;
     Ok(r.value)
 }
+
+// ---------------------------------------------------------------------------
+// Currency (admin-billing /api/currency)
+// Currency (admin-billing /api/currency)
+// ---------------------------------------------------------------------------
+
+/// 货币定义视图 — 直接复用 contract DTO(camelCase,与后端 `CurrencyView`
+/// 一一对应)。同时充当 POST 请求体:后端 `UpsertDefRequest` 全字段带 serde
+/// default,本 DTO 的全量字段正好覆盖其全部入参,序列化即合法 upsert 体。
+pub use contract::api::billing::CurrencyView;
+
+/// POST /api/currency 响应包装 `{"currency": CurrencyView}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct CurrencyResp {
+    currency: CurrencyView,
+}
+
+/// 真实调用: GET /api/currency (货币定义列表;后端已按 code 升序)。
+pub async fn list_currencies_api(client: &ApiClient) -> ApiResult<Vec<CurrencyView>> {
+    let r: Items<CurrencyView> = client.get("/api/currency").await?;
+    Ok(r.items)
+}
+
+/// 真实调用: POST /api/currency (新增/更新货币定义;code 为 PK,存在即覆盖)。
+/// 后端校验:fiat 必带 symbol 且 precision≥1;USD 的 internalRate 锁 1。
+pub async fn upsert_currency_api(
+    client: &ApiClient,
+    req: &CurrencyView,
+) -> ApiResult<CurrencyView> {
+    let r: CurrencyResp = client.post("/api/currency", req).await?;
+    Ok(r.currency)
+}
