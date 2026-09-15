@@ -25,6 +25,8 @@ fn e2e_contract_auth_wire_format() {
         username: "new_player".into(),
         password: "player_pass".into(),
         email: Some("player@ferrite.dev".into()),
+        // #197 邀请码：serde default 向后兼容，e2e 不带 invite = 无邀请注册
+        invite: None,
     };
     let reg_json = serde_json::to_string(&reg).expect("serialize register request");
     assert!(reg_json.contains("\"username\":\"new_player\""));
