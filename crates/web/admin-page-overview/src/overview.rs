@@ -178,6 +178,7 @@ pub fn OverviewPanel() -> Element {
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
                 // Top 10 Models
                 Card {
+                    hoverable: true,
                     class: "gap-0! overflow-hidden py-0!",
                     CardHeader {
                         class: "border-b border-border/50 px-4! py-3!",
@@ -205,6 +206,7 @@ pub fn OverviewPanel() -> Element {
 
                 // Top 10 Users
                 Card {
+                    hoverable: true,
                     class: "gap-0! overflow-hidden py-0!",
                     CardHeader {
                         class: "border-b border-border/50 px-4! py-3!",
@@ -243,6 +245,7 @@ pub fn OverviewPanel() -> Element {
 fn StatCard(value: String, label: &'static str) -> Element {
     rsx! {
         Card {
+            hoverable: true,
             class: "cursor-default gap-0! px-4 py-3!",
             p { class: "truncate text-base font-semibold text-foreground md:text-lg", "{value}" }
             p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{label}" }

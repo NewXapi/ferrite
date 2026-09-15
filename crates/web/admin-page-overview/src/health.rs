@@ -120,6 +120,7 @@ pub fn ChannelHealth() -> Element {
 
     rsx! {
         Card {
+            hoverable: true,
             CardHeader {
                 CardTitle { class: "text-lg text-foreground", "渠道健康 (近 7 天)" }
                 CardAction {
