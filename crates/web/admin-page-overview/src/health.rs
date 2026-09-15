@@ -7,6 +7,8 @@ use dioxus::prelude::*;
 
 use crate::api;
 use client::ApiClient;
+use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::components::card::{Card, CardAction, CardContent, CardHeader, CardTitle};
 
 /// 一行渠道健康汇总。
 #[derive(Clone, PartialEq)]
@@ -117,66 +119,71 @@ pub fn ChannelHealth() -> Element {
     ];
 
     rsx! {
-        div { class: "space-y-3",
-            div { class: "flex items-center justify-between",
-                h2 { class: "text-lg font-medium text-zinc-100", "渠道健康 (近 7 天)" }
-                button {
-                    class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
-                    "data-testid": "refresh-health",
-                    onclick: move |_| reload.set(reload() + 1),
-                    "刷新"
+        Card {
+            CardHeader {
+                CardTitle { class: "text-lg text-foreground", "渠道健康 (近 7 天)" }
+                CardAction {
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        size: ButtonSize::Sm,
+                        "data-testid": "refresh-health",
+                        onclick: move |_| reload.set(reload() + 1),
+                        "刷新"
+                    }
                 }
             }
-            section { "data-testid": "channel-health",
-                class: "space-y-3",
-                if let Some(e) = err {
-                    div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                        p { class: "text-sm text-red-300", "加载渠道健康失败" }
-                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
-                        button {
-                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
-                            onclick: move |_| reload.set(reload() + 1),
-                            "重试"
-                        }
-                    }
-                } else if loading {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                        p { class: "text-zinc-400", "正在加载渠道健康…" }
-                    }
-                } else if n == 0 {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                        p { class: "text-zinc-400", "暂无探活数据" }
-                        p { class: "mt-1 text-xs text-zinc-600", "monitor_history 为空 —— 渠道探活开始产生记录后这里会展示真实可用率" }
-                    }
-                } else {
-                    // 汇总卡
-                    div { class: "grid grid-cols-2 gap-3 md:grid-cols-4",
-                        for (value, label) in summary {
-                            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/20 cursor-default",
-                                p { class: "text-base font-semibold text-zinc-100", "{value}" }
-                                p { class: "mt-0.5 text-xs text-zinc-500", "{label}" }
+            CardContent {
+                section { "data-testid": "channel-health",
+                    class: "space-y-3",
+                    if let Some(e) = err {
+                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                            p { class: "text-sm text-red-300", "加载渠道健康失败" }
+                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                            button {
+                                class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent",
+                                onclick: move |_| reload.set(reload() + 1),
+                                "重试"
                             }
                         }
-                    }
-                    // 逐渠道可用率
-                    div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3 transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20",
-                        for r in data {
-                            div { class: "flex items-center gap-3",
-                                span { class: "w-28 shrink-0 truncate text-sm text-zinc-300", "{r.name}" }
-                                div { class: "h-2 flex-1 overflow-hidden rounded-full bg-zinc-800",
-                                    div {
-                                        class: "h-full rounded-full transition-all",
-                                        style: "width: {(r.availability.unwrap_or(0.0) * 100.0):.1}%; background: {health_color(r.availability)}",
+                    } else if loading {
+                        div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                            p { class: "text-muted-foreground", "正在加载渠道健康…" }
+                        }
+                    } else if n == 0 {
+                        div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                            p { class: "text-muted-foreground", "暂无探活数据" }
+                            p { class: "mt-1 text-xs text-muted-foreground/70", "monitor_history 为空 —— 渠道探活开始产生记录后这里会展示真实可用率" }
+                        }
+                    } else {
+                        // 汇总卡
+                        div { class: "grid grid-cols-2 gap-3 md:grid-cols-4",
+                            for (value, label) in summary {
+                                div { class: "rounded-xl border border-border bg-card px-4 py-3 transition-[border-color] duration-150 hover:border-secondary cursor-default",
+                                    p { class: "text-base font-semibold text-foreground", "{value}" }
+                                    p { class: "mt-0.5 text-xs text-muted-foreground", "{label}" }
+                                }
+                            }
+                        }
+                        // 逐渠道可用率
+                        div { class: "rounded-xl border border-border bg-card/60 p-4 space-y-3 transition-[border-color] duration-150 hover:border-secondary",
+                            for r in data {
+                                div { class: "flex items-center gap-3",
+                                    span { class: "w-28 shrink-0 truncate text-sm text-foreground", "{r.name}" }
+                                    div { class: "h-2 flex-1 overflow-hidden rounded-full bg-muted",
+                                        div {
+                                            class: "h-full rounded-full transition-all",
+                                            style: "width: {(r.availability.unwrap_or(0.0) * 100.0):.1}%; background: {health_color(r.availability)}",
+                                        }
                                     }
-                                }
-                                span { class: "w-14 shrink-0 text-right text-xs font-mono text-zinc-400",
-                                    {r.availability.map(|v| format!("{:.1}%", v * 100.0)).unwrap_or_else(|| "—".into())}
-                                }
-                                span { class: "w-24 shrink-0 text-right text-xs font-mono text-zinc-600",
-                                    "{r.ok_count}/{r.total}"
-                                }
-                                span { class: "w-16 shrink-0 text-right text-xs font-mono text-zinc-600",
-                                    {r.avg_latency_ms.map(|v| format!("{:.0}ms", v)).unwrap_or_else(|| "—".into())}
+                                    span { class: "w-14 shrink-0 text-right text-xs font-mono text-muted-foreground",
+                                        {r.availability.map(|v| format!("{:.1}%", v * 100.0)).unwrap_or_else(|| "—".into())}
+                                    }
+                                    span { class: "w-24 shrink-0 text-right text-xs font-mono text-muted-foreground/70",
+                                        "{r.ok_count}/{r.total}"
+                                    }
+                                    span { class: "w-16 shrink-0 text-right text-xs font-mono text-muted-foreground/70",
+                                        {r.avg_latency_ms.map(|v| format!("{:.0}ms", v)).unwrap_or_else(|| "—".into())}
+                                    }
                                 }
                             }
                         }
