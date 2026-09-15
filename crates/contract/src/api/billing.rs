@@ -185,3 +185,35 @@ pub struct RewardRequest {
     pub user_key: String,
     pub amount: i64,
 }
+
+/// 充值订单 DTO — `GET /api/user/topup/orders` 列表项（前端奖励面板「充值记录」）。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopupOrderView {
+    /// 订单 key（UUID 字符串，`billing_topups.key`）。
+    pub key: String,
+    /// 充值货币 code（`currency_defs.code`，如 "FREE"）。
+    pub currency: String,
+    /// 充值金额（该货币单位，非内部单位）。
+    pub amount: i64,
+    /// 订单状态：pending | settling | paid | failed | refunded。
+    pub state: String,
+    /// 支付渠道（"" = manual/未接真支付，如 "epay" | "stripe"）。
+    pub provider: String,
+    /// 创建时间（RFC3339/ISO8601 字符串，`billing_topups.created_at`）。
+    pub created_at: String,
+}
+
+/// 被邀人 DTO — `GET /api/affiliate/invitees` 列表项（前端奖励面板「被邀人列表」）。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteeView {
+    /// 被邀人 key（UUID 字符串，`auth_users.key`）。
+    pub user_key: String,
+    /// 展示名：`display_name` 为空时回落 `username`。
+    pub name: String,
+    /// 邀请归属建立时间（RFC3339/ISO8601 字符串，`affiliate_links.created_at`）。
+    pub joined_at: String,
+    /// 该被邀人为邀请人带来的累计奖励额（FREE 内部单位，无奖励 = 0）。
+    pub reward: i64,
+}

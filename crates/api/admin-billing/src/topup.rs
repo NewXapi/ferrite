@@ -16,10 +16,12 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::Json,
-    routing::post,
+    routing::{get, post},
 };
-use contract::api::billing::TopUpRequest;
+use contract::api::billing::{TopUpRequest, TopupOrderView};
+use sqlx::FromRow;
 use sqlx::PgPool;
+use sqlx::types::chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -168,6 +170,41 @@ impl TopupService {
         Ok(key)
     }
 
+    /// 用户的充值订单列表（`GET /api/user/topup/orders`）。
+    ///
+    /// 按 `user_key` 过滤 `billing_topups`，`created_at` 倒序取 `limit` 条；
+    /// `created_at` 输出 RFC3339 字符串（与 redeem.rs 的 DateTime 序列化同口径）。
+    pub async fn list_orders(
+        &self,
+        user_key: Uuid,
+        limit: i64,
+    ) -> Result<Vec<TopupOrderView>, BillingErr> {
+        let rows = sqlx::query_as::<_, TopupOrderRow>(
+            r#"
+            SELECT key, currency, amount, state, provider, created_at
+            FROM billing_topups
+            WHERE user_key = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(user_key)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| TopupOrderView {
+                key: r.key,
+                currency: r.currency,
+                amount: r.amount,
+                state: r.state,
+                provider: r.provider,
+                created_at: r.created_at.to_rfc3339(),
+            })
+            .collect())
+    }
+
     /// 手工结算充值（admin 端或支付回调后调用）。
     /// - CAS 先行：`UPDATE ... SET state='settling' WHERE key=$1 AND state='pending'`，
     ///   rows_affected==1 才入账（并发 settle 只有一个成功，对齐 redeem.rs 行锁纪律）。
@@ -243,6 +280,18 @@ impl TopupService {
     }
 }
 
+/// `billing_topups` 行的解码形状（`list_orders` 用）；`created_at` 在转 DTO 时
+/// 走 `to_rfc3339()`，DTO 持 String。
+#[derive(Debug, Clone, FromRow)]
+struct TopupOrderRow {
+    key: String,
+    currency: String,
+    amount: i64,
+    state: String,
+    provider: String,
+    created_at: DateTime<Utc>,
+}
+
 // ---------- axum 路由 ----------
 
 #[derive(Clone)]
@@ -262,7 +311,9 @@ pub fn router(state: TopupAppState) -> Router {
         // 订单式开单走 /orders：/api/user/topup 已被 redeem 兑换码核销占用
         // （#152，main 前端 rewards 面板消费中），同路径双注册会让 axum
         // merge 直接 panic —— apps/api 整体起不来（e2e wire-contract 实锤）。
-        .route("/api/user/topup/orders", post(open_topup))
+        // 列表 GET 与开单 POST 同路径不同 method：axum 0.8 链式 method router
+        // （get(..).post(..)）注册，不与 redeem 的 POST /api/user/topup 冲突。
+        .route("/api/user/topup/orders", get(list_orders).post(open_topup))
         .route("/api/user/topup/{key}/settle", post(settle_topup))
         .route("/api/topup/webhook/{provider_id}", post(topup_webhook))
         .with_state(state)
@@ -283,6 +334,21 @@ async fn open_topup(
 
     let order_id = s.svc.open_topup(req).await.map_err(err_json)?;
     Ok(Json(serde_json::json!({ "order_id": order_id })))
+}
+
+/// 用户的充值订单列表 — GET /api/user/topup/orders（self）。
+/// 响应：`{ "items": [TopupOrderView] }`（前端奖励面板「充值记录」消费）。
+/// 鉴权同 open_topup：bearer_user 取自身 user_key，只查本人的订单。
+async fn list_orders(
+    State(s): State<TopupAppState>,
+    h: HeaderMap,
+) -> Result<Json<serde_json::Value>, ErrResp> {
+    let u = bearer_user(&s.auth, &h).await.map_err(err_json)?;
+    let user_key = Uuid::parse_str(&u.key).map_err(|_| err_json(auth::AuthError::InvalidToken))?;
+    // ponytail: 无分页参数——奖励面板一屏列表，固定 50 条够用；
+    // 真要分页时加 axum Query<Page> 再在此处透传 limit。
+    let items = s.svc.list_orders(user_key, 50).await.map_err(err_json)?;
+    Ok(Json(serde_json::json!({ "items": items })))
 }
 
 async fn settle_topup(
