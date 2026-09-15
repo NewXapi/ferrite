@@ -23,6 +23,12 @@ pub struct RegisterRequest {
     pub password: String,
     #[serde(default)]
     pub email: Option<String>,
+    /// 邀请码 = 邀请人的 `user_key`（UUID）。注册链接 `?invite=<uuid>` 直传。
+    ///
+    /// 后端解析失败 / 邀请人不存在时静默丢弃——邀请是注册的旁路增益，
+    /// 不合法的邀请码不该影响账号创建本身。缺省 `None` = 自然注册。
+    #[serde(default)]
+    pub invite: Option<String>,
 }
 /// 登录成功返回。access_token 短效, refresh_token 长效 (web 端已有一次性 401 刷新)。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

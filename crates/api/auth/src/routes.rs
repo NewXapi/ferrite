@@ -18,10 +18,16 @@ use crate::service::AuthService;
 pub trait OnUserRegistered: Send + Sync {
     /// 用户注册成功后调用（`user_key` = auth_users.key）。
     ///
+    /// `invite` = 注册请求携带的邀请码原始字符串（邀请人 user_key 的 UUID
+    /// 文本），`None` = 自然注册无邀请码。解析与校验由实现侧负责，
+    /// **任何失败都必须静默**：邀请归属是注册的旁路增益——非法 UUID、
+    /// 邀请人不存在、被邀人已归属他人，全都不该回灌成注册失败（账号
+    /// 已建成，归属缺失最多让邀请人少一笔奖励，不能让被邀人没了账号）。
+    ///
     /// **实现必须立即返回**：本方法在注册请求的响应路径上被同步调用，
     /// 任何 DB IO 都要 `tokio::spawn` 到后台（注册不该被货币层拖慢或
     /// 拖死）。失败由实现侧记 warn，注册流程不感知。
-    fn on_registered(&self, user_key: uuid::Uuid);
+    fn on_registered(&self, user_key: uuid::Uuid, invite: Option<&str>);
 }
 
 #[derive(Clone)]
@@ -90,6 +96,9 @@ struct RegisterRequest {
     username: String,
     password: String,
     email: Option<String>,
+    /// 邀请码 = 邀请人 user_key（UUID 文本）；透传给 registered hook。
+    #[serde(default)]
+    invite: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -178,7 +187,7 @@ async fn register(
             if let Ok(key) = uuid::Uuid::parse_str(&u.key)
                 && let Some(hook) = &state.registered_hook
             {
-                hook.on_registered(key);
+                hook.on_registered(key, req.invite.as_deref());
             }
             Ok(Json(json!(u)))
         }
