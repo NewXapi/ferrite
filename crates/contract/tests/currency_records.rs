@@ -79,6 +79,7 @@ fn user_balance_dto_roundtrip() {
 #[test]
 fn wallet_view_roundtrip() {
     let view = WalletView {
+        aff_code: Some("aB3x9Q".to_string()),
         user_key: "user1".to_string(),
         balances: vec![
             UserBalanceDto {
@@ -96,6 +97,11 @@ fn wallet_view_roundtrip() {
     };
     let json = serde_json::to_string(&view).unwrap();
     let decoded: WalletView = serde_json::from_str(&json).unwrap();
+    // camelCase 钉死 wire key：前端 wire.rs 按 affCode 解码，拼错则短码链接回落失败。
+    assert!(
+        json.contains("\"affCode\""),
+        "WalletView must serialize affCode as camelCase: {json}"
+    );
     assert_eq!(view, decoded);
 }
 

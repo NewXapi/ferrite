@@ -133,6 +133,8 @@ pub struct UserBalanceDto {
 pub struct WalletView {
     /// 登录用户 UUID。
     pub user_key: String,
+    /// 邀请短码 (auth_users.aff_code, 0013); None = 未生成, 邀请链接回退 user_key。
+    pub aff_code: Option<String>,
     /// 各币种余额行。
     pub balances: Vec<UserBalanceDto>,
     /// 折算可用内部单位。

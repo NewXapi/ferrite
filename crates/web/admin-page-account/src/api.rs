@@ -203,11 +203,14 @@ pub fn topup_credited_quota(resp: &serde_json::Value) -> Option<i64> {
     resp.get("quota").and_then(|q| q.as_i64())
 }
 
-/// 拼装邀请链接: `{origin}/register?invite={user_key}`。
+/// 拼装邀请链接: `{origin}/register?invite={code}`。
 ///
-/// 邀请码即邀请人的 `user_key` (UUID), 注册页原样回传, 后端 `OnUserRegistered`
-/// 建立归属。链接纯字符串拼装, 与 `topup_credited_quota` 同属无副作用纯函数,
-/// 便于 tests/ 直接断言。
-pub fn invite_link(origin: &str, user_key: &str) -> String {
-    format!("{origin}/register?invite={user_key}")
+/// `code` 优先 aff_code 短码 (短、不可枚举; 后端 `resolve_invite_code` 查
+/// `auth_users.aff_code` 解析), 未生成/空串回落 `user_key` (UUID, 旧链接
+/// 兼容——后端解析的 UUID 分支天然兜底)。参数名沿用 `invite`: 落地页
+/// admin-page-auth 只读 `invite`, 换名要二改落地页 (todo 项 2 明确「保留
+/// invite 参数名」可选)。纯字符串拼装, 无副作用, 便于 tests/ 直接断言。
+pub fn invite_link(origin: &str, user_key: &str, aff_code: Option<&str>) -> String {
+    let code = aff_code.filter(|c| !c.is_empty()).unwrap_or(user_key);
+    format!("{origin}/register?invite={code}")
 }
