@@ -162,10 +162,10 @@ pub fn RewardsPanel() -> Element {
         load_invitees(invitees, invitees_loaded, invitees_err);
     });
 
-    // 邀请链接 = 当前站点 origin + 本人 user_key (钱包加载后才有,未加载时留空,
-    // 链接区显示占位文案,不造假链接)。
+    // 邀请链接 = 站点 origin + 本人 aff_code 短码 (未生成则回落 user_key,
+    // 钱包加载后才有,未加载时留空,链接区显示占位文案,不造假链接)。
     let invite_link = match wallet() {
-        Some(w) => api::invite_link(&current_origin(), &w.user_key),
+        Some(w) => api::invite_link(&current_origin(), &w.user_key, w.aff_code.as_deref()),
         None => String::new(),
     };
     // 闭包要持有链接,rsx 也要渲染;String 不能 Copy,clone 一份给闭包。
