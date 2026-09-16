@@ -222,7 +222,7 @@ pub fn AliasesPage() -> Element {
     // 写回 rows 里对应 item 的 price_mode;后端不落地,纯 UI 本地状态。
     // `make_mode_handler` 每次返回独立 EventHandler,move 进 rsx 闭包。
     let make_mode_handler = |key: String| -> EventHandler<PriceMode> {
-        let mut items_sig = rows.clone();
+        let mut items_sig = rows;
         EventHandler::new(move |mode: PriceMode| {
             let mut items = items_sig().to_vec();
             if let Some(it) = items.iter_mut().find(|it| it.key == key) {
@@ -235,7 +235,7 @@ pub fn AliasesPage() -> Element {
     // 删除:走真实 DELETE,成功后本地从 rows 移除该项(不整体重拉,避免列表
     // 闪 loading 骨架 + 高度剧变引起页面跳动);只有错误才提示,成功静默。
     let write_delete = move |key: String| {
-        let (mut b, mut n, mut items_sig) = (busy, notice, rows.clone());
+        let (mut b, mut n, mut items_sig) = (busy, notice, rows);
         spawn(async move {
             b.set(true);
             n.set(None);
@@ -816,44 +816,40 @@ fn AliasFormModal(
 
                         // 补充通道:紧凑单行面板(标题+悬停说明 / 价格框 / 开关)
                         {
-                            let c = price_panel(
+                            price_panel(
                                 "输出价格".to_string(),
                                 "生成内容的输出 token 价格(悬停标题查看)".to_string(),
                                 c_output_on,
                                 p_output,
                                 "alias-output-price".to_string(),
-                            );
-                            c
+                            )
                         }
                         {
-                            let c = price_panel(
+                            price_panel(
                                 "缓存读取价格".to_string(),
                                 "缓存读取 token 价格(悬停标题查看)".to_string(),
                                 c_cache_read_on,
                                 p_cache_read,
                                 "alias-cache-read-price".to_string(),
-                            );
-                            c
+                            )
                         }
                         {
-                            let c = price_panel(
+                            price_panel(
                                 "缓存写入价格".to_string(),
                                 "缓存写入 token 价格(悬停标题查看)".to_string(),
                                 c_cache_write_on,
                                 p_cache_write,
                                 "alias-cache-write-price".to_string(),
-                            );
-                            c
+                            )
                         }
                         {
-                            let c = price_panel(
+                            price_panel(
                                 "补全价格".to_string(),
                                 "补全(输出)调用的 token 价格(悬停标题查看)".to_string(),
                                 c_completion_on,
                                 p_completion,
                                 "alias-completion-price".to_string(),
-                            );
-                            c
+                            )
                         }
                     }
                 }
