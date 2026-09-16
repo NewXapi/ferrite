@@ -242,6 +242,24 @@ pub async fn update_group_api(
     client.put(&format!("/api/group/{key}"), req).await
 }
 
+/// 真实调用: PUT /api/group/{key} (仅写 status 字段,启用/停用)。
+/// 后端 UpdateGroupRequest 的其余字段均可缺省,这里只发 `{"status": 1|2}`;
+/// 后端拒绝 default 组停用 (400 "default group cannot be disabled")。
+pub async fn set_group_status_api(client: &ApiClient, key: &str, status: i16) -> ApiResult<GroupDto> {
+    client
+        .put(&format!("/api/group/{key}"), &serde_json::json!({ "status": status }))
+        .await
+}
+
+/// 真实调用: PUT /api/group/{key} (仅写 ratio 字段, 倍率滑条拖动写回)。
+/// 后端 ratio 校验 > 0 且有限; 滑条域 0–2 已保证 > 0 (0 时钳到 0.05 步长,
+/// 但 0.0 会被后端拒, 故调用方需保证 >= 0.05)。
+pub async fn update_group_ratio_api(client: &ApiClient, key: &str, ratio: f64) -> ApiResult<GroupDto> {
+    client
+        .put(&format!("/api/group/{key}"), &serde_json::json!({ "ratio": ratio }))
+        .await
+}
+
 /// 真实调用: DELETE /api/group/{key} (删除)
 pub async fn delete_group_api(client: &ApiClient, key: &str) -> ApiResult<serde_json::Value> {
     client.delete(&format!("/api/group/{key}")).await

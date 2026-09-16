@@ -6,11 +6,17 @@
 use dioxus::prelude::*;
 use serde_json::json;
 use ui::SegmentedCapsule;
+use ui::ActionButtonGroup;
+use ui::ActionSpec;
+use ui::ActionTone;
 
 use client::ApiClient;
 use contract::api::admin::{GroupDto, GroupUpsertRequest};
 
-use crate::api::{create_group_api, delete_group_api, list_groups_api, update_group_api};
+use crate::api::{
+    create_group_api, delete_group_api, list_groups_api, set_group_status_api,
+    update_group_api, update_group_ratio_api,
+};
 
 /// 弹窗状态
 #[derive(Clone, PartialEq)]
@@ -24,6 +30,10 @@ enum ModalState {
 #[derive(Clone, Copy)]
 enum WriteOp {
     Delete,
+    /// 启用/停用切换 (status: 1=启用, 2=停用)
+    ToggleStatus(i16),
+    /// 倍率滑条拖动写回 (ratio)
+    SetRatio(f64),
 }
 
 const SEC_STATS: &str = "分组概览";
@@ -66,6 +76,8 @@ pub fn GroupsPage() -> Element {
     let mut search = use_signal(String::new);
     let mut filter_tier = use_signal(|| 0usize);
     let mut modal_state = use_signal(|| ModalState::Closed);
+    // 多选集合 (卡片勾选框); 批量动作只在选中数>0 时可用
+    let mut selected = use_signal(Vec::<String>::new);
 
     // 表单状态
     let mut f_name = use_signal(String::new);
@@ -73,6 +85,20 @@ pub fn GroupsPage() -> Element {
     let mut f_remark = use_signal(String::new);
     // 模型白名单:逗号分隔输入,提交时拆分;后端校验非空字符串数组
     let mut f_whitelist = use_signal(String::new);
+    // 映射别名(编辑弹窗 tab2): 逗号分隔; MVP 仅登记
+    let mut f_alias = use_signal(String::new);
+
+    // 映射别名候选 (models 域 name 列表); 与分组列表并行拉取, 失败留空
+    let mut alias_options = use_signal(Vec::<String>::new);
+    use_effect(move || {
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            match crate::api::list_models_api(&client).await {
+                Ok(v) => alias_options.set(v.into_iter().map(|m| m.name).collect()),
+                Err(_) => alias_options.set(Vec::new()),
+            }
+        });
+    });
 
     // 挂载即拉取真实列表;reload 变化时重拉
     use_effect(move || {
@@ -148,6 +174,7 @@ pub fn GroupsPage() -> Element {
         f_ratio.set("1.0".to_string());
         f_remark.set(String::new());
         f_whitelist.set(String::new());
+        f_alias.set(String::new());
         modal_state.set(ModalState::New);
     };
 
@@ -157,28 +184,67 @@ pub fn GroupsPage() -> Element {
             f_ratio.set(format!("{}", g.ratio));
             f_remark.set(g.remark.clone());
             f_whitelist.set(parse_whitelist(&g.model_whitelist).join(", "));
+            // MVP: 映射别名暂不落库, 打开时清空; 后端补列后从 g 回填
+            f_alias.set(String::new());
             modal_state.set(ModalState::Edit(key));
         }
     };
 
-    // 写操作助手工厂:返回独立闭包,交给卡片(删除)。
+    // 写操作助手工厂:返回独立闭包,交给卡片(删除/启停)。
+    // 启用/停用是局部状态变更 — 成功后就地更新本地 groups 里对应项的 status,
+    // 不触发整页重拉(reload),避免列表闪烁; 删除必须整页重拉(行消失)。
     let make_write = || {
         let busy_sig = busy;
         let notice_sig = notice;
         let reload_sig = reload;
+        let groups_sig = groups;
         move |key: String, op: WriteOp| {
-            let (mut b, mut n, mut r) = (busy_sig, notice_sig, reload_sig);
+            let (mut b, mut n, mut r, mut g) = (busy_sig, notice_sig, reload_sig, groups_sig);
             spawn(async move {
                 b.set(true);
                 n.set(None);
                 let client = ApiClient::shared().clone();
                 let res = match op {
-                    WriteOp::Delete => delete_group_api(&client, &key).await,
+                    WriteOp::Delete => {
+                        let r = delete_group_api(&client, &key).await;
+                        r.map(|_| serde_json::json!(true))
+                    }
+                    WriteOp::ToggleStatus(s) => {
+                        set_group_status_api(&client, &key, s)
+                            .await
+                            .map(|_| serde_json::json!(true))
+                    }
+                    WriteOp::SetRatio(v) => {
+                        update_group_ratio_api(&client, &key, v)
+                            .await
+                            .map(|_| serde_json::json!(true))
+                    }
                 };
                 match res {
                     Ok(_) => {
                         n.set(Some("操作成功".to_string()));
-                        r.set(r() + 1);
+                        match op {
+                            WriteOp::Delete => {
+                                // 删除:行要消失,必须整页重拉
+                                r.set(r() + 1);
+                            }
+                            WriteOp::ToggleStatus(s) => {
+                                // 启停:就地更新本地 status, 不重拉, 无闪烁
+                                let mut list = g();
+                                if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
+                                    hit.status = s;
+                                }
+                                g.set(list);
+                            }
+                            WriteOp::SetRatio(v) => {
+                                // 倍率:就地更新本地 ratio, 不重拉, 卡片即时反映
+                                let mut list = g();
+                                if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
+                                    hit.ratio = v;
+                                }
+                                g.set(list);
+                            }
+                        }
                     }
                     Err(e) => n.set(Some(format!("操作失败:{e}"))),
                 }
@@ -187,6 +253,31 @@ pub fn GroupsPage() -> Element {
         }
     };
     let write_delete = make_write();
+    // 启用/停用与删除共用同一写助手工厂 (独立闭包,各自持有 busy/notice/reload 句柄)
+    let write_toggle = make_write();
+
+    // 批量动作: 对选中集合逐个走独立写工厂实例 (避免消耗卡片用的 write_toggle)
+    let bulk_toggle = make_write();
+    let bulk_enable = move |_| {
+        let keys = selected();
+        let mut sel = selected;
+        spawn(async move {
+            for k in keys {
+                bulk_toggle(k, WriteOp::ToggleStatus(1));
+            }
+            sel.set(Vec::new());
+        });
+    };
+    let bulk_disable = move |_| {
+        let keys = selected();
+        let mut sel = selected;
+        spawn(async move {
+            for k in keys {
+                bulk_toggle(k, WriteOp::ToggleStatus(2));
+            }
+            sel.set(Vec::new());
+        });
+    };
 
     // 弹窗关闭并触发重拉
     let close_and_reload = move |_| {
@@ -258,6 +349,68 @@ pub fn GroupsPage() -> Element {
                             on_select: move |i: usize| filter_tier.set(i),
                         }
                     }
+
+                    // 批量多选区 (卡牌外): 列全部分组 chips, 点选加入/移出选中集合;
+                    // 选中数>0 时下方出现批量动作条 (批量启停 / 清除)。
+                    div { class: "space-y-2",
+                        p { class: "mb-1.5 text-[11px] text-zinc-500", "批量操作: 点选分组" }
+                        div { class: "flex flex-wrap gap-1.5",
+                            "data-testid": "bulk-select",
+                            for g in groups().iter().cloned() {
+                                {
+                                    let key = g.key.clone();
+                                    let gn = g.name.clone();
+                                    let picked = selected.peek().iter().any(|k| *k == key);
+                                    let cls = if picked {
+                                        "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                    } else {
+                                        "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                    };
+                                    rsx! {
+                                        button {
+                                            class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {cls}",
+                                            "data-testid": "bulk-select-chip",
+                                            onclick: move |_| {
+                                                let mut s = selected.peek().to_vec();
+                                                if let Some(pos) = s.iter().position(|k| *k == key) {
+                                                    s.remove(pos);
+                                                } else {
+                                                    s.push(key.clone());
+                                                }
+                                                selected.set(s);
+                                            },
+                                            "{gn}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // 批量动作条: 勾选后出现
+                        if !selected().is_empty() {
+                            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-2.5",
+                                "data-testid": "bulk-bar",
+                                span { class: "text-xs text-zinc-400", "已选 {selected().len()} 项" }
+                                button {
+                                    class: "rounded-lg border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-1 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-800/50",
+                                    "data-testid": "bulk-enable",
+                                    onclick: bulk_enable,
+                                    "批量启用"
+                                }
+                                button {
+                                    class: "rounded-lg border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700",
+                                    "data-testid": "bulk-disable",
+                                    onclick: bulk_disable,
+                                    "批量停用"
+                                }
+                                button {
+                                    class: "rounded-lg border border-zinc-700/80 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                                    "data-testid": "bulk-clear",
+                                    onclick: move |_| selected.set(Vec::new()),
+                                    "清除"
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // 3. 卡片网格区
@@ -295,7 +448,26 @@ pub fn GroupsPage() -> Element {
                                 {
                                     let edit_key = g.key.clone();
                                     let delete_key = g.key.clone();
+                                    let toggle_key = g.key.clone();
+                                    let ratio_key = g.key.clone();
+                                    let current_status = g.status;
                                     let is_default = g.name == "default";
+                                    // 启用/停用:按当前 status 取目标值 (1↔2);
+                                    // target 在 group 值移入 rsx 前算好, 避免 move 后再借用
+                                    let toggle_target = if current_status == 1 { 2 } else { 1 };
+                                    let on_toggle_status = move |_| {
+                                        write_toggle(
+                                            toggle_key.clone(),
+                                            WriteOp::ToggleStatus(toggle_target),
+                                        );
+                                    };
+                                    // 倍率滑条松手写回: 复用同一写工厂, 就地更新本地 ratio
+                                    let on_ratio_drag = move |v: f64| {
+                                        write_toggle(
+                                            ratio_key.clone(),
+                                            WriteOp::SetRatio(v),
+                                        );
+                                    };
                                     rsx! {
                                         GroupCard {
                                             key: "{g.key}",
@@ -303,6 +475,8 @@ pub fn GroupsPage() -> Element {
                                             is_default,
                                             on_edit: move |_| open_edit(edit_key.clone()),
                                             on_delete: move |_| write_delete(delete_key.clone(), WriteOp::Delete),
+                                            on_toggle_status,
+                                            on_ratio_drag,
                                         }
                                     }
                                 }
@@ -324,6 +498,8 @@ pub fn GroupsPage() -> Element {
                     ratio: f_ratio,
                     remark: f_remark,
                     whitelist: f_whitelist,
+                    alias_options: alias_options(),
+                    f_alias,
                     on_cancel: move |_| modal_state.set(ModalState::Closed),
                     on_submit: close_and_reload,
                 }
@@ -359,24 +535,32 @@ fn GroupCard(
     is_default: bool,
     on_edit: EventHandler<()>,
     on_delete: EventHandler<()>,
+    on_toggle_status: EventHandler<()>,
+    // 倍率滑条拖动结束时回调新倍率 (卡片本地即时改, 由页面层写回后端)
+    on_ratio_drag: EventHandler<f64>,
 ) -> Element {
-    let initial = group
-        .name
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_uppercase()
-        .to_string();
-
     let m = group.ratio;
 
-    // 倍率状态与徽标
-    let (mult_badge_text, mult_badge_tone, bar_tone, bar_width_pct) = if (m - 1.0).abs() < 0.001 {
+    // 倍率滑条两段式交互:
+    // - 平时只显示静态色块 (无 thumb, 指针划过不吸附)。
+    // - 第一次点击轨道 → 进入调整态: 出现 thumb, 拖动即时预览 (不写库)。
+    // - 第二次点击 (含拖动后松开再点) → 确认: on_ratio_drag 写回后端, thumb 消失。
+    // 选中态存 adjusting signal; local_ratio 只在调整态被拖动改写。
+    let mut adjusting = use_signal(|| false);
+    let mut local_ratio = use_signal(|| m);
+    let show_thumb = adjusting();
+    // 调整态预览 live; 静态态显示后端值 m (拖动失败/未确认不污染展示)
+    let display_ratio = if show_thumb { local_ratio() } else { m };
+    // 滑条域 0.0–2.0 (UI 上限截断; 写回原值可能 >2, 视觉封顶)
+    const RATIO_MAX: f64 = 2.0;
+    let live_pct = ((display_ratio / RATIO_MAX) * 100.0).clamp(0.0, 100.0);
+
+    // 倍率状态与徽标 (滑条宽度由 live_pct 实时算, 不再固定 bar_width_pct)
+    let (mult_badge_text, mult_badge_tone, bar_tone) = if (m - 1.0).abs() < 0.001 {
         (
             "基准 1.00×".to_string(),
             "border-zinc-700 bg-zinc-800/80 text-zinc-300",
             "bg-zinc-200",
-            50,
         )
     } else if m < 1.0 {
         let discount = ((1.0 - m) * 100.0).round() as i64;
@@ -384,7 +568,6 @@ fn GroupCard(
             format!("优惠 {m:.2}× (-{discount}%)"),
             "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
             "bg-emerald-500",
-            ((m / 2.0) * 100.0).clamp(10.0, 100.0) as u32,
         )
     } else {
         let markup = ((m - 1.0) * 100.0).round() as i64;
@@ -392,7 +575,6 @@ fn GroupCard(
             format!("溢价 {m:.2}× (+{markup}%)"),
             "border-amber-500/30 bg-amber-500/20 text-amber-400",
             "bg-amber-500",
-            ((m / 2.0) * 100.0).clamp(10.0, 100.0) as u32,
         )
     };
 
@@ -408,73 +590,109 @@ fn GroupCard(
     };
 
     let example_cost = (100.0 * m).round() as i64;
-    let strategy_label = if m < 1.0 {
-        "优惠折扣"
-    } else if m > 1.0 {
-        "溢价加价"
-    } else {
-        "标准基准"
-    };
 
     rsx! {
         div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
             "data-testid": "group-card",
 
             div { class: "space-y-3",
-                // 头部:标识字母圈 + 分组名 + 默认标签
-                div { class: "flex items-start gap-3",
-                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
-                        "{initial}"
-                    }
-                    div { class: "min-w-0 flex-1",
-                        div { class: "flex items-center justify-between gap-2",
-                            h3 { class: "truncate text-sm font-medium text-zinc-100", "{group.name}" }
-                            if is_default {
-                                // 与 ID 徽章同款收缩约束;短标签实际不受影响,统一防凸出
-                                span { class: "min-w-0 max-w-[140px] truncate rounded bg-blue-950/60 border border-blue-800/60 px-1.5 py-0.5 text-[10px] font-mono text-blue-300",
-                                    title: "默认",
-                                    "默认"
-                                }
-                            } else {
-                                // UUID 全串不可断:允许收缩并截断,悬停 title 看全值,避免凸出卡片
-                                span { class: "min-w-0 max-w-[140px] truncate rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                                    title: "{group.key}",
-                                    "#{group.key}"
-                                }
+                // 头部:分组名 + 默认标签 (卡内勾选框已移除, 多选改到列表外的 chips 区)
+                div { class: "min-w-0",
+                    div { class: "flex items-center justify-between gap-2",
+                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{group.name}" }
+                        if is_default {
+                            span { class: "min-w-0 max-w-[140px] truncate rounded bg-blue-950/60 border border-blue-800/60 px-1.5 py-0.5 text-[10px] font-mono text-blue-300 shrink-0",
+                                title: "默认",
+                                "默认"
                             }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{group.remark}" }
                     }
                 }
 
-                // 徽标行
+                // 徽标行: 倍率徽标 + (default) 系统内置 + 状态; 非默认组不再单独挂「自定义分组」
                 div { class: "flex flex-wrap gap-1.5",
                     Badge { text: mult_badge_text, tone: mult_badge_tone }
                     if is_default {
                         Badge { text: "系统内置".to_string(), tone: "border-blue-500/30 bg-blue-500/20 text-blue-300" }
-                    } else {
-                        Badge { text: "自定义分组".to_string(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-400" }
                     }
                     Badge { text: status_text.to_string(), tone: status_tone }
                 }
 
-                // 倍率进度条
+                // 倍率滑条 (两段式): 静态时只有色块无 thumb (指针划过不吸附);
+                // 第一次点击 → 进入调整态出现 thumb 可拖预览; 第二次点击 → 确认写回 + thumb 消失。
                 div { class: "space-y-1.5",
                     div { class: "flex justify-between gap-2 text-[11px]",
                         span { class: "text-zinc-400", "计费倍率" }
-                        span { class: "whitespace-nowrap font-medium text-zinc-200", "×{m:.2}" }
+                        span { class: "whitespace-nowrap font-medium text-zinc-200", "×{display_ratio:.2}" }
                     }
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
-                        div { class: "h-full rounded-full {bar_tone} transition-all duration-300", style: "width: {bar_width_pct}%" }
+                    div {
+                        class: "relative h-4 w-full touch-none select-none",
+                        class: if show_thumb { "relative h-4 w-full cursor-ew-resize touch-none select-none" } else { "relative h-4 w-full touch-none select-none" },
+                        id: "group-ratio-slider",
+                        "data-testid": "ratio-slider",
+                        onclick: move |e| {
+                            if show_thumb {
+                                // 第二次点击 = 确认: 写回预览值, 退出调整态
+                                on_ratio_drag.call(local_ratio.peek().max(0.05));
+                                adjusting.set(false);
+                            } else {
+                                // 第一次点击 = 进入调整态, 从点击处开始预览
+                                local_ratio.set(m);
+                                adjusting.set(true);
+                                // 立即把预览挪到点击位置 (复用同一换算)
+                                let doc = web_sys::window().and_then(|w| w.document());
+                                let el = doc
+                                    .as_ref()
+                                    .and_then(|d| d.get_element_by_id("group-ratio-slider"));
+                                let client_x = e.client_coordinates().x;
+                                if let Some(el) = el {
+                                    let r = el.get_bounding_client_rect();
+                                    let frac = ((client_x - r.left()) / r.width().max(1.0)).clamp(0.0, 1.0);
+                                    let next = ((frac * RATIO_MAX) / 0.05).round() * 0.05;
+                                    local_ratio.set(next.max(0.05));
+                                }
+                            }
+                        },
+                        onpointermove: move |e| {
+                            // 仅调整态且按住主键时拖动预览; 静态态划过不动 (不吸附)
+                            if !show_thumb || e.trigger_button().is_none() {
+                                return;
+                            }
+                            // 拖动: client_x 相对轨道 rect 换算比例 (w-full 响应式,
+                            // 每次从 document 取 bounding rect)
+                            let doc = web_sys::window().and_then(|w| w.document());
+                            let el = doc
+                                .as_ref()
+                                .and_then(|d| d.get_element_by_id("group-ratio-slider"));
+                            let client_x = e.client_coordinates().x;
+                            let frac = if let Some(el) = el {
+                                let r = el.get_bounding_client_rect();
+                                ((client_x - r.left()) / r.width().max(1.0)).clamp(0.0, 1.0)
+                            } else {
+                                0.5
+                            };
+                            let next = ((frac * RATIO_MAX) / 0.05).round() * 0.05;
+                            local_ratio.set(next.max(0.05));
+                        },
+                        // track 灰底 + 左色块
+                        div { class: "absolute left-0 top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-zinc-800" }
+                        div { class: "absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full {bar_tone} transition-colors duration-200",
+                            style: "width: {live_pct}%;"
+                        }
+                        // thumb 只在调整态渲染
+                        if show_thumb {
+                            div {
+                                class: "absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-zinc-100 bg-zinc-900 shadow",
+                                "data-testid": "ratio-thumb",
+                                style: "left: {live_pct}%;"
+                            }
+                        }
                     }
                 }
 
-                // 详情指标行
+                // 详情指标行: 保留「100额度实扣」与「调度作用域」;
+                // 「费率模式」行与弹窗预览的「标准消耗」同义 (溢价/优惠/标准 已在徽标表达), 删除。
                 div { class: "space-y-1.5 text-xs pt-1",
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "费率模式" }
-                        span { class: "font-medium text-zinc-200", "{strategy_label}" }
-                    }
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 text-zinc-400", "100额度实扣" }
                         span { class: "font-medium text-zinc-200 font-mono", "{example_cost} 点" }
@@ -486,27 +704,59 @@ fn GroupCard(
                 }
             }
 
-            // 底部操作按钮区 (严格对齐图 1: [编辑] [删除/内置])
-            div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    onclick: move |_| on_edit.call(()),
-                    "data-testid": "edit-group",
-                    "编辑"
-                }
-                if is_default {
-                    button {
-                        class: "flex-1 rounded-lg border border-zinc-800 py-1 text-[11px] text-zinc-600 cursor-not-allowed",
-                        title: "默认分组不能删除",
-                        disabled: true,
-                        "内置"
-                    }
-                } else {
-                    button {
-                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
-                        "data-testid": "delete-group",
-                        onclick: move |_| on_delete.call(()),
-                        "删除"
+            // 底部操作按钮组: [编辑] [启用/停用] [删除/内置]
+            // 用 ui::ActionButtonGroup 统一渲染; 下标语义: 0=编辑 1=启停 2=删除/内置
+            div { class: "mt-1",
+                ActionButtonGroup {
+                    testid_prefix: "group-actions".to_string(),
+                    on_press: move |i: usize| {
+                        match i {
+                            0 => on_edit.call(()),
+                            1 => on_toggle_status.call(()),
+                            2 => on_delete.call(()),
+                            _ => {}
+                        }
+                    },
+                    actions: {
+                        let mut acts = vec![ActionSpec {
+                            label: "编辑".to_string(),
+                            tone: ActionTone::Neutral,
+                            disabled: false,
+                            testid: "edit-group".to_string(),
+                        }];
+                        // 启停位: 启用中→停用(默认组为禁用占位); 已停用→启用
+                        if group.status == 1 {
+                            acts.push(ActionSpec {
+                                label: "停用".to_string(),
+                                tone: if is_default { ActionTone::Disabled } else { ActionTone::Neutral },
+                                disabled: is_default,
+                                testid: "disable-group".to_string(),
+                            });
+                        } else {
+                            acts.push(ActionSpec {
+                                label: "启用".to_string(),
+                                tone: ActionTone::Success,
+                                disabled: false,
+                                testid: "enable-group".to_string(),
+                            });
+                        }
+                        // 删除位: 默认组为禁用占位「内置」
+                        if is_default {
+                            acts.push(ActionSpec {
+                                label: "内置".to_string(),
+                                tone: ActionTone::Disabled,
+                                disabled: true,
+                                testid: String::new(),
+                            });
+                        } else {
+                            acts.push(ActionSpec {
+                                label: "删除".to_string(),
+                                tone: ActionTone::Danger,
+                                disabled: false,
+                                testid: "delete-group".to_string(),
+                            });
+                        }
+                        acts
                     }
                 }
             }
@@ -558,6 +808,10 @@ fn GroupFormModal(
     ratio: Signal<String>,
     remark: Signal<String>,
     whitelist: Signal<String>,
+    // 映射别名候选 (后端 models 域列表的 name); 空 = 拉取失败/无候选, 只读回退。
+    alias_options: Vec<String>,
+    // 当前分组已映射的别名名 (逗号分隔字符串, 提交时拆分回填)
+    f_alias: Signal<String>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -572,6 +826,10 @@ fn GroupFormModal(
         "创建分组"
     };
 
+    // 编辑弹窗双 tab: 0=分组信息(名称/倍率/备注/白名单), 1=映射别名
+    let mut active_tab = use_signal(|| 0usize);
+    let tab_labels = vec!["分组信息".to_string(), "映射别名".to_string()];
+
     let parsed_ratio = ratio().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
 
     let submitting = use_signal(|| false);
@@ -581,6 +839,7 @@ fn GroupFormModal(
     let on_submit2 = on_submit;
     let group_key2 = group_key.clone();
     let whitelist2 = whitelist;
+    let alias2 = f_alias;
     let do_submit = move |_| {
         let key = group_key2.clone();
         let n = name.peek().trim().to_string();
@@ -590,6 +849,7 @@ fn GroupFormModal(
         let r = ratio.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
         let rm = remark.peek().clone();
         let wl = parse_whitelist_raw(&whitelist2.peek());
+        let _al = parse_whitelist_raw(&alias2.peek()); // 映射别名, 本 MVP 暂不落库(后端无对应列)
         let (mut sub, cb) = (submitting2, on_submit2);
         spawn(async move {
             sub.set(true);
@@ -621,91 +881,151 @@ fn GroupFormModal(
 
     rsx! {
         Modal { title: title.to_string(), on_close: move |_| on_cancel.call(()),
+            // tab 栏
+            div { class: "mb-4",
+                SegmentedCapsule {
+                    items: tab_labels,
+                    active: active_tab(),
+                    on_select: move |i| active_tab.set(i),
+                    testid_prefix: "group-tab".to_string(),
+                }
+            }
+
             div { class: "space-y-4",
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "分组标识 (英文唯一标识)" }
-                    input {
-                        class: MODAL_INPUT,
-                        "data-testid": "group-name",
-                        placeholder: "例如: vip, claude, fast",
-                        value: "{name}",
-                        disabled: editing && name() == "default",
-                        oninput: move |e| name.set(e.value()),
-                    }
-                    if editing && name() == "default" {
-                        p { class: "mt-1 text-xs text-zinc-500", "默认分组标识不可更改" }
-                    }
-                }
+                // tab 0: 分组信息
+                if active_tab() == 0 {
+                    div { class: "space-y-4",
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "分组标识 (英文唯一标识)" }
+                            input {
+                                class: MODAL_INPUT,
+                                "data-testid": "group-name",
+                                placeholder: "例如: vip, claude, fast",
+                                value: "{name}",
+                                disabled: editing && name() == "default",
+                                oninput: move |e| name.set(e.value()),
+                            }
+                            if editing && name() == "default" {
+                                p { class: "mt-1 text-xs text-zinc-500", "默认分组标识不可更改" }
+                            }
+                        }
 
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "展示备注 (可选)" }
-                    input {
-                        class: MODAL_INPUT,
-                        "data-testid": "group-remark",
-                        placeholder: "例如: VIP会员专线、高峰备用组",
-                        value: "{remark}",
-                        oninput: move |e| remark.set(e.value()),
-                    }
-                }
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "展示备注 (可选)" }
+                            input {
+                                class: MODAL_INPUT,
+                                "data-testid": "group-remark",
+                                placeholder: "例如: VIP会员专线、高峰备用组",
+                                value: "{remark}",
+                                oninput: move |e| remark.set(e.value()),
+                            }
+                        }
 
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "模型白名单 (逗号分隔,可选)" }
-                    input {
-                        class: MODAL_INPUT,
-                        "data-testid": "group-whitelist",
-                        placeholder: "例如: gpt-4o, claude-3.5",
-                        value: "{whitelist}",
-                        oninput: move |e| whitelist.set(e.value()),
-                    }
-                    p { class: "mt-1 text-[11px] text-zinc-500", "留空 = 全模型可用;填了 = 仅这些模型" }
-                }
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "模型白名单 (逗号分隔,可选)" }
+                            input {
+                                class: MODAL_INPUT,
+                                "data-testid": "group-whitelist",
+                                placeholder: "例如: gpt-4o, claude-3.5",
+                                value: "{whitelist}",
+                                oninput: move |e| whitelist.set(e.value()),
+                            }
+                            p { class: "mt-1 text-[11px] text-zinc-500", "留空 = 全模型可用;填了 = 仅这些模型" }
+                        }
 
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (ratio ≥ 0)" }
-                    input {
-                        class: "{MODAL_INPUT} font-mono",
-                        r#type: "text",
-                        "data-testid": "group-ratio",
-                        placeholder: "1.0",
-                        value: "{ratio}",
-                        oninput: move |e| ratio.set(e.value()),
-                    }
-                }
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (ratio ≥ 0)" }
+                            input {
+                                class: "{MODAL_INPUT} font-mono",
+                                r#type: "text",
+                                "data-testid": "group-ratio",
+                                placeholder: "1.0",
+                                value: "{ratio}",
+                                oninput: move |e| ratio.set(e.value()),
+                            }
+                        }
 
-                // 快捷预设按钮
-                div { class: "space-y-1.5",
-                    p { class: "text-[11px] text-zinc-500", "快捷倍率预设" }
-                    div { class: "flex flex-wrap gap-1.5",
-                        for (lbl, val) in preset_ratios {
-                            {
-                                let is_active = (parsed_ratio - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
-                                let btn_tone = if is_active {
-                                    "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
-                                } else {
-                                    "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
-                                };
-                                rsx! {
-                                    button {
-                                        class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
-                                        onclick: move |_| ratio.set(val.to_string()),
-                                        "{lbl}"
+                        // 快捷预设按钮
+                        div { class: "space-y-1.5",
+                            p { class: "text-[11px] text-zinc-500", "快捷倍率预设" }
+                            div { class: "flex flex-wrap gap-1.5",
+                                for (lbl, val) in preset_ratios {
+                                    {
+                                        let is_active = (parsed_ratio - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
+                                        let btn_tone = if is_active {
+                                            "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                        } else {
+                                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                        };
+                                        rsx! {
+                                            button {
+                                                class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
+                                                onclick: move |_| ratio.set(val.to_string()),
+                                                "{lbl}"
+                                            }
+                                        }
                                     }
+                                }
+                            }
+                        }
+
+                        // 计费预览: 仅保留「该分组实际扣费」(「标准消耗」行已删)
+                        div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1.5",
+                            div { class: "flex justify-between font-medium",
+                                span { class: "text-zinc-300", "该分组实际扣费" }
+                                span { class: if parsed_ratio < 1.0 { "text-emerald-400" } else if parsed_ratio > 1.0 { "text-amber-400" } else { "text-zinc-200" },
+                                    "{(100.0 * parsed_ratio).round() as i64} 点额度"
                                 }
                             }
                         }
                     }
                 }
 
-                // 计费预览卡片
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1.5",
-                    div { class: "flex justify-between text-zinc-400",
-                        span { "标准消耗" }
-                        span { "100 点额度" }
-                    }
-                    div { class: "flex justify-between font-medium",
-                        span { class: "text-zinc-300", "该分组实际扣费" }
-                        span { class: if parsed_ratio < 1.0 { "text-emerald-400" } else if parsed_ratio > 1.0 { "text-amber-400" } else { "text-zinc-200" },
-                            "{(100.0 * parsed_ratio).round() as i64} 点额度"
+                // tab 1: 映射别名 (从后端 models 域候选挑选; 失败留空 → 只读回退)
+                if active_tab() == 1 {
+                    div { class: "space-y-3",
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "映射别名 (多选,逗号分隔)" }
+                            input {
+                                class: MODAL_INPUT,
+                                "data-testid": "group-alias",
+                                placeholder: "例如: gpt-4o, claude-3.5",
+                                value: "{f_alias}",
+                                oninput: move |e| f_alias.set(e.value()),
+                            }
+                            p { class: "mt-1 text-[11px] text-zinc-500", "本 MVP 仅登记, 后端暂无映射列; 留空 = 不映射" }
+                        }
+                        if alias_options.is_empty() {
+                            p { class: "text-xs text-zinc-500", "暂无可选模型别名" }
+                        } else {
+                            div { class: "flex flex-wrap gap-1.5",
+                                for opt in alias_options.clone() {
+                                    {
+                                        let picked = parse_whitelist_raw(&f_alias.peek()).iter().any(|a| a == &opt);
+                                        let cls = if picked {
+                                            "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                        } else {
+                                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                        };
+                                        rsx! {
+                                            button {
+                                                class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {cls}",
+                                                "data-testid": "group-alias-opt",
+                                                onclick: move |_| {
+                                                    let mut cur = parse_whitelist_raw(&f_alias.peek());
+                                                    if let Some(pos) = cur.iter().position(|a| a == &opt) {
+                                                        cur.remove(pos);
+                                                    } else {
+                                                        cur.push(opt.clone());
+                                                    }
+                                                    f_alias.set(cur.join(", "));
+                                                },
+                                                "{opt}"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
