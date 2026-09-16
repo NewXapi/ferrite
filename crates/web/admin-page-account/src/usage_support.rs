@@ -1,5 +1,5 @@
-//! 用量面板的纯工具函数 (时间窗换算 / 数字与额度格式化)。
-//! 无 UI 依赖, 供 `usage_logs` 面板与集成测试共用。
+//! 面板呈现层纯工具函数 (时间窗换算 / 数字与额度格式化 / UA 归纳)。
+//! 无 UI 依赖, 供 `usage_logs`、`sessions` 面板与集成测试共用。
 
 /// 内部额度单位 → 美元换算基数 (后端口径: 500_000 = $1)。
 pub const QUOTA_PER_USD: f64 = 500_000.0;
@@ -42,6 +42,62 @@ pub fn fmt_time_full(rfc3339: &str) -> String {
                 .to_string()
         })
         .unwrap_or_else(|_| rfc3339.to_string())
+}
+
+/// RFC3339 → 本地 "YYYY-MM-dd HH:mm" 展示 (分钟精度, 含年份)。
+/// 会话卡「最后活跃 / 到期」用: 到期可能跨年, 必须带年份才能判断剩余有效期;
+/// 解析失败原样返回 (与 [`fmt_time`] 行为一致, 保证脏数据不静默丢失)。
+pub fn fmt_time_minute(rfc3339: &str) -> String {
+    DateTime::parse_from_rfc3339(rfc3339)
+        .map(|t| t.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|_| rfc3339.to_string())
+}
+
+/// 归纳 User-Agent 为「浏览器 · OS」短标签 (如 "Chrome · Windows"), 供会话卡展示。
+///
+/// 完整 UA 仍然可用 (由调用方放 `title` 属性悬停可见), 这里只做一眼可读的归纳:
+/// - 浏览器: 按 UA 中特征 token 识别 Chrome / Edge / Firefox / Safari,
+///   顺序即优先级 (Edge 同时含 Chrome token, 必须先判 Edge);
+/// - OS: 识别 Windows / macOS / Linux / Android / iOS;
+/// - 浏览器与 OS 都识别不出 (空串 / 乱串 / 纯爬虫 UA) → 回退 "未知设备"。
+///
+/// 注意: 这不是完整的 UA 解析器, 只覆盖主流浏览器特征; 未匹配的 UA 一律
+/// 归为 "其他浏览器" / "未知系统" 而不是猜一个品牌名。
+pub fn summarize_ua(ua: &str) -> String {
+    // 统一按原串大小写做包含匹配 (UA 品牌 token 自带大小写, 直接小写化比对)
+    let u = ua.to_ascii_lowercase();
+
+    let browser = if u.contains("edg/") || u.contains("edga") || u.contains("edgios") {
+        "Edge"
+    } else if u.contains("firefox") || u.contains("fxios") {
+        "Firefox"
+    } else if u.contains("chrome") || u.contains("crios") {
+        "Chrome"
+    } else if u.contains("safari") {
+        "Safari"
+    } else {
+        "其他浏览器"
+    };
+
+    let os = if u.contains("windows") {
+        "Windows"
+    } else if u.contains("android") {
+        "Android"
+    } else if u.contains("iphone") || u.contains("ipad") {
+        "iOS"
+    } else if u.contains("mac os") || u.contains("macintosh") {
+        "macOS"
+    } else if u.contains("linux") || u.contains("x11") {
+        "Linux"
+    } else {
+        "未知系统"
+    };
+
+    // 双双识别不出 = 完全无法归纳 (空串/乱串), 回退统一占位
+    if browser == "其他浏览器" && os == "未知系统" {
+        return "未知设备".to_string();
+    }
+    format!("{browser} · {os}")
 }
 
 /// 千分位格式化。
