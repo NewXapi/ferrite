@@ -14,7 +14,7 @@
 //! - `top_usage_api` / `trend_api` / `monitor_api` 走 `Items<T>` 剥壳：
 //!   `{"items":[...]}`，行按 camelCase 解码（trend 行是 `modelName` 而非
 //!   `model_name`；monitor 行是 `channelKey`/`okCount`/`avgLatencyMs`）。
-//! 任何一侧漂移只会在浏览器里静默变空，这里的断言当场炸。
+//!   任何一侧漂移只会在浏览器里静默变空，这里的断言当场炸。
 //!
 //! 额度单位口径（全仓统一，new-api 语义）：内部整数 `500_000 = $1`
 //! （`db/migrations/0002_usage_logs.sql`、`contract/src/api/usage.rs`）。
