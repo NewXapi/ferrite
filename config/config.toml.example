@@ -68,3 +68,13 @@ allowed_models = []
 # url = "socks5://127.0.0.1:7890"
 # channel_keys = ["openai"]
 # priority = 10
+
+# 支付渠道配置（apps/api 读取的 [payment] 段）。
+# 整段省略 = 只用 manual 渠道（开单建 pending 单，admin 手工 settle 入账）。
+# 父段预留：将来 stripe 挂 [payment.stripe]，与 epay 并列。
+# [payment.epay]
+# gateway_url = "https://pay.example.com"                  # 易支付根地址（跳转 {gateway_url}/mapi.php）
+# pid = "10000"                                            # 商户 ID（易支付后台 pid）
+# key = "<MERCHANT_KEY>"                                   # 商户密钥（MD5 签名用；禁提交真密钥）
+# name = "充值"                                            # 商品名（支付页展示）
+# notify_url = "https://your-host/api/topup/webhook/epay"  # 异步回调地址（本域 webhook 路径）

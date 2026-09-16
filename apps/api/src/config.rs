@@ -3,12 +3,26 @@
 use std::path::Path;
 use thiserror::Error;
 
+use billing::topup_epay::EpayMerchant;
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Config {
     pub listen: String,
     pub database_url: String,
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    /// 支付渠道配置（`[payment.epay]` 等）。整段省略 = 只用 manual 渠道，
+    /// 开单指定 epay 会被服务层拒绝（payment provider not configured）。
+    #[serde(default)]
+    pub payment: PaymentConfig,
+}
+
+/// 支付配置（`[payment]` 段）：父段预留，将来 stripe 挂 `[payment.stripe]`。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct PaymentConfig {
+    /// 易支付商户；省略 = 不注册 epay 渠道。
+    #[serde(default)]
+    pub epay: Option<EpayMerchant>,
 }
 
 fn default_log_level() -> String {

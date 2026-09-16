@@ -77,6 +77,7 @@ tracing-appender = "0.2"
 tracing-log = "0.2"
 thiserror   = "2"
 anyhow      = "1"
+md-5       = "0.10"
 url         = "2"
 tokenizers  = { version = "0.20", default-features = false, features = ["onig"] }
 dioxus      = { version = "=0.7.9", features = ["router"] }
