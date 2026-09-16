@@ -14,14 +14,27 @@ enum Form {
     New,
     Edit(String),
 }
-/// 编辑弹窗内的页签:基本 / 额度 / 备注 / 绑定
+
+/// 编辑弹窗内的真实页签。
+///
+/// 旧版四个 tab(基本/额度/备注/绑定)里「基本/额度/备注」共用同一组字段,
+/// 切换只是滚动到不同输入框——视觉上是 tab,语义上不是。现在按字段归属
+/// 拆成三组,每组只渲染自己的字段,切换 tab 真正切换内容:
+/// - `Basic`:用户名 / 邮箱 / 角色 / 剩余额度(可编辑生效)
+/// - `Group`:生效分组(多选) / 管理员备注
+/// - `Binding`:第三方绑定(只读,后端暂无此列)
 #[derive(Clone, Copy, PartialEq)]
 enum FormTab {
     Basic,
-    Quota,
-    Remark,
+    Group,
     Binding,
 }
+
+const TAB_LABELS: [(FormTab, &str); 3] = [
+    (FormTab::Basic, "基本信息"),
+    (FormTab::Group, "分组与备注"),
+    (FormTab::Binding, "绑定"),
+];
 
 /// 用户管理面板 - 左侧 ScrollSpyNav + 统计 / 筛选 / 用户卡片三区。
 ///
@@ -44,8 +57,10 @@ pub fn UsersPanel() -> Element {
     // 弹窗字段(新建与编辑共用同款表单)
     let mut f_username = use_signal(String::new);
     let mut f_email = use_signal(String::new);
+    let mut f_password = use_signal(String::new);
     let mut f_quota = use_signal(|| "5000000".to_string());
-    let mut f_group = use_signal(|| "default".to_string());
+    // 生效分组(多值,对齐 `auth_users.groups`;后端 `set_groups` 整体替换)
+    let mut f_group = use_signal(|| vec!["default".to_string()]);
     let mut f_remark = use_signal(String::new);
     let mut f_role = use_signal(|| 10u16);
 
@@ -59,13 +74,32 @@ pub fn UsersPanel() -> Element {
     // reload 计数:触发一次即重拉列表(写操作后刷新)
     let mut reload = use_signal(|| 0u32);
 
+    // 真实分组列表(GET /api/group):筛选胶囊与弹窗 chips 共用。
+    // 提供为 context,让 GroupChips 不经 props 也能取到同一份列表。
+    let mut groups = use_signal(Vec::<(String, String)>::new);
+    let _ = use_context_provider(|| groups);
+    use_effect(move || {
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            if let Ok(list) = api::list_groups_api(&client).await {
+                groups.set(list);
+            }
+        });
+    });
+
     use_effect(move || {
         let _ = reload();
-        loading.set(true);
+        // stale-while-revalidate:只有首次(列表为空)才显示「加载中」占位符;
+        // 写操作(禁用/充值/编辑)触发的刷新保留旧列表原地更新,不整片闪掉。
+        // 闪烁根因:loading=true 会把已渲染的卡片网格换成占位符,拉完再换回。
+        if users.read().is_empty() {
+            loading.set(true);
+        }
         err.set(None);
         spawn(async move {
             let client = ApiClient::shared().clone();
-            match list_users_api(&client, None, None, None).await {
+            // size=100:后端默认 20 会静默截断,统计卡「总用户」会少算
+            match list_users_api(&client, None, Some(1), Some(100)).await {
                 Ok(page) => {
                     users.set(page.items);
                     loading.set(false);
@@ -78,7 +112,12 @@ pub fn UsersPanel() -> Element {
         });
     });
 
-    let groups = api::fetch_groups();
+    // 筛选项:分组走真实列表 + 首项「全部」;状态/角色仍是固定枚举
+    let filter_groups = {
+        let mut v = vec![("全部".to_string(), String::new())];
+        v.extend(groups().clone());
+        v
+    };
     let statuses = api::fetch_statuses();
     let roles = api::fetch_roles();
     let all = users();
@@ -102,7 +141,7 @@ pub fn UsersPanel() -> Element {
 
     let filtered: Vec<AdminUserDto> = {
         let q = search().trim().to_lowercase();
-        let want_group = groups[group_idx()].1;
+        let want_group = &filter_groups[group_idx()].1;
         let want_status = statuses[status_idx()].1;
         let want_role = roles[role_idx()].1;
         all.iter()
@@ -113,7 +152,7 @@ pub fn UsersPanel() -> Element {
                 {
                     return false;
                 }
-                if !want_group.is_empty() && u.group != want_group {
+                if !want_group.is_empty() && !u.groups.contains(want_group) {
                     return false;
                 }
                 if want_status != 0 && u.status != want_status {
@@ -132,10 +171,11 @@ pub fn UsersPanel() -> Element {
     let open_new = move |_: MouseEvent| {
         f_username.set(String::new());
         f_email.set(String::new());
+        f_password.set(String::new());
         f_quota.set("5000000".to_string());
-        f_group.set("default".to_string());
+        f_group.set(vec!["default".to_string()]);
         f_remark.set(String::new());
-        f_role.set(10);
+        f_role.set(1);
         form.set(Form::New);
     };
     let open_edit = move |key: String| {
@@ -143,7 +183,8 @@ pub fn UsersPanel() -> Element {
             f_username.set(u.username.clone());
             f_email.set(u.email.clone());
             f_quota.set(u.quota.to_string());
-            f_group.set(u.group.clone());
+            // 后端 groups 可空(清空分组态),原样回填,chips 全不选即表达
+            f_group.set(u.groups.clone());
             f_remark.set(String::new());
             f_role.set(u.role);
             form.set(Form::Edit(key));
@@ -194,6 +235,7 @@ pub fn UsersPanel() -> Element {
             // 通知条(成功/错误/进行中)
             if let Some(msg) = notice() {
                 div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                    role: if msg.starts_with("操作失败") { "alert" } else { "status" },
                     "{msg}"
                     if busy() { " ···" }
                 }
@@ -244,7 +286,7 @@ pub fn UsersPanel() -> Element {
                 // 分组 / 状态 / 角色:胶囊分段,手机每行最多 3 段
                 div { class: "flex flex-col gap-3",
                     SegmentedCapsule {
-                        items: groups.iter().map(|(l, _)| l.to_string()).collect(),
+                        items: filter_groups.iter().map(|(l, _)| l.clone()).collect(),
                         active: group_idx(),
                         on_select: move |i: usize| group_idx.set(i),
                     }
@@ -312,15 +354,34 @@ pub fn UsersPanel() -> Element {
                 edit_key: edit_key.clone(),
                 username: f_username,
                 email: f_email,
+                password: f_password,
                 quota: f_quota,
                 group: f_group,
                 remark: f_remark,
                 role: f_role,
                 on_cancel: move |_| form.set(Form::Closed),
+                // 编辑态:按 tab 回写单字段(set_role / set_group)
                 on_submit: move |(action, value): (String, Option<String>)| {
                     if let Some(k) = edit_key.clone() {
                         manage_form(k, action, value);
                     }
+                    form.set(Form::Closed);
+                },
+                // 新建态:一次性 POST /api/user/users 建号
+                on_create: move |req: api::CreateUserRequest| {
+                    let mut n = notice;
+                    let mut r = reload;
+                    n.set(None);
+                    spawn(async move {
+                        let client = ApiClient::shared().clone();
+                        match api::create_user_api(&client, &req).await {
+                            Ok(_) => {
+                                n.set(Some("用户已创建".to_string()));
+                                r.set(r() + 1);
+                            }
+                            Err(e) => n.set(Some(format!("创建失败:{e}"))),
+                        }
+                    });
                     form.set(Form::Closed);
                 },
             }
@@ -403,6 +464,25 @@ fn UserCard(
         _ => "border-zinc-700 bg-zinc-800/80 text-zinc-400",
     };
 
+    // 头像右侧一行:名称为主,id 截断为次、可收缩、不抢占名称空间
+    let key_short = short_key(&user.key);
+    let created_date = fmt_created_date(&user.created_at);
+
+    // 分组名 → 展示标签:取分组列表里的 remark(与分组管理页同口径),
+    // 取不到回落裸名 —— 卡片与弹窗 chips 必须显示同一套文案
+    let groups_ctx = use_context::<Signal<Vec<(String, String)>>>();
+    let group_badges: Vec<String> = user
+        .groups
+        .iter()
+        .map(|name| {
+            groups_ctx()
+                .iter()
+                .find(|(_, n)| n == name)
+                .map(|(l, _)| l.clone())
+                .unwrap_or_else(|| name.clone())
+        })
+        .collect();
+
     // 三个回调各自持有 key 的副本(EventHandler 是 move 捕获,String 不可 Copy)。
     let edit_key = user.key.clone();
     let topup_key = user.key.clone();
@@ -415,27 +495,29 @@ fn UserCard(
             "aria-label": "用户 {user.username}",
             "data-testid": "user-card",
 
-            // 头部:头像字母圈 + 名称 + key
-            div { class: "flex items-start gap-3",
+            // 头部:头像字母圈 + 名称 + 截断 key,严格单行
+            div { class: "flex items-center gap-3",
                 div {
                     class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200",
                     "{initial}"
                 }
-                div { class: "min-w-0 flex-1",
-                    div { class: "flex items-center justify-between gap-2",
-                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
-                        // UUID 全串不可断:允许收缩并截断,悬停 title 看全值,避免凸出卡片
-                        span { class: "min-w-0 max-w-[140px] truncate rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                            title: "{user.key}",
-                            "#{user.key}"
-                        }
+                div { class: "flex min-w-0 flex-1 items-baseline gap-2",
+                    h3 { class: "shrink-0 truncate text-sm font-medium text-zinc-100", "{user.username}" }
+                    // UUID 截断:悬停 title 看全值,单行内不凸出卡片
+                    span {
+                        class: "min-w-0 shrink truncate rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400",
+                        title: "ID {user.key}",
+                        "{key_short}"
                     }
-                    p { class: "mt-0.5 truncate text-[11px] text-zinc-500", "{user.display_name}" }
                 }
             }
-            // 徽标行
+            p { class: "mt-1 truncate text-[11px] text-zinc-500", "{user.display_name}" }
+
+            // 徽标行:分组一列一个(多分组多徽标),标签取分组管理页口径
             div { class: "mt-3 flex flex-wrap gap-1.5",
-                Badge { text: group_label(&user.group).to_string(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
+                for label in &group_badges {
+                    Badge { text: label.clone(), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
+                }
                 Badge { text: role_label(user.role).to_string(), tone: role_tone }
                 Badge { text: status_text.to_string(), tone: status_tone }
             }
@@ -453,15 +535,24 @@ fn UserCard(
                 }
             }
 
-            // 计数行
+            // 计数行:创建时间以日期为主,悬停看完整时刻
             div { class: "mt-3 space-y-1.5 text-xs",
                 div { class: "flex justify-between gap-2",
                     span { class: "shrink-0 text-zinc-400", "请求数" }
-                    span { class: "font-medium text-zinc-200", "{fmt_num(user.request_count as u32)}" }
+                    span {
+                        class: "font-medium text-zinc-200",
+                        // 后端 UserView 无此列 → 缺省 0;有值时千分位
+                        title: "接口未返回请求数时的默认值",
+                        "{fmt_num(user.request_count as u32)}"
+                    }
                 }
                 div { class: "flex justify-between gap-2",
                     span { class: "shrink-0 text-zinc-400", "创建" }
-                    span { class: "font-medium text-zinc-200", title: "{user.created_at}", "{user.created_at}" }
+                    span {
+                        class: "whitespace-nowrap font-medium text-zinc-200",
+                        title: "{user.created_at}",
+                        "{created_date}"
+                    }
                 }
             }
 
@@ -481,7 +572,9 @@ fn UserCard(
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
                     onclick: move |_| on_toggle.call((
                         toggle_key.clone(),
-                        if user.status == 1 { STATUS_DISABLED.to_string() } else { STATUS_ENABLED.to_string() },
+                        // wire 动作名是 snake_case 英文(后端 ManageUserAction 拒中文变体);
+                        // 按钮文案仍显示中文,仅 value 走 enable/disable
+                        if user.status == 1 { "disable".to_string() } else { "enable".to_string() },
                         None,
                     )),
                     if user.status == 1 { {STATUS_DISABLED} } else { {STATUS_ENABLED} }
@@ -539,12 +632,14 @@ fn UserForm(
     edit_key: Option<String>,
     username: Signal<String>,
     email: Signal<String>,
+    password: Signal<String>,
     quota: Signal<String>,
-    group: Signal<String>,
+    group: Signal<Vec<String>>,
     remark: Signal<String>,
     role: Signal<u16>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<(String, Option<String>)>,
+    on_create: EventHandler<api::CreateUserRequest>,
 ) -> Element {
     let _ = edit_key;
     let title = if editing {
@@ -557,18 +652,13 @@ fn UserForm(
     } else {
         "创建用户"
     };
+    // 额度输入的元换算提示:内部单位 → 人民币,不暴露 quota 字样
     let quota_hint = quota()
         .trim()
         .parse::<i64>()
         .map(fmt_cny)
         .unwrap_or_else(|_| "—".to_string());
     let mut tab = use_signal(|| FormTab::Basic);
-    const TABS: [(FormTab, &str); 4] = [
-        (FormTab::Basic, "基本"),
-        (FormTab::Quota, LBL_QUOTA),
-        (FormTab::Remark, "备注"),
-        (FormTab::Binding, "绑定"),
-    ];
 
     // 绑定页邮箱展示:避免对临时 String 取引用导致其被提前释放。
     let email_str = email();
@@ -578,11 +668,41 @@ fn UserForm(
         &email_str
     };
 
+    // 保存:编辑态按 tab 回写单字段,新建态走 on_create 一次性建号。
+    let do_submit = move || {
+        if editing {
+            match tab() {
+                FormTab::Basic => {
+                    on_submit.call(("set_role".to_string(), Some(role().to_string())));
+                }
+                // 多分组整体替换:后端 set_groups 收逗号/空白分隔列表
+                FormTab::Group => {
+                    on_submit.call(("set_groups".to_string(), Some(group().join(","))));
+                }
+                // 绑定页只读,无写路径(按钮也不渲染)
+                FormTab::Binding => {}
+            }
+        } else {
+            on_create.call(api::CreateUserRequest {
+                username: username(),
+                password: password(),
+                email: if email().trim().is_empty() {
+                    None
+                } else {
+                    Some(email())
+                },
+                role: role(),
+                quota: quota().trim().parse().unwrap_or(0),
+                groups: group(),
+            });
+        }
+    };
+
     rsx! {
         Modal { title: title.to_string(), on_close: move |_| on_cancel.call(()),
             // 页签行:弹窗顶部,手机端自动折行
             div { class: "mb-4 flex flex-wrap gap-1.5",
-                for (t, label) in TABS {
+                for (t, label) in TAB_LABELS {
                     {
                         let on = tab() == t;
                         let tone = if on {
@@ -593,6 +713,7 @@ fn UserForm(
                         rsx! {
                             button {
                                 class: "rounded-full border px-3 py-1 text-xs font-medium transition-colors {tone}",
+                                "data-testid": "user-form-tab-{label}",
                                 onclick: move |_| tab.set(t),
                                 "{label}"
                             }
@@ -601,21 +722,8 @@ fn UserForm(
                 }
             }
 
-            // 绑定页只读:真实后端暂无第三方绑定字段,显示占位
-            if tab() == FormTab::Binding {
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
-                    p { class: "mb-2 text-[11px] text-zinc-500", "第三方账号绑定(后端暂未返回,只读)" }
-                    div { class: "space-y-1.5",
-                        for (label, value) in [("GitHub", "-"), ("Discord", "-"), ("OIDC", "-"), ("WeChat", "-"), ("Telegram", "-"), (LBL_EMAIL, email_bound)] {
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "{label}" }
-                                span { class: "font-medium text-zinc-200", "{value}" }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // 基本 / 额度 / 备注 三页签共用同一字段区
+            // —— Tab 1:基本信息(用户名/邮箱/初始密码/角色/额度) ——
+            if tab() == FormTab::Basic {
                 div { class: "space-y-4",
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "用户名" }
@@ -624,6 +732,19 @@ fn UserForm(
                             placeholder: "例如: zhangna",
                             value: "{username}",
                             oninput: move |e| username.set(e.value()),
+                        }
+                    }
+                    // 初始密码仅新建时填写;编辑态改密走独立 reset_password 动作
+                    if !editing {
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "初始密码" }
+                            input {
+                                class: MODAL_INPUT,
+                                r#type: "password",
+                                placeholder: "至少 8 位",
+                                value: "{password}",
+                                oninput: move |e| password.set(e.value()),
+                            }
                         }
                     }
                     div {
@@ -637,29 +758,11 @@ fn UserForm(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "分组" }
-                        select {
-                            class: MODAL_INPUT,
-                            value: "{group}",
-                            onchange: move |e| group.set(e.value()),
-                            for (label, value) in api::fetch_groups().iter().skip(1) {
-                                option { value: "{value}", "{label}" }
-                            }
-                        }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "角色权限" }
+                        RoleChips { role, on_change: move |v: u16| role.set(v) }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "角色" }
-                        select {
-                            class: MODAL_INPUT,
-                            value: "{role}",
-                            onchange: move |e| role.set(e.value().parse().unwrap_or(10)),
-                            option { value: "10", "管理员" }
-                            option { value: "1", "普通用户" }
-                            option { value: "100", "超级管理员" }
-                        }
-                    }
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "剩余额度 (quota)" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{LBL_QUOTA}" }
                         input {
                             class: "{MODAL_INPUT} font-mono",
                             r#type: "text",
@@ -667,6 +770,17 @@ fn UserForm(
                             oninput: move |e| quota.set(e.value()),
                         }
                         p { class: "mt-1 text-xs text-zinc-500", "折合 {quota_hint}" }
+                    }
+                }
+            }
+
+            // —— Tab 2:分组与备注 ——
+            if tab() == FormTab::Group {
+                div { class: "space-y-4",
+                    div {
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "生效分组" }
+                        GroupChips { group, on_change: move |v: Vec<String>| group.set(v) }
+                        p { class: "mt-1 text-xs text-zinc-500", "点击分组切换选中,可多选;首个分组为计费生效分组。" }
                     }
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "管理员备注(仅管理员可见)" }
@@ -680,20 +794,137 @@ fn UserForm(
                 }
             }
 
+            // —— Tab 3:绑定(只读) ——
+            if tab() == FormTab::Binding {
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
+                    p { class: "mb-2 text-[11px] text-zinc-500", "第三方账号绑定(后端暂未返回,只读)" }
+                    div { class: "space-y-1.5",
+                        for (label, value) in [("GitHub", "-"), ("Discord", "-"), ("OIDC", "-"), ("WeChat", "-"), ("Telegram", "-"), (LBL_EMAIL, email_bound)] {
+                            div { class: "flex justify-between gap-2",
+                                span { class: "text-zinc-400", "{label}" }
+                                span { class: "font-medium text-zinc-200", "{value}" }
+                            }
+                        }
+                    }
+                }
+            }
+
             div { class: "mt-6 flex gap-3",
                 button {
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
                     {BTN_CANCEL}
                 }
-                button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
-                    // 角色回写(set_role);新建端点待接,暂以 set_role 占位
-                    onclick: move |_| {
-                        let action = "set_role".to_string();
-                        on_submit.call((action, Some(role().to_string())));
-                    },
-                    "{submit_label}"
+                if tab() != FormTab::Binding {
+                    button {
+                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                        // 每个 tab 只回写自己负责的字段(角色 / 分组)。
+                        onclick: move |_| do_submit(),
+                        "{submit_label}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 分组选择器:形似输入框的覆盖面板,chips 多选,点选切换选中态。
+///
+/// 后端 `auth_users.groups` 是 TEXT[] 多值(`set_groups` 整体替换);
+/// 选中集合在父级 signal 里维护,本组件只负责渲染与上报增删。
+/// 首个选中项即生效分组(计费组倍率 / token 未设组时的回落值)。
+#[component]
+fn GroupChips(group: Signal<Vec<String>>, on_change: EventHandler<Vec<String>>) -> Element {
+    // 分组列表由面板拉取后注入;本组件只读,不认识来源
+    let groups = use_context::<Signal<Vec<(String, String)>>>();
+    let list = groups();
+
+    rsx! {
+        div {
+            class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 focus-within:border-zinc-500",
+            "data-testid": "user-group-chips",
+            role: "group",
+            "aria-label": "生效分组选择",
+
+            if list.is_empty() {
+                p { class: "text-xs text-zinc-500", "暂无分组(后端 /api/group 为空)" }
+            } else {
+                div { class: "flex flex-wrap gap-1.5",
+                    for (label, value) in list.iter() {
+                        {
+                            let on = group().iter().any(|g| g == value);
+                            let tone = if on {
+                                "border-zinc-100 bg-zinc-100 text-zinc-900"
+                            } else {
+                                "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                            };
+                            let v = value.clone();
+                            rsx! {
+                                button {
+                                    class: "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors {tone}",
+                                    "data-testid": "user-group-chip-{value}",
+                                    "aria-pressed": "{on}",
+                                    onclick: move |_| {
+                                        let mut next: Vec<String> = group()
+                                            .iter()
+                                            .filter(|g| *g != &v)
+                                            .cloned()
+                                            .collect();
+                                        if next.len() == group().len() {
+                                            // 原集合不含本项 = 新增
+                                            next.push(v.clone());
+                                        }
+                                        on_change.call(next);
+                                    },
+                                    "{label}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 角色选择器:单选 chips 面板(替代原生 `<select>`,与分组 chips 同款外观)。
+///
+/// 角色是单值枚举(1 | 10 | 100),选中即替换;候选取 `fetch_roles()`
+/// 的非「全部」项,标签与筛选胶囊/卡片徽标同源。
+#[component]
+fn RoleChips(role: Signal<u16>, on_change: EventHandler<u16>) -> Element {
+    let items: Vec<(&'static str, u16)> = api::fetch_roles()
+        .iter()
+        .filter(|(_, v)| *v != 0)
+        .copied()
+        .collect();
+
+    rsx! {
+        div {
+            class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 focus-within:border-zinc-500",
+            "data-testid": "user-role-chips",
+            role: "group",
+            "aria-label": "角色权限选择",
+
+            div { class: "flex flex-wrap gap-1.5",
+                for (label, value) in items {
+                    {
+                        let on = role() == value;
+                        let tone = if on {
+                            "border-zinc-100 bg-zinc-100 text-zinc-900"
+                        } else {
+                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                        };
+                        rsx! {
+                            button {
+                                class: "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors {tone}",
+                                "data-testid": "user-role-chip-{value}",
+                                "aria-pressed": "{on}",
+                                onclick: move |_| on_change.call(value),
+                                "{label}"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -709,7 +940,7 @@ fn TopUpForm(
 ) -> Element {
     let mut amount = use_signal(|| "50".to_string());
     let parsed = amount().trim().parse::<f64>().ok().filter(|v| *v > 0.0);
-    // 充值金额(元) → quota 增量;展示充值后额度
+    // 充值金额(元) → 内部额度增量;展示充值后额度
     let delta_quota = parsed.map(|v| cny_to_quota(v).max(0));
     let after = delta_quota
         .map(|d| fmt_cny(current_quota + d))
@@ -720,7 +951,7 @@ fn TopUpForm(
             div { class: "space-y-4",
                 div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
                     div { class: "flex justify-between gap-2",
-                        span { class: "text-zinc-400", "当前额度" }
+                        span { class: "text-zinc-400", "当前{LBL_QUOTA}" }
                         span { class: "font-medium text-zinc-200", "{fmt_cny(current_quota)}" }
                     }
                 }
@@ -732,10 +963,10 @@ fn TopUpForm(
                         value: "{amount}",
                         oninput: move |e| amount.set(e.value()),
                     }
-                    p { class: "mt-1 text-xs text-zinc-500", "折合 {fmt_cny(delta_quota.unwrap_or(0))} quota" }
+                    p { class: "mt-1 text-xs text-zinc-500", "折合 {fmt_cny(delta_quota.unwrap_or(0))}" }
                 }
                 div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "充值后额度" }
+                    span { class: "text-zinc-400", "充值后{LBL_QUOTA}" }
                     span { class: "font-medium text-emerald-400", "{after}" }
                 }
             }

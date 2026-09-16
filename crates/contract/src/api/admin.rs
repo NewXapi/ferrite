@@ -84,10 +84,16 @@ pub struct AdminUserDto {
     pub email: String,
     pub quota: i64,
     pub used_quota: i64,
-    /// 后端 UserView 暂无此列,缺省 0 (2026-09-09 curl 实测)。
+    /// 请求计数。后端 `UserView` 无此列 (2026-09-09 curl 实测),
+    /// wire 缺省 0,前端「请求数」卡按后端实际返回渲染。
     #[serde(default)]
     pub request_count: u64,
+    /// 生效分组 (`auth_users.groups[1]`,缺省 "default")。
+    #[serde(default)]
     pub group: String,
+    /// 全部生效分组(迁移 0015 起多值);`groups[1]` 即 [`group`](Self::group)。
+    #[serde(default)]
+    pub groups: Vec<String>,
     pub status: u8,
     pub role: u16,
     pub created_at: String,
@@ -104,6 +110,7 @@ impl From<&UserRecord> for AdminUserDto {
             used_quota: r.used_quota,
             request_count: r.request_count,
             group: r.group.clone(),
+            groups: vec![r.group.clone()],
             status: r.status,
             role: r.role,
             created_at: r.created_at.format("%Y-%m-%d").to_string(),

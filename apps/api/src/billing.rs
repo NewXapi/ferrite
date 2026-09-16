@@ -381,14 +381,15 @@ async fn record_settlement(
     // （gate 侧快照的 group 同源）；查不到组的用户按 None（缺省 1.0）扣，
     // 不因组查询失败漏扣费。不足时 clamp 到 0 并返回实扣——网关语义是
     // "尽力扣，余账由下次请求的 prehold 拦截兜底"，不追讨已转发 token。
-    let group: Option<String> = match sqlx::query_scalar::<_, String>(
-        "SELECT group_id FROM auth_users WHERE key = $1",
+    // 用户分组是多值数组（迁移 0015）：生效分组取 groups[1]。
+    let group: Option<String> = match sqlx::query_scalar::<_, Vec<String>>(
+        "SELECT groups FROM auth_users WHERE key = $1",
     )
     .bind(user_uuid)
     .fetch_one(pool)
     .await
     {
-        Ok(g) => Some(g),
+        Ok(g) => g.into_iter().next(),
         Err(sqlx::Error::RowNotFound) => None,
         Err(e) => {
             tracing::warn!(error = %e, user_key = %user_uuid, "group lookup failed; deducting at default rate");

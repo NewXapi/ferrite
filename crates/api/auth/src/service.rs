@@ -30,7 +30,9 @@ struct UserRow {
     status: i16,
     quota: i64,
     used_quota: i64,
-    group_id: String,
+    /// 生效分组数组(迁移 0015);groups[1] 为生效分组 —— token 未显式设组时的
+    /// 回落值,也是 billing 组倍率的取数键。group_id 为旧死列,读取侧已全切到本列。
+    groups: Vec<String>,
     auth_version: i64,
     created_at: DateTime<Utc>,
 }
@@ -46,13 +48,17 @@ pub struct UserView {
     pub status: u8,
     pub quota: i64,
     pub used_quota: i64,
+    /// 生效分组(groups[1]);为 token 未显式设组时的回落值。
     pub group: String,
+    /// 全部生效分组(多选);groups[1] 即 [`group`](Self::group)。
+    pub groups: Vec<String>,
     pub auth_version: i64,
     pub created_at: DateTime<Utc>,
 }
 
 impl From<UserRow> for UserView {
     fn from(r: UserRow) -> Self {
+        let group = r.groups.first().cloned().unwrap_or_default();
         Self {
             key: r.key.to_string(),
             username: r.username,
@@ -62,7 +68,8 @@ impl From<UserRow> for UserView {
             status: r.status as u8,
             quota: r.quota,
             used_quota: r.used_quota,
-            group: r.group_id,
+            group,
+            groups: r.groups,
             auth_version: r.auth_version,
             created_at: r.created_at,
         }
@@ -227,7 +234,7 @@ impl AuthService {
     ) -> Result<LoginResult, AuthError> {
         let row: Option<UserRow> = sqlx::query_as::<_, UserRow>(
             r#"SELECT key, username, display_name, email, password_hash, role, status,
-                      quota, used_quota, group_id, auth_version, created_at
+                      quota, used_quota, groups, auth_version, created_at
                FROM auth_users WHERE username = $1"#,
         )
         .bind(username)
@@ -279,9 +286,9 @@ impl AuthService {
 
         let res = sqlx::query(
             r#"INSERT INTO auth_users (key, username, display_name, email, password_hash,
-                                        role, status, quota, used_quota, group_id,
+                                        role, status, quota, used_quota, groups,
                                         auth_version, created_at)
-               VALUES ($1, $2, $3, $4, $5, 1, 1, 0, 0, 'default', 1, $6)"#,
+               VALUES ($1, $2, $3, $4, $5, 1, 1, 0, 0, ARRAY['default'], 1, $6)"#,
         )
         .bind(key)
         .bind(username)
@@ -352,7 +359,7 @@ impl AuthService {
         // 新 refresh — 调 issue_session 需要 UserRow，从 DB 拉
         let user: UserRow = sqlx::query_as::<_, UserRow>(
             r#"SELECT key, username, display_name, email, password_hash, role, status,
-                      quota, used_quota, group_id, auth_version, created_at
+                      quota, used_quota, groups, auth_version, created_at
                FROM auth_users WHERE key = $1"#,
         )
         .bind(user_key)
@@ -418,7 +425,7 @@ impl AuthService {
     async fn fetch_user_by_key(&self, key: Uuid) -> Result<UserView, AuthError> {
         let row: UserRow = sqlx::query_as::<_, UserRow>(
             r#"SELECT key, username, display_name, email, password_hash, role, status,
-                      quota, used_quota, group_id, auth_version, created_at
+                      quota, used_quota, groups, auth_version, created_at
                FROM auth_users WHERE key = $1"#,
         )
         .bind(key)
@@ -446,7 +453,7 @@ impl AuthService {
 
         let row: UserRow = sqlx::query_as::<_, UserRow>(
             r#"SELECT key, username, display_name, email, password_hash, role, status,
-                      quota, used_quota, group_id, auth_version, created_at
+                      quota, used_quota, groups, auth_version, created_at
                FROM auth_users WHERE key = $1"#,
         )
         .bind(user_key)
@@ -532,6 +539,101 @@ impl AuthService {
         Ok(items)
     }
 
+    /// admin 创建用户 — 管理台造账号入口。
+    ///
+    /// 与公开注册流 (`register`) 的差异：
+    /// - 管理员可指定 `role` / `quota` / `groups`（注册流固定 1/0/['default']）；
+    /// - `email` 可空且唯一性冲突同样映射为 [`AuthError::EmailTaken`]；
+    /// - 用户名上限 32 字符，与注册流一致。
+    ///
+    /// 分组不做存在性校验：`auth_users.groups` 是普通 TEXT[]，
+    /// 与注册流同规格（`api_groups` 引用完整性由渠道/分组管理侧保证）。
+    /// 空切片落库为 `'{}'` —— 生效分组为空,等价于无组(回落默认倍率)。
+    pub async fn admin_create_user(
+        &self,
+        username: &str,
+        password_plain: &str,
+        email: Option<&str>,
+        role: u16,
+        quota: i64,
+        groups: &[String],
+    ) -> Result<UserView, AuthError> {
+        if username.trim().is_empty() {
+            return Err(AuthError::BadRequest("username required".into()));
+        }
+        if username.chars().count() > 32 {
+            return Err(AuthError::BadRequest("username <= 32 chars".into()));
+        }
+        validate_password(password_plain)?;
+        if ![1, 10, 100].contains(&(role as i16)) {
+            return Err(AuthError::BadRequest("role must be 1 | 10 | 100".into()));
+        }
+        let phc = password::hash(password_plain)?;
+        let key = Uuid::new_v4();
+        let now: DateTime<Utc> = Utc::now();
+
+        let res = sqlx::query(
+            r#"INSERT INTO auth_users (key, username, display_name, email, password_hash,
+                                        role, status, quota, used_quota, groups,
+                                        auth_version, created_at)
+               VALUES ($1, $2, $2, $3, $4, $5, 1, $6, 0, $7, 1, $8)"#,
+        )
+        .bind(key)
+        .bind(username)
+        .bind(email)
+        .bind(&phc)
+        .bind(role as i16)
+        .bind(quota)
+        .bind(groups)
+        .bind(now)
+        .execute(&self.pool)
+        .await;
+
+        if let Err(e) = res {
+            // 23505 unique_violation — 与 register 同款按约束名分流
+            if let sqlx::Error::Database(db) = &e
+                && db.code().as_deref() == Some("23505")
+            {
+                let constraint = db.constraint().unwrap_or_default();
+                return Err(if constraint.contains("email") {
+                    AuthError::EmailTaken
+                } else {
+                    AuthError::UsernameTaken
+                });
+            }
+            return Err(AuthError::Db(e));
+        }
+
+        self.fetch_user_by_key(key).await
+    }
+
+    /// admin 修改用户生效分组 — `auth_users.groups`（多值,整体替换）。
+    ///
+    /// 语义与 `manage_user` 各动作一致：按 key 定位、`rows_affected=0`
+    /// 判 [`AuthError::UserNotFound`]。分组名不做存在性校验（TEXT[] 列）。
+    /// 空切片 = 清空全部分组(生效分组变为空)。
+    pub async fn set_user_groups(
+        &self,
+        user_key: Uuid,
+        groups: &[String],
+    ) -> Result<UserView, AuthError> {
+        // 空切片允许(= 清空分组),但至少校验元素非空,防 UI 误传空白名
+        if groups.iter().any(|g| g.trim().is_empty()) {
+            return Err(AuthError::BadRequest("group name must not be empty".into()));
+        }
+        let affected =
+            sqlx::query("UPDATE auth_users SET groups = $2, updated_at = now() WHERE key = $1")
+                .bind(user_key)
+                .bind(groups)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
+        if affected == 0 {
+            return Err(AuthError::UserNotFound);
+        }
+        self.fetch_user_by_key(user_key).await
+    }
+
     /// admin 用户列表 — 分页 + 搜索 (username/email/display_name ILIKE)。
     pub async fn list_users(
         &self,
@@ -555,7 +657,7 @@ impl AuthService {
 
         let rows: Vec<UserRow> = sqlx::query_as::<_, UserRow>(
             r#"SELECT key, username, display_name, email, password_hash, role, status,
-                      quota, used_quota, group_id, auth_version, created_at
+                      quota, used_quota, groups, auth_version, created_at
                FROM auth_users
                WHERE username ILIKE $1 OR email ILIKE $1 OR display_name ILIKE $1
                ORDER BY created_at DESC
@@ -626,6 +728,29 @@ impl AuthService {
                 )
                 .bind(target_key)
                 .bind(delta)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
+                if affected == 0 {
+                    return Err(AuthError::UserNotFound);
+                }
+            }
+            "set_groups" => {
+                // value = 逗号/空白分隔的分组名列表,整体替换 groups 数组
+                let groups: Vec<String> = value
+                    .iter()
+                    .flat_map(|v| {
+                        v.split([',', ' ', '\n', '\t'])
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string)
+                    })
+                    .collect();
+                let affected = sqlx::query(
+                    "UPDATE auth_users SET groups = $2, updated_at = now() WHERE key = $1",
+                )
+                .bind(target_key)
+                .bind(&groups)
                 .execute(&self.pool)
                 .await?
                 .rows_affected();
