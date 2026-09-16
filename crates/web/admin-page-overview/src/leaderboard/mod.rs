@@ -105,12 +105,16 @@ fn RankCard(
         .map(|(i, r)| {
             let r: &UsageTopRow = r;
             let v = metric.of(r);
-            // 增长率恒按 tokens 口径环比(与总览页 Top10 一致);
-            // 份额跟随所选 metric 口径
-            let meta = growth_of(r.previous_tokens, r.tokens).map(|g| RankRowMeta {
-                label: g.label().to_string(),
-                class: g.text_class(),
-            });
+            // 环比标签只在上一窗确有数据(previous_tokens > 0)时展示:
+            // 消耗榜里「↑new」语义不成立(维护者反馈),旧 wire 缺字段或新进榜一律不标
+            let meta = if r.previous_tokens > 0 {
+                growth_of(r.previous_tokens, r.tokens).map(|g| RankRowMeta {
+                    label: g.label().to_string(),
+                    class: g.text_class(),
+                })
+            } else {
+                None
+            };
             RankRowView {
                 key: r.name.clone(),
                 rank: i + 1,

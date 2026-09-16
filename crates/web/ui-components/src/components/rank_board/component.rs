@@ -74,7 +74,9 @@ pub fn RankBoard(
                     CardTitle { class: "text-sm text-zinc-100", "{title}" }
                     CardDescription { class: "text-[11px]", "{subtitle}" }
                 }
-                div { class: "grid grid-cols-1 gap-x-6 gap-y-5 pt-1 md:grid-cols-2",
+                // 单列条目(xl 三卡并排时卡内容区仅 ~320px,双列会把名字+数值+环比挤到
+                // 158px/列,维护者多轮反馈的"间距没做好"根因在此);呼吸感由 gap-y-5 承担
+                div { class: "grid grid-cols-1 gap-y-5 pt-1",
                     for r in rows {
                         div {
                             key: "{r.key}",
