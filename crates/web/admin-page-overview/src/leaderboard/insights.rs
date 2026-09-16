@@ -205,7 +205,7 @@ fn MoveList(
     moves: Vec<RankMove>,
 ) -> Element {
     rsx! {
-        div { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+        div { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "{testid}",
             div {
                 h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
@@ -255,14 +255,14 @@ pub fn MoversCards(state: MoversState) -> Element {
                 for t in ["leaderboard-movers-loading", "leaderboard-droppers-loading"] {
                     div {
                         key: "{t}",
-                        class: "h-40 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60",
+                        class: "h-40 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60 transition-[border-color] duration-150 hover:border-secondary-hover",
                         "data-testid": "{t}",
                     }
                 }
             }
         },
         MoversState::Failed(e) => rsx! {
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-400",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-400 transition-[border-color] duration-150 hover:border-secondary-hover",
                 "data-testid": "leaderboard-movers-error",
                 "名次变动加载失败:{e}"
             }
@@ -388,7 +388,7 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
     if loading {
         return rsx! {
             div {
-                class: "h-[148px] animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60",
+                class: "h-[148px] animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60 transition-[border-color] duration-150 hover:border-secondary-hover",
                 "data-testid": "leaderboard-vendor-share-loading",
             }
         };
@@ -417,7 +417,7 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
         })
         .collect();
     rsx! {
-        div { class: "space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+        div { class: "space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "leaderboard-vendor-share",
             div {
                 h3 { class: "text-sm font-semibold text-zinc-100", "厂商份额" }

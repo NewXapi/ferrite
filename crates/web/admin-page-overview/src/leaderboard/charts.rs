@@ -16,7 +16,7 @@ pub fn ModelDistributionCard() -> Element {
     let total_tokens: f64 = MODELS.iter().map(|m| m.tokens).sum();
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between gap-3",
                 div {
                     h3 { class: "text-sm font-semibold text-zinc-100",
@@ -81,7 +81,7 @@ pub fn ModelDistributionCard() -> Element {
 #[component]
 pub fn PerformanceLatencyCard() -> Element {
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between",
                 div {
                     h3 { class: "text-sm font-semibold text-zinc-100",
@@ -158,7 +158,7 @@ pub fn GroupQuotaCard() -> Element {
     ];
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between",
                 div {
                     h3 { class: "text-sm font-semibold text-zinc-100",

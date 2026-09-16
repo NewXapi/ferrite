@@ -102,7 +102,9 @@ fn RankCard(
         .collect();
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
+        // 卡壳与 ui-components Card(hoverable) 同源:仅 hover 边框变亮(secondary-hover token),
+        // 几何/圆角/内边距不变
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "{testid}",
             div {
                 h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
@@ -121,9 +123,8 @@ fn RankCard(
                         let growth = growth_of(r.previous_tokens, r.tokens);
                         let share = share_text(v, total);
                         rsx! {
-                            // 行容器带轻量内边距与底色(比卡面 zinc-900 亮一档的
-                            // zinc-800/40,任务建议的 zinc-900/40 与父卡同色不可见)
-                            div { key: "{r.name}", class: "flex items-center gap-2.5 rounded-lg bg-zinc-800/40 px-2.5 py-2",
+                        // 行容器只保留 gap 呼吸感;条目底色(8090 预览反馈:「类似元素1这种」很难看)已去掉
+                        div { key: "{r.name}", class: "flex items-center gap-2.5",
                                 span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm", "{i + 1}" }
                                 div { class: "min-w-0 flex-1",
                                     div { class: "flex items-center justify-between gap-3",
@@ -265,19 +266,13 @@ pub fn LeaderboardPanel() -> Element {
             // 区块一点五: 厂商份额(真实区上方,demo 之后、用量榜之前;复用 by=model 聚合)
             VendorShareCard { rows: data.clone(), loading: is_loading }
 
-            // ===== 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留) =====
+            // 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留)。
+            // 时间窗 tab 与标题同行(8090 预览反馈④);介绍语只留一行口径说明。
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
                     h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "真实用量榜" }
-                    p { class: "mt-1 text-xs text-zinc-400", "按后端消费日志聚合(/api/log/top):窗口内各模型的 Token 消耗、调用次数与费用" }
+                    p { class: "mt-1 text-xs text-zinc-400", "后端消费日志聚合 · 窗口内 {data.len()} 个模型有调用" }
                 }
-                span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
-                    "窗口内 {data.len()} 个模型有调用"
-                }
-            }
-
-            // 时间窗切换(口径与总览页 trend 一致;数据进面板自动拉取,无刷新按钮)
-            div { class: "flex flex-wrap items-center gap-3",
                 div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
                     for t in ["今天", "本周", "本月", "今年"] {
                         button {
@@ -338,8 +333,11 @@ pub fn LeaderboardPanel() -> Element {
                             rows: data,
                         }
                     }
-                    // 上升/下跌最快双卡(真实区新增,follows 当前 timeframe)
-                    MoversCards { state: movers() }
+                    // 前3卡与升降速双卡间距加大(8090 预览反馈①:三面板跟下面两面板没间距);
+                    // 跟随当前 timeframe,数据进面板自动拉取
+                    div { class: "mt-6",
+                        MoversCards { state: movers() }
+                    }
                 }
             }
         }
