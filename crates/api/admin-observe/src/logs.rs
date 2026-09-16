@@ -5,12 +5,15 @@
 //!
 //! log_type: 1=topup 2=consume 3=manage 4=system (对齐 new-api)。
 
+use std::collections::HashMap;
+
 use axum::http::HeaderMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
+use crate::Freshness;
 use auth::error::AuthError;
 use auth::routes::bearer_user;
 use auth::service::AuthService;
@@ -320,6 +323,13 @@ impl LogService {
     }
 
     /// dashboard 汇总 — 一次查全。
+    ///
+    /// `quotaRemaining` 口径：`SUM(quota) FROM auth_users WHERE status = 1`
+    /// （仅启用用户）。理由：登录侧可用判据即 `status == 1`（auth service
+    /// 只放行启用用户），禁用/封禁用户的残留余额不可再消费，计入会高估
+    /// 平台可消耗余量；与 `channelsEnabled` 只数 `status = 1` 渠道同精神。
+    /// 响应尾部的 `asOf` 来自 [`Freshness`]（原则 7：不伪造实时）——单机
+    /// 平表无分区语义，`partial` 恒 false。
     pub async fn dashboard(&self) -> Result<serde_json::Value, AuthError> {
         let (users, tokens, channels, channels_enabled, groups): (i64, i64, i64, i64, i64) =
             sqlx::query_as(
@@ -333,6 +343,16 @@ impl LogService {
             .fetch_one(&self.pool)
             .await?;
         let stat = self.stat().await?;
+        // 剩余可用额度：只汇总启用用户（口径见方法 doc）。
+        let (quota_remaining,): (i64,) = sqlx::query_as(
+            r#"SELECT COALESCE(sum(quota), 0)::bigint FROM auth_users WHERE status = 1"#,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let fresh = Freshness {
+            as_of: Utc::now(),
+            partial: false, // 单机平表：要么全量要么查不到，无分区语义
+        };
         Ok(serde_json::json!({
             "users": users,
             "tokens": tokens,
@@ -343,12 +363,20 @@ impl LogService {
             "requestsToday": stat.requests,
             "rpm": stat.rpm,
             "tpm": stat.tpm,
+            "quotaRemaining": quota_remaining,
+            // chrono 序列化为 RFC3339/ISO8601 UTC 字符串
+            "asOf": fresh.as_of,
         }))
     }
 
     /// 消耗排行聚合（总览 Top10）：按用户或模型 GROUP BY 汇总 tokens/quota/调用数。
     /// `by` = "user" → 按 username 分组；"model" → 按 model_name 分组。
     /// `group_col` 只来自白名单枚举,不拼接外部输入。
+    ///
+    /// 每行附 [`UsageTopRow::previous_tokens`]：同口径下**上一等长窗口**
+    /// `[start-(end-start), start)`（`end` 缺省按 now 计）的同实体 tokens。
+    /// `start` 未提供（当前窗口无下界，不可定时）或窗口长度非正时，
+    /// 全部行 `previous_tokens = 0`；上窗无该实体亦为 0。
     pub async fn top_usage(
         &self,
         by: &str,
@@ -384,13 +412,84 @@ impl LogService {
             .bind(limit)
             .fetch_all(&self.pool)
             .await?;
+
+        // 上一等长窗口聚合：复用同一白名单选列与 log_type 常量拼装（防注入
+        // 约束同上）。只在 start 提供且窗口长度为正时才查；上一窗不需要
+        // LIMIT——只为当前窗出现的实体查值，多取无害。
+        let mut previous: HashMap<String, i64> = HashMap::new();
+        if let Some(s) = start {
+            let end_eff = end.unwrap_or_else(Utc::now);
+            let window = end_eff - s;
+            if window > chrono::Duration::zero() {
+                let prev_sql = format!(
+                    r#"SELECT {group_col} AS name,
+                              sum(prompt_tokens + completion_tokens)::bigint AS tokens
+                       FROM usage_logs
+                       WHERE log_type = {consume}
+                         AND ({group_col} <> '')
+                         AND created_at >= $1
+                         AND created_at < $2
+                       GROUP BY {group_col}"#
+                );
+                let prev_rows: Vec<(String, i64)> = sqlx::query_as(&prev_sql)
+                    .bind(s - window)
+                    .bind(s)
+                    .fetch_all(&self.pool)
+                    .await?;
+                previous = prev_rows.into_iter().collect();
+            }
+        }
+
         Ok(rows
             .into_iter()
             .map(|(name, tokens, quota, calls)| UsageTopRow {
+                previous_tokens: previous.get(&name).copied().unwrap_or(0),
                 name,
                 tokens,
                 quota,
                 calls,
+            })
+            .collect())
+    }
+
+    /// 错误流水聚合（排障榜）：`log_type = 5` 在 `now() - hours` 起的窗口内
+    /// 按 model_name 分组，返回 {模型, 错误次数, 最后一次出现时刻}。
+    ///
+    /// - `hours` clamp 1..=168（最多回看一周），`limit` clamp 1..=50；
+    /// - 排序：count 降序，同数次按模型名升序（确定性输出，便于测试与前端断言）；
+    /// - 空模型名剔除（错误可能未关联模型，单独成组无排障价值）；
+    /// - log_type 取常量而非字面量：与写侧 [`UsageEvent::error`] 同源。
+    pub async fn error_stats(
+        &self,
+        hours: i64,
+        limit: i64,
+    ) -> Result<Vec<UsageErrorRow>, AuthError> {
+        let hours = hours.clamp(1, 168);
+        let limit = limit.clamp(1, 50);
+        let err_type = LOG_TYPE_ERROR;
+        let sql = format!(
+            r#"SELECT model_name,
+                      count(*)::bigint AS count,
+                      max(created_at) AS last_seen
+               FROM usage_logs
+               WHERE log_type = {err_type}
+                 AND model_name <> ''
+                 AND created_at >= now() - make_interval(hours => $1::int)
+               GROUP BY model_name
+               ORDER BY count DESC, model_name ASC
+               LIMIT $2"#
+        );
+        let rows: Vec<(String, i64, DateTime<Utc>)> = sqlx::query_as(&sql)
+            .bind(hours as i32)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(model_name, count, last_seen_at)| UsageErrorRow {
+                model_name,
+                count,
+                last_seen_at,
             })
             .collect())
     }
@@ -450,6 +549,23 @@ pub struct UsageTopRow {
     pub tokens: i64,
     pub quota: i64,
     pub calls: i64,
+    /// 上一等长窗口的同实体 tokens 合计（环比参考）：
+    /// 同 `by`/`start`/`limit` 口径下 `[start-(end-start), start)` 窗口
+    /// （`end` 缺省按 now 计）。上窗无该实体、或请求未提供 `start`
+    /// （窗口不可定时，无上一窗可言）时为 0。
+    pub previous_tokens: i64,
+}
+
+/// 错误流水聚合行（`log_type = 5`，按模型分组）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageErrorRow {
+    /// 模型名（空模型名不参与聚合）。
+    pub model_name: String,
+    /// 窗口内该模型的错误次数。
+    pub count: i64,
+    /// 窗口内最后一次错误时刻 (RFC3339)。
+    pub last_seen_at: DateTime<Utc>,
 }
 
 /// 趋势行（时间桶 × 模型）。
@@ -478,6 +594,7 @@ pub fn router(state: LogAppState) -> axum::Router {
         .route("/api/log", get(list))
         .route("/api/log/stat", get(stat))
         .route("/api/log/top", get(top))
+        .route("/api/log/errors", get(errors))
         .route("/api/log/trend", get(trend))
         .route("/api/log/self", get(list_self))
         .route("/api/log/self/stat", get(self_stat))
@@ -674,6 +791,43 @@ async fn trend(
         .await
     {
         Ok(items) => Ok(axum::Json(serde_json::json!({ "items": items }))),
+        Err(e) => Err(err_json(e)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ErrorsQuery {
+    /// 回看窗口小时数，默认 24（服务层 clamp 1..=168）。
+    hours: Option<i64>,
+    /// 返回条数，默认 10（服务层 clamp 1..=50）。
+    limit: Option<i64>,
+}
+
+/// GET /api/log/errors?hours=24&limit=10 — 错误流水按模型聚合（排障榜）。
+/// 鉴权与兄弟端点一致（admin role 阈值，同 router 层）。
+async fn errors(
+    axum::extract::State(state): axum::extract::State<LogAppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<ErrorsQuery>,
+) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, axum::Json<serde_json::Value>)>
+{
+    let user = bearer_user(&state.auth, &headers).await.map_err(err_json)?;
+    if user.role < auth::routes::ADMIN_ROLE_THRESHOLD {
+        return Err(err_json(AuthError::Forbidden));
+    }
+    let fresh = Freshness {
+        as_of: Utc::now(),
+        partial: false, // 单机平表：无分区语义
+    };
+    match state
+        .svc
+        .error_stats(q.hours.unwrap_or(24), q.limit.unwrap_or(10))
+        .await
+    {
+        Ok(items) => Ok(axum::Json(
+            serde_json::json!({ "items": items, "asOf": fresh.as_of }),
+        )),
         Err(e) => Err(err_json(e)),
     }
 }
