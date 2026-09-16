@@ -104,10 +104,12 @@ dev-backend *args:
 #   全部 --watch false (仓库已知 dx watch 重建卡死)。
 dev-web port="8090" mode="":
     #!/usr/bin/env bash
+    # 锚定 justfile 所在目录（= 仓库根），使配方可从任意 cwd 调用
+    cd "$(justfile_directory)"/apps/admin-web
     if [ "{{mode}}" = "debug" ]; then
-      cd apps/admin-web && dx serve --platform web --port {{port}} --watch false --features debug-auto-login
+      dx serve --platform web --port {{port}} --watch false --features debug-auto-login
     else
-      cd apps/admin-web && dx serve --platform web --port {{port}} --watch false
+      dx serve --platform web --port {{port}} --watch false
     fi
 
 # dev 环境体检：查共享后端(3211)/前端 serve(8090) 监听 + 打印进程卫生提醒
