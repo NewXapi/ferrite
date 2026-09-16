@@ -4,11 +4,16 @@
 //! - GET /api/models → {"items":[ModelView], "total"} (admin-catalog models.rs)
 //! - GET /api/log/top → {"items":[UsageTopRow]}       (admin-observe logs.rs)
 //! 以及统计卡新增的纯展示函数: fmt_usd / sparkline 重切与归一化 / 增长率三态 / 份额。
+//! W4 追加: /api/log/errors 信封解析、趋势悬浮卡排序+Total+折叠、时间窗副标题文案、
+//! lastSeen 本地时间格式化。
 
 use admin_page_overview::api::{
-    Growth, ModelCardView, UsageTopRow, UsageTrendRow, as_of_local_time, fmt_usd, growth_of,
-    hourly_sums, pivot_trend, reslice_sum, share_text, sparkline_points, sparkline_svg_paths,
+    Growth, ModelCardView, TIP_MAX_ROWS, TIP_MORE_COLOR, UsageTopRow, UsageTrendRow,
+    as_of_local_time, fmt_usd, growth_of, hourly_sums, last_seen_local_time, pivot_trend,
+    reslice_sum, share_text, sparkline_points, sparkline_svg_paths, trend_column_tip,
+    window_caption,
 };
+use contract::api::usage::UsageErrorStatPage;
 
 fn row(bucket: &str, model: &str, tokens: i64) -> UsageTrendRow {
     UsageTrendRow {
@@ -414,4 +419,150 @@ fn as_of_local_time_parses_or_hides() {
     assert!(t.chars().all(|c| c.is_ascii_digit() || c == ':'));
     assert_eq!(as_of_local_time(""), None, "空 asOf → 不显示");
     assert_eq!(as_of_local_time("yesterday"), None, "垃圾串 → 不显示");
+}
+
+// ---- W4: 错误呈现卡 + 趋势悬浮卡折叠 + 时间窗副标题 ----
+
+/// trend_column_tip 测试色板:3 色,用于验证系列色按原始下标取模(与堆叠段同色)。
+const TIP_PAL: [&str; 3] = ["#c0ffee", "#c1ffee", "#c2ffee"];
+
+/// 悬浮卡整列分解:明细按值降序、系列色与堆叠段同色、Total = 全部原始值之和。
+#[test]
+fn trend_column_tip_sorts_desc_and_totals() {
+    let names = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+    let tip = trend_column_tip(&[100.0, 900.0, 50.0], &names, &TIP_PAL);
+    assert_eq!(tip.rows[0].0, "b", "值大的模型排前");
+    assert_eq!(
+        tip.rows[0].1, TIP_PAL[1],
+        "系列色按原始下标取色,不随排序漂移"
+    );
+    assert_eq!(tip.rows[1].0, "a");
+    assert_eq!(tip.rows[1].1, TIP_PAL[0]);
+    assert_eq!(tip.rows[2].0, "c");
+    assert_eq!(tip.rows[2].1, TIP_PAL[2]);
+    assert_eq!(tip.total, 1050.0, "Total 含全部原始值");
+}
+
+/// 全零与空输入:无明细行(0.01 阈值过滤)、Total 为 0——悬浮卡只剩 Total 行,诚实呈现空列。
+#[test]
+fn trend_column_tip_all_zero_and_empty_give_total_only() {
+    let names = vec!["a".to_string(), "b".to_string()];
+    let tip = trend_column_tip(&[0.0, 0.0], &names, &TIP_PAL);
+    assert!(tip.rows.is_empty(), "全零明细全部被 0.01 阈值过滤");
+    assert_eq!(tip.total, 0.0);
+    let tip = trend_column_tip(&[], &[], &TIP_PAL);
+    assert!(tip.rows.is_empty(), "空输入无明细行");
+    assert_eq!(tip.total, 0.0);
+}
+
+/// 超 10 行折叠:保留前 10 行明细,第 11 行换「+N more」(中性 zinc 色块、值 = 被折叠合计)。
+#[test]
+fn trend_column_tip_folds_beyond_ten_rows() {
+    let names: Vec<String> = (0..13).map(|i| format!("m{i}")).collect();
+    let values: Vec<f64> = (0..13).map(|i| 100.0 - i as f64).collect();
+    let tip = trend_column_tip(&values, &names, &TIP_PAL);
+    assert_eq!(tip.rows.len(), TIP_MAX_ROWS + 1, "10 行明细 + 1 行折叠");
+    assert_eq!(tip.rows[0].0, "m0", "降序头部不动");
+    assert_eq!(tip.rows[9].0, "m9");
+    let more = &tip.rows[10];
+    assert_eq!(more.0, "+3 more", "折叠行标注被折叠行数");
+    assert_eq!(
+        more.1, TIP_MORE_COLOR,
+        "折叠行用中性 zinc 色块(不专属某模型色)"
+    );
+    assert_eq!(
+        more.2,
+        90.0 + 89.0 + 88.0,
+        "折叠行 value = m10+m11+m12 合计"
+    );
+    assert_eq!(
+        tip.total,
+        values.iter().sum::<f64>(),
+        "Total 仍含被折叠值,三段对得上账"
+    );
+}
+
+/// 恰好 10 行是边界:不折叠、不出「+N more」行。
+#[test]
+fn trend_column_tip_exactly_ten_rows_needs_no_fold() {
+    let names: Vec<String> = (0..10).map(|i| format!("m{i}")).collect();
+    let values: Vec<f64> = (0..10).map(|i| 100.0 - i as f64).collect();
+    let tip = trend_column_tip(&values, &names, &TIP_PAL);
+    assert_eq!(tip.rows.len(), 10, "恰好 10 行不折叠");
+    assert!(tip.rows.iter().all(|(name, ..)| !name.starts_with('+')));
+}
+
+/// GET /api/log/errors 信封:{"items":[{modelName,count,lastSeenAs}],"asOf"} 整体反序列化
+/// 为 contract UsageErrorStatPage(字段名 camelCase;asOf 由后端 DateTime<Utc> 序列化,带小数秒)。
+#[test]
+fn usage_error_stat_page_maps_backend_envelope() {
+    let raw = r#"{"items":[
+        {"modelName":"gpt-x","count":12,"lastSeenAt":"2026-09-16T16:59:00Z"},
+        {"modelName":"claude-y","count":3,"lastSeenAt":"2026-09-16T10:00:00Z"}
+    ],"asOf":"2026-09-16T17:00:00.123456789Z"}"#;
+    let p: UsageErrorStatPage = serde_json::from_str(raw).expect("errors 信封应可反序列化");
+    assert_eq!(p.items.len(), 2);
+    assert_eq!(p.items[0].model_name, "gpt-x");
+    assert_eq!(p.items[0].count, 12);
+    assert_eq!(p.items[0].last_seen_at, "2026-09-16T16:59:00Z");
+    assert_eq!(p.items[1].count, 3);
+    assert_eq!(
+        p.as_of, "2026-09-16T17:00:00.123456789Z",
+        "asOf 原样保留(带小数秒也能被 as_of_local_time 解析)"
+    );
+}
+
+/// 旧 wire 缺 asOf:serde default 兜底为空串,整页解析不失败;
+/// 调用方对空串走 as_of_local_time → None → 不显示(诚实降级,不伪造时间)。
+#[test]
+fn usage_error_stat_page_defaults_on_missing_as_of() {
+    let raw = r#"{"items":[{"modelName":"m","count":1,"lastSeenAt":"2026-09-16T10:00:00Z"}]}"#;
+    let p: UsageErrorStatPage = serde_json::from_str(raw).expect("缺 asOf 也应可解析");
+    assert_eq!(p.as_of, "", "缺 asOf 落空串兜底");
+    assert_eq!(p.items.len(), 1);
+    assert_eq!(as_of_local_time(&p.as_of), None, "空串 asOf → 不显示");
+}
+
+/// 空 items:合法解析、行列表为空 → 卡内渲染「近 24 小时无错误记录」空态(合计 0)。
+#[test]
+fn usage_error_stat_page_empty_items_is_honest_empty() {
+    let p: UsageErrorStatPage =
+        serde_json::from_str(r#"{"items":[],"asOf":"2026-09-16T17:00:00Z"}"#)
+            .expect("空 items 应可解析");
+    assert!(p.items.is_empty());
+    let total: i64 = p.items.iter().map(|r| r.count).sum();
+    assert_eq!(total, 0, "空 items 合计 0");
+}
+
+/// 时间窗副标题:四个 timeframe 全覆盖,与 window_start/pivot_trend 的桶数语义一致;
+/// 未知档落今年兜底(与 window_start 的 `_` 分支同口径)。
+#[test]
+fn window_caption_maps_all_four_timeframes() {
+    assert_eq!(window_caption("今天"), "近 24 小时 · 逐小时");
+    assert_eq!(window_caption("本周"), "近 7 天 · 逐天");
+    assert_eq!(window_caption("本月"), "近 30 天 · 逐天");
+    assert_eq!(window_caption("今年"), "近 12 个月 · 逐月");
+    assert_eq!(
+        window_caption("whatever"),
+        "近 12 个月 · 逐月",
+        "未知档落今年兜底"
+    );
+}
+
+/// lastSeen 本地时间:合法 RFC3339(含小数秒/时区偏移变体)→ HH:MM(断言形状不依赖机器时区);
+/// 空串/垃圾串 → None(行内以 — 占位)。
+#[test]
+fn last_seen_local_time_parses_or_hides() {
+    let t = last_seen_local_time("2026-09-16T17:00:00Z").expect("合法 RFC3339 应可解析");
+    assert_eq!(t.len(), 5, "HH:MM 共 5 字符");
+    assert_eq!(&t[2..3], ":", "冒号在 HH:MM 第 3 位");
+    assert!(t.chars().all(|c| c.is_ascii_digit() || c == ':'));
+    assert!(
+        last_seen_local_time("2026-09-16T17:00:00.123456789Z").is_some(),
+        "后端 DateTime<Utc> 序列化带小数秒,也应可解析"
+    );
+    let off = last_seen_local_time("2026-09-16T00:30:00+08:00").expect("带偏移的 RFC3339 应可解析");
+    assert_eq!(off.len(), 5);
+    assert_eq!(last_seen_local_time(""), None, "空串 → 不显示");
+    assert_eq!(last_seen_local_time("yesterday"), None, "垃圾串 → 不显示");
 }

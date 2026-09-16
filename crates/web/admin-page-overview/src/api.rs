@@ -1,7 +1,7 @@
 //! Dashboard 各页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 
 use client::{ApiClient, ApiResult};
-use contract::api::usage::{DashboardSummaryDto, UsageLogPage, UsageStatDto};
+use contract::api::usage::{DashboardSummaryDto, UsageErrorStatPage, UsageLogPage, UsageStatDto};
 
 /// `/api/models` 列表项的页面本地视图:只映射模型页实际展示的后端 `ModelView` 字段子集。
 ///
@@ -178,6 +178,18 @@ pub async fn trend_api(granularity: &str, start: &str) -> ApiResult<Vec<UsageTre
     ))
     .await?;
     Ok(r.items)
+}
+
+/// 真实调用: GET /api/log/errors?hours=24&limit=10 — 近 N 小时错误流水按模型聚合。
+///
+/// 响应信封 `{"items":[{modelName,count,lastSeenAt}],"asOf"}` 就是 contract 的
+/// [`UsageErrorStatPage`] 本体（items + asOf 双字段），直接整体反序列化即可，
+/// 不需要再过 [`Items<T>`] 单字段剥壳。`asOf` 带 `#[serde(default)]`：
+/// 旧 wire 缺该字段时落空串，调用方对 [`UsageErrorStatPage::as_of`] 做
+/// [`as_of_local_time`] 解析失败即隐藏（诚实降级，不伪造时间）。
+/// 错误情况:401/403(未登录或非管理员)、网络失败,均走 [`ApiResult`]。
+pub async fn errors_api(hours: u32, limit: u32) -> ApiResult<UsageErrorStatPage> {
+    get_json::<UsageErrorStatPage>(format!("/api/log/errors?hours={hours}&limit={limit}")).await
 }
 
 /// 真实调用: GET /api/monitor?days=42 — 渠道可用率（健康度区块数据源）。
@@ -508,4 +520,78 @@ pub fn share_text(value: i64, total: i64) -> Option<String> {
     } else {
         Some(format!("{pct:.1}%"))
     }
+}
+
+/// 趋势时间窗副标题：随 timeframe 变化，与 [`window_start`] 的窗口语义一致。
+///
+/// 今天→24 个小时桶、本周→7 个天桶、本月→30 个天桶、今年→12 个月桶
+/// （桶数与 [`pivot_trend`] 的 n 一一对应）。未知 timeframe 落今年档（同
+/// [`window_start`] 的 `_` 兜底口径）。
+pub fn window_caption(timeframe: &str) -> &'static str {
+    match timeframe {
+        "今天" => "近 24 小时 · 逐小时",
+        "本周" => "近 7 天 · 逐天",
+        "本月" => "近 30 天 · 逐天",
+        _ => "近 12 个月 · 逐月",
+    }
+}
+
+/// 悬浮卡整列分解的折叠阈值：明细超过 10 行时尾部折叠为一行「+N more」。
+pub const TIP_MAX_ROWS: usize = 10;
+
+/// 「+N more」折叠行的系列色块颜色：中性 zinc（聚合多系列，不再专属某个模型色），
+/// 取 [`crate::overview`] 模型调色板的 zinc 档 #a1a1aa 同值。
+pub const TIP_MORE_COLOR: &str = "#a1a1aa";
+
+/// 趋势图整列分解悬浮卡的内容：Total 合计 + 排序/折叠后的展示行。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrendColumnTip {
+    /// 全列合计（所有原始值之和，含被 0.01 阈值过滤的微值），渲染为顶部「Total」行。
+    pub total: f64,
+    /// 展示行 `(模型名, 系列色, 原始值)`：按值降序；超过 [`TIP_MAX_ROWS`] 行时
+    /// 第 11 行起折叠为一行——name = `+N more`、value = 被折叠行的值合计
+    /// （合计行/可见行/折叠行三段对得上账）、color = 中性 zinc [`TIP_MORE_COLOR`]。
+    pub rows: Vec<(String, &'static str, f64)>,
+}
+
+/// 整列分解悬浮卡的纯整形：排序（值降序）+ Total + 超限折叠。
+///
+/// 输入 `values`/`names` 与桶的 `per_model`/`model_order` 同序对齐（zip 取短边），
+/// `colors` 为系列色板（按原始下标取模，与直方图堆叠段同色）。值 ≤ 0.01 的微段
+/// 不进明细（与原悬浮卡过滤口径一致，避免一屏零碎行）；`total` 仍含全部原始值。
+/// 空输入 / 全零 → `rows` 空、`total` 0（调用方只剩 Total 行，诚实呈现空列）。
+pub fn trend_column_tip(
+    values: &[f64],
+    names: &[String],
+    colors: &[&'static str],
+) -> TrendColumnTip {
+    // 系列色与名称都按「原始下标 i」取(与直方图堆叠段同色,不随排序漂移);
+    // names.get(i) 缺位时该行跳过(调用方契约本就是 values/names 同序对齐)。
+    let mut rows: Vec<(String, &'static str, f64)> = values
+        .iter()
+        .enumerate()
+        .filter_map(|(i, v)| {
+            let name = names.get(i)?;
+            (*v > 0.01).then(|| (name.clone(), colors[i % colors.len()], *v))
+        })
+        .collect();
+    rows.sort_by(|a, z| z.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    let total: f64 = values.iter().sum();
+    if rows.len() > TIP_MAX_ROWS {
+        let folded: f64 = rows[TIP_MAX_ROWS..].iter().map(|(_, _, v)| *v).sum();
+        let more = rows.len() - TIP_MAX_ROWS;
+        rows.truncate(TIP_MAX_ROWS);
+        rows.push((format!("+{more} more"), TIP_MORE_COLOR, folded));
+    }
+    TrendColumnTip { total, rows }
+}
+
+/// RFC3339 时刻（`UsageErrorStatDto::last_seen_at` 等）→ 本地时区 `HH:MM`。
+///
+/// 错误榜行内只需时:分两段，比 [`as_of_local_time`] 的 HH:MM:SS 更省宽。
+/// 返回 `None` 表示解析失败（空串/非 RFC3339），调用方以 `—` 占位，不伪造时间。
+pub fn last_seen_local_time(rfc3339: &str) -> Option<String> {
+    chrono::DateTime::parse_from_rfc3339(rfc3339)
+        .ok()
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
 }

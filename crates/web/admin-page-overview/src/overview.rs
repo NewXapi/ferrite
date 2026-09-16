@@ -166,6 +166,9 @@ pub fn OverviewPanel() -> Element {
             // 渠道健康度(真实 /api/monitor 探活聚合)
             crate::health::ChannelHealth {}
 
+            // 近 24 小时错误(真实 /api/log/errors 聚合)——独立信号独立拉取,不阻塞面板其它数据
+            crate::errors::ErrorsPanel {}
+
             // 实时汇总统计卡(数据来自真实后端 /api/dashboard)
             div { class: "space-y-3",
                 div { class: "flex items-center justify-between",
@@ -563,6 +566,8 @@ fn TrendPanel(
             div { class: "mb-4 flex flex-wrap items-center justify-between gap-3",
                 div {
                     h2 { class: "text-sm font-medium text-zinc-300", "用量趋势" }
+                    // 时间窗动态副标题:与 window_start 的窗口语义一致(今天=24 小时桶/本周=7 天桶/本月=30 天桶/今年=12 月桶)
+                    p { class: "mt-0.5 text-xs text-zinc-500", "data-testid": "trend-window-caption", "{api::window_caption(tf)}" }
                 }
                 div { class: "flex items-center gap-4",
                     div { class: "text-right",
@@ -618,16 +623,11 @@ fn TrendPanel(
                                     {
                                         let hpct = (b.total / axis_max * 100.0).max(3.0);
                                         let label = b.label.clone();
-                                        // 列模式明细: 非零模型按量降序
-                                        let mut col_rows: Vec<(String, &'static str, f64)> = b
-                                            .per_model
-                                            .iter()
-                                            .enumerate()
-                                            .filter(|(_, v)| **v > 0.01)
-                                            .map(|(i, &v)| (names[i].clone(), MODEL_COLORS[i % MODEL_COLORS.len()], v))
-                                            .collect();
-                                        col_rows.sort_by(|a, z| z.2.partial_cmp(&a.2).unwrap());
-                                        let col_total = b.total;
+                                        // 列模式明细: 排序(值降序) + Total + 超 10 行折叠「+N more」
+                                        // —— 纯整形逻辑收在 api::trend_column_tip(可单测),渲染层只消费结果
+                                        let col_tip = api::trend_column_tip(&b.per_model, &names, &MODEL_COLORS);
+                                        let col_rows = col_tip.rows;
+                                        let col_total = col_tip.total;
                                         rsx! {
                                             div {
                                                 class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
@@ -745,7 +745,7 @@ fn TrendPanel(
                         TrendTip::Column(x, y, label, rows, total) => rsx! {
                             TrendTooltipContainer { x, y, label,
                                 div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800/80 pb-2 text-xs text-zinc-400",
-                                    span { "总计 :" }
+                                    span { "Total" }
                                     span { class: "font-mono font-semibold text-zinc-100", "{fmt_raw(total as i64)}" }
                                 }
                                 div { class: "flex flex-col gap-1.5",
