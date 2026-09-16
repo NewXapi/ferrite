@@ -124,8 +124,8 @@ pub fn ModelsPanel() -> Element {
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5",
-                    for m in list {
-                        ModelCard { model: m }
+                    for m in &list {
+                        ModelCard { model: m.clone() }
                     }
                 }
             }
