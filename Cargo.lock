@@ -139,6 +139,7 @@ dependencies = [
  "serde_json",
  "ui-components",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
