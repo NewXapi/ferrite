@@ -163,3 +163,18 @@ pub fn short_key(id: &str) -> String {
     let tail: String = chars[chars.len() - 4..].iter().collect();
     format!("{head}…{tail}")
 }
+
+/// 用量百分比 0..=100, 进度条宽度用。
+///
+/// 口径与 admin-page-users 的 `used_pct` (data.rs) 一致: quota <= 0
+/// (未设限额 / 无配额) 一律 0, 不产生除零或负数; 超用 clamp 到 100。
+/// admin-page-users 是跨 crate 参照 (只能看不能引), 这里按同口径实现,
+/// 测试覆盖见 tests/keys_display.rs 的 quota=0 边界用例。
+pub fn used_pct(quota: i64, used_quota: i64) -> u32 {
+    if quota <= 0 {
+        return 0;
+    }
+    ((used_quota as f64 / quota as f64) * 100.0)
+        .round()
+        .min(100.0) as u32
+}

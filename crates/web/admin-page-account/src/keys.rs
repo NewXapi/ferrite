@@ -4,6 +4,7 @@ use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, Upda
 use contract::api::user::{UserDto, role_label};
 
 use crate::api;
+use crate::usage_support::{fmt_quota, short_key, used_pct};
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 /// 拉取当前用户的密钥列表 (GET /api/token, owner 模式) 并写回三个 Signal。
@@ -99,11 +100,13 @@ pub fn KeysPanel() -> Element {
                     StatCard { value: none_v.clone(), label: "近 30 天请求 (暂无数据)" }
                     StatCard {
                         value: match remaining {
-                            Some(v) => v.to_string(),
+                            // 剩余额度 $ 口径展示 (QUOTA_PER_USD = 500_000 ≈ $1, 同 usage_support::fmt_quota);
+                            // 内部裸数 (如 2500000) 对用户无意义
+                            Some(v) => fmt_quota(v),
                             None if self_err().is_empty() => pending.clone(),
                             None => none_v.clone(),
                         },
-                        label: "剩余额度",
+                        label: "剩余额度 (≈$)",
                     }
                     StatCard {
                         value: none_v,
@@ -131,7 +134,7 @@ pub fn KeysPanel() -> Element {
                                     ProfileItem { label: "显示名", value: user.display_name.clone(), copyable: false }
                                     ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() }, copyable: false }
                                     // 用户 ID 短显 (前4…后4), 复制按钮复制完整 UUID, 悬停 title 也有全值
-                                    ProfileItem { label: "用户ID", value: crate::usage_support::short_key(&user.key), copyable: true }
+                                    ProfileItem { label: "用户ID", value: short_key(&user.key), copyable: true }
                                     ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                                 }
                             } else if !self_err().is_empty() {
@@ -297,6 +300,8 @@ fn ProfileItem(label: &'static str, value: String, copyable: bool) -> Element {
 
 /// 密钥卡片 — 数据来自 TokenDto (GET /api/token)。
 /// 操作: 编辑 (改名) / 停用·启用 (status 1↔2) / 删除, 成功后由父面板刷新列表。
+/// 已用额度走 $ 口径 (fmt_quota, 500_000 ≈ $1) + used_pct 进度条,
+/// 无限额度显示「无限」徽标且不渲染进度条。
 #[component]
 fn KeyCard(
     entry: TokenDto,
@@ -321,21 +326,29 @@ fn KeyCard(
         .take(10)
         .filter(|c| c.is_ascii_digit() || *c == '-')
         .collect();
-    let usage = if entry.unlimited_quota {
-        "∞".to_string()
+    // 已用额度 $ 口径 (fmt_quota: 500_000 ≈ $1), 内部裸数对用户无意义;
+    // 无限额度显示「无限」徽标 (参照 admin-page-users 面板处理, 跨 crate 只看不引)
+    let unlimited = entry.unlimited_quota;
+    // 进度条: 0..=100; quota <= 0 (无限/未设限额) 时 0, 超用 clamp 100。
+    // 配色随用量升高转告警, 样式抄 admin-page-users panel.rs 的 bar_tone 风格
+    let pct = used_pct(entry.quota, entry.used_quota);
+    let bar_tone = if pct >= 90 {
+        "bg-red-500"
+    } else if pct >= 70 {
+        "bg-amber-500"
     } else {
-        format!("{}/{}", entry.used_quota, entry.quota)
+        "bg-emerald-500"
     };
     rsx! {
         div {
             class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-                div { class: "mb-3 flex items-start justify-between gap-2",
-                    div { class: "min-w-0",
-                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
-                        // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
-                        // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
-                        p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
-                    }
+            div { class: "mb-3 flex items-start justify-between gap-2",
+                div { class: "min-w-0",
+                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
+                    // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
+                    // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
+                    p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
+                }
                 span {
                     class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
                     if enabled { "启用" } else { "停用" }
@@ -343,9 +356,24 @@ fn KeyCard(
             }
 
             div { class: "space-y-2 text-xs",
-                div { class: "flex justify-between gap-2",
+                div { class: "flex items-center justify-between gap-2",
                     span { class: "shrink-0 whitespace-nowrap text-zinc-400", "已用额度" }
-                    span { class: "whitespace-nowrap font-medium text-zinc-200", "{usage}" }
+                    if unlimited {
+                        span {
+                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium text-sky-300",
+                            "无限"
+                        }
+                    } else {
+                        span { class: "whitespace-nowrap font-medium text-zinc-200",
+                            "{fmt_quota(entry.used_quota)} / {fmt_quota(entry.quota)}"
+                        }
+                    }
+                }
+                // 用量进度条: 无限额度不渲染 (无分母, 百分比无意义)
+                if !unlimited {
+                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                        div { class: "h-full rounded-full {bar_tone}", style: "width: {pct}%" }
+                    }
                 }
                 if !created.is_empty() {
                     div { class: "flex justify-between gap-2",
