@@ -4,18 +4,24 @@
 //!   ([`charts`])。后端暂无价格、速度、上下文、成功率等维度端点,演示数值的出处与免责
 //!   见 [`data`] 模块头声明,页面标题以「（演示）」字样标注,待真实源就绪后替换。
 //! - 真实用量榜: 数据来自真实 `GET /api/log/top?by=model`(按模型聚合的消费日志),
-//!   展示真实存在的三个口径 —— tokens / 调用数 / 费用(quota),指标名与轴标签如实反映口径。
+//!   展示真实存在的三个口径 —— tokens / 调用数 / 费用(quota,$ 口径),指标名与轴标签
+//!   如实反映口径;行内附增长率(tokens 环比,复用 api.rs 纯函数)与份额,另有
+//!   上升/下跌最快名次变动双卡与厂商份额卡,见 [`insights`]。
 
 mod cards;
 mod charts;
 pub mod data;
+pub mod insights;
 
 use dioxus::prelude::*;
 
-use crate::api::{UsageTopRow, top_usage_api, window_start};
+use crate::api::{UsageTopRow, fmt_usd, growth_of, share_text, top_usage_api, window_start};
 use cards::{MiniRadarCard, PosterImageCard};
 use charts::{GroupQuotaCard, ModelDistributionCard, PerformanceLatencyCard};
 use data::{MODELS, ModelStat, composite};
+use insights::{
+    MoversCards, MoversState, VendorShareCard, previous_window_start, top_usage_between,
+};
 
 /// 模型配色(内联 hex, 不走 Tailwind 扫描) — 沿用旧 charts.rs 的色板。
 const MODEL_COLORS: [&str; 10] = [
@@ -37,10 +43,8 @@ fn fmt_raw(n: i64) -> String {
     }
 }
 
-/// 内部计费额度 → 人民币展示 (500000 = ¥1),与 overview.rs 的口径一致。
-fn fmt_cny(quota: i64) -> String {
-    format!("¥{:.2}", quota as f64 / 500_000.0)
-}
+/// 内部计费额度 → 美元展示串已复用 api.rs 的 `fmt_usd`(500000 = $1),
+/// 与总览页 Top10 同口径;本文件不再保留 ¥ 折算的旧实现。
 
 /// 排行榜取数口径:同一批 /api/log/top 聚合行,按不同字段重排展示。
 /// 用枚举而非 fn 指针传参:component 宏会为 props 生成 PartialEq,函数指针比较不可靠。
@@ -50,7 +54,7 @@ enum RankMetric {
     Tokens,
     /// 消费请求数
     Calls,
-    /// 计费额度(500000 = ¥1)
+    /// 计费额度(500000 = $1,复用 api.rs fmt_usd)
     Quota,
 }
 
@@ -69,7 +73,7 @@ impl RankMetric {
         match self {
             Self::Tokens => fmt_raw(r.tokens),
             Self::Calls => r.calls.to_string(),
-            Self::Quota => fmt_cny(r.quota),
+            Self::Quota => fmt_usd(r.quota),
         }
     }
 }
@@ -87,6 +91,9 @@ fn RankCard(
     let mut sorted: Vec<&UsageTopRow> = rows.iter().collect();
     sorted.sort_by_key(|r| std::cmp::Reverse(metric.of(r)));
     let max_v = sorted.first().map(|r| metric.of(r)).unwrap_or(0).max(1);
+    // 份额分母 = 当榜行值合计(后端拉回的整批行,不截前 10);
+    // 口径跟随所选 metric(Tokens/Calls/Quota 各自占各自口径的合计)
+    let total: i64 = rows.iter().map(|r| metric.of(r)).sum();
     let top_n: Vec<(usize, &UsageTopRow)> = sorted
         .iter()
         .take(10)
@@ -101,19 +108,34 @@ fn RankCard(
                 h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
                 p { class: "text-[11px] text-zinc-500", "{subtitle}" }
             }
-            div { class: "space-y-2.5 pt-1",
+            // 双列摊开(参照 new-api model-leaderboard 对半切,移动端单列)
+            div { class: "grid grid-cols-1 gap-x-5 gap-y-2.5 pt-1 md:grid-cols-2",
                 for (i, r) in top_n {
                     {
                         let v = metric.of(r);
                         let width_pct = (v as f64 / max_v as f64 * 100.0).max(2.0);
                         let value_text = metric.fmt(r);
+                        // 增长率恒按 tokens 口径环比(与总览页 Top10 一致);
+                        // 份额跟随所选 metric 口径
+                        let growth = growth_of(r.previous_tokens, r.tokens);
+                        let share = share_text(v, total);
                         rsx! {
                             div { key: "{r.name}", class: "flex items-center gap-2.5",
                                 span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm", "{i + 1}" }
                                 div { class: "min-w-0 flex-1",
                                     div { class: "flex items-center justify-between gap-3",
                                         span { class: "truncate text-xs font-medium text-zinc-200", "{r.name}" }
-                                        span { class: "shrink-0 font-mono text-xs font-semibold tabular-nums text-zinc-100", "{value_text}" }
+                                        div { class: "flex shrink-0 flex-col items-end gap-0.5",
+                                            span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100", "{value_text}" }
+                                            div { class: "flex items-center gap-1.5 text-[10px] leading-none",
+                                                if let Some(g) = growth {
+                                                    span { class: "font-medium tabular-nums {g.text_class()}", "{g.label()}" }
+                                                }
+                                                if let Some(s) = share {
+                                                    span { class: "tabular-nums text-zinc-500", "{s}" }
+                                                }
+                                            }
+                                        }
                                     }
                                     div { class: "mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                                         div {
@@ -126,6 +148,9 @@ fn RankCard(
                         }
                     }
                 }
+            }
+            p { class: "border-t border-zinc-800/60 pt-2.5 text-[10px] text-zinc-500",
+                "增长率为 tokens 环比(上一等长窗);份额为行值占当榜合计"
             }
         }
     }
@@ -185,12 +210,14 @@ pub fn LeaderboardPanel() -> Element {
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
     let mut reload = use_signal(|| 0u32);
+    let mut movers = use_signal(|| MoversState::Loading);
 
     use_effect(move || {
         let tf = timeframe();
         let _ = reload();
         loading.set(true);
         err.set(None);
+        movers.set(MoversState::Loading);
         spawn(async move {
             let start = window_start(tf);
             match top_usage_api("model", &start, 10).await {
@@ -204,6 +231,19 @@ pub fn LeaderboardPanel() -> Element {
                 }
             }
         });
+        // 上升/下跌最快:当前窗与上一等长窗各一次 by=model top20 聚合,
+        // 名次变动在前端算(口径 tokens,与增长环比一致)。与主榜单独立
+        // 拉取,失败只降级本区,不拖垮三张榜单
+        spawn(async move {
+            let cur_start = window_start(tf);
+            let prev_start = previous_window_start(tf);
+            let cur = top_usage_api("model", &cur_start, 20).await;
+            let prev = top_usage_between("model", &prev_start, &cur_start, 20).await;
+            movers.set(match (cur, prev) {
+                (Ok(c), Ok(p)) => MoversState::Ready { cur: c, prev: p },
+                (Err(e), _) | (_, Err(e)) => MoversState::Failed(e.to_string()),
+            });
+        });
     });
 
     let data = rows();
@@ -215,6 +255,9 @@ pub fn LeaderboardPanel() -> Element {
         div { class: "flex flex-col gap-6 p-4 md:gap-8 md:p-6",
             // 区块一: 模型实力榜(演示) — 恢复 #154 前的立绘卡牌阵列, 数值为演示数据
             DemoBoard {}
+
+            // 区块一点五: 厂商份额(真实区上方,demo 之后、用量榜之前;复用 by=model 聚合)
+            VendorShareCard { rows: data.clone(), loading: is_loading }
 
             // ===== 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留) =====
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
@@ -288,12 +331,14 @@ pub fn LeaderboardPanel() -> Element {
                         }
                         RankCard {
                             title: "费用消耗 Top",
-                            subtitle: "窗口内计费额度(500000 = ¥1)",
+                            subtitle: "窗口内计费额度(500000 = $1)",
                             testid: "leaderboard-quota",
                             metric: RankMetric::Quota,
                             rows: data,
                         }
                     }
+                    // 上升/下跌最快双卡(真实区新增,follows 当前 timeframe)
+                    MoversCards { state: movers() }
                 }
             }
         }

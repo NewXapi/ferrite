@@ -13,26 +13,19 @@ const MODEL_COLORS: [&str; 10] = [
 /// 模型用量与成本占比分布 (参考 new-api consumption-distribution & sub2api ModelDistribution)
 #[component]
 pub fn ModelDistributionCard() -> Element {
-    let mut timeframe = use_signal(|| "本月");
     let total_tokens: f64 = MODELS.iter().map(|m| m.tokens).sum();
 
     rsx! {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
             div { class: "flex items-center justify-between gap-3",
                 div {
-                    h3 { class: "text-sm font-semibold text-zinc-100", "模型用量与成本占比" }
-                    p { class: "text-[11px] text-zinc-500", "Token 消耗分布与费用占比" }
-                }
-                div { class: "flex items-center rounded-lg border border-zinc-800 bg-zinc-950 p-0.5",
-                    for tf in ["今天", "本周", "本月", "至今"] {
-                        button {
-                            key: "{tf}",
-                            class: "rounded px-2 py-0.5 text-[11px] transition-colors",
-                            class: if timeframe() == tf { "bg-zinc-800 font-medium text-zinc-100 shadow-sm" } else { "text-zinc-500 hover:text-zinc-300" },
-                            onclick: move |_| timeframe.set(tf),
-                            "{tf}"
+                    h3 { class: "text-sm font-semibold text-zinc-100",
+                        "模型用量与成本占比"
+                        span { class: "ml-1.5 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 align-middle text-[10px] font-normal text-zinc-500",
+                            "（演示）"
                         }
                     }
+                    p { class: "text-[11px] text-zinc-500", "Token 消耗分布与费用占比" }
                 }
             }
 
@@ -91,7 +84,12 @@ pub fn PerformanceLatencyCard() -> Element {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
             div { class: "flex items-center justify-between",
                 div {
-                    h3 { class: "text-sm font-semibold text-zinc-100", "网关响应与 SLA 性能矩阵" }
+                    h3 { class: "text-sm font-semibold text-zinc-100",
+                        "网关响应与 SLA 性能矩阵"
+                        span { class: "ml-1.5 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 align-middle text-[10px] font-normal text-zinc-500",
+                            "（演示）"
+                        }
+                    }
                     p { class: "text-[11px] text-zinc-500", "端到端 P50 延迟、吞吐与高可用" }
                 }
                 div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400",
@@ -163,7 +161,12 @@ pub fn GroupQuotaCard() -> Element {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
             div { class: "flex items-center justify-between",
                 div {
-                    h3 { class: "text-sm font-semibold text-zinc-100", "分组配额与倍率分布" }
+                    h3 { class: "text-sm font-semibold text-zinc-100",
+                        "分组配额与倍率分布"
+                        span { class: "ml-1.5 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 align-middle text-[10px] font-normal text-zinc-500",
+                            "（演示）"
+                        }
+                    }
                     p { class: "text-[11px] text-zinc-500", "租户路由分组及倍率消耗" }
                 }
                 span { class: "rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400",
