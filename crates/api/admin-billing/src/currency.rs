@@ -110,19 +110,18 @@ pub async fn resolve_invite_code(pool: &PgPool, invite: Option<&str>) -> Option<
     if code.is_empty() {
         return None;
     }
-    let inviter: Option<Uuid> = match sqlx::query_scalar(
-        "SELECT key FROM auth_users WHERE aff_code = $1",
-    )
-    .bind(code)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = %e, code = %code, "aff_code lookup failed");
-            return None;
-        }
-    };
+    let inviter: Option<Uuid> =
+        match sqlx::query_scalar("SELECT key FROM auth_users WHERE aff_code = $1")
+            .bind(code)
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, code = %code, "aff_code lookup failed");
+                return None;
+            }
+        };
     inviter
 }
 
@@ -148,13 +147,11 @@ pub fn random_base62(len: usize) -> String {
 pub async fn generate_aff_code(pool: &PgPool, user_key: Uuid) -> Result<(), BillingErr> {
     for _ in 0..AFF_CODE_RETRIES {
         let code = random_base62(AFF_CODE_LEN);
-        match sqlx::query(
-            "UPDATE auth_users SET aff_code = $1 WHERE key = $2 AND aff_code IS NULL",
-        )
-        .bind(&code)
-        .bind(user_key)
-        .execute(pool)
-        .await
+        match sqlx::query("UPDATE auth_users SET aff_code = $1 WHERE key = $2 AND aff_code IS NULL")
+            .bind(&code)
+            .bind(user_key)
+            .execute(pool)
+            .await
         {
             Ok(_) => return Ok(()),
             Err(sqlx::Error::Database(e)) if e.is_unique_violation() => continue,

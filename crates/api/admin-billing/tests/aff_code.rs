@@ -11,7 +11,9 @@
 //! - 向后兼容：旧 UUID 链接仍能绑定（resolve 的 UUID 分支先兜底）。
 //!
 use auth::routes::OnUserRegistered;
-use billing::currency::{generate_aff_code, random_base62, resolve_invite_code, AFF_CODE_LEN, WalletSeedHook};
+use billing::currency::{
+    AFF_CODE_LEN, WalletSeedHook, generate_aff_code, random_base62, resolve_invite_code,
+};
 
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
@@ -120,33 +122,45 @@ async fn backfill_fills_existing_users_uniquely() {
         users.push(make_user(&pool).await);
     }
     // 前置断言：这批确实是「无短码的存量态」。
-    let null_before: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM auth_users WHERE key = ANY($1) AND aff_code IS NULL")
-            .bind(&users)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(null_before, users.len() as i64, "fresh test users must start without aff_code");
-
-    sqlx::query(BACKFILL_SQL).execute(&pool).await.expect("backfill must run");
-
-    let still_null: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM auth_users WHERE key = ANY($1) AND aff_code IS NULL")
-            .bind(&users)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(still_null, 0, "backfill must leave no NULL aff_code behind");
-
-    // 唯一性：非空码的 distinct 数 = 用户数（库唯一索引是该不变量的护栏）。
-    let distinct: i64 = sqlx::query_scalar(
-        "SELECT count(DISTINCT aff_code) FROM auth_users WHERE key = ANY($1)",
+    let null_before: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM auth_users WHERE key = ANY($1) AND aff_code IS NULL",
     )
     .bind(&users)
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(distinct, users.len() as i64, "backfilled aff_codes must be unique");
+    assert_eq!(
+        null_before,
+        users.len() as i64,
+        "fresh test users must start without aff_code"
+    );
+
+    sqlx::query(BACKFILL_SQL)
+        .execute(&pool)
+        .await
+        .expect("backfill must run");
+
+    let still_null: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM auth_users WHERE key = ANY($1) AND aff_code IS NULL",
+    )
+    .bind(&users)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(still_null, 0, "backfill must leave no NULL aff_code behind");
+
+    // 唯一性：非空码的 distinct 数 = 用户数（库唯一索引是该不变量的护栏）。
+    let distinct: i64 =
+        sqlx::query_scalar("SELECT count(DISTINCT aff_code) FROM auth_users WHERE key = ANY($1)")
+            .bind(&users)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        distinct,
+        users.len() as i64,
+        "backfilled aff_codes must be unique"
+    );
 
     cleanup(&pool, &users).await;
 }
@@ -219,7 +233,9 @@ async fn generate_then_resolve_roundtrip() {
     assert_eq!(resolve_invite_code(&pool, None).await, None);
 
     // 幂等：重复生成不换码、不报错。
-    generate_aff_code(&pool, user).await.expect("idempotent re-generate");
+    generate_aff_code(&pool, user)
+        .await
+        .expect("idempotent re-generate");
     let code2: String = sqlx::query_scalar("SELECT aff_code FROM auth_users WHERE key = $1")
         .bind(user)
         .fetch_one(&pool)
@@ -280,7 +296,10 @@ async fn on_registered_with_short_code_binds_attribution() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert!(invitee_code.is_some(), "hook must also generate the invitee's own aff_code");
+    assert!(
+        invitee_code.is_some(),
+        "hook must also generate the invitee's own aff_code"
+    );
 
     cleanup(&pool, &[inviter, invitee]).await;
 }
@@ -325,5 +344,8 @@ fn random_base62_shape_stays_in_base62() {
 #[test]
 fn random_base62_has_entropy() {
     let codes: Vec<String> = (0..8).map(|_| random_base62(AFF_CODE_LEN)).collect();
-    assert!(codes.iter().any(|c| c != &codes[0]), "generator must have entropy: {codes:?}");
+    assert!(
+        codes.iter().any(|c| c != &codes[0]),
+        "generator must have entropy: {codes:?}"
+    );
 }

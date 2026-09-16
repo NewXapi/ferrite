@@ -98,7 +98,10 @@ fn wallet_view_roundtrip() {
     let json = serde_json::to_string(&view).unwrap();
     let decoded: WalletView = serde_json::from_str(&json).unwrap();
     // camelCase 钉死 wire key：前端 wire.rs 按 affCode 解码，拼错则短码链接回落失败。
-    assert!(json.contains("\"affCode\""), "WalletView must serialize affCode as camelCase: {json}");
+    assert!(
+        json.contains("\"affCode\""),
+        "WalletView must serialize affCode as camelCase: {json}"
+    );
     assert_eq!(view, decoded);
 }
 

@@ -382,10 +382,12 @@ impl WalletService {
     /// 与余额行分表而查：用户可能一行余额都没有（未 seed），JOIN 会丢短码，
     /// 所以独立按 PK 取（索引命中，一次查询）。
     async fn fetch_aff_code(&self, user_key: Uuid) -> Result<Option<String>, BillingErr> {
-        Ok(sqlx::query_scalar("SELECT aff_code FROM auth_users WHERE key = $1")
-            .bind(user_key)
-            .fetch_optional(&self.pool)
-            .await?)
+        Ok(
+            sqlx::query_scalar("SELECT aff_code FROM auth_users WHERE key = $1")
+                .bind(user_key)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     /// 可用余额行（启用货币 × 组倍率），balance_view/available_i64 共用口径。
