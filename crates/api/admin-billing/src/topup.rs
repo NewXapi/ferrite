@@ -138,19 +138,20 @@ impl TopupService {
     pub async fn open_topup(&self, req: TopUpRequest) -> Result<String, BillingErr> {
         // 查启用货币的 kind 再分流报错：fiat「存在且启用、但不能充值」与
         // 「不存在/停用」是两种不同的状况，混为一谈会把后者误导成前者。
-        let kind: Option<String> = sqlx::query_scalar(
-            "SELECT kind FROM currency_defs WHERE code = $1 AND enabled = true",
-        )
-        .bind(&req.currency)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(BillingErr::Db)?;
+        let kind: Option<String> =
+            sqlx::query_scalar("SELECT kind FROM currency_defs WHERE code = $1 AND enabled = true")
+                .bind(&req.currency)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(BillingErr::Db)?;
         match kind.as_deref() {
-            // upsert_def 只收 points|fiat，非 points 即 fiat
+            // points 放行（正常充值路径，行为零变化）。
             Some("points") => {}
-            Some(_) => {
+            // 0014 CHECK 约束只有 points|fiat；文案带 kind 值而非硬编码 "fiat"，
+            // 将来若加第三种 kind 不会误报（ocr review 建议，采纳）。
+            Some(unexpected_kind) => {
                 return Err(BillingErr::BadRequest(format!(
-                    "fiat currency {} cannot be topped up (points only)",
+                    "currency {} (kind {unexpected_kind}) cannot be topped up (points only)",
                     req.currency
                 )));
             }
