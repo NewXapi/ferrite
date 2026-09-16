@@ -136,19 +136,30 @@ impl TopupService {
     /// 开了就是永远 settle 不了的僵尸单（settle 时 credit_topup 失败、事务
     /// 回滚、订单退回 pending）。在开单入口拒绝，而不是让单据进状态机后卡死。
     pub async fn open_topup(&self, req: TopUpRequest) -> Result<String, BillingErr> {
-        // 验证货币存在、启用且为 points（fiat 不收）
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM currency_defs WHERE code = $1 AND enabled = true AND kind = 'points')",
+        // 查启用货币的 kind 再分流报错：fiat「存在且启用、但不能充值」与
+        // 「不存在/停用」是两种不同的状况，混为一谈会把后者误导成前者。
+        let kind: Option<String> = sqlx::query_scalar(
+            "SELECT kind FROM currency_defs WHERE code = $1 AND enabled = true",
         )
         .bind(&req.currency)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(BillingErr::Db)?;
-        if !exists {
-            return Err(BillingErr::BadRequest(format!(
-                "currency {} not found or disabled",
-                req.currency
-            )));
+        match kind.as_deref() {
+            // upsert_def 只收 points|fiat，非 points 即 fiat
+            Some("points") => {}
+            Some(_) => {
+                return Err(BillingErr::BadRequest(format!(
+                    "fiat currency {} cannot be topped up (points only)",
+                    req.currency
+                )));
+            }
+            None => {
+                return Err(BillingErr::BadRequest(format!(
+                    "currency {} not found or disabled",
+                    req.currency
+                )));
+            }
         }
 
         // key = UUID 字符串（不使用 Uuid 包装，以便在前端易于 copy）

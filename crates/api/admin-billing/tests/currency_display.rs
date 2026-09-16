@@ -306,6 +306,8 @@ async fn upsert_seeds_only_points() {
 /// open_topup 拒绝 fiat 货币。为什么：fiat 永远无法入账（credit_topup 走
 /// points-only 校验），开了就是永远 settle 不了的僵尸单——settle 失败事务
 /// 回滚、订单退回 pending，可反复重试永远失败。在开单入口拦（0014 复查修复）。
+/// 错误文案须指明 fiat：CNY 存在且启用，报 "not found or disabled" 是把
+/// 「不可充值」误导成「货币缺失」，调用方拿到的信号是错的。
 #[tokio::test]
 #[ignore = "needs PG; run with DATABASE_URL"]
 async fn open_topup_rejects_fiat() {
@@ -321,7 +323,14 @@ async fn open_topup_rejects_fiat() {
         })
         .await
         .expect_err("fiat topup order must be rejected at open time");
-    assert!(matches!(err, BillingErr::BadRequest(_)), "got {err:?}");
+    // fiat 与「不存在/停用」分流后，CNY 命中的必须是 fiat 专用文案
+    let BillingErr::BadRequest(msg) = &err else {
+        panic!("expected BadRequest, got {err:?}");
+    };
+    assert!(
+        msg.contains("fiat"),
+        "fiat rejection must name fiat, got: {msg}"
+    );
     // 无订单行落库（在入口拒绝，而非建单后卡状态机）
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM billing_topups WHERE currency = 'CNY'")
         .fetch_one(&pool)
