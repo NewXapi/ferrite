@@ -3,10 +3,11 @@
 //! - 拉人统计: GET /api/affiliate/overview (inviteCount / totalReward;
 //!   后端统计侧仍是占位值,0 即真实值,前端不造数)
 //! - 兑换码: POST /api/user/topup `{"key"}` (CAS 核销入账) → 成功后刷新钱包
-//! - 充值开单: POST /api/user/topup/orders — 支付 provider 为占位、无支付页,
-//!   开单只建 pending 订单,入账需 admin 手工 settle
-//!   (`POST /api/user/topup/{key}/settle`),故成功提示为「订单已创建,
-//!   待管理员确认后入账」,不给假支付成功。
+//! - 充值开单: POST /api/user/topup/orders — provider 可选 (manual 人工确认 /
+//!   epay 在线支付);epay 开单返回 payment_url → 「去支付」跳转支付页,
+//!   付款成功由 webhook 自动到账 (pending→paid);manual 仍只建 pending 单,
+//!   入账需 admin 手工 settle (`POST /api/user/topup/{key}/settle`),故成功
+//!   提示如实写「待管理员确认后入账」,不给假支付成功。
 //! - 充值记录: GET /api/user/topup/orders (本人订单倒序,state 原样展示,
 //!   provider 空串展示为 manual)
 //! - 被邀人: GET /api/affiliate/invitees (joinedAt + 累计贡献奖励)
@@ -154,6 +155,10 @@ pub fn RewardsPanel() -> Element {
     let mut order_busy = use_signal(|| false);
     let mut order_ok = use_signal(|| None::<String>);
     let mut order_err = use_signal(String::new);
+    // 支付方式: manual(人工确认,后端缺省) | epay(在线支付);
+    // 只有 epay 开单成功响应才带 payment_url,其余情况「去支付」不渲染。
+    let mut order_provider = use_signal(|| "manual".to_string());
+    let mut order_pay_url = use_signal(|| None::<String>);
 
     use_hook(move || {
         load_wallet(wallet, wallet_loaded, wallet_err);
@@ -162,10 +167,10 @@ pub fn RewardsPanel() -> Element {
         load_invitees(invitees, invitees_loaded, invitees_err);
     });
 
-    // 邀请链接 = 当前站点 origin + 本人 user_key (钱包加载后才有,未加载时留空,
-    // 链接区显示占位文案,不造假链接)。
+    // 邀请链接 = 站点 origin + 本人 aff_code 短码 (未生成则回落 user_key,
+    // 钱包加载后才有,未加载时留空,链接区显示占位文案,不造假链接)。
     let invite_link = match wallet() {
-        Some(w) => api::invite_link(&current_origin(), &w.user_key),
+        Some(w) => api::invite_link(&current_origin(), &w.user_key, w.aff_code.as_deref()),
         None => String::new(),
     };
     // 闭包要持有链接,rsx 也要渲染;String 不能 Copy,clone 一份给闭包。
@@ -245,6 +250,7 @@ pub fn RewardsPanel() -> Element {
         }
         order_err.set(String::new());
         order_ok.set(None);
+        order_pay_url.set(None);
         // 钱包未就绪时拿不到本人 user_key (后端也只允许对本人开单)。
         let Some(w) = wallet() else {
             order_err.set("钱包未加载,无法开单".into());
@@ -269,26 +275,37 @@ pub fn RewardsPanel() -> Element {
             order_err.set("无可用充值币种".into());
             return;
         }
+        let provider = order_provider();
         order_busy.set(true);
         let client = client::ApiClient::shared().clone();
+        // manual 与后端缺省同义,不发送该字段(省一个 wire key,行为完全一致)。
         let req = OpenTopupRequest {
             user_key: w.user_key.clone(),
             currency,
             amount,
+            provider: if provider == "manual" {
+                None
+            } else {
+                Some(provider)
+            },
         };
         let mut b = order_busy;
         let mut ok = order_ok;
         let mut er = order_err;
+        let mut pay = order_pay_url;
         spawn(async move {
             match api::open_topup_api(&client, &req).await {
-                // provider 占位:只建 pending 单,入账走 admin 手工 settle,
-                // 提示如实写「待管理员确认」,不假装支付已完成。
+                // epay 开单带 payment_url:引导用户去支付页,到账由 webhook 自动
+                // 入账;manual 无 payment_url,如实写「待管理员确认」,不假装支付已完成。
                 Ok(order) => {
-                    let msg = match order.order_id {
-                        Some(id) => format!("订单已创建({id}),待管理员确认后入账"),
-                        None => "订单已创建,待管理员确认后入账".to_string(),
+                    let url = order.payment_url.clone();
+                    let msg = match (&order.order_id, url.is_some()) {
+                        (Some(id), true) => format!("订单已创建({id}),完成支付后自动到账"),
+                        (Some(id), false) => format!("订单已创建({id}),待管理员确认后入账"),
+                        (None, _) => "订单已创建".to_string(),
                     };
                     ok.set(Some(msg));
+                    pay.set(url);
                 }
                 Err(e) => er.set(e.to_string()),
             }
@@ -356,14 +373,23 @@ pub fn RewardsPanel() -> Element {
                             }
                         }
 
-                        // 充值开单 — provider 占位无支付页,建 pending 单等 admin settle
+                        // 充值开单 — provider 可选:epay 在线支付(跳转支付页) / manual 人工确认
                         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
                             div { role: "group", "aria-label": "充值开单",
                                 p { class: "mb-1 text-sm font-medium text-zinc-100", "充值开单" }
                                 p { class: "mb-4 text-xs text-zinc-500",
-                                    "在线支付通道未开通:开单仅生成待确认订单,管理员确认后入账"
+                                    "在线支付:开单后去支付页完成付款,到账自动入账;人工确认:管理员审核后入账"
                                 }
                                 div { class: "flex flex-col gap-3 sm:flex-row",
+                                    select {
+                                        class: "rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 text-sm focus:border-zinc-500 focus:outline-none",
+                                        "data-testid": "topup-provider",
+                                        "aria-label": "支付方式",
+                                        value: "{order_provider()}",
+                                        onchange: move |e| order_provider.set(e.value()),
+                                        option { value: "manual", "人工确认 (管理员入账)" }
+                                        option { value: "epay", "在线支付 (易支付)" }
+                                    }
                                     select {
                                         class: "rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 text-sm focus:border-zinc-500 focus:outline-none disabled:opacity-50",
                                         "data-testid": "topup-currency",
@@ -382,7 +408,12 @@ pub fn RewardsPanel() -> Element {
                                     input {
                                         r#type: "number",
                                         class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
-                                        placeholder: "充值金额 (币种单位,正整数)",
+                                        placeholder:
+                                            if order_provider() == "epay" {
+                                                "充值金额 (人民币元,正整数)"
+                                            } else {
+                                                "充值金额 (币种单位,正整数)"
+                                            },
                                         min: "1",
                                         value: order_amount(),
                                         "data-testid": "topup-amount",
@@ -402,6 +433,15 @@ pub fn RewardsPanel() -> Element {
                                 p { class: "mt-4 flex items-center gap-2 text-sm text-emerald-400",
                                     "data-testid": "topup-order-result",
                                     "{msg}"
+                                }
+                            }
+                            if let Some(url) = order_pay_url() {
+                                a {
+                                    href: "{url}",
+                                    target: "_blank",
+                                    class: "mt-3 inline-flex items-center gap-1 rounded-2xl border border-emerald-700 bg-emerald-950 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900",
+                                    "data-testid": "topup-pay-button",
+                                    "去支付 →"
                                 }
                             }
                             if !order_err().is_empty() {

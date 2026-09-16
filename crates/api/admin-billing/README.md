@@ -18,11 +18,11 @@
 - `billing_topups(key PK, user_key, currency, amount, state, provider)` — 充值订单
 - `affiliate_links(invitee_key PK, inviter_key)` — 邀请归属，一人一主防重复绑定/领奖
 - `affiliate_rewards(key PK, inviter_key, invitee_key, kind, amount)` — 奖励入账审计；局部唯一索引 `(invitee_key) WHERE kind='invite'` 做领奖幂等护栏
-- 迁移：`db/migrations/0007_currency_wallet.sql`、`0008_topups.sql`、`0010_affiliate_links.sql`、`0014_currency_display.sql`
+- 迁移：`db/migrations/0007_currency_wallet.sql`、`0008_topups.sql`、`0010_affiliate_links.sql`、`0013_aff_code.sql`（auth_users.aff_code 邀请短码）、`0014_currency_display.sql`
 
 ## 边界
 
 - 网关计量零改动：`UsageEventRecord.cost: i64` 是唯一货币无关输出，货币换算全在本域（`available_i64 = Σ amount × internal_rate`，仅 `kind='points'` 计入）
 - 换算基准是内部单位（500_000 = $1，对齐 `pricing.rs`）：`internal_rate` = 1 该货币单位值多少内部单位，任意两货币经内部单位中转换算。`USD` 是基准本身，`internal_rate` 锁 1（`upsert_def` 拒绝改动）；`fiat` 货币必带 `symbol`、`precision ≥ 1`，且不进 `user_balances`、不参与 seed/扣费
-- settle 闭环已接（`PgSettleSink` → `deduct_by_cost`，#187）；邀请码字符串 → `inviter_key` 解析待 auth 域 `aff_code` 列（#188），`bind_inviter` 只收已解析 UUID
+- settle 闭环已接（`PgSettleSink` → `deduct_by_cost`，#187）；邀请码双格式解析（UUID 旧链接 + `aff_code` 短码，0013）在 `currency::resolve_invite_code`（async，注册 hook 的 spawn 内调），`bind_inviter` 只收已解析 UUID
 - 支付协议与账务解耦：provider 实现只管外部协议（`create`/`verify_callback`），落库/入金只归 `TopupService`；真接渠道（epay/stripe）= 新增 impl + `with_provider` 注入，webhook/settle 幂等链路零改动（独立 PR）

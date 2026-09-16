@@ -176,17 +176,33 @@ pub struct UserBalanceDto {
 #[serde(rename_all = "camelCase")]
 pub struct WalletView {
     pub user_key: String,
+    /// 邀请短码（`auth_users.aff_code`，0013）；None = 未生成，前端回退 UUID 链接。
+    #[serde(default)]
+    pub aff_code: Option<String>,
     pub balances: Vec<UserBalanceDto>,
     pub available_i64: i64,
 }
 
-/// 充值请求 — 对标 admin-api /api/user/topup
+/// 充值请求 — 对标 admin-api /api/user/topup（开单 `POST /api/user/topup/orders`）。
+///
+/// `provider` 金额口径按渠道不同（落库前由 `TopupService::open_topup` 折算）：
+/// - manual（缺省）：`amount` = 直接入账的点数（`currency` 单位）；
+/// - epay：`amount` = 要付的人民币**元**，`currency` = 入账的目标点数货币，
+///   点数 = `convert(amount, "CNY", currency)`——fiat 不进余额，订单行存点数。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TopUpRequest {
     pub user_key: String,
     pub currency: String,
     pub amount: i64,
+    /// 支付渠道：缺省/空串 = "manual"（旧调用零变化）；真渠道如 "epay"。
+    #[serde(default = "default_topup_provider")]
+    pub provider: String,
+}
+
+/// `TopUpRequest.provider` 的反序列化缺省值（manual = 无真支付的默认渠道）。
+fn default_topup_provider() -> String {
+    "manual".into()
 }
 
 /// 奖励请求 — 对标 admin-api /api/affiliate/reward

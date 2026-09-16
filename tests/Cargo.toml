@@ -67,9 +67,21 @@ name = "web_wire_contract"
 path = "web_wire_contract.rs"
 
 [[test]]
+name = "overview_wire_contract"
+path = "overview_wire_contract.rs"
+
+[[test]]
 name = "network_write_path"
 path = "network_write_path.rs"
 
 [[test]]
 name = "billing_lifecycle"
 path = "billing_lifecycle.rs"
+
+[[test]]
+name = "users_wire_contract"
+path = "users_wire_contract.rs"
+
+[[test]]
+name = "manage_wire_contract"
+path = "manage_wire_contract.rs"

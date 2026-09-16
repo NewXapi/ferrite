@@ -9,10 +9,12 @@ use billing::{
 };
 
 /// 启动时建表 + 聚合 admin-api 子域 Router。
-/// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies, dispatcher, health).await?;`
+/// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies, dispatcher, health, cfg.payment.epay).await?;`
 /// `auth_svc` 由 app 层组装后注入（FERRITE_JWT_SECRET 是组装关注点，本 crate 不读环境变量）。
 /// `dispatcher` / `health` 是数据面共享句柄（#170 渠道健康端点用），必须与
 /// `apps/api` 数据面持有的是**同一批实例**，查询面才能读到运行期实时状态。
+/// `epay` = `[payment.epay]` 配置（None = 不注册该渠道，开单指它报未配置）；
+/// 跨边界只传 billing 拥有的 `EpayMerchant`，配置反序列化归 apps/api。
 /// DDL 失败返回 Err，由调用方决定日志/退出策略。
 pub async fn router(
     pool: PgPool,
@@ -20,6 +22,7 @@ pub async fn router(
     proxies: Arc<gateway_proxy::ProxyManager>,
     dispatcher: Arc<dispatch::Dispatcher>,
     health: Arc<dispatch::MemoryHealthTable>,
+    epay: Option<billing::EpayMerchant>,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     // 建表唯一入口：db/migrations（ensure_table 补丁式建表已退役）。
     db_bootstrap::run_migrations(&pool).await?;
@@ -91,7 +94,12 @@ pub async fn router(
         pool.clone(),
         billing::WalletService::new(pool.clone()),
     ));
-    let topup_svc = Arc::new(billing::TopupService::new(pool.clone()));
+    // epay 配置存在才注册渠道（缺省只有 manual，开单指 epay 报未配置）。
+    let mut topup_svc = billing::TopupService::new(pool.clone());
+    if let Some(epay) = epay {
+        topup_svc = topup_svc.with_epay(epay);
+    }
+    let topup_svc = Arc::new(topup_svc);
 
     let wallet_router = wallet_router(WalletAppState {
         svc: wallet_svc,

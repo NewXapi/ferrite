@@ -8,6 +8,10 @@ publish.workspace = true
 [features]
 default = ["web"]
 web = ["dioxus/web"]
+# dev 专用免登录调试（默认关, 生产构建不带）：无 token 且不在登录页时自动以
+# dev 种子账号 admin_dev（同 db/dev/generate_seed.py）登录。开启方式：
+# `dx serve --features debug-auto-login` 或 `just dev-web <port> debug`。
+debug-auto-login = []
 
 [[bin]]
 name = "admin-web"
@@ -27,6 +31,7 @@ page-auth        = { package = "admin-page-auth", path = "../../crates/web/admin
 page-account     = { package = "admin-page-account", path = "../../crates/web/admin-page-account" }
 page-overview    = { package = "admin-page-overview", path = "../../crates/web/admin-page-overview" }
 wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = ["Window", "Location"] }
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Window", "Location", "console"] }
 page-admin       = { package = "admin-page-admin", path = "../../crates/web/admin-page-admin" }
 page-users       = { package = "admin-page-users", path = "../../crates/web/admin-page-users" }

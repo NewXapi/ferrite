@@ -64,10 +64,9 @@ impl AffiliateService {
     /// 领奖由 `reward_invite_referral` 独立触发（admin/内部调用），绑定与
     /// 发奖分离：注册事务不携带资金写。
     ///
-    /// 边界：邀请码字符串 → `inviter_key` 的解析由上层（注册表单/auth）完成，
-    /// 本方法只收已解析的 UUID。
-    ///
-    /// TODO(#188): 邀请码字符串解析待 auth 域提供 aff_code 列。
+    /// 边界：邀请码字符串 → `inviter_key` 的解析在
+    /// [`crate::currency::resolve_invite_code`]（双格式：UUID 旧链接 +
+    /// aff_code 短码查表，0013），本方法只收已解析的 UUID。
     pub async fn on_invitee_registered(
         &self,
         inviter_key: Uuid,

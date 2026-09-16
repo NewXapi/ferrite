@@ -15,11 +15,17 @@ pub mod logs;
 pub mod monitor;
 
 /// 查询响应统一携带新鲜度 (原则 7)。
+///
+/// 当前使用点：`LogService::dashboard`（`/api/dashboard`）与
+/// `GET /api/log/errors` 响应的 `asOf` 字段均出自本结构。
+/// `partial` 在单机平表架构下没有分区语义——单节点查询要么全量要么失败，
+/// 不存在"部分分区成功"——因此恒填 `false`；字段保留给未来多分区/多节点
+/// 聚合场景。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Freshness {
     /// 数据截止时刻。
     pub as_of: chrono::DateTime<chrono::Utc>,
-    /// 覆盖的节点/分区 (partial 提示)。
+    /// 覆盖的节点/分区 (partial 提示)。单机平表恒 false，见结构体 doc。
     pub partial: bool,
 }

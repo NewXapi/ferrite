@@ -7,7 +7,9 @@ mod models;
 mod overview;
 
 pub use leaderboard::LeaderboardPanel;
+pub use leaderboard::insights;
 pub use models::ModelsPanel;
 pub use overview::OverviewPanel;
 
+pub mod errors;
 pub mod health;

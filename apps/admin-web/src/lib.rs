@@ -3,7 +3,7 @@ pub mod app;
 pub mod retro;
 pub use app::RootApp;
 
-use app::current_hash;
+use app::{current_hash, is_auth_hash};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -30,14 +30,139 @@ pub fn init_auth() {
     client.set_on_unauthorized(handle_unauthorized);
 }
 
+/// debug-auto-login 触发判据（纯函数，不碰 window，供 `tests/debug_login.rs` 单测）：
+/// feature 开 + 当前无 token + 当前 hash 不是登录/注册页（`#login`/`#signup`/`#auth`，
+/// 对齐 `app.rs` 的 `is_auth_hash`；空 hash 视作普通页）。
+/// 调用方以 `cfg!(feature = "debug-auto-login")` 传入 `feature_on` —— feature 关时
+/// 恒 false，行为与现状完全一致；主动「退出登录」(do_logout) 不走本判据，
+/// 不会被自动重登顶掉。
+#[must_use]
+pub fn should_debug_auto_login(feature_on: bool, has_token: bool, hash: &str) -> bool {
+    feature_on && !has_token && !is_auth_hash(hash)
+}
+
+/// dev 种子账号（同 `db/dev/generate_seed.py` 的 admin_dev，role=root）。
+/// 仅 debug-auto-login feature 引用，feature 默认关 → 凭据不进生产产物；
+/// 生产凭据仍由真实登录流程注入，此常量不是生产密钥。
+#[cfg(feature = "debug-auto-login")]
+const DEBUG_AUTO_LOGIN_USERNAME: &str = "admin_dev";
+#[cfg(feature = "debug-auto-login")]
+const DEBUG_AUTO_LOGIN_PASSWORD: &str = "DevPassw0rd!12345";
+
+/// debug-auto-login 执行体：调 `login_api` 登录 dev 种子账号，成功后按登录页
+/// `handle_submit` 的同款语义写登录态 —— access/refresh/username/current_user
+/// 全部持久档（localStorage，相当于勾选 Remember me），并注入 shared client。
+/// 成功/失败都打显式 console 日志；失败不修改任何既有状态（回落现状）。
+#[cfg(feature = "debug-auto-login")]
+async fn debug_auto_login() -> bool {
+    let client = client::ApiClient::shared().clone();
+    let result = page_auth::api::login_api(
+        &client,
+        &page_auth::api::contract_auth::LoginRequest {
+            username: DEBUG_AUTO_LOGIN_USERNAME.to_string(),
+            password: DEBUG_AUTO_LOGIN_PASSWORD.to_string(),
+        },
+    )
+    .await;
+    match result {
+        Ok(resp) => {
+            client.set_token(Some(resp.access_token.clone()));
+            ui::set_storage_scoped("ferrite_access_token", &resp.access_token, true);
+            ui::set_storage_scoped("ferrite_refresh_token", &resp.refresh_token, true);
+            ui::set_storage_scoped("ferrite_username", DEBUG_AUTO_LOGIN_USERNAME, true);
+            // ferrite_current_user 存序列化 UserDto，供顶栏/账户页读取（同 keys.rs 写入口径）
+            if let Ok(s) = serde_json::to_string(&resp.user) {
+                ui::set_storage_scoped("ferrite_current_user", &s, true);
+            }
+            web_sys::console::warn_1(
+                &format!(
+                    "[debug-auto-login] 已自动登录 {DEBUG_AUTO_LOGIN_USERNAME} (dev 种子, 仅 debug 构建生效)"
+                )
+                .into(),
+            );
+            true
+        }
+        Err(e) => {
+            web_sys::console::warn_1(
+                &format!("[debug-auto-login] 自动登录失败，不做任何事（回落现状）: {e}").into(),
+            );
+            false
+        }
+    }
+}
+
+/// 触发点 a —— RootApp 启动（app.rs 的启动恢复 use_hook 之后调用一次）：
+/// 判据命中 → 异步登录，成功后整页 reload（复用既有「启动恢复」路径，选择理由见
+/// app.rs 注释）；失败只留日志，不打断当前渲染（回落未登录现状）。
+#[cfg(feature = "debug-auto-login")]
+pub(crate) fn debug_auto_login_on_boot() {
+    let has_token = ui::get_cached_token().is_some();
+    if !should_debug_auto_login(true, has_token, &current_hash()) {
+        return;
+    }
+    spawn(async move {
+        if debug_auto_login().await
+            && let Some(w) = web_sys::window()
+        {
+            let _ = w.location().reload();
+        }
+    });
+}
+
+/// 触发点 b —— 401 清会话后的自动重登。同页只发起一次（并发 401 风暴下多个请求
+/// 各自触发 handle_unauthorized，不能每个都 spawn 登录+reload）；成功 reload 停留
+/// 当前页，失败纯静默回落（不 set_hash，跳 #signup 统一由 handle_unauthorized 原路径
+/// 或下一次 401 兜底负责——本函数失败路径的 set_hash 会与外层清理尾部/后续 handler
+/// 的 set_hash 并发竞态）。用 `spawn_local` 而非 dioxus `spawn`：
+/// 本函数在异步请求 poll 途中被同步回调，不保证处于 reactive scope。
+#[cfg(feature = "debug-auto-login")]
+fn debug_auto_login_after_unauthorized() {
+    use std::cell::Cell;
+    thread_local! {
+        /// 本次页面加载内是否已发起过 debug 自动登录（防并发 401 重复 spawn+reload）。
+        static RELOGIN_SPAWNED: Cell<bool> = const { Cell::new(false) };
+    }
+    if RELOGIN_SPAWNED.with(Cell::get) {
+        return;
+    }
+    RELOGIN_SPAWNED.with(|c| c.set(true));
+    #[cfg(target_arch = "wasm32")]
+    wasm_bindgen_futures::spawn_local(async {
+        let ok = debug_auto_login().await;
+        if !ok {
+            // 失败不 set_hash（纯静默回落）——与 handle_unauthorized 尾部/后续 401 的
+            // set_hash("#signup") 并发竞态，跳登录页统一由那条原路径兜底负责。
+            return;
+        }
+        if let Some(w) = web_sys::window() {
+            let _ = w.location().reload();
+        }
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // 原生目标无浏览器环境，仅保证 feature 下可编译；debug 前端只在 wasm32 运行。
+    }
+}
+
 /// 刷新不可恢复时的统一清理: 4 个登录态存储 key + client 内存 token 全部清空,
 /// 并把 hash 切到 #signup 让 RootApp 渲染登录页。
+/// debug-auto-login 开启时: 清空后先用 dev 种子账号尝试自动重登（成功 reload
+/// 停留当前页）；失败纯静默回落，跳 #signup 由下方尾部/后续 401 兜底。
 fn handle_unauthorized() {
     ui::remove_storage_item("ferrite_access_token");
     ui::remove_storage_item("ferrite_refresh_token");
     ui::remove_storage_item("ferrite_username");
     ui::remove_storage_item("ferrite_current_user");
     client::ApiClient::shared().set_token(None);
+    // 登录态刚被清空，has_token 恒 false；hash 取当前值（登录页本身不会走到这里，
+    // 判据自会拦下 #login/#signup/#auth）。本块仅 feature 开时编译，无 feature 零变化。
+    #[cfg(feature = "debug-auto-login")]
+    {
+        if should_debug_auto_login(true, false, &current_hash()) {
+            debug_auto_login_after_unauthorized();
+            return;
+        }
+    }
     if let Some(w) = web_sys::window() {
         let _ = w.location().set_hash("#signup");
     }

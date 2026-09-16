@@ -1,51 +1,9 @@
 //! 账户页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 //!
-//! 两类入口并存:
-//! - `fetch_*`: mock 直连 (同步返回 `mock` crate 静态数据), 仅覆盖尚无后端
-//!   列表端点的面板区块 (充值记录 / 被邀人);
-//! - `*_api`: 真实后端调用 (async, 走 `client::ApiClient`), 覆盖密钥 / 用量 /
-//!   用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 兑换码充值 / 充值开单。
+//! 全部入口为 `*_api`: async 真实后端调用 (走 `client::ApiClient`), 覆盖
+//! 密钥 / 用量 / 用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 充值开单。
 
-pub use mock::account::{ApiKey, Invitee, Profile, Recharge, UsageLog, Wallet};
-
-// ---- 密钥·资料面板 ----
-
-/// 统计卡:(值, 标签)
-pub fn fetch_key_stats() -> &'static [(&'static str, &'static str)] {
-    mock::account::KEY_STATS
-}
-
-pub fn fetch_profile() -> &'static Profile {
-    &mock::account::PROFILE
-}
-
-pub fn fetch_keys() -> &'static [ApiKey] {
-    mock::account::KEYS
-}
-
-// ---- 用量日志面板 ----
-
-/// 统计卡:(值, 标签)
-pub fn fetch_usage_stats() -> &'static [(&'static str, &'static str)] {
-    mock::account::USAGE_STATS
-}
-
-/// 筛选可选模型,首项 "全部" 表示不过滤。
-pub fn fetch_log_models() -> &'static [&'static str] {
-    mock::account::LOG_MODELS
-}
-
-pub fn fetch_logs() -> &'static [UsageLog] {
-    mock::account::LOGS
-}
-
-// ---- 邀请奖励面板 (mock 残留区块) ----
-
-/// mock 钱包 — 面板已切真端点 ([`fetch_wallet_api`]);本函数仅存
-/// tests/api_shapes.rs 的历史引用,待该测试更新后可连同 mock 一并移除。
-pub fn fetch_wallet() -> &'static Wallet {
-    &mock::account::WALLET
-}
+// ---- 邀请奖励面板 ----
 
 /// 真实调用: GET /api/user/topup/orders — 当前用户充值订单列表,
 /// 裸 `{"items":[...]}` 信封,空数组 = 无订单的正常空态。
@@ -203,11 +161,14 @@ pub fn topup_credited_quota(resp: &serde_json::Value) -> Option<i64> {
     resp.get("quota").and_then(|q| q.as_i64())
 }
 
-/// 拼装邀请链接: `{origin}/register?invite={user_key}`。
+/// 拼装邀请链接: `{origin}/register?invite={code}`。
 ///
-/// 邀请码即邀请人的 `user_key` (UUID), 注册页原样回传, 后端 `OnUserRegistered`
-/// 建立归属。链接纯字符串拼装, 与 `topup_credited_quota` 同属无副作用纯函数,
-/// 便于 tests/ 直接断言。
-pub fn invite_link(origin: &str, user_key: &str) -> String {
-    format!("{origin}/register?invite={user_key}")
+/// `code` 优先 aff_code 短码 (短、不可枚举; 后端 `resolve_invite_code` 查
+/// `auth_users.aff_code` 解析), 未生成/空串回落 `user_key` (UUID, 旧链接
+/// 兼容——后端解析的 UUID 分支天然兜底)。参数名沿用 `invite`: 落地页
+/// admin-page-auth 只读 `invite`, 换名要二改落地页 (todo 项 2 明确「保留
+/// invite 参数名」可选)。纯字符串拼装, 无副作用, 便于 tests/ 直接断言。
+pub fn invite_link(origin: &str, user_key: &str, aff_code: Option<&str>) -> String {
+    let code = aff_code.filter(|c| !c.is_empty()).unwrap_or(user_key);
+    format!("{origin}/register?invite={code}")
 }

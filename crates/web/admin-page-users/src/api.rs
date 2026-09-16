@@ -2,26 +2,33 @@
 //!
 //! 真实数据经 `list_users_api` / `manage_user_api` / `create_user_api` /
 //! `list_groups_api` 走 `client::ApiClient` 取;状态 / 角色筛选项(纯 UI
-//! 标签,来自 `mock` crate 的枚举)保持不变。
+//! 常量,后端无对应枚举端点)值内联在本文件。分组列表走真实 `GET /api/group`,
+//! 静态兜底仅「全部」(写死的 default/vip/svip/internal 与后端实际分组不符)。
 
 use client::{ApiClient, ApiResult};
 use contract::api::admin::{AdminUserPage, GroupDto, ManageUserRequest};
 use contract::api::user::UserDto;
 
-/// 分组筛选项的 mock 兜底:仅「全部」。分组列表与表单选择一律走
-/// `list_groups_api` 拉后端 `api_groups`(2026-09 起不再依赖 mock 常量)。
+/// 分组筛选项的静态兜底:仅「全部」。真实分组由 `list_groups_api`
+/// 异步注入(2026-09 起不再依赖写死常量)。
 pub fn fetch_groups() -> &'static [(&'static str, &'static str)] {
     &[("全部", "")]
 }
 
 /// 状态筛选项:(标签, status 值);0 表示不过滤
+pub const STATUSES: &[(&str, u8)] = &[("全部", 0), ("启用", 1), ("禁用", 2)];
+
+/// 角色筛选项:(标签, role 值);0 表示不过滤
+pub const ROLES: &[(&str, u16)] = &[("全部", 0), ("普通用户", 1), ("管理员", 10), ("Root", 100)];
+
+/// 状态筛选项:(标签, status 值);0 表示不过滤
 pub fn fetch_statuses() -> &'static [(&'static str, u8)] {
-    mock::users::STATUSES
+    STATUSES
 }
 
 /// 角色筛选项:(标签, role 值);0 表示不过滤
 pub fn fetch_roles() -> &'static [(&'static str, u16)] {
-    mock::users::ROLES
+    ROLES
 }
 
 /// 返回运行时当月前缀 ("YYYY-MM"),用 UTC。

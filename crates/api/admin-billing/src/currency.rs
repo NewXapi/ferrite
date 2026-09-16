@@ -18,6 +18,7 @@ use axum::{
     routing::get,
 };
 use contract::api::billing::CurrencyView;
+use rand::Rng;
 use serde::Deserialize;
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
@@ -36,8 +37,10 @@ pub struct CurrencyService {
 }
 
 /// 注册后置 hook（auth::routes::OnUserRegistered 实现）：
-/// 新用户注册成功 → seed 全部启用货币（幂等，amount=0）；若注册请求带
-/// 邀请码，校验邀请人存在后绑定邀请归属（affiliate_links）。
+/// 新用户注册成功 → seed 全部启用货币（幂等，amount=0）；生成本人邀请短码
+/// （aff_code，0013）；若注册请求带邀请码（UUID 或短码），解析校验后绑定
+/// 邀请归属（affiliate_links）。全部 fire-and-forget（seed 一个 spawn，
+/// 短码+归属另一个），任一失败不回灌注册失败。
 ///
 /// 放在 billing 而非 auth：依赖方向 billing→auth，trait 由 auth 定义、
 /// 本侧实现并经 admin-router 注入（#179 多货币；#197 邀请链接闭环）。
@@ -62,24 +65,102 @@ impl auth::routes::OnUserRegistered for WalletSeedHook {
             }
         });
 
-        // 邀请归属：独立 spawn，与 seed 并行——两边互不拖累，任一失败
-        // 都只是少一个旁路增益（钱/归属都能事后补），不回灌注册失败。
-        if let Some(inviter) = parse_invite_code(invite) {
-            let pool = self.pool.clone();
-            tokio::spawn(async move {
+        // 邀请短码 + 邀请归属：一个 spawn 两个旁路写，互不拖注册。二者彼此
+        // 独立（归属查的是邀请人的码，与本人的码无关），任一失败都只是少
+        // 一个旁路增益（钱/归属/短码都能事后补），不回灌注册失败。
+        let pool = self.pool.clone();
+        let invite = invite.map(str::to_owned);
+        tokio::spawn(async move {
+            if let Err(e) = generate_aff_code(&pool, user_key).await {
+                tracing::warn!(error = %e, user_key = %user_key, "aff_code generation failed");
+            }
+            if let Some(invite) = invite
+                && let Some(inviter) = resolve_invite_code(&pool, Some(&invite)).await
+            {
                 bind_invite_relation(&pool, inviter, user_key).await;
-            });
-        }
+            }
+        });
     }
 }
 
-/// 邀请码 → 邀请人 user_key：`None`、空串、非 UUID 文本一律 `None`。
+/// 邀请码 → 邀请人 user_key 的 UUID 分支：`None`、空串、非 UUID 文本一律 `None`。
 ///
-/// 邀请码即邀请人的 user_key（UUID），注册链接 `?invite=<uuid>` 直传。
-/// 解析失败静默丢弃——邀请是注册的旁路增益，脏输入/手改链接不该阻断
-/// 账号创建（恶意输入见 `bind_invite_relation`：连 DB 都不会碰）。
+/// 旧链接 `?invite=<uuid>` 直传邀请人的 user_key；短码（aff_code）分支在
+/// [`resolve_invite_code`]（async，查 `auth_users.aff_code`），注册链接
+/// `?invite=<short>` 新格式走那条——本函数保持同步纯函数（DB-free）不变。
+/// 解析失败静默丢弃：邀请是注册的旁路增益，脏输入/手改链接不该阻断账号
+/// 创建（恶意输入见 `bind_invite_relation`：连 DB 都不会碰）。
 pub fn parse_invite_code(invite: Option<&str>) -> Option<Uuid> {
     Uuid::parse_str(invite?).ok()
+}
+
+/// 邀请码 → 邀请人 user_key（双格式）：
+/// - UUID（旧链接 `?invite=<uuid>`）：走 [`parse_invite_code`]，纯解析不碰 DB；
+/// - aff_code 短码（新链接 `?invite=<short>`）：查 `auth_users.aff_code`（0013）。
+///
+/// 必须 async 且只在 spawn 里调——短码分支要碰 DB，而注册路径上的
+/// [`parse_invite_code`] 契约是同步纯函数（脏输入连 DB 都不碰），两者分离。
+/// 任一失败（空串/非 UUID/不存在的短码/DB 错）一律 None：邀请是注册的
+/// 旁路增益，脏输入/手改链接不该阻断账号创建（语义同 parse_invite_code）。
+pub async fn resolve_invite_code(pool: &PgPool, invite: Option<&str>) -> Option<Uuid> {
+    if let Some(inviter) = parse_invite_code(invite) {
+        return Some(inviter);
+    }
+    let code = invite?;
+    if code.is_empty() {
+        return None;
+    }
+    let inviter: Option<Uuid> =
+        match sqlx::query_scalar("SELECT key FROM auth_users WHERE aff_code = $1")
+            .bind(code)
+            .fetch_optional(pool)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, code = %code, "aff_code lookup failed");
+                return None;
+            }
+        };
+    inviter
+}
+
+/// 邀请短码长度（base62）：6 位 ≈ 568 亿空间，不可枚举（todo 项 2）。
+pub const AFF_CODE_LEN: usize = 6;
+/// 撞唯一索引的重试上限（唯一索引是最后护栏，重试只在极端巧合下触发）。
+const AFF_CODE_RETRIES: usize = 8;
+const AFF_CODE_ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/// 随机 base62 短码（`gen_range` 无模偏差；形状/熵落点见 `tests/aff_code.rs`）。
+pub fn random_base62(len: usize) -> String {
+    let mut rng = rand::thread_rng();
+    (0..len)
+        .map(|_| AFF_CODE_ALPHABET[rng.gen_range(0..AFF_CODE_ALPHABET.len())] as char)
+        .collect()
+}
+
+/// 为用户生成邀请短码（幂等：已有码不覆盖；撞唯一索引换码重试）。
+///
+/// `WHERE aff_code IS NULL` 使 hook 重复触发/并发生成时 0 行更新 = 已有码，
+/// 幂等成功；唯一索引冲突（与存量回填码或并发新码撞上）换码重来，超过
+/// [`AFF_CODE_RETRIES`] 次（连续 8 次生日冲突，实际不可达）才报错。
+pub async fn generate_aff_code(pool: &PgPool, user_key: Uuid) -> Result<(), BillingErr> {
+    for _ in 0..AFF_CODE_RETRIES {
+        let code = random_base62(AFF_CODE_LEN);
+        match sqlx::query("UPDATE auth_users SET aff_code = $1 WHERE key = $2 AND aff_code IS NULL")
+            .bind(&code)
+            .bind(user_key)
+            .execute(pool)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => continue,
+            Err(e) => return Err(BillingErr::Db(e)),
+        }
+    }
+    Err(BillingErr::BadRequest(format!(
+        "aff_code generation: {AFF_CODE_RETRIES} retries exhausted on unique collision"
+    )))
 }
 
 /// 校验邀请人存在后绑定归属（fire-and-forget 任务载荷）。
