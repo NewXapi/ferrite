@@ -16,3 +16,6 @@ pub mod toast;
 
 // 展示卡牌组件（feat/overview-card-styles #193）
 pub mod showcase;
+
+// 排行榜条目卡（feat/overview-ui #204）
+pub mod rank_board;

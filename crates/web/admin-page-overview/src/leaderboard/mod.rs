@@ -22,6 +22,7 @@ use data::{MODELS, ModelStat, composite};
 use insights::{
     MoversCards, MoversState, VendorShareCard, previous_window_start, top_usage_between,
 };
+use ui::components::rank_board::{RankBoard, RankRowMeta, RankRowView};
 
 /// 模型配色(内联 hex, 不走 Tailwind 扫描) — 沿用旧 charts.rs 的色板。
 const MODEL_COLORS: [&str; 10] = [
@@ -79,6 +80,9 @@ impl RankMetric {
 }
 
 /// 单个排行卡:按 `metric` 从真实聚合行里取前 N,画名次 + 名称 + 条形 + 数值。
+/// 呈现全部委托 ui-components 的 [`ui::components::rank_board::RankBoard`]
+/// (维护者要求三张口径榜抽象为共享组件复用);本层只做口径排序/取前 10/份额分母
+/// 与字段格式化(业务换算不进共享组件)。
 #[component]
 fn RankCard(
     title: &'static str,
@@ -94,68 +98,39 @@ fn RankCard(
     // 份额分母 = 当榜行值合计(后端拉回的整批行,不截前 10);
     // 口径跟随所选 metric(Tokens/Calls/Quota 各自占各自口径的合计)
     let total: i64 = rows.iter().map(|r| metric.of(r)).sum();
-    let top_n: Vec<(usize, &UsageTopRow)> = sorted
+    let view_rows: Vec<RankRowView> = sorted
         .iter()
         .take(10)
         .enumerate()
-        .map(|(i, r)| (i, *r))
+        .map(|(i, r)| {
+            let r: &UsageTopRow = r;
+            let v = metric.of(r);
+            // 增长率恒按 tokens 口径环比(与总览页 Top10 一致);
+            // 份额跟随所选 metric 口径
+            let meta = growth_of(r.previous_tokens, r.tokens).map(|g| RankRowMeta {
+                label: g.label().to_string(),
+                class: g.text_class(),
+            });
+            RankRowView {
+                key: r.name.clone(),
+                rank: i + 1,
+                name: r.name.clone(),
+                value: metric.fmt(r),
+                meta,
+                share: share_text(v, total),
+                bar_pct: (v as f64 / max_v as f64 * 100.0).max(2.0),
+                bar_color: MODEL_COLORS[i % MODEL_COLORS.len()].to_string(),
+            }
+        })
         .collect();
 
     rsx! {
-        // 卡壳与 ui-components Card(hoverable) 同源:仅 hover 边框变亮(secondary-hover token),
-        // 几何/圆角/内边距不变
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
-            "data-testid": "{testid}",
-            div {
-                h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
-                p { class: "text-[11px] text-zinc-500", "{subtitle}" }
-            }
-            // 双列摊开(参照 new-api model-leaderboard 对半切,移动端单列);
-            // 行距 gap-y-4 + 行内轻底色块(8090 预览反馈③),10 行条目明显呼吸开
-            div { class: "grid grid-cols-1 gap-x-5 gap-y-4 pt-1 md:grid-cols-2",
-                for (i, r) in top_n {
-                    {
-                        let v = metric.of(r);
-                        let width_pct = (v as f64 / max_v as f64 * 100.0).max(2.0);
-                        let value_text = metric.fmt(r);
-                        // 增长率恒按 tokens 口径环比(与总览页 Top10 一致);
-                        // 份额跟随所选 metric 口径
-                        let growth = growth_of(r.previous_tokens, r.tokens);
-                        let share = share_text(v, total);
-                        rsx! {
-                        // 行容器只保留 gap 呼吸感;条目底色(8090 预览反馈:「类似元素1这种」很难看)已去掉
-                        div { key: "{r.name}", class: "flex items-center gap-2.5",
-                                span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm", "{i + 1}" }
-                                div { class: "min-w-0 flex-1",
-                                    div { class: "flex items-center justify-between gap-3",
-                                        span { class: "truncate text-xs font-medium text-zinc-200", "{r.name}" }
-                                        div { class: "flex shrink-0 flex-col items-end gap-0.5",
-                                            span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100", "{value_text}" }
-                                            div { class: "flex items-center gap-1.5 text-[10px] leading-none",
-                                                if let Some(g) = growth {
-                                                    span { class: "font-medium tabular-nums {g.text_class()}", "{g.label()}" }
-                                                }
-                                                if let Some(s) = share {
-                                                    span { class: "tabular-nums text-zinc-500", "{s}" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    div { class: "mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
-                                        div {
-                                            class: "h-full rounded-full transition-all duration-300",
-                                            style: "width: {width_pct:.1}%; background: {MODEL_COLORS[i % MODEL_COLORS.len()]}",
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            p { class: "border-t border-zinc-800/60 pt-2.5 text-[10px] text-zinc-500",
-                "增长率为 tokens 环比(上一等长窗);份额为行值占当榜合计"
-            }
+        RankBoard {
+            title: title.to_string(),
+            subtitle: subtitle.to_string(),
+            testid: testid.to_string(),
+            rows: view_rows,
+            footnote: "增长率为 tokens 环比(上一等长窗);份额为行值占当榜合计".to_string(),
         }
     }
 }
