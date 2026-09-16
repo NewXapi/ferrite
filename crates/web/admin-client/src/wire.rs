@@ -118,6 +118,9 @@ pub struct UserBalanceDto {
     pub currency_code: String,
     /// 余额 (该币种单位的原始数量)。
     pub amount: i64,
+    /// 货币 symbol (`currency_defs.symbol`,如 "¥"/"P");空串为旧数据无 symbol,
+    /// 渲染时由面板回退到 currency_code。
+    pub symbol: String,
 }
 
 /// 用户钱包视图 — 对齐后端 `contract::api::billing::WalletView` (camelCase)。

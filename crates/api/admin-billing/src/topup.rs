@@ -131,20 +131,36 @@ impl TopupService {
 
     /// 开单（不接真支付），建 pending 订单，返回 order id。
     /// 直接写入 billing_topups 表（0008）state='pending'。
+    ///
+    /// 只收 `kind='points'` 货币（0014）：fiat 只是计价展示单位、永远无法入账，
+    /// 开了就是永远 settle 不了的僵尸单（settle 时 credit_topup 失败、事务
+    /// 回滚、订单退回 pending）。在开单入口拒绝，而不是让单据进状态机后卡死。
     pub async fn open_topup(&self, req: TopUpRequest) -> Result<String, BillingErr> {
-        // 验证货币是否存在且启用
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM currency_defs WHERE code = $1 AND enabled = true)",
-        )
-        .bind(&req.currency)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(BillingErr::Db)?;
-        if !exists {
-            return Err(BillingErr::BadRequest(format!(
-                "currency {} not found or disabled",
-                req.currency
-            )));
+        // 查启用货币的 kind 再分流报错：fiat「存在且启用、但不能充值」与
+        // 「不存在/停用」是两种不同的状况，混为一谈会把后者误导成前者。
+        let kind: Option<String> =
+            sqlx::query_scalar("SELECT kind FROM currency_defs WHERE code = $1 AND enabled = true")
+                .bind(&req.currency)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(BillingErr::Db)?;
+        match kind.as_deref() {
+            // points 放行（正常充值路径，行为零变化）。
+            Some("points") => {}
+            // 0014 CHECK 约束只有 points|fiat；文案带 kind 值而非硬编码 "fiat"，
+            // 将来若加第三种 kind 不会误报（ocr review 建议，采纳）。
+            Some(unexpected_kind) => {
+                return Err(BillingErr::BadRequest(format!(
+                    "currency {} (kind {unexpected_kind}) cannot be topped up (points only)",
+                    req.currency
+                )));
+            }
+            None => {
+                return Err(BillingErr::BadRequest(format!(
+                    "currency {} not found or disabled",
+                    req.currency
+                )));
+            }
         }
 
         // key = UUID 字符串（不使用 Uuid 包装，以便在前端易于 copy）
