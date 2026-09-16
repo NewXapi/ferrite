@@ -50,11 +50,7 @@ impl WalletService {
     /// `mult = currency_defs.group_rates->>group`，缺组/NULL = 1.0。
     /// `group: &str` = 用户组，取自 `auth_users.group_id`；组倍率缺失时 SQL
     /// 的 COALESCE 回落 1.0（与无组配置数值等价）。
-    pub async fn available_i64(
-        &self,
-        user_key: Uuid,
-        group: &str,
-    ) -> Result<i64, BillingErr> {
+    pub async fn available_i64(&self, user_key: Uuid, group: &str) -> Result<i64, BillingErr> {
         let rows = self.load_balances(user_key, Some(group)).await?;
         Ok(Self::available_of(&rows))
     }

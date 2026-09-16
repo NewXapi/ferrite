@@ -246,7 +246,10 @@ async fn deduct_by_cost_normal() {
     .await
     .ok();
 
-    let (deducted, fully) = wallet.deduct_by_cost_group(user, 300, None).await.expect("deduct");
+    let (deducted, fully) = wallet
+        .deduct_by_cost_group(user, 300, None)
+        .await
+        .expect("deduct");
     assert_eq!(deducted, 300, "FREE rate=1 扣 300 内部单位应实扣 300");
     assert!(fully, "余额充足应 fully=true");
 
@@ -277,7 +280,10 @@ async fn deduct_by_cost_clamp() {
     .await
     .ok();
 
-    let (deducted, fully) = wallet.deduct_by_cost_group(user, 1000, None).await.expect("deduct");
+    let (deducted, fully) = wallet
+        .deduct_by_cost_group(user, 1000, None)
+        .await
+        .expect("deduct");
     assert_eq!(deducted, 100, "余额不足应 clamp 到实际可用 100");
     assert!(!fully, "扣不够应 fully=false（余账下请求准入拦截）");
 
@@ -368,7 +374,10 @@ async fn balance_view_reflects_deduct() {
     let v = wallet.balance_view(user, None).await.expect("view1");
     assert_eq!(v.available_i64, 1000, "初始 view available=1000");
 
-    wallet.deduct_by_cost_group(user, 250, None).await.expect("deduct");
+    wallet
+        .deduct_by_cost_group(user, 250, None)
+        .await
+        .expect("deduct");
 
     let v2 = wallet.balance_view(user, None).await.expect("view2");
     assert_eq!(v2.available_i64, 750, "扣 250 后 view available=750");
@@ -405,10 +414,7 @@ async fn group_rate_discounts_available() {
         "None = 不区分组，倍率恒 1.0"
     );
     assert_eq!(
-        wallet
-            .available_i64(user, "gold")
-            .await
-            .expect("gold"),
+        wallet.available_i64(user, "gold").await.expect("gold"),
         1000,
         "未配置倍率的组缺省 1.0"
     );
@@ -436,7 +442,10 @@ async fn frozen_reward_not_available_until_thaw() {
         .expect("freeze credit");
     assert_eq!(v, 1500, "入账后余额（货币单位）含冻结 1500");
     assert_eq!(
-        wallet.available_i64(user, "__unset__").await.expect("avail"),
+        wallet
+            .available_i64(user, "__unset__")
+            .await
+            .expect("avail"),
         1000,
         "冻结入账不改变可用（购买力不变，只是记账）"
     );
@@ -447,7 +456,10 @@ async fn frozen_reward_not_available_until_thaw() {
         "未到期的冻结不搬"
     );
     assert_eq!(
-        wallet.available_i64(user, "__unset__").await.expect("avail2"),
+        wallet
+            .available_i64(user, "__unset__")
+            .await
+            .expect("avail2"),
         1000,
         "提前 thaw 后可用不变"
     );
@@ -466,7 +478,10 @@ async fn frozen_reward_not_available_until_thaw() {
         "到期解冻全额搬回可用"
     );
     assert_eq!(
-        wallet.available_i64(user, "__unset__").await.expect("avail3"),
+        wallet
+            .available_i64(user, "__unset__")
+            .await
+            .expect("avail3"),
         1500,
         "解冻后 frozen=0，amount 1500 全可用"
     );
@@ -499,11 +514,17 @@ async fn frozen_does_not_double_count() {
     .expect("freeze");
 
     assert_eq!(
-        wallet.available_i64(user, "__unset__").await.expect("avail"),
+        wallet
+            .available_i64(user, "__unset__")
+            .await
+            .expect("avail"),
         1000,
         "available = amount - frozen = 1000（不是 1500）"
     );
-    let (deducted, fully) = wallet.deduct_by_cost_group(user, 1200, None).await.expect("deduct");
+    let (deducted, fully) = wallet
+        .deduct_by_cost_group(user, 1200, None)
+        .await
+        .expect("deduct");
     assert_eq!(deducted, 1000, "只能扣非冻结的 1000");
     assert!(!fully, "冻结部分不可扣，扣不足应 fully=false");
 
@@ -556,7 +577,10 @@ async fn deduct_with_group_rate() {
 
     // 对照：复位余额后不带组，同 cost 只消耗 800 货币单位（倍率不生效）。
     set_balance(&pool, user, 1000).await;
-    let (d2, f2) = wallet.deduct_by_cost_group(user, 800, None).await.expect("deduct none");
+    let (d2, f2) = wallet
+        .deduct_by_cost_group(user, 800, None)
+        .await
+        .expect("deduct none");
     assert_eq!(d2, 800);
     assert!(f2);
     let bal2: i64 = sqlx::query_scalar(
