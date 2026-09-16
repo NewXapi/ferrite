@@ -1,8 +1,8 @@
-//! 排行榜页 — 「模型实力榜（演示）」与「真实用量榜」双区块并存。
+//! 排行榜页 — 「模型实力榜」与「真实用量榜」双区块并存。
 //!
-//! - 模型实力榜(演示): 六维演示数据层 ([`data`]) + 立绘海报翻牌卡 ([`cards`]) + 汇总图表
+//! - 模型实力榜: 六维演示数据层 ([`data`]) + 立绘海报翻牌卡 ([`cards`]) + 汇总图表
 //!   ([`charts`])。后端暂无价格、速度、上下文、成功率等维度端点,演示数值的出处与免责
-//!   见 [`data`] 模块头声明,页面标题以「（演示）」字样标注,待真实源就绪后替换。
+//!   见 [`data`] 模块头声明,待真实源就绪后替换。
 //! - 真实用量榜: 数据来自真实 `GET /api/log/top?by=model`(按模型聚合的消费日志),
 //!   展示真实存在的三个口径 —— tokens / 调用数 / 费用(quota,$ 口径),指标名与轴标签
 //!   如实反映口径;行内附增长率(tokens 环比,复用 api.rs 纯函数)与份额,另有
@@ -143,12 +143,11 @@ fn DemoBoard() -> Element {
     ranked.sort_by(|a, b| composite(b).partial_cmp(&composite(a)).unwrap());
 
     rsx! {
-        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": "模型实力榜（演示）",
+        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": "模型实力榜",
             class: "flex flex-col gap-6 md:gap-8",
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
-                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型实力榜（演示）" }
-                    p { class: "mt-1 text-xs text-zinc-400", "正面展示立绘与雷达图，点击卡牌可 3D 翻转查看六维综合评测与详细指标" }
+                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型实力榜" }
                 }
                 span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
                     "共收录 {ranked.len()} 款主流模型"

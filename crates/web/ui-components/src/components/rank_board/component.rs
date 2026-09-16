@@ -74,11 +74,11 @@ pub fn RankBoard(
                     CardTitle { class: "text-sm text-zinc-100", "{title}" }
                     CardDescription { class: "text-[11px]", "{subtitle}" }
                 }
-                div { class: "grid grid-cols-1 gap-x-6 gap-y-4 pt-1 md:grid-cols-2",
+                div { class: "grid grid-cols-1 gap-x-6 gap-y-5 pt-1 md:grid-cols-2",
                     for r in rows {
                         div {
                             key: "{r.key}",
-                            class: "flex items-center gap-2.5",
+                            class: "flex items-center gap-3",
                             span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm",
                                 "{r.rank}"
                             }
@@ -99,7 +99,7 @@ pub fn RankBoard(
                                         }
                                     }
                                 }
-                                div { class: "mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                                div { class: "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                                     div {
                                         class: "h-full rounded-full transition-all duration-300",
                                         style: "width: {r.bar_pct:.1}%; background: {r.bar_color}",

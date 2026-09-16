@@ -196,6 +196,10 @@ pub enum MoversState {
 }
 
 /// 单卡行列表(上升/下跌共用一套渲染;空态诚实标注「无显著变动」)。
+///
+/// 行结构对齐 RankBoard 条目解剖:`#当前名次` + 模型名 + 右侧 tokens 实值与
+/// ±名次变动 + 相对比例长条(条宽 = 行 tokens / 本卡 movers 最大 tokens,
+/// 全零时不渲染长条)。`bar_color` 上升卡 emerald、下跌卡 rose,与 delta 色呼应。
 #[component]
 fn MoveList(
     title: &'static str,
@@ -203,7 +207,18 @@ fn MoveList(
     testid: &'static str,
     row_prefix: &'static str,
     moves: Vec<RankMove>,
+    rows: Vec<UsageTopRow>,
+    bar_color: &'static str,
 ) -> Element {
+    // 条宽口径:本卡各 mover 的当前窗 tokens(真实聚合值),相对最大者换算百分比
+    let tokens_of = |name: &str| {
+        rows.iter()
+            .find(|r| r.name == name)
+            .map(|r| r.tokens)
+            .unwrap_or(0)
+    };
+    let max_tokens = moves.iter().map(|m| tokens_of(&m.name)).max().unwrap_or(0);
+
     rsx! {
         div { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "{testid}",
@@ -214,7 +229,7 @@ fn MoveList(
             if moves.is_empty() {
                 p { class: "py-6 text-center text-xs text-zinc-500", "当前窗口无显著变动" }
             } else {
-                div { class: "space-y-2",
+                div { class: "space-y-3",
                     for m in moves {
                         {
                             let (delta_text, delta_class) = match m.delta {
@@ -223,17 +238,40 @@ fn MoveList(
                                 RankDelta::Moved(d) => (format!("↓{}", -d), "text-rose-400"),
                                 RankDelta::New => ("↑new".to_string(), "text-emerald-400"),
                             };
+                            let tokens = tokens_of(&m.name);
+                            let bar_pct = if max_tokens > 0 {
+                                (tokens as f64 / max_tokens as f64 * 100.0).max(2.0)
+                            } else {
+                                0.0
+                            };
                             rsx! {
                                 div {
                                     key: "{m.name}",
-                                    class: "flex items-center justify-between gap-3 text-xs",
+                                    class: "flex items-center gap-2.5",
                                     "data-testid": "{row_prefix}-{slug(&m.name)}",
-                                    div { class: "flex min-w-0 items-center gap-2",
-                                        span { class: "shrink-0 font-mono text-[10px] text-zinc-500", "#{m.cur_rank}" }
-                                        span { class: "truncate text-zinc-200", "{m.name}" }
+                                    span { class: "w-7 shrink-0 text-right font-mono text-[10px] text-zinc-500",
+                                        "#{m.cur_rank}"
                                     }
-                                    span { class: "shrink-0 font-mono text-[11px] font-medium tabular-nums {delta_class}",
-                                        "{delta_text}"
+                                    div { class: "min-w-0 flex-1",
+                                        div { class: "flex items-center justify-between gap-3",
+                                            span { class: "truncate text-xs font-medium text-zinc-200", "{m.name}" }
+                                            div { class: "flex shrink-0 items-center gap-2",
+                                                span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100",
+                                                    "{fmt_raw(tokens)}"
+                                                }
+                                                span { class: "shrink-0 font-mono text-[11px] font-medium tabular-nums {delta_class}",
+                                                    "{delta_text}"
+                                                }
+                                            }
+                                        }
+                                        if max_tokens > 0 {
+                                            div { class: "mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                                                div {
+                                                    class: "h-full rounded-full transition-all duration-300",
+                                                    style: "width: {bar_pct:.1}%; background: {bar_color}",
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -272,13 +310,15 @@ pub fn MoversCards(state: MoversState) -> Element {
             let ups = top_movers(&moves, 6);
             let downs = top_droppers(&moves, 6);
             rsx! {
-                div { class: "grid grid-cols-1 gap-4 lg:grid-cols-2",
+                div { class: "grid grid-cols-1 gap-6 lg:grid-cols-2",
                     MoveList {
                         title: "上升最快",
                         subtitle: "tokens 名次较上一等长窗上升(取前 6)",
                         testid: "leaderboard-movers",
                         row_prefix: "leaderboard-mover",
                         moves: ups,
+                        rows: cur.clone(),
+                        bar_color: "#34d399",
                     }
                     MoveList {
                         title: "下跌最快",
@@ -286,6 +326,8 @@ pub fn MoversCards(state: MoversState) -> Element {
                         testid: "leaderboard-droppers",
                         row_prefix: "leaderboard-dropper",
                         moves: downs,
+                        rows: cur,
+                        bar_color: "#fb7185",
                     }
                 }
             }
