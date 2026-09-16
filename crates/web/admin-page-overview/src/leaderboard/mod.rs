@@ -1,21 +1,28 @@
-//! 排行榜页 — 「模型实力榜（演示）」与「真实用量榜」双区块并存。
+//! 排行榜页 — 「模型实力榜」与「真实用量榜」双区块并存。
 //!
-//! - 模型实力榜(演示): 六维演示数据层 ([`data`]) + 立绘海报翻牌卡 ([`cards`]) + 汇总图表
+//! - 模型实力榜: 六维演示数据层 ([`data`]) + 立绘海报翻牌卡 ([`cards`]) + 汇总图表
 //!   ([`charts`])。后端暂无价格、速度、上下文、成功率等维度端点,演示数值的出处与免责
-//!   见 [`data`] 模块头声明,页面标题以「（演示）」字样标注,待真实源就绪后替换。
+//!   见 [`data`] 模块头声明,待真实源就绪后替换。
 //! - 真实用量榜: 数据来自真实 `GET /api/log/top?by=model`(按模型聚合的消费日志),
-//!   展示真实存在的三个口径 —— tokens / 调用数 / 费用(quota),指标名与轴标签如实反映口径。
+//!   展示真实存在的三个口径 —— tokens / 调用数 / 费用(quota,$ 口径),指标名与轴标签
+//!   如实反映口径;行内附增长率(tokens 环比,复用 api.rs 纯函数)与份额,另有
+//!   上升/下跌最快名次变动双卡与厂商份额卡,见 [`insights`]。
 
 mod cards;
 mod charts;
 pub mod data;
+pub mod insights;
 
 use dioxus::prelude::*;
 
-use crate::api::{UsageTopRow, top_usage_api, window_start};
+use crate::api::{UsageTopRow, fmt_usd, growth_of, share_text, top_usage_api, window_start};
 use cards::{MiniRadarCard, PosterImageCard};
 use charts::{GroupQuotaCard, ModelDistributionCard, PerformanceLatencyCard};
 use data::{MODELS, ModelStat, composite};
+use insights::{
+    MoversCards, MoversState, VendorShareCard, previous_window_start, top_usage_between,
+};
+use ui::components::rank_board::{RankBoard, RankRowMeta, RankRowView};
 
 /// 模型配色(内联 hex, 不走 Tailwind 扫描) — 沿用旧 charts.rs 的色板。
 const MODEL_COLORS: [&str; 10] = [
@@ -37,10 +44,8 @@ fn fmt_raw(n: i64) -> String {
     }
 }
 
-/// 内部计费额度 → 人民币展示 (500000 = ¥1),与 overview.rs 的口径一致。
-fn fmt_cny(quota: i64) -> String {
-    format!("¥{:.2}", quota as f64 / 500_000.0)
-}
+// 内部计费额度 → 美元展示串已复用 api.rs 的 `fmt_usd`(500000 = $1),
+// 与总览页 Top10 同口径;本文件不再保留 ¥ 折算的旧实现。
 
 /// 排行榜取数口径:同一批 /api/log/top 聚合行,按不同字段重排展示。
 /// 用枚举而非 fn 指针传参:component 宏会为 props 生成 PartialEq,函数指针比较不可靠。
@@ -50,7 +55,7 @@ enum RankMetric {
     Tokens,
     /// 消费请求数
     Calls,
-    /// 计费额度(500000 = ¥1)
+    /// 计费额度(500000 = $1,复用 api.rs fmt_usd)
     Quota,
 }
 
@@ -69,12 +74,15 @@ impl RankMetric {
         match self {
             Self::Tokens => fmt_raw(r.tokens),
             Self::Calls => r.calls.to_string(),
-            Self::Quota => fmt_cny(r.quota),
+            Self::Quota => fmt_usd(r.quota),
         }
     }
 }
 
 /// 单个排行卡:按 `metric` 从真实聚合行里取前 N,画名次 + 名称 + 条形 + 数值。
+/// 呈现全部委托 ui-components 的 [`ui::components::rank_board::RankBoard`]
+/// (维护者要求三张口径榜抽象为共享组件复用);本层只做口径排序/取前 10/份额分母
+/// 与字段格式化(业务换算不进共享组件)。
 #[component]
 fn RankCard(
     title: &'static str,
@@ -87,46 +95,46 @@ fn RankCard(
     let mut sorted: Vec<&UsageTopRow> = rows.iter().collect();
     sorted.sort_by_key(|r| std::cmp::Reverse(metric.of(r)));
     let max_v = sorted.first().map(|r| metric.of(r)).unwrap_or(0).max(1);
-    let top_n: Vec<(usize, &UsageTopRow)> = sorted
+    // 份额分母 = 当榜行值合计(后端拉回的整批行,不截前 10);
+    // 口径跟随所选 metric(Tokens/Calls/Quota 各自占各自口径的合计)
+    let total: i64 = rows.iter().map(|r| metric.of(r)).sum();
+    let view_rows: Vec<RankRowView> = sorted
         .iter()
         .take(10)
         .enumerate()
-        .map(|(i, r)| (i, *r))
+        .map(|(i, r)| {
+            let r: &UsageTopRow = r;
+            let v = metric.of(r);
+            // 环比标签只在上一窗确有数据(previous_tokens > 0)时展示:
+            // 消耗榜里「↑new」语义不成立(维护者反馈),旧 wire 缺字段或新进榜一律不标
+            let meta = if r.previous_tokens > 0 {
+                growth_of(r.previous_tokens, r.tokens).map(|g| RankRowMeta {
+                    label: g.label().to_string(),
+                    class: g.text_class(),
+                })
+            } else {
+                None
+            };
+            RankRowView {
+                key: r.name.clone(),
+                rank: i + 1,
+                name: r.name.clone(),
+                value: metric.fmt(r),
+                meta,
+                share: share_text(v, total),
+                bar_pct: (v as f64 / max_v as f64 * 100.0).max(2.0),
+                bar_color: MODEL_COLORS[i % MODEL_COLORS.len()].to_string(),
+            }
+        })
         .collect();
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4",
-            "data-testid": "{testid}",
-            div {
-                h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
-                p { class: "text-[11px] text-zinc-500", "{subtitle}" }
-            }
-            div { class: "space-y-2.5 pt-1",
-                for (i, r) in top_n {
-                    {
-                        let v = metric.of(r);
-                        let width_pct = (v as f64 / max_v as f64 * 100.0).max(2.0);
-                        let value_text = metric.fmt(r);
-                        rsx! {
-                            div { key: "{r.name}", class: "flex items-center gap-2.5",
-                                span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm", "{i + 1}" }
-                                div { class: "min-w-0 flex-1",
-                                    div { class: "flex items-center justify-between gap-3",
-                                        span { class: "truncate text-xs font-medium text-zinc-200", "{r.name}" }
-                                        span { class: "shrink-0 font-mono text-xs font-semibold tabular-nums text-zinc-100", "{value_text}" }
-                                    }
-                                    div { class: "mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
-                                        div {
-                                            class: "h-full rounded-full transition-all duration-300",
-                                            style: "width: {width_pct:.1}%; background: {MODEL_COLORS[i % MODEL_COLORS.len()]}",
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        RankBoard {
+            title: title.to_string(),
+            subtitle: subtitle.to_string(),
+            testid: testid.to_string(),
+            rows: view_rows,
+            footnote: "增长率为 tokens 环比(上一等长窗);份额为行值占当榜合计".to_string(),
         }
     }
 }
@@ -139,12 +147,11 @@ fn DemoBoard() -> Element {
     ranked.sort_by(|a, b| composite(b).partial_cmp(&composite(a)).unwrap());
 
     rsx! {
-        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": "模型实力榜（演示）",
+        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": "模型实力榜",
             class: "flex flex-col gap-6 md:gap-8",
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
-                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型实力榜（演示）" }
-                    p { class: "mt-1 text-xs text-zinc-400", "正面展示立绘与雷达图，点击卡牌可 3D 翻转查看六维综合评测与详细指标" }
+                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型实力榜" }
                 }
                 span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
                     "共收录 {ranked.len()} 款主流模型"
@@ -184,13 +191,18 @@ pub fn LeaderboardPanel() -> Element {
     let mut rows = use_signal(Vec::<UsageTopRow>::new);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
+    // 本面板错误红盒保留「重试」(不在 8090 反馈①的三面板范围内),reload 仅由
+    // 重试按钮驱动;刷新按钮已删(反馈②),数据进面板自动拉一次。
     let mut reload = use_signal(|| 0u32);
+    let mut movers = use_signal(|| MoversState::Loading);
 
+    // 进面板自动拉一次;时间窗切换 / 重试仍驱动重拉。
     use_effect(move || {
         let tf = timeframe();
         let _ = reload();
         loading.set(true);
         err.set(None);
+        movers.set(MoversState::Loading);
         spawn(async move {
             let start = window_start(tf);
             match top_usage_api("model", &start, 10).await {
@@ -204,6 +216,19 @@ pub fn LeaderboardPanel() -> Element {
                 }
             }
         });
+        // 上升/下跌最快:当前窗与上一等长窗各一次 by=model top20 聚合,
+        // 名次变动在前端算(口径 tokens,与增长环比一致)。与主榜单独立
+        // 拉取,失败只降级本区,不拖垮三张榜单
+        spawn(async move {
+            let cur_start = window_start(tf);
+            let prev_start = previous_window_start(tf);
+            let cur = top_usage_api("model", &cur_start, 20).await;
+            let prev = top_usage_between("model", &prev_start, &cur_start, 20).await;
+            movers.set(match (cur, prev) {
+                (Ok(c), Ok(p)) => MoversState::Ready { cur: c, prev: p },
+                (Err(e), _) | (_, Err(e)) => MoversState::Failed(e.to_string()),
+            });
+        });
     });
 
     let data = rows();
@@ -216,19 +241,16 @@ pub fn LeaderboardPanel() -> Element {
             // 区块一: 模型实力榜(演示) — 恢复 #154 前的立绘卡牌阵列, 数值为演示数据
             DemoBoard {}
 
-            // ===== 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留) =====
+            // 区块一点五: 厂商份额(真实区上方,demo 之后、用量榜之前;复用 by=model 聚合)
+            VendorShareCard { rows: data.clone(), loading: is_loading }
+
+            // 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留)。
+            // 时间窗 tab 与标题同行(8090 预览反馈④);介绍语只留一行口径说明。
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
                     h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "真实用量榜" }
-                    p { class: "mt-1 text-xs text-zinc-400", "按后端消费日志聚合(/api/log/top):窗口内各模型的 Token 消耗、调用次数与费用" }
+                    p { class: "mt-1 text-xs text-zinc-400", "后端消费日志聚合 · 窗口内 {data.len()} 个模型有调用" }
                 }
-                span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
-                    "窗口内 {data.len()} 个模型有调用"
-                }
-            }
-
-            // 时间窗切换 + 刷新(口径与总览页 trend 一致)
-            div { class: "flex flex-wrap items-center justify-between gap-3",
                 div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
                     for t in ["今天", "本周", "本月", "今年"] {
                         button {
@@ -240,12 +262,6 @@ pub fn LeaderboardPanel() -> Element {
                             "{t}"
                         }
                     }
-                }
-                button {
-                    class: "rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
-                    "data-testid": "refresh-leaderboard",
-                    onclick: move |_| reload.set(reload() + 1),
-                    "刷新"
                 }
             }
 
@@ -271,7 +287,8 @@ pub fn LeaderboardPanel() -> Element {
                         p { class: "mt-1 text-xs text-zinc-600", "发起一次 /v1 调用后这里会展示真实用量排行" }
                     }
                 } else {
-                    div { class: "grid grid-cols-1 gap-4 xl:grid-cols-3 pt-2",
+                    // 三卡间距 gap-6(8090 预览反馈④),卡片 p-5 保持
+                    div { class: "grid grid-cols-1 gap-6 xl:grid-cols-3 pt-2",
                         RankCard {
                             title: "Token 消耗 Top",
                             subtitle: "窗口内 prompt + completion tokens 合计",
@@ -288,11 +305,16 @@ pub fn LeaderboardPanel() -> Element {
                         }
                         RankCard {
                             title: "费用消耗 Top",
-                            subtitle: "窗口内计费额度(500000 = ¥1)",
+                            subtitle: "窗口内计费额度(500000 = $1)",
                             testid: "leaderboard-quota",
                             metric: RankMetric::Quota,
                             rows: data,
                         }
+                    }
+                    // 前3卡与升降速双卡间距加大(8090 预览反馈①:三面板跟下面两面板没间距);
+                    // 跟随当前 timeframe,数据进面板自动拉取
+                    div { class: "mt-6",
+                        MoversCards { state: movers() }
                     }
                 }
             }

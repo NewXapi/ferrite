@@ -11,6 +11,11 @@
 //!   后端保现有密钥（COALESCE）；`testModel` 直绑无 COALESCE，缺席即清列
 //!   ——前端必须恒带现值。这里从 HTTP 层钉死后端行为，防止 svc 契约被改。
 //! - `/api/gateway/health`（#171/#172）是 admin 白名单新端点，钉鉴权与信封。
+//! - 总览页五端点（#204）：`/api/dashboard`、`/api/log/top`、`/api/log/trend`、
+//!   `/api/log/errors`、`/api/monitor` 此前是「每个端点都钉死」承诺的漏网之鱼
+//!   （`todo/page-audit-overview.md` §2.3-1）——前端 admin-page-overview 按
+//!   `{"items":[...]}` 剥壳 + camelCase 反序列化，任一侧漂移只会在浏览器里
+//!   静默变空。这里按前端同款请求钉死鉴权与信封/字段形状。
 //!
 //! 模式与 admin_gateway_flow.rs 一致：PG 不可达即 skip；`build_app_with_egress`
 //! 建真 Router；tower oneshot 发前端同款请求。
@@ -197,6 +202,41 @@ async fn insert_channel(pool: &sqlx::PgPool) -> (uuid::Uuid, String) {
     .await
     .unwrap();
     (key, name)
+}
+
+/// 无凭据 GET：admin 白名单端点 401 半边断言用（与 gateway_health 用例的
+/// 匿名请求同款——oneshot 裸请求不带 Authorization；缺 header 在 bearer_token
+/// 处落 AuthError::InvalidToken → 401）。
+async fn anon_get(app: &axum::Router, uri: &str) -> axum::response::Response {
+    ServiceExt::oneshot(
+        app.clone(),
+        Request::builder().uri(uri).body(Body::empty()).unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
+/// 落一条用量流水。写侧与 usage_log_type.rs 同源：observe::logs 的构造器
+/// （consume/error，log_type 常量唯一定义点）+ LogService::record，
+/// 禁止手写 log_type 字面量。
+async fn record_usage(pool: &sqlx::PgPool, e: &observe::logs::UsageEvent) {
+    observe::logs::LogService::new(pool.clone())
+        .record(e)
+        .await
+        .expect("record usage event");
+}
+
+/// 测后清理：按 model_name 精确删除本用例写入的流水行（uuid 隔离键，只碰
+/// 自己的行，严禁批量清库）。断言中途 panic 时残留靠 uuid 隔离兜底，
+/// 不会污染其他用例或后续运行。
+async fn cleanup_usage_by_model(pool: &sqlx::PgPool, models: &[&str]) {
+    for m in models {
+        sqlx::query("DELETE FROM usage_logs WHERE model_name = $1")
+            .bind(m)
+            .execute(pool)
+            .await
+            .expect("cleanup usage_logs");
+    }
 }
 
 // ============================================================================
@@ -491,4 +531,381 @@ async fn redemption_list_items_envelope() {
         body["items"].is_array(),
         "redemption list must wrap items: {body}"
     );
+}
+
+// ============================================================================
+// 总览页五端点（#204，todo/page-audit-overview.md §2.3-1）
+// ============================================================================
+
+/// 前端「总览页统计卡」契约：`GET /api/dashboard` admin 白名单（无 token →
+/// 401），200 响应必须携带既有 9 个统计字段 + W1 新增 `quotaRemaining`(i64)
+/// 与 `asOf`（非空 RFC3339 —— 前端 `as_of_local_time` 靠它渲染数据截止时刻，
+/// 解析失败即诚实降级，这里钉死后端必须给真值）。camelCase 字段名逐一断言：
+/// 漂移成 snake_case 时 `body["channelsEnabled"]` 等取值为 null，当场炸，
+/// 而不是统计卡静默归零。共享 e2e 库里各计数随其他用例波动，只钉类型不钉值。
+#[tokio::test]
+async fn dashboard_summary_fields_envelope() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let app = build_test_app(&pool).await;
+    let (_user, username) = insert_admin_user(&pool).await;
+    let token = login(&app, &username).await;
+
+    // 无 token：401（admin 白名单，非公开端点）。
+    let anon = anon_get(&app, "/api/dashboard").await;
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+
+    let resp = call(&app, "GET", "/api/dashboard", &token, None).await;
+    assert_eq!(resp.status(), StatusCode::OK, "dashboard: {resp:?}");
+    let body = response_to_json(resp).await;
+
+    // 既有 9 字段（users/tokens/channels/channelsEnabled/groups/quotaToday/
+    // requestsToday/rpm/tpm）逐一按 camelCase 钉类型。
+    for key in [
+        "users",
+        "tokens",
+        "channels",
+        "channelsEnabled",
+        "groups",
+        "quotaToday",
+        "requestsToday",
+        "rpm",
+        "tpm",
+    ] {
+        assert!(
+            body[key].is_i64(),
+            "dashboard.{key} 必须存在且为数值（camelCase）: {body}"
+        );
+    }
+    // W1 新增：剩余可用额度（SUM(quota) FROM auth_users WHERE status=1）。
+    assert!(
+        body["quotaRemaining"].is_i64(),
+        "dashboard.quotaRemaining 必须存在且为 i64（W1 新增）: {body}"
+    );
+    let as_of = body["asOf"]
+        .as_str()
+        .unwrap_or_else(|| panic!("dashboard.asOf 必须是字符串: {body}"));
+    assert!(!as_of.is_empty(), "asOf 不得为空串（新鲜度原则 7）");
+    chrono::DateTime::parse_from_rfc3339(as_of)
+        .expect("asOf 必须是 RFC3339（前端 as_of_local_time 靠它解析）");
+}
+
+/// 前端「消耗榜（总览 Top10 / 排行榜 Tokens 榜）」契约：
+/// `GET /api/log/top?by=model&start=<窗起点>&limit=10` admin 白名单（无 token
+/// → 401）；200 `{"items":[...]}` 信封（前端 `Items<T>` 剥壳），行 camelCase
+/// `name`/`tokens`/`tokens`/`quota`/`calls`/`previousTokens`——previousTokens
+/// 是 W1 的环比字段，前端虽有 serde(default) 兜底，后端缺席会让「↑new/↑%」
+/// 徽标静默消失，这里从 wire 层钉死必须回传。
+///
+/// 写侧走 `UsageEvent::consume` 构造器（log_type=2 常量同源）。tokens 取秒级
+/// 时间戳量级（i32 上限内）：本用例模型在任何历史数据面前稳居 tokens 榜首，
+/// LIMIT=10 截断不会把断言目标挤出榜外；时间戳随运行严格递增，跨运行不并列。
+/// `by=user` 同构抽查（group 列白名单的另一分支）。
+#[tokio::test]
+async fn log_top_items_envelope_and_previous_tokens() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let app = build_test_app(&pool).await;
+    let (user_key, username) = insert_admin_user(&pool).await;
+    let token = login(&app, &username).await;
+
+    let anon = anon_get(&app, "/api/log/top?by=model&limit=10").await;
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+
+    // 窗口起点先于写入：行落在 [start, now) 内 → 上窗无该实体 → previousTokens=0。
+    let start = (chrono::Utc::now() - chrono::Duration::hours(1))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let stamp = chrono::Utc::now().timestamp() as i32;
+    let model = format!("mdl-top-{}", uuid::Uuid::new_v4().simple());
+
+    let mut e1 = observe::logs::UsageEvent::consume(user_key, &username, &model);
+    e1.prompt_tokens = stamp;
+    e1.completion_tokens = 1_000;
+    e1.quota = 111;
+    record_usage(&pool, &e1).await;
+    let mut e2 = observe::logs::UsageEvent::consume(user_key, &username, &model);
+    e2.prompt_tokens = stamp;
+    e2.completion_tokens = 2_000;
+    e2.quota = 222;
+    record_usage(&pool, &e2).await;
+
+    let resp = call(
+        &app,
+        "GET",
+        &format!("/api/log/top?by=model&start={start}&limit=10"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "log/top by=model: {resp:?}");
+    let body = response_to_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("log/top 必须是 {{\"items\":[...]}} 信封: {body}"));
+    let row = items
+        .iter()
+        .find(|r| r["name"] == model)
+        .unwrap_or_else(|| panic!("写入的消费行必须上榜（tokens 量级恒居 LIMIT 内）: {body}"));
+    let expect_tokens = 2 * stamp as i64 + 3_000;
+    assert_eq!(
+        row["tokens"], expect_tokens,
+        "tokens = Σ(prompt+completion)"
+    );
+    assert_eq!(row["quota"], 333, "quota 求和");
+    assert_eq!(row["calls"], 2, "调用次数 = 行数");
+    assert_eq!(
+        row["previousTokens"], 0,
+        "上窗无该模型 → 0（camelCase 字段名钉死）"
+    );
+
+    // by=user 同构抽查：group 列切到 username 白名单分支，同一批行换维度
+    // 聚合（admin 用户名 uuid 隔离，只有本用例的两条行携带它）。
+    let resp = call(
+        &app,
+        "GET",
+        &format!("/api/log/top?by=user&start={start}&limit=10"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "log/top by=user: {resp:?}");
+    let body = response_to_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("by=user 同样必须 items 信封: {body}"));
+    let row = items
+        .iter()
+        .find(|r| r["name"] == username)
+        .unwrap_or_else(|| panic!("按用户聚合必须看到写入的行: {body}"));
+    assert_eq!(row["tokens"], expect_tokens, "同一批行换维度聚合值不变");
+    assert_eq!(row["calls"], 2);
+    for key in ["name", "tokens", "quota", "calls", "previousTokens"] {
+        assert!(
+            !row[key].is_null(),
+            "UsageTopRow.{key} 不得缺席（camelCase wire 契约）: {row}"
+        );
+    }
+
+    // 测后清理：本用例全部行都携带 uuid 隔离的 username，精确删除。
+    sqlx::query("DELETE FROM usage_logs WHERE username = $1")
+        .bind(&username)
+        .execute(&pool)
+        .await
+        .expect("cleanup log/top rows");
+}
+
+/// 前端「总览页趋势直方图」契约：`GET /api/log/trend?granularity=hour&start=
+/// <ISO>&end=<ISO>` admin 白名单（无 token → 401）；200 `{"items":[...]}` 信封
+/// （前端 `Items<T>` 剥壳——不是裸数组），行 camelCase `bucket`/`modelName`/
+/// `tokens`/`quota`/`calls`，bucket 必须是可解析 RFC3339（前端 pivot_trend
+/// 靠它定位时间桶）。trend 聚合无 LIMIT，uuid 隔离模型不受榜截断影响；
+/// 跨小时边界时同一模型可能拆成两个桶行，断言按该模型全部行求和。
+#[tokio::test]
+async fn log_trend_items_envelope_bucket_rows() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let app = build_test_app(&pool).await;
+    let (user_key, username) = insert_admin_user(&pool).await;
+    let token = login(&app, &username).await;
+
+    let anon = anon_get(&app, "/api/log/trend?granularity=hour").await;
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+
+    let model = format!("mdl-trend-{}", uuid::Uuid::new_v4().simple());
+    let mut e1 = observe::logs::UsageEvent::consume(user_key, &username, &model);
+    e1.prompt_tokens = 300;
+    e1.completion_tokens = 60;
+    e1.quota = 40;
+    record_usage(&pool, &e1).await;
+    let mut e2 = observe::logs::UsageEvent::consume(user_key, &username, &model);
+    e2.prompt_tokens = 500;
+    e2.completion_tokens = 40;
+    e2.quota = 60;
+    record_usage(&pool, &e2).await;
+
+    // start 先于写入、end 留一小时余量：trend 是 created_at >= start AND
+    // created_at < end，前端同款会传 iso_utc_now() 作 end——写入与请求之间
+    // 跨整点会抖动丢行，这里加余量防 flake（参数绑定路径照常被钉住）。
+    let start = (chrono::Utc::now() - chrono::Duration::hours(2))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let end = (chrono::Utc::now() + chrono::Duration::hours(1))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let resp = call(
+        &app,
+        "GET",
+        &format!("/api/log/trend?granularity=hour&start={start}&end={end}"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "log/trend: {resp:?}");
+    let body = response_to_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("log/trend 必须是 {{\"items\":[...]}} 信封: {body}"));
+    let rows: Vec<&Value> = items.iter().filter(|r| r["modelName"] == model).collect();
+    assert!(
+        !rows.is_empty(),
+        "窗口内的消费行必须出现在趋势桶（log_type=2 口径）: {body}"
+    );
+    let tokens: i64 = rows.iter().filter_map(|r| r["tokens"].as_i64()).sum();
+    let quota: i64 = rows.iter().filter_map(|r| r["quota"].as_i64()).sum();
+    let calls: i64 = rows.iter().filter_map(|r| r["calls"].as_i64()).sum();
+    assert_eq!(tokens, 900, "tokens = Σ(prompt+completion)，跨桶行求和");
+    assert_eq!(quota, 100);
+    assert_eq!(calls, 2);
+    for r in &rows {
+        let bucket = r["bucket"]
+            .as_str()
+            .unwrap_or_else(|| panic!("bucket 必须是字符串（camelCase）: {r}"));
+        chrono::DateTime::parse_from_rfc3339(bucket)
+            .expect("bucket 必须是 RFC3339（前端 pivot_trend 靠它定位时间桶）");
+    }
+
+    cleanup_usage_by_model(&pool, &[&model]).await;
+}
+
+/// 前端「总览页错误榜」契约：`GET /api/log/errors?hours=24&limit=10` admin
+/// 白名单（无 token → 401）；200 `{"items":[...],"asOf"}` 双字段信封（contract
+/// `UsageErrorStatPage` 本体，前端整体反序列化不再剥壳），行 camelCase
+/// `modelName`/`count`/`lastSeenAt`。
+///
+/// 口径闸：写 3 条 `UsageEvent::error`（log_type=5 常量同源）+ 1 条同模型
+/// `UsageEvent::consume`（log_type=2，top/trend 的口径）→ count 必须是 3。
+/// 若读侧过滤漂移把消费行也计入（count=4），当场炸——历史事故里 log_type
+/// 写/读两侧漂移曾让报表整体静默变空（见 usage_log_type.rs 文件头）。
+#[tokio::test]
+async fn log_errors_items_asof_envelope_and_type_filter() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let app = build_test_app(&pool).await;
+    let (user_key, username) = insert_admin_user(&pool).await;
+    let token = login(&app, &username).await;
+
+    let anon = anon_get(&app, "/api/log/errors?hours=24&limit=10").await;
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+
+    let model = format!("mdl-err-{}", uuid::Uuid::new_v4().simple());
+    for _ in 0..3 {
+        record_usage(
+            &pool,
+            &observe::logs::UsageEvent::error(user_key, &username, &model),
+        )
+        .await;
+    }
+    // 同模型的消费行（log_type=2）：只该进 top/trend，不得计入错误榜。
+    let mut ok = observe::logs::UsageEvent::consume(user_key, &username, &model);
+    ok.prompt_tokens = 10;
+    record_usage(&pool, &ok).await;
+
+    let resp = call(
+        &app,
+        "GET",
+        "/api/log/errors?hours=24&limit=10",
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "log/errors: {resp:?}");
+    let body = response_to_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("log/errors 必须是 {{\"items\":[...]}} 信封: {body}"));
+    let as_of = body["asOf"]
+        .as_str()
+        .unwrap_or_else(|| panic!("log/errors 必须带 asOf 双字段信封: {body}"));
+    assert!(!as_of.is_empty(), "asOf 非空（新鲜度原则 7）");
+    chrono::DateTime::parse_from_rfc3339(as_of).expect("asOf 必须是 RFC3339");
+
+    let row = items
+        .iter()
+        .find(|r| r["modelName"] == model)
+        .unwrap_or_else(|| panic!("错误行必须入榜（uuid 隔离 + 独占 log_type=5）: {body}"));
+    assert_eq!(
+        row["count"], 3,
+        "3 条 log_type=5 聚合为 3；若为 4 说明消费行（log_type=2）漏进错误口径"
+    );
+    let last_seen = row["lastSeenAt"]
+        .as_str()
+        .unwrap_or_else(|| panic!("lastSeenAt 必须是 camelCase 字符串: {row}"));
+    chrono::DateTime::parse_from_rfc3339(last_seen)
+        .expect("lastSeenAt 必须是 RFC3339（前端 last_seen_local_time 靠它解析）");
+
+    cleanup_usage_by_model(&pool, &[&model]).await;
+}
+
+/// 前端「总览页渠道健康面板」契约：`GET /api/monitor?days=7` admin 白名单
+/// （无 token → 401）；200 `{"items":[...]}` 信封——空数据与有数据都不得变
+/// 404/错误（面板三态里的「无数据灰」靠空数组落地）。行 camelCase
+/// `channelKey`/`days`/`total`/`okCount`/`availability`/`avgLatencyMs`
+/// （前端 ChannelAvailability 反序列化形状）。写侧走 observe::monitor 的
+/// `record_probe` 既有构造器，聚合断言顺带覆盖 audit §2.3-2 记录的
+/// `FILTER (WHERE ok)` 零测试缺口。
+#[tokio::test]
+async fn monitor_all_items_envelope_and_availability_row() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let app = build_test_app(&pool).await;
+    let (_user, username) = insert_admin_user(&pool).await;
+    let token = login(&app, &username).await;
+
+    let anon = anon_get(&app, "/api/monitor?days=7").await;
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+
+    // 空数据半边：聚合端点对空 monitor_history 返回 200 + items 数组。
+    let resp = call(&app, "GET", "/api/monitor?days=7", &token, None).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "monitor 空数据半边: {resp:?}"
+    );
+    let body = response_to_json(resp).await;
+    assert!(body["items"].is_array(), "monitor 必须 items 信封: {body}");
+
+    // 有行半边：落一次成功探活 → 该渠道聚合出 total=1/okCount=1/availability=1。
+    let ch_key = uuid::Uuid::new_v4();
+    let outcome = observe::monitor::ProbeOutcome {
+        channel_key: ch_key,
+        channel_name: format!("ch-mon-{}", &ch_key.to_string()[..8]),
+        model: "gpt-4o-mini".into(),
+        ok: true,
+        status_code: Some(200),
+        latency_ms: 42,
+        error_kind: String::new(),
+        message: "wire-it".into(),
+    };
+    observe::monitor::record_probe(&pool, &outcome)
+        .await
+        .expect("record probe");
+
+    let resp = call(&app, "GET", "/api/monitor?days=7", &token, None).await;
+    assert_eq!(resp.status(), StatusCode::OK, "monitor 有行半边: {resp:?}");
+    let body = response_to_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("monitor 必须 items 信封: {body}"));
+    let row = items
+        .iter()
+        .find(|r| r["channelKey"] == ch_key.to_string())
+        .unwrap_or_else(|| panic!("写入探活记录的渠道必须出现在可用率一览: {body}"));
+    assert_eq!(row["days"], 7, "days 查询参数透传到行");
+    assert_eq!(row["total"], 1);
+    assert_eq!(row["okCount"], 1, "FILTER (WHERE ok) 聚合");
+    assert_eq!(row["availability"], 1.0, "成功探活 → 可用率 1.0");
+    assert_eq!(row["avgLatencyMs"], 42.0, "成功样本平均延迟");
+
+    // 测后清理：按 uuid 精确删本用例的探活行（monitor_history 平表无 FK）。
+    sqlx::query("DELETE FROM monitor_history WHERE channel_key = $1")
+        .bind(ch_key)
+        .execute(&pool)
+        .await
+        .expect("cleanup monitor_history");
 }
