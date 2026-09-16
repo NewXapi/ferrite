@@ -4,6 +4,7 @@ use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, Upda
 use contract::api::user::{UserDto, role_label};
 
 use crate::api;
+use crate::usage_support::{fmt_quota, short_key, used_pct};
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 /// 拉取当前用户的密钥列表 (GET /api/token, owner 模式) 并写回三个 Signal。
@@ -99,11 +100,13 @@ pub fn KeysPanel() -> Element {
                     StatCard { value: none_v.clone(), label: "近 30 天请求 (暂无数据)" }
                     StatCard {
                         value: match remaining {
-                            Some(v) => v.to_string(),
+                            // 剩余额度 $ 口径展示 (QUOTA_PER_USD = 500_000 ≈ $1, 同 usage_support::fmt_quota);
+                            // 内部裸数 (如 2500000) 对用户无意义
+                            Some(v) => fmt_quota(v),
                             None if self_err().is_empty() => pending.clone(),
                             None => none_v.clone(),
                         },
-                        label: "剩余额度",
+                        label: "剩余额度 (≈$)",
                     }
                     StatCard {
                         value: none_v,
@@ -128,10 +131,12 @@ pub fn KeysPanel() -> Element {
                                 // 资料项横向流式排布, 一行放不下自动换行。
                                 // 无「分组」行: group 是创建密钥时的分组语义, 不属于用户资料。
                                 div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",
-                                    ProfileItem { label: "显示名", value: user.display_name.clone() }
-                                    ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() } }
-                                    ProfileItem { label: "用户ID", value: user.key.clone() }
-                                    ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>() }
+                                    ProfileItem { label: "显示名", value: user.display_name.clone(), copyable: false }
+                                    ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() }, copyable: false }
+                                    // 用户 ID 短显 (前4…后4), 复制按钮复制完整 UUID (copy_value),
+                                    // 悬停 title 也有全值
+                                    ProfileItem { label: "用户ID", value: short_key(&user.key), copy_value: Some(user.key.clone()), copyable: true }
+                                    ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                                 }
                             } else if !self_err().is_empty() {
                                 p { class: "text-sm text-amber-400", "无法加载用户信息 (未登录或请求失败): {self_err()}" }
@@ -274,18 +279,38 @@ fn StatCard(value: String, label: &'static str) -> Element {
 
 /// 横向资料项: label 与 value 同行 (label 灰、value 等宽字体)。
 /// 由父容器 flex-wrap 控制换行, 单项不自带换行逻辑。
+/// `copyable` 时在 value 后挂复制小按钮。注意: value 可短显
+/// (如用户 ID 显示 "0000…aa01"), 复制按钮实际复制的内容取 `copy_value`;
+/// 未传 (None) 时回退复制 `value` (对非短显项 = 复制原值, 向后兼容)。
 #[component]
-fn ProfileItem(label: &'static str, value: String) -> Element {
+fn ProfileItem(
+    label: &'static str,
+    value: String,
+    copyable: bool,
+    copy_value: Option<String>,
+) -> Element {
+    let copy_text = copy_value.unwrap_or_else(|| value.clone());
     rsx! {
         div { class: "flex items-baseline gap-2",
             span { class: "shrink-0 text-zinc-400", "{label}" }
-            span { class: "min-w-0 break-all font-mono text-zinc-200", "{value}" }
+            span {
+                class: "min-w-0 break-all font-mono text-zinc-200",
+                title: "{value}",
+                "{value}"
+            }
+            if copyable {
+                div { class: "shrink-0 self-center",
+                    CopyPlaintextButton { text: copy_text, label: format_args!("复制完整{label}").to_string() }
+                }
+            }
         }
     }
 }
 
 /// 密钥卡片 — 数据来自 TokenDto (GET /api/token)。
 /// 操作: 编辑 (改名) / 停用·启用 (status 1↔2) / 删除, 成功后由父面板刷新列表。
+/// 已用额度走 $ 口径 (fmt_quota, 500_000 ≈ $1) + used_pct 进度条,
+/// 无限额度显示「无限」徽标且不渲染进度条。
 #[component]
 fn KeyCard(
     entry: TokenDto,
@@ -310,22 +335,28 @@ fn KeyCard(
         .take(10)
         .filter(|c| c.is_ascii_digit() || *c == '-')
         .collect();
-    let usage = if entry.unlimited_quota {
-        "∞".to_string()
+    // 已用额度 $ 口径 (fmt_quota: 500_000 ≈ $1), 内部裸数对用户无意义;
+    // 无限额度显示「无限」徽标 (参照 admin-page-users 面板处理, 跨 crate 只看不引)
+    let unlimited = entry.unlimited_quota;
+    // 进度条: 0..=100; quota <= 0 (无限/未设限额) 时 0, 超用 clamp 100。
+    // 配色随用量升高转告警, 样式抄 admin-page-users panel.rs 的 bar_tone 风格
+    let pct = used_pct(entry.quota, entry.used_quota);
+    let bar_tone = if pct >= 90 {
+        "bg-red-500"
+    } else if pct >= 70 {
+        "bg-amber-500"
     } else {
-        format!("{}/{}", entry.used_quota, entry.quota)
+        "bg-emerald-500"
     };
-
     rsx! {
         div {
             class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
             div { class: "mb-3 flex items-start justify-between gap-2",
                 div { class: "min-w-0",
                     h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
-                    div { class: "mt-0.5 flex items-center gap-1",
-                        p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
-                        CopyKeyButton { text: entry.key_preview.clone() }
-                    }
+                    // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
+                    // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
+                    p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
                 }
                 span {
                     class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
@@ -334,9 +365,24 @@ fn KeyCard(
             }
 
             div { class: "space-y-2 text-xs",
-                div { class: "flex justify-between gap-2",
+                div { class: "flex items-center justify-between gap-2",
                     span { class: "shrink-0 whitespace-nowrap text-zinc-400", "已用额度" }
-                    span { class: "whitespace-nowrap font-medium text-zinc-200", "{usage}" }
+                    if unlimited {
+                        span {
+                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium text-sky-300",
+                            "无限"
+                        }
+                    } else {
+                        span { class: "whitespace-nowrap font-medium text-zinc-200",
+                            "{fmt_quota(entry.used_quota)} / {fmt_quota(entry.quota)}"
+                        }
+                    }
+                }
+                // 用量进度条: 无限额度不渲染 (无分母, 百分比无意义)
+                if !unlimited {
+                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                        div { class: "h-full rounded-full {bar_tone}", style: "width: {pct}%" }
+                    }
                 }
                 if !created.is_empty() {
                     div { class: "flex justify-between gap-2",
@@ -499,9 +545,10 @@ fn NewKeyForm(
 }
 
 /// 新建成功视图 — 一次性明文 key 展示 (后端只在创建响应返回一次)。
-/// 手动复制 (只读输入框, 选中文案后复制)。
+/// 提供一键复制明文 (这是唯一值得复制的完整密钥), 关闭后无法再查看。
 #[component]
 fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Element {
+    let mut copied = use_signal(|| false);
     rsx! {
         div {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
@@ -520,13 +567,34 @@ fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Elem
                 }
 
                 p { class: "mb-2 text-xs text-amber-400", "明文密钥只显示这一次,关闭后无法再查看" }
-                input {
-                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
-                    r#type: "text",
-                    r#readonly: true,
-                    value: "{result.plaintext}"
+                div { class: "flex items-center gap-2",
+                    input {
+                        class: "min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
+                        r#type: "text",
+                        r#readonly: true,
+                        value: "{result.plaintext}"
+                    }
+                    button {
+                        class: if copied() {
+                            "shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-xs font-medium text-emerald-400"
+                        } else {
+                            "shrink-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+                        },
+                        "aria-label": "复制明文密钥",
+                        onclick: move |_| {
+                            // fire-and-forget 写入剪贴板, 提交即视为发起成功
+                            let ok = ui::copy_text_to_clipboard(&result.plaintext);
+                            copied.set(ok);
+                            let mut c = copied;
+                            spawn(async move {
+                                gloo_timers::future::TimeoutFuture::new(1500).await;
+                                c.set(false);
+                            });
+                        },
+                        if copied() { "已复制" } else { "复制" }
+                    }
                 }
-                p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name} — 选中上方内容后复制 (Ctrl/Cmd+C)" }
+                p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name}" }
 
                 div { class: "mt-5 flex justify-end",
                     Button {
@@ -540,7 +608,11 @@ fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Elem
     }
 }
 
-/// 编辑密钥弹窗 — 走 PUT /api/token/{key}, 只改名称 (备注字段后端不存在)。
+/// 编辑密钥弹窗 — 走 PUT /api/token/{key}。
+/// 契约 UpdateTokenRequest 全 Option, 缺省字段不随请求发出 (skip_serializing_if),
+/// 后端按「缺省 = 不改」处理 (admin-catalog tokens.rs svc.update 逐字段 if let Some)。
+/// 注意: 后端 group / expires_at 是双层 Option (Some(None) = 跟随用户组 / 永不过期),
+/// 契约层不表达「清空」语义, 所以这里的留空只能 = 保持不变。
 #[component]
 fn EditKeyModal(
     token: TokenDto,
@@ -548,6 +620,15 @@ fn EditKeyModal(
     on_saved: EventHandler<()>,
 ) -> Element {
     let mut name = use_signal(|| token.name.clone());
+    // 分组 prefill: None (跟随用户组) 显示空串; 编辑语义下空串 = 不发字段 = 保持现状
+    let mut group = use_signal(|| token.group.clone().unwrap_or_default());
+    let mut unlimited = use_signal(|| token.unlimited_quota);
+    let mut quota = use_signal(|| token.quota.to_string());
+    // 过期时间 prefill: RFC3339 → UTC 日期段 (与提交方向同口径, 见 usage_support);
+    // None (永不过期) 显示空 = 保持不变
+    let mut expiry = use_signal(|| {
+        crate::usage_support::rfc3339_to_date_input(token.expires_at.as_deref().unwrap_or(""))
+    });
     let mut busy = use_signal(|| false);
     let mut err = use_signal(String::new);
 
@@ -557,8 +638,32 @@ fn EditKeyModal(
             err.set("名称不能为空".into());
             return;
         }
+        // 分组: 空串 → 不发字段 (保持不变); 非空 → Some(g) 改分组
+        let g = group().trim().to_string();
+        // 额度: 提交总是发 Some(quota) + Some(unlimitedQuota) (两项一体生效)
+        let q_raw = quota().trim().to_string();
+        let (quota_v, unlimited_v) = if unlimited() {
+            // 无限额度时限额输入禁用: 明确发 0 占位, 不再 parse 输入框旧文本
+            // (先输非法值再勾选无限时, 旧输入的 parse 结果无意义);
+            // quota 数值此时无意义, 后端以 unlimitedQuota = true 为准
+            (0, true)
+        } else {
+            match q_raw.parse::<i64>() {
+                Ok(v) if v >= 0 => (v, false),
+                _ => {
+                    err.set("额度限制必须是不小于 0 的整数".into());
+                    return;
+                }
+            }
+        };
+        // 过期时间: 空 → 不发字段 (保持不变); 有值 → UTC RFC3339 (所选日期 → UTC 当天末尾)
+        let expires_at = crate::usage_support::date_input_to_rfc3339(expiry().trim());
         let req = UpdateTokenRequest {
             name: Some(n),
+            group: if g.is_empty() { None } else { Some(g) },
+            quota: Some(quota_v),
+            unlimited_quota: Some(unlimited_v),
+            expires_at,
             ..Default::default()
         };
         busy.set(true);
@@ -591,13 +696,59 @@ fn EditKeyModal(
                     p { class: "truncate font-mono text-xs text-zinc-500", "{token.key_preview}" }
                 }
 
-                div { class: "space-y-4",
+                // 字段较多, 弹窗保持 max-w-md 视觉, 字段区超高内部滚动
+                div { class: "max-h-[60vh] space-y-4 overflow-y-auto",
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "密钥名称" }
                         input {
                             class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
+                        }
+                    }
+                    div {
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "分组 (可选)" }
+                        input {
+                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            placeholder: "留空 = 保持不变",
+                            value: "{group}",
+                            oninput: move |e| group.set(e.value()),
+                        }
+                        p { class: "mt-1 text-[11px] text-zinc-500",
+                            "分组决定计费与模型可见范围; 跟随用户默认分组的密钥此处显示为空"
+                        }
+                    }
+                    div {
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "额度限制 (额度单位)" }
+                        label { class: "mb-1.5 flex cursor-pointer items-center gap-2 text-xs text-zinc-400",
+                            input {
+                                r#type: "checkbox",
+                                class: "h-4 w-4 accent-emerald-500",
+                                checked: "{unlimited}",
+                                onchange: move |e| unlimited.set(e.checked()),
+                            }
+                            "无限额度"
+                        }
+                        input {
+                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                            r#type: "text",
+                            placeholder: "额度单位, 500,000 ≈ $1",
+                            value: "{quota}",
+                            disabled: unlimited(),
+                            oninput: move |e| quota.set(e.value()),
+                        }
+                        p { class: "mt-1 text-[11px] text-zinc-500", "额度单位: 500,000 ≈ $1" }
+                    }
+                    div {
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "过期时间" }
+                        input {
+                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 focus:border-zinc-500 focus:outline-none",
+                            r#type: "date",
+                            value: "{expiry}",
+                            oninput: move |e| expiry.set(e.value()),
+                        }
+                        p { class: "mt-1 text-[11px] text-zinc-500",
+                            "留空 = 保持不变; 所选日期当日 (UTC) 结束后失效"
                         }
                     }
                     if !err().is_empty() {
@@ -687,23 +838,25 @@ fn DeleteKeyModal(
     }
 }
 
-/// 复制密钥预览的小图标按钮: 点击写入剪贴板, 成功后图标短暂变 ✓。
+/// 复制完整明文的小图标按钮: 点击写入剪贴板, 复制成功有可见反馈
+/// (按钮文案瞬时变「已复制」/ 图标变 ✓)。
+/// 只用于真正值得复制的完整值 —— 一次性明文密钥 / 完整用户 ID;
+/// 掩码预览 (sk-ab****ef) 禁止用此组件, 复制掩码是功能错误。
+/// 复制语义与 ui-components session::copy_text_to_clipboard 一致:
+/// Clipboard API fire-and-forget, 提交即视为成功。
 #[component]
-fn CopyKeyButton(text: String) -> Element {
+fn CopyPlaintextButton(text: String, label: String) -> Element {
     let mut copied = use_signal(|| false);
     rsx! {
         Button {
             variant: ButtonVariant::Ghost,
             size: ButtonSize::IconXs,
-            title: "复制密钥",
-            "aria-label": "复制密钥",
+            title: "{label}",
+            "aria-label": "{label}",
             class: if copied() { "text-emerald-400" } else { "" },
             onclick: move |_| {
                 let ok = ui::copy_text_to_clipboard(text.as_str());
                 copied.set(ok);
-                if ok {
-                    ui::components::toast::toast("密钥已复制到剪贴板");
-                }
                 let mut c = copied;
                 spawn(async move {
                     gloo_timers::future::TimeoutFuture::new(1500).await;
