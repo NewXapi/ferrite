@@ -316,10 +316,7 @@ pub fn SubscriptionsPage() -> Element {
                                     }
                                     div {
                                         span { class: "text-[11px] text-zinc-500 block", "套餐额度" }
-                                        span { class: "font-mono font-semibold text-amber-300 flex items-center gap-1",
-                                            span { "🧀" }
-                                            span { "{quota_str}" }
-                                        }
+                                        span { class: "font-mono font-semibold text-amber-300", "{quota_str}" }
                                     }
                                     div {
                                         span { class: "text-[11px] text-zinc-500 block", "站内支付 / 渠道" }
@@ -378,17 +375,17 @@ pub fn SubscriptionsPage() -> Element {
                         button {
                             class: if modal_tab() == 0 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
                             onclick: move |_| modal_tab.set(0),
-                            "🔑 基本信息"
+                            "基本信息"
                         }
                         button {
                             class: if modal_tab() == 1 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
                             onclick: move |_| modal_tab.set(1),
-                            "📅 规则与周期"
+                            "规则与周期"
                         }
                         button {
                             class: if modal_tab() == 2 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
                             onclick: move |_| modal_tab.set(2),
-                            "💳 第三方支付配置"
+                            "第三方支付配置"
                         }
                     }
 
@@ -425,7 +422,7 @@ pub fn SubscriptionsPage() -> Element {
                                     p { class: "text-[11px] text-zinc-500", "用户购买该套餐需支付的金额，具体币种由支付渠道决定" }
                                 }
                                 label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "额度 (🧀)" }
+                                    span { class: "text-xs font-medium text-zinc-300", "额度 (点)" }
                                     input {
                                         r#type: "number",
                                         class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
@@ -527,7 +524,7 @@ pub fn SubscriptionsPage() -> Element {
 
                             // 有效期设置
                             div { class: "pt-2 space-y-2",
-                                h4 { class: "text-xs font-semibold text-amber-400 flex items-center gap-1.5", "📅 有效期设置" }
+                                h4 { class: "text-xs font-semibold text-amber-400 flex items-center gap-1.5", "有效期设置" }
                                 div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
                                     label { class: "block space-y-1",
                                         span { class: "text-xs text-zinc-400", "有效期数值" }
@@ -556,7 +553,7 @@ pub fn SubscriptionsPage() -> Element {
 
                             // 额度重置
                             div { class: "pt-2 space-y-2",
-                                h4 { class: "text-xs font-semibold text-emerald-400 flex items-center gap-1.5", "🔄 额度重置" }
+                                h4 { class: "text-xs font-semibold text-emerald-400 flex items-center gap-1.5", "额度重置" }
                                 div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
                                     label { class: "block space-y-1",
                                         span { class: "text-xs text-zinc-400", "重置周期" }

@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use client::ApiClient;
 use contract::api::usage::DashboardSummaryDto;
+use ui::components::card::{Card, CardContent, CardHeader};
 
 use crate::api::{self, TrendBucketFE};
 
@@ -139,9 +140,9 @@ pub fn OverviewPanel() -> Element {
             // 实时汇总统计卡(数据来自真实后端 /api/dashboard)
             div { class: "space-y-3",
                 div { class: "flex items-center justify-between",
-                    h2 { class: "text-lg font-medium text-zinc-100", "总览统计" }
+                    h2 { class: "text-lg font-medium text-foreground", "总览统计" }
                     button {
-                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                        class: "shrink-0 rounded-xl border border-border px-3 py-2 text-xs text-foreground/80 transition-colors hover:bg-accent",
                         "data-testid": "refresh-overview",
                         onclick: move |_| reload.set(reload() + 1),
                         "刷新"
@@ -154,14 +155,14 @@ pub fn OverviewPanel() -> Element {
                             p { class: "text-sm text-red-300", "加载统计失败" }
                             p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                             button {
-                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-foreground/80 hover:bg-accent",
                                 onclick: move |_| reload.set(reload() + 1),
                                 "重试"
                             }
                         }
                     } else if loading() {
-                        div { class: "col-span-full rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                            p { class: "text-zinc-400", "正在加载统计…" }
+                        div { class: "col-span-full rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                            p { class: "text-muted-foreground", "正在加载统计…" }
                         }
                     } else if let Some(stats) = stats_opt {
                         for (value, label) in stats {
@@ -172,24 +173,31 @@ pub fn OverviewPanel() -> Element {
             }
 
             // Top 10 breakdowns —— 真实 /api/log/top 聚合
+            // 面板卡挂 hoverable（维护者要求悬停边框变亮的动态全站回归）;
+            // 调用方 py-0!/gap-0!/px-4!/py-3!/p-4! 覆盖 Card 基串的
+            // py-6/gap-6/px-6, 尾缀 ! 确保压过 Tailwind 同属性工具类, 保留原紧凑条头布局。
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
                 // Top 10 Models
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 group",
-                    div { class: "border-b border-zinc-800/50 bg-zinc-900/50 px-4 py-3 transition-colors group-hover:bg-zinc-800/20",
-                        h3 { class: "text-sm font-medium text-zinc-100", "消耗前十模型" }
+                Card {
+                    hoverable: true,
+                    class: "gap-0! overflow-hidden py-0!",
+                    CardHeader {
+                        class: "border-b border-border/50 px-4! py-3!",
+                        h3 { class: "text-sm font-medium text-foreground", "消耗前十模型" }
                     }
-                    div { class: "p-4 space-y-3 flex-1",
+                    CardContent {
+                        class: "flex-1 space-y-3 p-4!",
                         if top_models().is_empty() {
-                            p { class: "py-6 text-center text-xs text-zinc-500", "该时间窗内暂无调用" }
+                            p { class: "py-6 text-center text-xs text-muted-foreground", "该时间窗内暂无调用" }
                         }
                         for (i, (name, amount, pct)) in top_models().iter().enumerate() {
-                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
-                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
+                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-accent cursor-default",
+                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
-                                    span { class: "truncate text-sm font-medium text-zinc-300 transition-colors hover:text-zinc-100", "{name}" }
+                                    span { class: "truncate text-sm font-medium text-foreground/80 transition-colors hover:text-foreground", "{name}" }
                                     div { class: "flex items-center gap-3",
-                                        span { class: "text-xs font-mono text-zinc-500 transition-colors hover:text-zinc-300", "{amount}" }
-                                        span { class: "w-10 text-right text-xs text-zinc-500 font-medium", "{pct:.1}%" }
+                                        span { class: "text-xs font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
+                                        span { class: "w-10 text-right text-xs text-muted-foreground font-medium", "{pct:.1}%" }
                                     }
                                 }
                             }
@@ -198,22 +206,26 @@ pub fn OverviewPanel() -> Element {
                 }
 
                 // Top 10 Users
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col transition-all duration-300 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/20 group",
-                    div { class: "border-b border-zinc-800/50 bg-zinc-900/50 px-4 py-3 transition-colors group-hover:bg-zinc-800/20",
-                        h3 { class: "text-sm font-medium text-zinc-100", "消耗前十用户" }
+                Card {
+                    hoverable: true,
+                    class: "gap-0! overflow-hidden py-0!",
+                    CardHeader {
+                        class: "border-b border-border/50 px-4! py-3!",
+                        h3 { class: "text-sm font-medium text-foreground", "消耗前十用户" }
                     }
-                    div { class: "p-4 space-y-3 flex-1",
+                    CardContent {
+                        class: "flex-1 space-y-3 p-4!",
                         if top_users().is_empty() {
-                            p { class: "py-6 text-center text-xs text-zinc-500", "该时间窗内暂无调用" }
+                            p { class: "py-6 text-center text-xs text-muted-foreground", "该时间窗内暂无调用" }
                         }
                         for (i, (name, amount, pct)) in top_users().iter().enumerate() {
-                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-zinc-800/60 cursor-default",
-                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm transition-colors hover:bg-zinc-700 hover:text-zinc-200", "{i + 1}" }
+                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-accent cursor-default",
+                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{i + 1}" }
                                 div { class: "flex-1 min-w-0 flex items-center justify-between",
-                                    span { class: "truncate text-sm font-medium text-zinc-300 transition-colors hover:text-zinc-100", "{name}" }
+                                    span { class: "truncate text-sm font-medium text-foreground/80 transition-colors hover:text-foreground", "{name}" }
                                     div { class: "flex items-center gap-3",
-                                        span { class: "text-xs font-mono text-zinc-500 transition-colors hover:text-zinc-300", "{amount}" }
-                                        span { class: "w-10 text-right text-xs text-zinc-500 font-medium", "{pct:.1}%" }
+                                        span { class: "text-xs font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
+                                        span { class: "w-10 text-right text-xs text-muted-foreground font-medium", "{pct:.1}%" }
                                     }
                                 }
                             }
@@ -227,12 +239,18 @@ pub fn OverviewPanel() -> Element {
 }
 
 /// Compact single-stat card occupying one grid column.
+///
+/// 统计卡挂 hoverable：悬停边框变亮是管理台统一交互（维护者拍板），
+/// 原面板级 hover 位移/阴影装饰不回归（dsh 规格仅边框动态）；
+/// `py-3!`/`gap-0!` 覆盖 Card 基串的 py-6/gap-6，保留原紧凑单行布局。
 #[component]
 fn StatCard(value: String, label: &'static str) -> Element {
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/80 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/20 group cursor-default",
-            p { class: "truncate text-base font-semibold text-zinc-100 transition-colors group-hover:text-white md:text-lg", "{value}" }
-            p { class: "mt-0.5 truncate text-xs text-zinc-500 transition-colors group-hover:text-zinc-400", "{label}" }
+        Card {
+            hoverable: true,
+            class: "cursor-default gap-0! px-4 py-3!",
+            p { class: "truncate text-base font-semibold text-foreground md:text-lg", "{value}" }
+            p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{label}" }
         }
     }
 }
@@ -573,9 +591,9 @@ fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> El
     };
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",
+            class: "pointer-events-none fixed z-50 rounded-xl border border-border/80 bg-card/95 p-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",
             style: "left: {x}px; top: {clamped_y}px; transform: {transform}; max-width: calc(100vw - 24px);",
-            p { class: "mb-1.5 text-xs font-semibold text-zinc-400", "{label}" }
+            p { class: "mb-1.5 text-xs font-semibold text-muted-foreground", "{label}" }
             {children}
         }
     }
