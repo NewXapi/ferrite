@@ -7,6 +7,8 @@
 //! - [`UsageLogQuery`]   ← `LogQuery` (query string 参数, camelCase)
 //! - [`UsageStatDto`]    ← `UsageStat` (GET /api/log/stat, /api/log/self/stat)
 //! - [`UsageDailyStatDto`] 按天聚合口径（未来 /api/log/daily 端点的契约占位）
+//! - [`UsageTopRowDto`]  ← `UsageTopRow` (GET /api/log/top 的 `items` 元素)
+//! - [`UsageErrorStatDto`] / [`UsageErrorStatPage`] ← GET /api/log/errors（错误流水聚合）
 //! - [`DashboardSummaryDto`] ← GET /api/dashboard 的 json! 汇总
 //!
 //! 依赖纪律（crate 级）：契约层只允许纯数据/序列化依赖。时间一律用 `String`
@@ -176,4 +178,68 @@ pub struct DashboardSummaryDto {
     pub rpm: i64,
     /// 近 60 秒 token 数（prompt + completion 之和）。
     pub tpm: i64,
+    /// 平台剩余可用额度（内部额度单位，500_000 ≈ $1）。
+    ///
+    /// 口径：`SUM(quota) FROM auth_users WHERE status = 1`（仅启用用户）。
+    /// 理由：登录侧可用判据即 `status == 1`（auth service 只放行启用用户），
+    /// 禁用/封禁用户的残留余额不可再消费，计入会高估平台可消耗余量；
+    /// 与 `channelsEnabled` 只数 `status = 1` 渠道的口径精神一致。
+    /// `#[serde(default)]`：老后端响应缺该字段时按 0 兜底，不破坏旧 wire。
+    #[serde(default)]
+    pub quota_remaining: i64,
+    /// 数据截止时刻，ISO8601/RFC3339 UTC 字符串（如 `2026-09-16T17:00:00Z`）。
+    /// 原则 7：查询响应携带新鲜度，不伪造实时。`#[serde(default)]` 同上。
+    #[serde(default)]
+    pub as_of: String,
+}
+
+/// `GET /api/log/top` 单行 — 按用户或模型的消耗聚合
+/// （后端 admin-observe `UsageTopRow`，camelCase）。
+///
+/// `previous_tokens` 为**上一等长窗口**的同实体聚合值：同 `by`/`start`/`limit`
+/// 口径下，窗口 `[start-(end-start), start)`（`end` 缺省按 now 计）内的
+/// tokens 合计。上窗无该实体、或请求未提供 `start`（窗口不可定时）时为 0。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTopRowDto {
+    /// 分组键：`by=user` 时为 username，`by=model` 时为 model_name。
+    pub name: String,
+    /// 窗口内 token 总数（prompt + completion）。
+    pub tokens: i64,
+    /// 窗口内消耗（内部额度单位，500_000 ≈ $1）。
+    pub quota: i64,
+    /// 窗口内调用次数。
+    pub calls: i64,
+    /// 上一等长窗口的同实体 tokens；无数据/不可定时为 0。
+    /// `#[serde(default)]`：老后端响应缺该字段时按 0 兜底。
+    #[serde(default)]
+    pub previous_tokens: i64,
+}
+
+/// 错误流水聚合单行 — `GET /api/log/errors` 的 `items` 元素
+/// （后端 admin-observe `UsageErrorRow`，camelCase）。
+///
+/// 口径：`usage_logs.log_type = 5`（错误流水）在窗口内按 `model_name`
+/// 分组，`count` 降序。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageErrorStatDto {
+    /// 模型名（空模型名的错误行不参与聚合）。
+    pub model_name: String,
+    /// 窗口内该模型的错误次数。
+    pub count: i64,
+    /// 窗口内最后一次错误时刻，RFC3339 UTC 字符串。
+    pub last_seen_at: String,
+}
+
+/// `GET /api/log/errors` 响应信封（后端 `json!` 直出）：
+/// `{"items": [...], "asOf": "..."}`。
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageErrorStatPage {
+    /// 聚合行，`count` 降序。
+    pub items: Vec<UsageErrorStatDto>,
+    /// 数据截止时刻，ISO8601/RFC3339 UTC 字符串。`#[serde(default)]` 兜底旧 wire。
+    #[serde(default)]
+    pub as_of: String,
 }

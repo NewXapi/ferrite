@@ -7,7 +7,8 @@
 //! 解码断言字段类型与语义，序列化断言 query 参数名。
 
 use contract::api::usage::{
-    UsageDailyStatDto, UsageLogDto, UsageLogPage, UsageLogQuery, UsageStatDto,
+    DashboardSummaryDto, UsageDailyStatDto, UsageErrorStatPage, UsageLogDto, UsageLogPage,
+    UsageLogQuery, UsageStatDto, UsageTopRowDto,
 };
 
 /// `GET /api/log` 响应体 `{"items": [LogView...], "total": n}` 的 wire 样例。
@@ -148,4 +149,76 @@ fn usage_log_query_deserializes_camel_case_subset() {
         }
     );
     assert!(q.username.is_none() && q.token_name.is_none() && q.end.is_none());
+}
+
+#[test]
+fn dashboard_summary_dto_defaults_for_new_fields() {
+    // 测什么：DashboardSummaryDto 的新增字段 quotaRemaining/asOf 必须带 serde default。
+    // 为什么：wire 上后端为权威且会先于前端/契约更新滚动部署——旧后端响应
+    // 不带这两个键时，新契约不得解析失败（缺字段 → 0/空串兜底）。
+    let old: DashboardSummaryDto = serde_json::from_str(
+        r#"{"users":3,"tokens":7,"channels":5,"channelsEnabled":4,"groups":2,
+            "quotaToday":10,"requestsToday":5,"rpm":1,"tpm":9}"#,
+    )
+    .expect("老 wire（无新字段）必须能被 DashboardSummaryDto 解析");
+    assert_eq!(old.quota_remaining, 0, "缺 quotaRemaining 按默认 0 兜底");
+    assert_eq!(old.as_of, "", "缺 asOf 按默认空串兜底");
+    assert_eq!(old.users, 3, "既有字段不受新字段影响");
+
+    // 新 wire：全字段齐备时按 camelCase 命中。
+    let new: DashboardSummaryDto = serde_json::from_str(
+        r#"{"users":3,"tokens":7,"channels":5,"channelsEnabled":4,"groups":2,
+            "quotaToday":10,"requestsToday":5,"rpm":1,"tpm":9,
+            "quotaRemaining":123456,"asOf":"2026-09-16T17:00:00Z"}"#,
+    )
+    .expect("新 wire（含 quotaRemaining/asOf）必须能被解析");
+    assert_eq!(new.quota_remaining, 123_456);
+    assert_eq!(new.as_of, "2026-09-16T17:00:00Z");
+}
+
+#[test]
+fn usage_top_row_dto_defaults_previous_tokens() {
+    // 测什么：/api/log/top 行 DTO 的 previousTokens 必须带 serde default。
+    // 为什么：老后端 top 响应行没有 previousTokens 键，前端升级后仍要能解析。
+    let old: UsageTopRowDto =
+        serde_json::from_str(r#"{"name":"gpt-4o","tokens":150,"quota":300,"calls":2}"#)
+            .expect("老 wire（无 previousTokens）必须能被 UsageTopRowDto 解析");
+    assert_eq!(old.name, "gpt-4o");
+    assert_eq!(old.tokens, 150);
+    assert_eq!(old.quota, 300);
+    assert_eq!(old.calls, 2);
+    assert_eq!(old.previous_tokens, 0, "缺 previousTokens 按默认 0 兜底");
+
+    let new: UsageTopRowDto = serde_json::from_str(
+        r#"{"name":"gpt-4o","tokens":150,"quota":300,"calls":2,"previousTokens":80}"#,
+    )
+    .expect("新 wire（含 previousTokens）必须能被解析");
+    assert_eq!(new.previous_tokens, 80);
+}
+
+#[test]
+fn usage_error_stat_page_parses_wire_shape() {
+    // 测什么：/api/log/errors 信封 {"items":[...],"asOf":"..."} 的 camelCase 形状。
+    // 为什么：后端 json! 直出 camelCase（modelName/lastSeenAt/asOf），契约
+    // 必须与之逐键对齐；行语义为 log_type=5 按模型聚合（count 降序）。
+    let page: UsageErrorStatPage = serde_json::from_str(
+        r#"{"items":[
+             {"modelName":"gpt-4o","count":12,"lastSeenAt":"2026-09-16T16:59:00Z"},
+             {"modelName":"claude-x","count":3,"lastSeenAt":"2026-09-16T16:40:00Z"}
+           ],
+           "asOf":"2026-09-16T17:00:00Z"}"#,
+    )
+    .expect("errors 信封 wire 形状必须能被 UsageErrorStatPage 解析");
+    assert_eq!(page.items.len(), 2, "两行聚合结果");
+    assert_eq!(page.items[0].model_name, "gpt-4o");
+    assert_eq!(page.items[0].count, 12);
+    assert_eq!(page.items[0].last_seen_at, "2026-09-16T16:59:00Z");
+    assert_eq!(page.items[1].model_name, "claude-x");
+    assert_eq!(page.as_of, "2026-09-16T17:00:00Z");
+
+    // 空窗口（无错误）：items 空数组也必须合法。
+    let empty: UsageErrorStatPage =
+        serde_json::from_str(r#"{"items":[],"asOf":"2026-09-16T17:00:00Z"}"#)
+            .expect("空 items 信封必须能解析");
+    assert!(empty.items.is_empty());
 }
