@@ -15,7 +15,6 @@ graph LR
     end
     subgraph admin["管理端 crates"]
         AC[admin-client]
-        AM[admin-mock]
         PA[admin-page-auth]
         PO[admin-page-overview]
         PAC[admin-page-account]
@@ -39,7 +38,6 @@ graph LR
     AW --> PA & PO & PAC & PAD & PU & AC & UI
     TW --> TH & PCH & PC & PP & PL & PS & TC & TS & UI
     PA & PO & PAC & PAD & PU --> AC --> CT
-    PO & PAC & PU -.过渡期.- AM
     UI --> CT
     TS --> TC --> CT
     TS --> HP
@@ -58,7 +56,7 @@ apps/admin-web（main.rs:9 init_auth() 注册 401 静默刷新 → 挂 RootApp�
     ├── ConsolePanel（页签头 + 滚动体）                   # lib.rs:198
     │   ├── Section::Dashboard（#overview/#models/#leaderboard）
     │   │   ├── OverviewPanel     总览：趋势/健康度/统计卡/Top10  # overview.rs:17  真实 API
-    │   │   ├── ModelsPanel       模型卡片网格             # models.rs:186  mock
+    │   │   ├── ModelsPanel       模型卡片网格             # models.rs:65  真实 API
     │   │   └── LeaderboardPanel  模型实力排行榜           # leaderboard/mod.rs:14  静态数据
     │   ├── Section::Account（#account/#usage/#rewards/#sessions/#settings）
     │   │   ├── KeysPanel         密钥·资料                # keys.rs:32  真实 API
@@ -100,7 +98,6 @@ apps/tavern-web（main.rs → TavernApp，内存 Signal 路由，默认 Section:
 ```
 crates/web/
 ├── admin-client            管理 API 客户端
-├── admin-mock              页面开发 mock 数据
 ├── admin-page-auth         认证页
 ├── admin-page-overview     总览与排行榜
 ├── admin-page-account      个人中心
@@ -112,20 +109,17 @@ crates/web/
   - 管理 API 客户端：Bearer 注入、`Envelope<T>` 解码、401 时调用 refresher
   - 导出 `ApiClient`（setup_client.rs）、`AuthState` / `Refresher` / `TokenFuture`（manage_auth_token.rs）
   - 现状：稳定
-- **admin-mock**（无内部依赖；src：lib.rs / models.rs / account.rs / overview.rs / users.rs）
-  - 页面开发的 mock 数据；**overview / account / users 三个页面仍在用**（grep `mock::` 核实），真实 API 接完后移除引用（见 admin.md）
 - **admin-page-auth**（内部依赖：client, contract, ui；src：lib.rs / api.rs / form.rs / state.rs / view.rs）
   - 认证页：登录、注册（已接真实 API）；2FA / 密码重置未实现（api 侧 `verify_2fa` 亦为占位，crates/api/auth/src/service.rs:793）
-- **admin-page-overview**（内部依赖：client, contract, mock；src：lib.rs / api.rs / overview.rs / models.rs / leaderboard/ / health.rs）
-  - 总览：OverviewPanel 已接真实 API；ModelsPanel 仍 mock；LeaderboardPanel 静态数据
-  - 注意：本 crate **未用 ui-components**（全域唯一不用共享组件的页面 crate），待统一
-- **admin-page-account**（内部依赖：client, contract, mock, ui；src：lib.rs / api.rs / keys.rs / usage_logs.rs / usage_support.rs / sessions.rs / settings.rs / rewards.rs）
-  - 个人中心：API Key 列表增删、用量日志、会话、奖励；现状：**部分 mock**
+- **admin-page-overview**（内部依赖：client, contract, ui；src：lib.rs / api.rs / overview.rs / models.rs / leaderboard/ / health.rs）
+  - 总览：OverviewPanel 与 ModelsPanel 均接真实 API（/api/dashboard、/api/models）；LeaderboardPanel 静态数据
+- **admin-page-account**（内部依赖：client, contract, ui；src：lib.rs / api.rs / keys.rs / usage_logs.rs / usage_support.rs / sessions.rs / settings.rs / rewards.rs）
+  - 个人中心：API Key 列表增删、用量日志、会话、奖励；现状：**已接真实 API**（仅 rewards「立即充值」为占位成功，见 §7）
 - **admin-page-admin**（内部依赖：client, contract, ui；src：lib.rs / api.rs / entities.rs / channels.rs / pages.rs / groups.rs / redemptions.rs / network.rs / system.rs / state.rs / aliases.rs）
   - 管理操作：渠道 CRUD（凭据掩码、测试按钮）、模型+分组到渠道的路由映射、令牌、分组倍率、兑换码、网络、系统
   - 现状：**UI 就绪、未接线**——api.rs 已实现真实调用，但 channels/groups/aliases/redemptions/system/network 各页面零消费（页面用内联演示数据）
-- **admin-page-users**（内部依赖：client, contract, mock, ui；src：lib.rs / api.rs / data.rs / panel.rs）
-  - 用户管理：列表与操作；现状：**mock（页面未接线，api.rs 已备）**
+- **admin-page-users**（内部依赖：client, contract, ui；src：lib.rs / api.rs / data.rs / panel.rs）
+  - 用户管理：列表与操作；现状：**页面未接线**（api.rs 数据层已备真实调用，panel 暂用内联演示常量）
 
 ### 酒馆端（消费 `/tavern/*` API，含 SSE 流式）
 
@@ -172,7 +166,6 @@ crates/web/
 Cargo.toml 里的改名依赖（读代码时按 key 认依赖，浅解析 Cargo.toml 会漏）：
 
 - `client` → `admin-client`
-- `mock` → `admin-mock`
 - `ui` → `ui-components`
 - `tavern_client` / `tavern_state` → `tavern-client` / `tavern-state`
 - `page-auth` / `page-account` / `page-overview` / `page-admin` / `page-users` → `admin-page-*`
@@ -202,7 +195,7 @@ Cargo.toml 里的改名依赖（读代码时按 key 认依赖，浅解析 Cargo.
 ## 7. 已知结构问题（2026-09-11 页面树实测）
 
 - 路由机制不统一：admin-web 用 URL hash（刷新可恢复），tavern-web 用内存 Signal（刷新丢页面、无深链）。
-- mock/真实边界：page-admin 整域未接线、users 纯 mock、rewards「立即充值」是假成功——页面均 UI 就绪等数据。
+- mock/真实边界：page-admin 整域未接线、users 页面未接线（api.rs 内联演示常量）、rewards「立即充值」是假成功——页面均 UI 就绪等数据。
 - 渠道/分组/别名双轨 UI：NetworkPanel 拓扑画布与三个卡片页共享同一 EntityStore，并存待收敛。
 - tavern 剧本库用本地静态 seed，聊天用真实 API；「进入故事」不携带剧本。
 - 主题基座不一致：tavern-web 未挂 dx-components-theme.css（§4）。
