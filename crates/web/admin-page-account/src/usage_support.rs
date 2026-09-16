@@ -148,3 +148,18 @@ pub fn rfc3339_to_date_input(rfc3339: &str) -> String {
         .map(|t| t.with_timezone(&Local).format("%Y-%m-%d").to_string())
         .unwrap_or_default()
 }
+
+/// 长标识 (UUID / 密钥) 的短显: 前 4 + 「…」+ 后 4。
+///
+/// 长度 ≤ 12 时原样返回 (短串截了反而难认, "前4…后4" 比原文还长);
+/// 完整值由调用方挂 `title` 悬停展示。按 char 计数, 多字节字符安全。
+/// 测试覆盖见 tests/keys_display.rs (正常 UUID / 边界长度 / 多字节 / 空串)。
+pub fn short_key(id: &str) -> String {
+    let chars: Vec<char> = id.chars().collect();
+    if chars.len() <= 12 {
+        return id.to_string();
+    }
+    let head: String = chars.iter().take(4).collect();
+    let tail: String = chars[chars.len() - 4..].iter().collect();
+    format!("{head}…{tail}")
+}

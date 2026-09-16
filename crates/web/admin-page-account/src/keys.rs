@@ -128,10 +128,11 @@ pub fn KeysPanel() -> Element {
                                 // 资料项横向流式排布, 一行放不下自动换行。
                                 // 无「分组」行: group 是创建密钥时的分组语义, 不属于用户资料。
                                 div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",
-                                    ProfileItem { label: "显示名", value: user.display_name.clone() }
-                                    ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() } }
-                                    ProfileItem { label: "用户ID", value: user.key.clone() }
-                                    ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>() }
+                                    ProfileItem { label: "显示名", value: user.display_name.clone(), copyable: false }
+                                    ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() }, copyable: false }
+                                    // 用户 ID 短显 (前4…后4), 复制按钮复制完整 UUID, 悬停 title 也有全值
+                                    ProfileItem { label: "用户ID", value: crate::usage_support::short_key(&user.key), copyable: true }
+                                    ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                                 }
                             } else if !self_err().is_empty() {
                                 p { class: "text-sm text-amber-400", "无法加载用户信息 (未登录或请求失败): {self_err()}" }
@@ -274,12 +275,22 @@ fn StatCard(value: String, label: &'static str) -> Element {
 
 /// 横向资料项: label 与 value 同行 (label 灰、value 等宽字体)。
 /// 由父容器 flex-wrap 控制换行, 单项不自带换行逻辑。
+/// `copyable` 时在 value 后挂复制小按钮 (复制完整值; value 本身可短显)。
 #[component]
-fn ProfileItem(label: &'static str, value: String) -> Element {
+fn ProfileItem(label: &'static str, value: String, copyable: bool) -> Element {
     rsx! {
         div { class: "flex items-baseline gap-2",
             span { class: "shrink-0 text-zinc-400", "{label}" }
-            span { class: "min-w-0 break-all font-mono text-zinc-200", "{value}" }
+            span {
+                class: "min-w-0 break-all font-mono text-zinc-200",
+                title: "{value}",
+                "{value}"
+            }
+            if copyable {
+                div { class: "shrink-0 self-center",
+                    CopyPlaintextButton { text: value.clone(), label: format_args!("复制完整{label}").to_string() }
+                }
+            }
         }
     }
 }
@@ -315,18 +326,16 @@ fn KeyCard(
     } else {
         format!("{}/{}", entry.used_quota, entry.quota)
     };
-
     rsx! {
         div {
             class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-            div { class: "mb-3 flex items-start justify-between gap-2",
-                div { class: "min-w-0",
-                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
-                    div { class: "mt-0.5 flex items-center gap-1",
+                div { class: "mb-3 flex items-start justify-between gap-2",
+                    div { class: "min-w-0",
+                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
+                        // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
+                        // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
                         p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
-                        CopyKeyButton { text: entry.key_preview.clone() }
                     }
-                }
                 span {
                     class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
                     if enabled { "启用" } else { "停用" }
@@ -499,9 +508,10 @@ fn NewKeyForm(
 }
 
 /// 新建成功视图 — 一次性明文 key 展示 (后端只在创建响应返回一次)。
-/// 手动复制 (只读输入框, 选中文案后复制)。
+/// 提供一键复制明文 (这是唯一值得复制的完整密钥), 关闭后无法再查看。
 #[component]
 fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Element {
+    let mut copied = use_signal(|| false);
     rsx! {
         div {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
@@ -520,13 +530,34 @@ fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Elem
                 }
 
                 p { class: "mb-2 text-xs text-amber-400", "明文密钥只显示这一次,关闭后无法再查看" }
-                input {
-                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
-                    r#type: "text",
-                    r#readonly: true,
-                    value: "{result.plaintext}"
+                div { class: "flex items-center gap-2",
+                    input {
+                        class: "min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
+                        r#type: "text",
+                        r#readonly: true,
+                        value: "{result.plaintext}"
+                    }
+                    button {
+                        class: if copied() {
+                            "shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-xs font-medium text-emerald-400"
+                        } else {
+                            "shrink-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+                        },
+                        "aria-label": "复制明文密钥",
+                        onclick: move |_| {
+                            // fire-and-forget 写入剪贴板, 提交即视为发起成功
+                            let ok = ui::copy_text_to_clipboard(&result.plaintext);
+                            copied.set(ok);
+                            let mut c = copied;
+                            spawn(async move {
+                                gloo_timers::future::TimeoutFuture::new(1500).await;
+                                c.set(false);
+                            });
+                        },
+                        if copied() { "已复制" } else { "复制" }
+                    }
                 }
-                p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name} — 选中上方内容后复制 (Ctrl/Cmd+C)" }
+                p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name}" }
 
                 div { class: "mt-5 flex justify-end",
                     Button {
@@ -768,23 +799,25 @@ fn DeleteKeyModal(
     }
 }
 
-/// 复制密钥预览的小图标按钮: 点击写入剪贴板, 成功后图标短暂变 ✓。
+/// 复制完整明文的小图标按钮: 点击写入剪贴板, 复制成功有可见反馈
+/// (按钮文案瞬时变「已复制」/ 图标变 ✓)。
+/// 只用于真正值得复制的完整值 —— 一次性明文密钥 / 完整用户 ID;
+/// 掩码预览 (sk-ab****ef) 禁止用此组件, 复制掩码是功能错误。
+/// 复制语义与 ui-components session::copy_text_to_clipboard 一致:
+/// Clipboard API fire-and-forget, 提交即视为成功。
 #[component]
-fn CopyKeyButton(text: String) -> Element {
+fn CopyPlaintextButton(text: String, label: String) -> Element {
     let mut copied = use_signal(|| false);
     rsx! {
         Button {
             variant: ButtonVariant::Ghost,
             size: ButtonSize::IconXs,
-            title: "复制密钥",
-            "aria-label": "复制密钥",
+            title: "{label}",
+            "aria-label": "{label}",
             class: if copied() { "text-emerald-400" } else { "" },
             onclick: move |_| {
                 let ok = ui::copy_text_to_clipboard(text.as_str());
                 copied.set(ok);
-                if ok {
-                    ui::components::toast::toast("密钥已复制到剪贴板");
-                }
                 let mut c = copied;
                 spawn(async move {
                     gloo_timers::future::TimeoutFuture::new(1500).await;
