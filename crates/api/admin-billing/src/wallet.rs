@@ -349,6 +349,7 @@ impl WalletService {
             .collect();
         Ok(WalletView {
             user_key: user_key.to_string(),
+            aff_code: self.fetch_aff_code(user_key).await?,
             balances: items,
             available_i64,
         })
@@ -365,6 +366,7 @@ impl WalletService {
         let available_i64 = Self::available_of(&rows);
         Ok(json!({
             "userKey": user_key.to_string(),
+            "affCode": self.fetch_aff_code(user_key).await?,
             "balances": rows.iter().map(|b| json!({
                 "currencyCode": b.currency_code,
                 "symbol": b.symbol,
@@ -373,6 +375,17 @@ impl WalletService {
             })).collect::<Vec<_>>(),
             "availableI64": available_i64,
         }))
+    }
+
+    /// 用户邀请短码（`auth_users.aff_code`，0013）；NULL/未生成 = None。
+    ///
+    /// 与余额行分表而查：用户可能一行余额都没有（未 seed），JOIN 会丢短码，
+    /// 所以独立按 PK 取（索引命中，一次查询）。
+    async fn fetch_aff_code(&self, user_key: Uuid) -> Result<Option<String>, BillingErr> {
+        Ok(sqlx::query_scalar("SELECT aff_code FROM auth_users WHERE key = $1")
+            .bind(user_key)
+            .fetch_optional(&self.pool)
+            .await?)
     }
 
     /// 可用余额行（启用货币 × 组倍率），balance_view/available_i64 共用口径。

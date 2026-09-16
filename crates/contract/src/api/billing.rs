@@ -176,6 +176,9 @@ pub struct UserBalanceDto {
 #[serde(rename_all = "camelCase")]
 pub struct WalletView {
     pub user_key: String,
+    /// 邀请短码（`auth_users.aff_code`，0013）；None = 未生成，前端回退 UUID 链接。
+    #[serde(default)]
+    pub aff_code: Option<String>,
     pub balances: Vec<UserBalanceDto>,
     pub available_i64: i64,
 }
