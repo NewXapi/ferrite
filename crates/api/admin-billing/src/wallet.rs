@@ -47,33 +47,22 @@ impl WalletService {
     /// 折算综合可用值（内部单位 i64）：组倍率 + 冻结感知。
     ///
     /// `available = Σ floor((amount − frozen_amount) × internal_rate × mult)`，
-    /// `mult = currency_defs.group_rates->>group`，缺组/None = 1.0。
-    /// `group: Option<&str>` = 用户组（auth_users.group_id）；None = 不区分组
-    /// （TODO(#188): apps 侧接线传真实 group_id 后可收紧为必填）。
+    /// `mult = currency_defs.group_rates->>group`，缺组/NULL = 1.0。
+    /// `group: &str` = 用户组，取自 `auth_users.group_id`；组倍率缺失时 SQL
+    /// 的 COALESCE 回落 1.0（与无组配置数值等价）。
     pub async fn available_i64(
         &self,
         user_key: Uuid,
-        group: Option<&str>,
+        group: &str,
     ) -> Result<i64, BillingErr> {
-        let rows = self.load_balances(user_key, group).await?;
+        let rows = self.load_balances(user_key, Some(group)).await?;
         Ok(Self::available_of(&rows))
     }
 
-    /// 从货币余额扣 cost_i64（内部单位，500_000 = $1），不区分组（倍率 1.0）。
+    /// 组倍率版扣费：按 `(currency, group)` 差异化折算。
     ///
-    /// 冻结部分（frozen_amount）不可扣：可用口径 = `amount − frozen_amount`。
-    ///
-    /// TODO(#188): apps/api PgSettleSink 接线组参数后，此兼容入口并入
-    /// [`deduct_by_cost_group`](Self::deduct_by_cost_group)。
-    pub async fn deduct_by_cost(
-        &self,
-        user_key: Uuid,
-        cost_i64: i64,
-    ) -> Result<(i64, bool), BillingErr> {
-        self.deduct_by_cost_group(user_key, cost_i64, None).await
-    }
-
-    /// 组倍率版扣费：`deduct_by_cost` + `(currency, group)` 差异化折算。
+    /// `group: Option<&str>` 保留 None：PgSettleSink 在组查询失败/用户不存在时
+    /// 传 None（按缺省 1.0 扣、不漏扣）——None 是防御性回退语义，不是待办。
     ///
     /// 扣法：遍历用户启用货币（internal_rate 降序，大额优先减少扣减行数），
     /// 把 cost 按 `internal_rate × group_multiplier` 折算成该货币单位后
