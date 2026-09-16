@@ -12,7 +12,8 @@
 //!    - 核销 `POST /api/user/topup`：CAS `status=1 → SET status=2`（已核销），
 //!      同事务给 `user_balances(FREE)` 入账；
 //!    - 停用 `DELETE /api/redemption/{key}`：CAS `status=1 → SET status=3`（已停用）。
-//!    前端 redemptions.rs 的映射（2=停用、3=已核销）与之**对调**，是
+//!
+//!  前端 redemptions.rs 的映射（2=停用、3=已核销）与之**对调**，是
 //!    待修的生产 bug——修前端时本文件不动，即成回归闸。
 //! 2. **系统选项写路径**——`PUT /api/option`（admin-ops/options.rs）：
 //!    5 个注册表 key + 类型化 validator；未知 key / 类型不符 / 越界
