@@ -82,7 +82,8 @@ pub fn ErrorsPanel() -> Element {
                     class: "space-y-3",
                     // 拉取失败 → 中性占位(8090 预览反馈①):卡头合计已显示 —,
                     // 列表区与空态同风格,一行 muted 小字;失败文案 / HTTP 状态码 /
-                    // 重试按钮均不上 UI,err 保留在内存供后续自动重试。
+                    // 重试按钮均不上 UI。重拉时机:本面板随 tab 卸载/重挂(use_effect
+                    // 重新执行即重新拉取);err 仅留在内存不渲染。
                     if err.is_some() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                             p { class: "text-sm text-zinc-500", "暂无数据" }

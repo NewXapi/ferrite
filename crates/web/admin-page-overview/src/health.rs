@@ -57,10 +57,13 @@ pub fn ChannelHealth() -> Element {
                             avg_latency_ms: a.avg_latency_ms,
                         })
                         .collect();
-                    // 按可用率升序(最差的排前面,运维视角)
+                    // 按可用率升序(最差的排前面,运维视角);NaN 防御:SQL 聚合理论
+                    // 上不会产出 NaN,但 unwrap_or(Equal) 免除 panic 面
                     out.sort_by(|a, b| {
                         let av = |r: &ChannelHealthRow| r.availability.unwrap_or(0.0);
-                        av(a).partial_cmp(&av(b)).unwrap()
+                        av(a)
+                            .partial_cmp(&av(b))
+                            .unwrap_or(std::cmp::Ordering::Equal)
                     });
                     rows.set(out);
                     loading.set(false);
@@ -128,7 +131,8 @@ pub fn ChannelHealth() -> Element {
                     class: "space-y-3",
                     // 拉取失败 → 中性占位(8090 预览反馈①):与空态同风格的
                     // dashed 骨架 + 一行 muted 小字;失败文案 / HTTP 状态码 /
-                    // 重试按钮均不上 UI,err 保留在内存供后续自动重试。
+                    // 重试按钮均不上 UI。重拉时机:本面板随 tab 卸载/重挂(use_effect 重新
+                    // 执行即重新拉取),时间窗切换亦触发;err 仅留在内存不渲染。
                     if err.is_some() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                             p { class: "text-sm text-zinc-500", "暂无数据" }

@@ -130,8 +130,9 @@ pub fn OverviewPanel() -> Element {
     // 把实时 DTO 展开成 (值, 中文标签) 卡片列表(rsx! 之外计算,避免宏内 let)。
     // 拉取失败 → 中性占位(8090 预览反馈①):不渲染红色错误盒,改用全零 DTO
     // 照常渲染 7 张统计卡(额度卡 $0.00、runway 卡「无近期消耗」灰点)、顶部
-    // asOf 位随 summary 为 None 自然隐藏;err signal 保留在内存供后续自动
-    // 重试,失败文案 / HTTP 状态码 / 重试按钮均不上 UI。
+    // asOf 位随 summary 为 None 自然隐藏;失败文案 / HTTP 状态码 / 重试按钮均
+    // 不上 UI。重拉时机:本面板随 tab 卸载/重挂(use_effect 重新执行即重新拉取);
+    // err 仅留在内存不渲染。
     let summary_err = err();
     let effective_summary = summary().or_else(|| {
         if summary_err.is_some() {
