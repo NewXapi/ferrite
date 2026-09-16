@@ -1,25 +1,40 @@
 //! 用户页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 //!
 //! 真实数据经 `list_users_api` / `manage_user_api` 走 `client::ApiClient` 取;
-//! 分组 / 状态 / 角色是筛选项(纯 UI 标签,来自 `mock` crate 的枚举),保持不变。
+//! 分组 / 状态 / 角色是筛选项(纯 UI 常量,后端无对应枚举端点),值内联在本文件。
 
 use client::{ApiClient, ApiResult};
 use contract::api::admin::{AdminUserPage, ManageUserRequest};
 use contract::api::user::UserDto;
 
 /// 分组筛选项:(标签, group 值);空值表示不过滤
+pub const GROUPS: &[(&str, &str)] = &[
+    ("全部", ""),
+    ("默认", "default"),
+    ("VIP", "vip"),
+    ("SVIP", "svip"),
+    ("内部", "internal"),
+];
+
+/// 状态筛选项:(标签, status 值);0 表示不过滤
+pub const STATUSES: &[(&str, u8)] = &[("全部", 0), ("启用", 1), ("禁用", 2)];
+
+/// 角色筛选项:(标签, role 值);0 表示不过滤
+pub const ROLES: &[(&str, u16)] = &[("全部", 0), ("普通用户", 1), ("管理员", 10), ("Root", 100)];
+
+/// 分组筛选项:(标签, group 值);空值表示不过滤
 pub fn fetch_groups() -> &'static [(&'static str, &'static str)] {
-    mock::users::GROUPS
+    GROUPS
 }
 
 /// 状态筛选项:(标签, status 值);0 表示不过滤
 pub fn fetch_statuses() -> &'static [(&'static str, u8)] {
-    mock::users::STATUSES
+    STATUSES
 }
 
 /// 角色筛选项:(标签, role 值);0 表示不过滤
 pub fn fetch_roles() -> &'static [(&'static str, u16)] {
-    mock::users::ROLES
+    ROLES
 }
 
 /// 返回运行时当月前缀 ("YYYY-MM"),用 UTC。
