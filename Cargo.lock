@@ -17,7 +17,6 @@ dependencies = [
  "contract",
  "dioxus",
  "gloo-timers",
- "mock",
  "serde",
  "serde_json",
  "ui-components",
@@ -63,7 +62,6 @@ dependencies = [
  "contract",
  "dioxus",
  "manganis",
- "mock",
  "serde",
  "serde_json",
  "ui-components",
@@ -77,7 +75,6 @@ dependencies = [
  "client",
  "contract",
  "dioxus",
- "mock",
  "serde",
  "serde_json",
  "ui-components",
@@ -4059,10 +4056,6 @@ dependencies = [
  "wasi",
  "windows-sys 0.61.2",
 ]
-
-[[package]]
-name = "mock"
-version = "0.1.0"
 
 [[package]]
 name = "monostate"

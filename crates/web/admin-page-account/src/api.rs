@@ -1,51 +1,9 @@
 //! 账户页的数据来源。面板只从这里取数,不认识数据是怎么来的。
 //!
-//! 两类入口并存:
-//! - `fetch_*`: mock 直连 (同步返回 `mock` crate 静态数据), 仅覆盖尚无后端
-//!   列表端点的面板区块 (充值记录 / 被邀人);
-//! - `*_api`: 真实后端调用 (async, 走 `client::ApiClient`), 覆盖密钥 / 用量 /
-//!   用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 兑换码充值 / 充值开单。
+//! 全部入口为 `*_api`: async 真实后端调用 (走 `client::ApiClient`), 覆盖
+//! 密钥 / 用量 / 用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 充值开单。
 
-pub use mock::account::{ApiKey, Invitee, Profile, Recharge, UsageLog, Wallet};
-
-// ---- 密钥·资料面板 ----
-
-/// 统计卡:(值, 标签)
-pub fn fetch_key_stats() -> &'static [(&'static str, &'static str)] {
-    mock::account::KEY_STATS
-}
-
-pub fn fetch_profile() -> &'static Profile {
-    &mock::account::PROFILE
-}
-
-pub fn fetch_keys() -> &'static [ApiKey] {
-    mock::account::KEYS
-}
-
-// ---- 用量日志面板 ----
-
-/// 统计卡:(值, 标签)
-pub fn fetch_usage_stats() -> &'static [(&'static str, &'static str)] {
-    mock::account::USAGE_STATS
-}
-
-/// 筛选可选模型,首项 "全部" 表示不过滤。
-pub fn fetch_log_models() -> &'static [&'static str] {
-    mock::account::LOG_MODELS
-}
-
-pub fn fetch_logs() -> &'static [UsageLog] {
-    mock::account::LOGS
-}
-
-// ---- 邀请奖励面板 (mock 残留区块) ----
-
-/// mock 钱包 — 面板已切真端点 ([`fetch_wallet_api`]);本函数仅存
-/// tests/api_shapes.rs 的历史引用,待该测试更新后可连同 mock 一并移除。
-pub fn fetch_wallet() -> &'static Wallet {
-    &mock::account::WALLET
-}
+// ---- 邀请奖励面板 ----
 
 /// 真实调用: GET /api/user/topup/orders — 当前用户充值订单列表,
 /// 裸 `{"items":[...]}` 信封,空数组 = 无订单的正常空态。
