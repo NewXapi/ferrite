@@ -30,7 +30,8 @@ use uuid::Uuid;
 
 use auth::routes::bearer_user;
 
-use crate::currency::BillingErr;
+use crate::currency::{BillingErr, CurrencyService};
+use crate::topup_epay::{EpayMerchant, EpayProvider};
 use crate::wallet::WalletService;
 
 // ---------- provider 抽象 ----------
@@ -60,14 +61,27 @@ pub trait TopupProvider: Send + Sync {
 
 /// provider 侧开单结果。
 pub struct TopupSession {
-    /// 外部订单号 / 支付跳转 URL（渠道语义，本域只透传）。
+    /// 外部订单号（渠道语义；epay 的 out_trade_no = 本域订单 key）。
     pub reference: String,
+    /// 支付跳转 URL（真渠道开单才有；manual 为 None → 前端不渲染「去支付」）。
+    pub payment_url: Option<String>,
 }
 
 /// 渠道协议错误（网络/上游拒绝等），与 BillingErr（本域错误）分离。
 #[derive(Debug, thiserror::Error)]
 #[error("provider error: {0}")]
 pub struct ProviderError(pub String);
+
+/// 开单结果（open_topup 返回，handler 直接序列化给前端）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OpenTopupResult {
+    /// pending 订单 key（UUID 字符串）。
+    pub order_id: String,
+    /// 支付跳转 URL（真渠道开单才有；manual 为 None 时 key 被省略，
+    /// 前端降级为「已创建订单」文案，不渲染「去支付」）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_url: Option<String>,
+}
 
 /// 默认渠道：无外部支付系统——开单只回订单号，验签恒拒。
 /// manual 单据只能走 admin settle 端点入金，伪造 webhook 也拿不到 Some。
@@ -87,6 +101,7 @@ impl TopupProvider for ManualProvider {
         Box::pin(async move {
             Ok(TopupSession {
                 reference: order_key.to_string(),
+                payment_url: None,
             })
         })
     }
@@ -124,18 +139,57 @@ impl TopupService {
         self
     }
 
+    /// 注入易支付渠道：`[payment.epay]` 配置存在时由组装层调用（未配置则不注册，
+    /// 请求指 epay 时 open_topup 报 `payment provider not configured`）。
+    #[must_use]
+    pub fn with_epay(mut self, merchant: EpayMerchant) -> Self {
+        self.providers
+            .insert("epay", Arc::new(EpayProvider::new(merchant)));
+        self
+    }
+
     /// 按 id 查 provider（webhook 路由入口）。
     pub fn provider(&self, id: &str) -> Option<Arc<dyn TopupProvider>> {
         self.providers.get(id).cloned()
     }
 
-    /// 开单（不接真支付），建 pending 订单，返回 order id。
-    /// 直接写入 billing_topups 表（0008）state='pending'。
+    /// 开单：建 pending 订单（0008），返回订单 id 与支付跳转 URL。
+    ///
+    /// `req.provider` 缺省/空串 = manual（行为与旧版零差异）；指定真渠道时
+    /// 先调 `provider.create()` 拿外部引用与 payment_url，**成功才落库**
+    /// （失败不留无法支付的僵尸单），订单行写 provider 与 reference。
     ///
     /// 只收 `kind='points'` 货币（0014）：fiat 只是计价展示单位、永远无法入账，
     /// 开了就是永远 settle 不了的僵尸单（settle 时 credit_topup 失败、事务
     /// 回滚、订单退回 pending）。在开单入口拒绝，而不是让单据进状态机后卡死。
-    pub async fn open_topup(&self, req: TopUpRequest) -> Result<String, BillingErr> {
+    /// epay 的金额口径例外说明见下方折算段。
+    pub async fn open_topup(&self, req: TopUpRequest) -> Result<OpenTopupResult, BillingErr> {
+        // provider 解析：空串/缺省 = manual（旧请求零差异）。
+        let provider_id: &str = if req.provider.is_empty() {
+            "manual"
+        } else {
+            req.provider.as_str()
+        };
+        // 真渠道必须在注入表里注册；epay 未配置时报明确的「未配置」，
+        // 拼错的渠道名报「未知 provider」，两者对运维的排障含义不同。
+        // 放在货币校验之前：配置缺失是组装级故障，fail-fast 不必先查库。
+        let provider: Option<Arc<dyn TopupProvider>> = if provider_id == "manual" {
+            None
+        } else {
+            Some(match self.provider(provider_id) {
+                Some(p) => p,
+                None => {
+                    return Err(BillingErr::BadRequest(
+                        if provider_id == "epay" {
+                            "payment provider not configured".into()
+                        } else {
+                            format!("unknown payment provider: {provider_id}")
+                        },
+                    ))
+                }
+            })
+        };
+
         // 查启用货币的 kind 再分流报错：fiat「存在且启用、但不能充值」与
         // 「不存在/停用」是两种不同的状况，混为一谈会把后者误导成前者。
         let kind: Option<String> =
@@ -163,12 +217,45 @@ impl TopupService {
             }
         }
 
+        // epay 金额口径：渠道收 CNY（元），订单行存折算后的点数——fiat 不进
+        // 余额（不变式），只有点数金额能被 settle 入账。其余 provider 直接
+        // 用请求金额。charge_* = 喂给 provider.create 的支付口径。
+        let (order_currency, order_amount, charge_currency, charge_amount) = if provider_id == "epay"
+        {
+            // 0/负金额不开单（convert 对 <=0 返回 0，渠道也拒收，入口挡住）。
+            if req.amount <= 0 {
+                return Err(BillingErr::BadRequest("topup amount must be positive".into()));
+            }
+            let points = CurrencyService::new(self.pool.clone())
+                .convert(req.amount, "CNY", &req.currency)
+                .await?;
+            (req.currency.clone(), points, "CNY", req.amount)
+        } else {
+            (
+                req.currency.clone(),
+                req.amount,
+                req.currency.as_str(),
+                req.amount,
+            )
+        };
+
         // key = UUID 字符串（不使用 Uuid 包装，以便在前端易于 copy）
         let key = Uuid::new_v4().to_string();
+        // 真渠道先开单拿外部引用与支付 URL；失败则不落库（不留无法支付的僵尸单）。
+        let (reference, payment_url) = match provider {
+            None => (None, None),
+            Some(p) => {
+                let session = p
+                    .create(&key, charge_currency, charge_amount)
+                    .await
+                    .map_err(|e| BillingErr::BadRequest(format!("payment provider error: {e}")))?;
+                (Some(session.reference), session.payment_url)
+            }
+        };
         sqlx::query(
             r#"
-            INSERT INTO billing_topups (key, user_key, currency, amount, state, provider)
-            VALUES ($1, $2, $3, $4, 'pending', '')
+            INSERT INTO billing_topups (key, user_key, currency, amount, state, provider, reference)
+            VALUES ($1, $2, $3, $4, 'pending', $5, $6)
             ON CONFLICT (key) DO NOTHING
             "#,
         )
@@ -177,13 +264,18 @@ impl TopupService {
             Uuid::parse_str(&req.user_key)
                 .map_err(|e| BillingErr::BadRequest(format!("invalid user key: {e}")))?,
         )
-        .bind(&req.currency)
-        .bind(req.amount)
+        .bind(&order_currency)
+        .bind(order_amount)
+        .bind(provider_id)
+        .bind(reference)
         .execute(&self.pool)
         .await
         .map_err(BillingErr::Db)?;
 
-        Ok(key)
+        Ok(OpenTopupResult {
+            order_id: key,
+            payment_url,
+        })
     }
 
     /// 用户的充值订单列表（`GET /api/user/topup/orders`）。
@@ -339,7 +431,7 @@ async fn open_topup(
     State(s): State<TopupAppState>,
     h: HeaderMap,
     Json(req): Json<TopUpRequest>,
-) -> Result<Json<serde_json::Value>, ErrResp> {
+) -> Result<Json<OpenTopupResult>, ErrResp> {
     // 需要认证用户，但 admin 覆盖全部用户；这里使用 bearer_user，确保用户操作自身资源。
     let u = bearer_user(&s.auth, &h).await.map_err(err_json)?;
     // 防伪造他人 user_key：仅允许操作自身帐号（admin 走 admin 前缀端点）。
@@ -348,8 +440,8 @@ async fn open_topup(
         return Err(err_json(auth::AuthError::Forbidden));
     }
 
-    let order_id = s.svc.open_topup(req).await.map_err(err_json)?;
-    Ok(Json(serde_json::json!({ "order_id": order_id })))
+    let res = s.svc.open_topup(req).await.map_err(err_json)?;
+    Ok(Json(res))
 }
 
 /// 用户的充值订单列表 — GET /api/user/topup/orders（self）。

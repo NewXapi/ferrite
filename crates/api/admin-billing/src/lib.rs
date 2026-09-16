@@ -33,13 +33,15 @@ pub mod affiliate;
 pub mod currency;
 pub mod redeem;
 pub mod topup;
+pub mod topup_epay;
 pub mod wallet;
 
 pub use affiliate::{AffiliateAppState, AffiliateService, router as affiliate_router};
 pub use currency::{CurrencyAppState, CurrencyService, WalletSeedHook, router as currency_router};
 pub use redeem::{RedeemAppState, RedeemService, router};
 pub use topup::{
-    ManualProvider, ProviderError, TopupAppState, TopupProvider, TopupService, TopupSession,
+    ManualProvider, OpenTopupResult, ProviderError, TopupAppState, TopupProvider, TopupService, TopupSession,
     router as topup_router,
 };
+pub use topup_epay::{EpayMerchant, EpayProvider};
 pub use wallet::{WalletAppState, WalletService, router as wallet_router};

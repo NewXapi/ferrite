@@ -140,15 +140,17 @@ async fn open_topup_validates_currency() {
         user_key: user.to_string(),
         currency: "FREE".into(),
         amount: 100,
+        provider: "manual".into(),
     };
-    let order_id = topup.open_topup(req.clone()).await.expect("open FREE");
-    assert!(!order_id.is_empty());
+    let res = topup.open_topup(req.clone()).await.expect("open FREE");
+    assert!(!res.order_id.is_empty());
 
     // 不存在的货币 → 拒绝
     let bad = contract::api::billing::TopUpRequest {
         user_key: user.to_string(),
         currency: "NOPE".into(),
         amount: 100,
+        provider: "manual".into(),
     };
     assert!(topup.open_topup(bad).await.is_err(), "未启用货币应拒绝开单");
 

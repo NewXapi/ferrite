@@ -19,7 +19,10 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
 use billing::topup::{ProviderFuture, TopupAppState, TopupProvider, TopupSession, topup_webhook};
-use billing::{ManualProvider, ProviderError, TopupService};
+use billing::topup_epay::EpayMerchant;
+use billing::currency::BillingErr;
+use billing::{CurrencyService, ManualProvider, ProviderError, TopupService};
+use md5::{Digest, Md5};
 use contract::api::billing::TopUpRequest;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -53,6 +56,7 @@ impl TopupProvider for FakeProvider {
         Box::pin(async move {
             Ok(TopupSession {
                 reference: format!("fake-ref-{order_key}"),
+                payment_url: None,
             })
         })
     }
@@ -92,7 +96,8 @@ fn build_state(pool: PgPool) -> TopupAppState {
     );
     let svc = Arc::new(
         TopupService::new(pool) // 默认表里已有 manual
-            .with_provider(Arc::new(FakeProvider)),
+            .with_provider(Arc::new(FakeProvider))
+            .with_epay(epay_merchant()),
     );
     TopupAppState { svc, auth }
 }
@@ -148,6 +153,55 @@ async fn free_balance(pool: &PgPool, user: Uuid) -> i64 {
     .expect("free balance")
 }
 
+/// 测试商户（占位符密钥，仅本测试签名 roundtrip 用，非真密钥）。
+fn epay_merchant() -> EpayMerchant {
+    EpayMerchant {
+        gateway_url: "https://pay.example.com".into(),
+        pid: "10000".into(),
+        key: "TESTKEY0123456789".into(),
+        name: "充值".into(),
+        notify_url: "https://example.com/api/topup/webhook/epay".into(),
+    }
+}
+
+/// 现算一份合法签名的 epay 回调（out_trade_no/金额可定制，密钥同 epay_merchant）。
+/// 签名口径与 provider 完全一致：参数按 key 序、& 连接、末尾接密钥、MD5 大写。
+fn epay_callback(out_trade_no: &str, money: &str) -> serde_json::Value {
+    let pairs = [
+        ("money", money),
+        ("name", "充值"),
+        ("out_trade_no", out_trade_no),
+        ("pid", "10000"),
+        ("trade_no", "20260917120000001"),
+        ("trade_status", "TRADE_SUCCESS"),
+        ("type", "buy"),
+    ];
+    let mut sorted: Vec<(&str, &str)> = pairs.to_vec();
+    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    let mut buf = String::new();
+    for (k, v) in sorted {
+        if !buf.is_empty() {
+            buf.push('&');
+        }
+        buf.push_str(k);
+        buf.push('=');
+        buf.push_str(v);
+    }
+    buf.push_str("TESTKEY0123456789");
+    let sign = hex::encode(Md5::digest(buf.as_bytes())).to_uppercase();
+    serde_json::json!({
+        "pid": "10000",
+        "trade_no": "20260917120000001",
+        "out_trade_no": out_trade_no,
+        "type": "buy",
+        "name": "充值",
+        "money": money,
+        "trade_status": "TRADE_SUCCESS",
+        "sign": sign,
+        "sign_type": "MD5",
+    })
+}
+
 /// ManualProvider 纯逻辑（无 PG）：
 /// - id = "manual"（billing_topups.provider / webhook 路径都以此为准）；
 /// - create 无外部系统 → reference 就是订单号本身（前端可直接拿它当 settle key）；
@@ -190,6 +244,7 @@ async fn webhook_settles_order_once() {
             user_key: user.to_string(),
             currency: "FREE".into(),
             amount: 5000,
+            provider: "manual".into(),
         })
         .await
         .expect("open_topup");
@@ -264,4 +319,107 @@ async fn webhook_bad_signature_401() {
     .await
     .expect_err("manual 无 webhook，恒拒");
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+/// epay 全链路（PG）：开单 ¥10 → 折算点数落库 → 合法回调入金 → 重放幂等 /
+/// 伪造 401 无写入。webhook 三分支一次走完，并断言金额折算与 convert 一致。
+#[tokio::test]
+async fn webhook_epay_settles_replays_and_rejects_forged() {
+    let Some((app, pool)) = make_app().await else {
+        return;
+    };
+    let user = make_user(&pool).await;
+    // epay 金额口径：amount=10 是 ¥10（元），订单行存折算后的点数。
+    let res = app
+        .svc
+        .open_topup(TopUpRequest {
+            user_key: user.to_string(),
+            currency: "FREE".into(),
+            amount: 10,
+            provider: "epay".into(),
+        })
+        .await
+        .expect("open epay order");
+    let key = res.order_id.clone();
+    // 真渠道开单必给支付跳转 URL（前端「去支付」按钮消费它）。
+    assert!(
+        res.payment_url
+            .as_deref()
+            .is_some_and(|u| u.contains("mapi.php")),
+        "缺支付 URL: {:?}",
+        res.payment_url
+    );
+    assert_eq!(free_balance(&pool, user).await, 0);
+
+    // 期望点数：与 CurrencyService::convert 的折算值逐字一致（金额折算断言）。
+    let expect_points = CurrencyService::new(pool.clone())
+        .convert(10, "CNY", "FREE")
+        .await
+        .expect("convert CNY->FREE");
+    assert!(expect_points > 0, "测试汇率下 ¥10 应折算出正点数");
+
+    // 分支 1：合法回调 → 验签通过 → settle 入金，金额 = 订单行点数（= 折算值）。
+    let Json(first) = topup_webhook(
+        State(app.clone()),
+        Path("epay".into()),
+        Json(epay_callback(&key, "10")),
+    )
+    .await
+    .expect("首次回调：验签 + settle 成功");
+    assert_eq!(first["credited"].as_i64(), Some(expect_points));
+    assert_eq!(free_balance(&pool, user).await, expect_points);
+
+    // 分支 2：重放同一回执 → 200 + 已入账额，余额纹丝不动（幂等回执）。
+    let Json(second) = topup_webhook(
+        State(app.clone()),
+        Path("epay".into()),
+        Json(epay_callback(&key, "10")),
+    )
+    .await
+    .expect("重放必须回执成功，不能报错（否则渠道无限重试）");
+    assert_eq!(second["credited"].as_i64(), Some(expect_points));
+    assert_eq!(free_balance(&pool, user).await, expect_points);
+
+    // 分支 3：伪造回调（错签）→ 401，且无任何写入（余额不变）。
+    let mut forged = epay_callback(&key, "10");
+    forged["sign"] = "0123456789ABCDEF0123456789ABCDEF".into();
+    let (status, _) = topup_webhook(
+        State(app.clone()),
+        Path("epay".into()),
+        Json(forged),
+    )
+    .await
+    .expect_err("伪造回调必须 401");
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        free_balance(&pool, user).await,
+        expect_points,
+        "401 路径不能产生任何写入"
+    );
+
+    cleanup(&pool, user).await;
+}
+
+/// 指定 epay 但服务端未配置（[payment.epay] 段缺失）→ BadRequest
+/// 「payment provider not configured」。provider 解析在货币校验之前，
+/// 懒连接离线即可断言（不碰 DB）。
+#[tokio::test]
+async fn open_topup_epay_not_configured() {
+    let pool = PgPoolOptions::new()
+        .connect_lazy(&db_url())
+        .expect("connect_lazy 不建连，仅 URL 非法才 Err");
+    let svc = Arc::new(TopupService::new(pool));
+    let err = svc
+        .open_topup(TopUpRequest {
+            user_key: Uuid::new_v4().to_string(),
+            currency: "FREE".into(),
+            amount: 10,
+            provider: "epay".into(),
+        })
+        .await
+        .expect_err("未配置 epay 必须明确报错");
+    let BillingErr::BadRequest(msg) = err else {
+        panic!("应为 BadRequest（400），got: {err:?}")
+    };
+    assert_eq!(msg, "payment provider not configured");
 }
