@@ -225,8 +225,9 @@ fn SessionRow(
                     div { class: "mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2",
                         span { "IP: {session.ip}" }
                         span { "登录方式: {session.login_method}" }
-                        span { "最后活跃: {last_active}" }
-                        span { "到期: {expires_at}" }
+                        // 时间悬停可见原始 RFC3339 (与上方 UA 短标签同款处理)
+                        span { title: "{session.last_active}", "最后活跃: {last_active}" }
+                        span { title: "{session.expires_at}", "到期: {expires_at}" }
                     }
                 }
                 Button {

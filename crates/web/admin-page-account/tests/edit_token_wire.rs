@@ -110,10 +110,10 @@ fn date_input_to_rfc3339_falls_back_to_none_on_bad_input() {
 }
 
 #[test]
-fn rfc3339_to_date_input_takes_local_date_segment() {
-    // prefill 方向: RFC3339 → 本地日期段; 用带时区偏移的输入验证换算发生
-    // (00:30Z 在 UTC+8 本地是 08:30, 同一天, 日期段不变; 换 -30s 后仍同日)。
-    // 直接断言形状为 YYYY-MM-DD 且与本地解析结果一致, 不写死具体时区。
+fn rfc3339_to_date_input_takes_utc_date_segment() {
+    // prefill 方向: RFC3339 → UTC 日期段 (与 date_input_to_rfc3339 的
+    // 「所选日期 → UTC 当天末尾」构成同口径往返)。断言与 chrono::Utc 解析
+    // 结果比对, 不依赖 CI 机器时区 (写死 Local 会非确定)。
     let rfc = "2026-03-01T16:30:00Z";
     let got = rfc3339_to_date_input(rfc);
     assert_eq!(
@@ -121,12 +121,22 @@ fn rfc3339_to_date_input_takes_local_date_segment() {
         10,
         "date input 值必须是 10 位 YYYY-MM-DD, got {got:?}"
     );
-    let local = chrono::DateTime::parse_from_rfc3339(rfc)
+    let utc = chrono::DateTime::parse_from_rfc3339(rfc)
         .unwrap()
-        .with_timezone(&chrono::Local)
+        .with_timezone(&chrono::Utc)
         .format("%Y-%m-%d")
         .to_string();
-    assert_eq!(got, local, "必须换算成本地时区日期段");
+    assert_eq!(got, utc, "必须取 UTC 日期段, 不做本地时区换算");
+}
+
+#[test]
+fn date_input_round_trip_keeps_selected_day() {
+    // 回环锁定 (时区漂移回归): 选 2026-09-16 → 存 UTC 当天末尾 → prefill
+    // 必须回到 2026-09-16。若回程错用本地时区日期段, UTC+8 环境会回显
+    // 2026-09-17, 每次保存都静默后移一天。
+    let day = "2026-09-16";
+    let rfc = date_input_to_rfc3339(day).expect("合法日期必须换算成功");
+    assert_eq!(rfc3339_to_date_input(&rfc), day, "回环后日期段不得漂移");
 }
 
 #[test]

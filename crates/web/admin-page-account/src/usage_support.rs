@@ -63,6 +63,10 @@ pub fn fmt_time_minute(rfc3339: &str) -> String {
 ///
 /// 注意: 这不是完整的 UA 解析器, 只覆盖主流浏览器特征; 未匹配的 UA 一律
 /// 归为 "其他浏览器" / "未知系统" 而不是猜一个品牌名。
+///
+/// 语言口径 (刻意的中英混排): 品牌名 (Chrome / Edge / Windows / macOS 等)
+/// 保留英文原文不译, 识别失败的兜底文案 (「其他浏览器」「未知系统」「未知设备」)
+/// 用中文 —— 与整个 UI 的中文文案语言一致。
 pub fn summarize_ua(ua: &str) -> String {
     // 统一按原串大小写做包含匹配 (UA 品牌 token 自带大小写, 直接小写化比对)
     let u = ua.to_ascii_lowercase();
@@ -137,15 +141,17 @@ pub fn date_input_to_rfc3339(date_str: &str) -> Option<String> {
     )
 }
 
-/// RFC3339 → `<input type="date">` 需要的本地时区日期段 ("YYYY-MM-DD")。
+/// RFC3339 → `<input type="date">` 需要的 UTC 日期段 ("YYYY-MM-DD")。
 ///
-/// 编辑弹窗 prefill 用: 把后端存的 UTC RFC3339 换算成用户视角的本地日期,
-/// 与 [`date_input_to_rfc3339`] 构成回程对应 (回程按 UTC 计, 不保证逐秒
-/// round-trip, 但方向安全 —— 见其时区语义注释)。
+/// 编辑弹窗 prefill 用: 与 [`date_input_to_rfc3339`] 构成同一 UTC 口径的
+/// 回程对应 —— 去程「所选日期 → UTC 当天 23:59:59Z」, 回程「UTC 时间戳 →
+/// UTC 日期段」。两端统一按 UTC 才能保证不漂移: 若回程换算成本地日期
+/// (UTC+8 会 +1 天), prefill 就比用户当初选的日期晚一天, 每次保存都
+/// 静默后移。过期语义 =「所选日期当日 (UTC) 结束后失效」, 与弹窗文案一致。
 /// 解析失败或空串返回空串 (date input 显示为未选值)。
 pub fn rfc3339_to_date_input(rfc3339: &str) -> String {
     DateTime::parse_from_rfc3339(rfc3339)
-        .map(|t| t.with_timezone(&Local).format("%Y-%m-%d").to_string())
+        .map(|t| t.with_timezone(&Utc).format("%Y-%m-%d").to_string())
         .unwrap_or_default()
 }
 

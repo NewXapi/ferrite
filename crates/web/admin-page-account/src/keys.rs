@@ -133,8 +133,9 @@ pub fn KeysPanel() -> Element {
                                 div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",
                                     ProfileItem { label: "显示名", value: user.display_name.clone(), copyable: false }
                                     ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() }, copyable: false }
-                                    // 用户 ID 短显 (前4…后4), 复制按钮复制完整 UUID, 悬停 title 也有全值
-                                    ProfileItem { label: "用户ID", value: short_key(&user.key), copyable: true }
+                                    // 用户 ID 短显 (前4…后4), 复制按钮复制完整 UUID (copy_value),
+                                    // 悬停 title 也有全值
+                                    ProfileItem { label: "用户ID", value: short_key(&user.key), copy_value: Some(user.key.clone()), copyable: true }
                                     ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                                 }
                             } else if !self_err().is_empty() {
@@ -278,9 +279,17 @@ fn StatCard(value: String, label: &'static str) -> Element {
 
 /// 横向资料项: label 与 value 同行 (label 灰、value 等宽字体)。
 /// 由父容器 flex-wrap 控制换行, 单项不自带换行逻辑。
-/// `copyable` 时在 value 后挂复制小按钮 (复制完整值; value 本身可短显)。
+/// `copyable` 时在 value 后挂复制小按钮。注意: value 可短显
+/// (如用户 ID 显示 "0000…aa01"), 复制按钮实际复制的内容取 `copy_value`;
+/// 未传 (None) 时回退复制 `value` (对非短显项 = 复制原值, 向后兼容)。
 #[component]
-fn ProfileItem(label: &'static str, value: String, copyable: bool) -> Element {
+fn ProfileItem(
+    label: &'static str,
+    value: String,
+    copyable: bool,
+    copy_value: Option<String>,
+) -> Element {
+    let copy_text = copy_value.unwrap_or_else(|| value.clone());
     rsx! {
         div { class: "flex items-baseline gap-2",
             span { class: "shrink-0 text-zinc-400", "{label}" }
@@ -291,7 +300,7 @@ fn ProfileItem(label: &'static str, value: String, copyable: bool) -> Element {
             }
             if copyable {
                 div { class: "shrink-0 self-center",
-                    CopyPlaintextButton { text: value.clone(), label: format_args!("复制完整{label}").to_string() }
+                    CopyPlaintextButton { text: copy_text, label: format_args!("复制完整{label}").to_string() }
                 }
             }
         }
@@ -615,7 +624,8 @@ fn EditKeyModal(
     let mut group = use_signal(|| token.group.clone().unwrap_or_default());
     let mut unlimited = use_signal(|| token.unlimited_quota);
     let mut quota = use_signal(|| token.quota.to_string());
-    // 过期时间 prefill: RFC3339 → 本地日期段; None (永不过期) 显示空 = 保持不变
+    // 过期时间 prefill: RFC3339 → UTC 日期段 (与提交方向同口径, 见 usage_support);
+    // None (永不过期) 显示空 = 保持不变
     let mut expiry = use_signal(|| {
         crate::usage_support::rfc3339_to_date_input(token.expires_at.as_deref().unwrap_or(""))
     });
@@ -633,9 +643,10 @@ fn EditKeyModal(
         // 额度: 提交总是发 Some(quota) + Some(unlimitedQuota) (两项一体生效)
         let q_raw = quota().trim().to_string();
         let (quota_v, unlimited_v) = if unlimited() {
-            // 无限额度时限额输入禁用; 尽量带上输入框现值 (非法/空回退 0,
-            // 后端以 unlimitedQuota = true 为准, quota 数值此时无意义)
-            (q_raw.parse::<i64>().unwrap_or(0), true)
+            // 无限额度时限额输入禁用: 明确发 0 占位, 不再 parse 输入框旧文本
+            // (先输非法值再勾选无限时, 旧输入的 parse 结果无意义);
+            // quota 数值此时无意义, 后端以 unlimitedQuota = true 为准
+            (0, true)
         } else {
             match q_raw.parse::<i64>() {
                 Ok(v) if v >= 0 => (v, false),
@@ -645,7 +656,7 @@ fn EditKeyModal(
                 }
             }
         };
-        // 过期时间: 空 → 不发字段 (保持不变); 有值 → UTC RFC3339 (本地日期 → UTC 当天末尾)
+        // 过期时间: 空 → 不发字段 (保持不变); 有值 → UTC RFC3339 (所选日期 → UTC 当天末尾)
         let expires_at = crate::usage_support::date_input_to_rfc3339(expiry().trim());
         let req = UpdateTokenRequest {
             name: Some(n),
