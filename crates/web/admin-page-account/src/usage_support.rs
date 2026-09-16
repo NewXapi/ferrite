@@ -117,3 +117,34 @@ pub fn fmt_num(n: i64) -> String {
 pub fn fmt_quota(quota: i64) -> String {
     format!("${:.4}", quota as f64 / QUOTA_PER_USD)
 }
+
+/// 编辑密钥弹窗的 `<input type="date">` 值 (本地时区 "YYYY-MM-DD") → UTC RFC3339。
+///
+/// 时区语义: 用户所选日期按 **UTC 当天最后一秒** (`T23:59:59Z`) 过期 ——
+/// 即「该日期一整天 (以 UTC 计) 结束后才失效」。本地时区早于 UTC (如 UTC+8)
+/// 时实际失效时刻落在所选日期次日清晨, 宁可偏晚不偏早, 避免把用户明选的
+/// 当天提前杀掉。
+///
+/// 返回 None 的情况 (调用方应视为「不发 expires_at 字段 = 保持不变」):
+/// - 输入为空串 (date input 未选值);
+/// - 非法输入 (date input 理论上只产 `YYYY-MM-DD`, 这里兜底脏数据)。
+pub fn date_input_to_rfc3339(date_str: &str) -> Option<String> {
+    let d = chrono::NaiveDate::parse_from_str(date_str.trim(), "%Y-%m-%d").ok()?;
+    let dt = d.and_hms_opt(23, 59, 59)?;
+    Some(
+        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    )
+}
+
+/// RFC3339 → `<input type="date">` 需要的本地时区日期段 ("YYYY-MM-DD")。
+///
+/// 编辑弹窗 prefill 用: 把后端存的 UTC RFC3339 换算成用户视角的本地日期,
+/// 与 [`date_input_to_rfc3339`] 构成回程对应 (回程按 UTC 计, 不保证逐秒
+/// round-trip, 但方向安全 —— 见其时区语义注释)。
+/// 解析失败或空串返回空串 (date input 显示为未选值)。
+pub fn rfc3339_to_date_input(rfc3339: &str) -> String {
+    DateTime::parse_from_rfc3339(rfc3339)
+        .map(|t| t.with_timezone(&Local).format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
