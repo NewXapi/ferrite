@@ -40,8 +40,8 @@ pub use affiliate::{AffiliateAppState, AffiliateService, router as affiliate_rou
 pub use currency::{CurrencyAppState, CurrencyService, WalletSeedHook, router as currency_router};
 pub use redeem::{RedeemAppState, RedeemService, router};
 pub use topup::{
-    ManualProvider, OpenTopupResult, ProviderError, TopupAppState, TopupProvider, TopupService, TopupSession,
-    router as topup_router,
+    ManualProvider, OpenTopupResult, ProviderError, TopupAppState, TopupProvider, TopupService,
+    TopupSession, router as topup_router,
 };
 pub use topup_epay::{EpayMerchant, EpayProvider};
 pub use wallet::{WalletAppState, WalletService, router as wallet_router};

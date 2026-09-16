@@ -72,7 +72,10 @@ async fn create_builds_signed_mapi_url() {
     );
     assert!(url.contains("out_trade_no=ORDER001"), "缺外部单号: {url}");
     assert!(url.contains("sign_type=MD5"), "缺签名类型: {url}");
-    assert!(url.contains(&format!("sign={EXPECT_CREATE_SIGN}")), "缺签名: {url}");
+    assert!(
+        url.contains(&format!("sign={EXPECT_CREATE_SIGN}")),
+        "缺签名: {url}"
+    );
 
     // roundtrip：解析 URL query，剔除 sign/sign_type/m 后重算，必须等于 URL 里的 sign。
     let parsed = url::Url::parse(&url).expect("create 产出的必须是合法 URL");
@@ -81,8 +84,10 @@ async fn create_builds_signed_mapi_url() {
         .filter(|(k, _)| k != "sign" && k != "sign_type" && k != "m")
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
-    let mut sorted: Vec<(&str, &str)> =
-        pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let mut sorted: Vec<(&str, &str)> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     let mut buf = String::new();
     for (k, v) in sorted {
@@ -131,7 +136,8 @@ async fn verify_callback_rejects_tampered_money() {
     let mut payload = callback_payload("ORDER001");
     payload["money"] = "10000".into(); // 篡改金额，签名不再匹配
     assert_eq!(
-        p.verify_callback(&payload).await, None,
+        p.verify_callback(&payload).await,
+        None,
         "篡改任何参与签名的字段都必须拒绝"
     );
 }
@@ -193,7 +199,8 @@ async fn verify_callback_rejects_non_success_status() {
         "sign_type": "MD5",
     });
     assert_eq!(
-        p.verify_callback(&payload).await, None,
+        p.verify_callback(&payload).await,
+        None,
         "非 TRADE_SUCCESS 的回执绝不能触发入金"
     );
 }
@@ -232,7 +239,8 @@ async fn verify_callback_rejects_malformed() {
     zero_ok["money"] = "0".into();
     zero_ok["sign"] = sig.into();
     assert_eq!(
-        p.verify_callback(&zero_ok).await, None,
+        p.verify_callback(&zero_ok).await,
+        None,
         "0 元回执不能入金（哪怕签名合法）"
     );
     assert_eq!(p.verify_callback(&zero).await, None);

@@ -183,8 +183,10 @@ impl TopupProvider for EpayProvider {
 fn sign(pairs: &[(String, String)], key: &str) -> String {
     // 转 (&str,&str) 再排序：直接对 Vec<&(String,String)> 排序会陷入双重引用,
     // a.0/b.0 的借用形式让 clippy::needless_borrow 与类型检查互相矛盾。
-    let mut sorted: Vec<(&str, &str)> =
-        pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let mut sorted: Vec<(&str, &str)> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     let mut buf = String::new();
     for (k, v) in sorted {

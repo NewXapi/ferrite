@@ -179,13 +179,11 @@ impl TopupService {
             Some(match self.provider(provider_id) {
                 Some(p) => p,
                 None => {
-                    return Err(BillingErr::BadRequest(
-                        if provider_id == "epay" {
-                            "payment provider not configured".into()
-                        } else {
-                            format!("unknown payment provider: {provider_id}")
-                        },
-                    ))
+                    return Err(BillingErr::BadRequest(if provider_id == "epay" {
+                        "payment provider not configured".into()
+                    } else {
+                        format!("unknown payment provider: {provider_id}")
+                    }));
                 }
             })
         };
@@ -220,24 +218,26 @@ impl TopupService {
         // epay 金额口径：渠道收 CNY（元），订单行存折算后的点数——fiat 不进
         // 余额（不变式），只有点数金额能被 settle 入账。其余 provider 直接
         // 用请求金额。charge_* = 喂给 provider.create 的支付口径。
-        let (order_currency, order_amount, charge_currency, charge_amount) = if provider_id == "epay"
-        {
-            // 0/负金额不开单（convert 对 <=0 返回 0，渠道也拒收，入口挡住）。
-            if req.amount <= 0 {
-                return Err(BillingErr::BadRequest("topup amount must be positive".into()));
-            }
-            let points = CurrencyService::new(self.pool.clone())
-                .convert(req.amount, "CNY", &req.currency)
-                .await?;
-            (req.currency.clone(), points, "CNY", req.amount)
-        } else {
-            (
-                req.currency.clone(),
-                req.amount,
-                req.currency.as_str(),
-                req.amount,
-            )
-        };
+        let (order_currency, order_amount, charge_currency, charge_amount) =
+            if provider_id == "epay" {
+                // 0/负金额不开单（convert 对 <=0 返回 0，渠道也拒收，入口挡住）。
+                if req.amount <= 0 {
+                    return Err(BillingErr::BadRequest(
+                        "topup amount must be positive".into(),
+                    ));
+                }
+                let points = CurrencyService::new(self.pool.clone())
+                    .convert(req.amount, "CNY", &req.currency)
+                    .await?;
+                (req.currency.clone(), points, "CNY", req.amount)
+            } else {
+                (
+                    req.currency.clone(),
+                    req.amount,
+                    req.currency.as_str(),
+                    req.amount,
+                )
+            };
 
         // key = UUID 字符串（不使用 Uuid 包装，以便在前端易于 copy）
         let key = Uuid::new_v4().to_string();

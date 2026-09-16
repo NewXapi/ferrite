@@ -18,12 +18,12 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
+use billing::currency::BillingErr;
 use billing::topup::{ProviderFuture, TopupAppState, TopupProvider, TopupSession, topup_webhook};
 use billing::topup_epay::EpayMerchant;
-use billing::currency::BillingErr;
 use billing::{CurrencyService, ManualProvider, ProviderError, TopupService};
-use md5::{Digest, Md5};
 use contract::api::billing::TopUpRequest;
+use md5::{Digest, Md5};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
@@ -383,13 +383,9 @@ async fn webhook_epay_settles_replays_and_rejects_forged() {
     // 分支 3：伪造回调（错签）→ 401，且无任何写入（余额不变）。
     let mut forged = epay_callback(&key, "10");
     forged["sign"] = "0123456789ABCDEF0123456789ABCDEF".into();
-    let (status, _) = topup_webhook(
-        State(app.clone()),
-        Path("epay".into()),
-        Json(forged),
-    )
-    .await
-    .expect_err("伪造回调必须 401");
+    let (status, _) = topup_webhook(State(app.clone()), Path("epay".into()), Json(forged))
+        .await
+        .expect_err("伪造回调必须 401");
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(
         free_balance(&pool, user).await,
