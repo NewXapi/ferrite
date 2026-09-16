@@ -81,3 +81,7 @@ path = "billing_lifecycle.rs"
 [[test]]
 name = "users_wire_contract"
 path = "users_wire_contract.rs"
+
+[[test]]
+name = "manage_wire_contract"
+path = "manage_wire_contract.rs"
