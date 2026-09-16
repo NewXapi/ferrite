@@ -11,21 +11,26 @@
 //!   表单没有这两个字段的来源 — 提交时诚实提示,不造数据、不假成功。
 
 use client::ApiClient;
+use contract::api::admin::GroupDto;
 use contract::api::billing::AliasUpsertRequest;
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
-use crate::api::{delete_model_alias_api, list_model_aliases_api, update_model_alias_api};
-use crate::groups::{Badge, Modal, StatCard};
+use crate::api::{
+    delete_model_alias_api, list_groups_api, list_model_aliases_api, update_model_alias_api,
+};
+use crate::groups::{Modal, StatCard, parse_whitelist};
 use crate::state::AliasRow;
 
-/// 别名列表项:后端 ModelView 的 key(UUID) + 页面展示行。
+/// 别名列表项:后端 ModelView 的 key(UUID) + 页面展示行 + per-card 定价模式。
 /// key 不并入 AliasRow — AliasRow 被 entities.rs 结构体字面量构造,
-/// 本页独立持有 key 以定位 PUT/DELETE 路径。
+/// 本页独立持有 key 以定位 PUT/DELETE 路径;price_mode 是 UI 层本地状态,
+/// 后端 models 域无 pricing_mode 列,保存不写回。
 #[derive(Clone, PartialEq)]
 struct AliasItem {
     key: String,
     row: AliasRow,
+    price_mode: PriceMode,
 }
 
 /// 弹窗状态(Edit 携带后端模型 UUID key)
@@ -52,20 +57,42 @@ pub fn AliasesPage() -> Element {
     let mut search = use_signal(String::new);
     let mut filter_tier = use_signal(|| 0usize);
     let mut modal_state = use_signal(|| AliasModalState::Closed);
+    // 分组列表(用于卡片展示「哪些分组可用此别名 + 各分组倍率」)
+    let mut groups = use_signal(Vec::<GroupDto>::new);
 
     let mut f_name = use_signal(String::new);
     let mut f_display = use_signal(String::new);
     let mut f_input = use_signal(|| "0.0175".to_string());
     let mut f_output = use_signal(|| "0.07".to_string());
     let mut f_mult = use_signal(|| "1.0".to_string());
+    // 定价模式:per-card 独立,存在 AliasItem 里(见下方),弹窗打开时从该 card 读
+    let mut f_price_mode = use_signal(|| PriceMode::PerToken);
+    // 弹窗活动 tab:0 基本 / 1 按量定价 / 2 按次定价
+    let mut f_modal_tab = use_signal(|| 0usize);
+    // 按量/按次价格项的本地状态(后端无 pricing 列,纯 UI 占位;打开弹窗时重置默认值)
+    let mut p_input = use_signal(|| "3".to_string());
+    let mut p_output = use_signal(|| "15".to_string());
+    let mut p_cache_read = use_signal(|| "0.3".to_string());
+    let mut p_cache_write = use_signal(|| "0.75".to_string());
+    let mut p_completion = use_signal(|| "2.5".to_string());
+    let mut p_per_call = use_signal(|| "0.05".to_string());
+    // 各通道启用状态:「基本」tab 的胶囊开关控制,卡片只渲染启用中的通道
+    let mut c_output_on = use_signal(|| true);
+    let mut c_cache_read_on = use_signal(|| true);
+    let mut c_cache_write_on = use_signal(|| true);
+    let mut c_completion_on = use_signal(|| true);
 
-    // 挂载即拉取真实列表;reload 变化时重拉(对齐 GroupsPage)
+    // 挂载即拉取真实列表 + 分组(卡片要展示各分组倍率);reload 变化时重拉
     use_effect(move || {
         let _ = reload();
         loading.set(true);
         err.set(None);
         spawn(async move {
             let client = ApiClient::shared().clone();
+            // 分组白名单拉取(独立,失败不阻塞别名列表)
+            if let Ok(gs) = list_groups_api(&client).await {
+                groups.set(gs);
+            }
             match list_model_aliases_api(&client).await {
                 Ok(list) => {
                     let mut items: Vec<AliasItem> = list
@@ -75,11 +102,11 @@ pub fn AliasesPage() -> Element {
                             row: AliasRow {
                                 alias: m.name,
                                 display: String::new(),
-                                // 后端 models 域无价格/倍率列:保持展示 0/1.0
                                 input_per_1k: 0.0,
                                 output_per_1k: 0.0,
                                 multiplier: 1.0,
                             },
+                            price_mode: PriceMode::PerToken,
                         })
                         .collect();
                     // 与 EntityStore::hydrate 的 /api/models 映射保持一致:按别名排序
@@ -162,6 +189,19 @@ pub fn AliasesPage() -> Element {
         f_input.set("0.0175".to_string());
         f_output.set("0.07".to_string());
         f_mult.set("1.0".to_string());
+        f_price_mode.set(PriceMode::PerToken);
+        f_modal_tab.set(0);
+        // 价格项重置为默认占位值(新建无后端数据,UI 层先给一个合理默认)
+        p_input.set("3".to_string());
+        p_output.set("15".to_string());
+        p_cache_read.set("0.3".to_string());
+        p_cache_write.set("0.75".to_string());
+        p_completion.set("2.5".to_string());
+        p_per_call.set("0.05".to_string());
+        c_output_on.set(true);
+        c_cache_read_on.set(true);
+        c_cache_write_on.set(true);
+        c_completion_on.set(true);
         modal_state.set(AliasModalState::New);
     };
 
@@ -172,32 +212,51 @@ pub fn AliasesPage() -> Element {
             f_input.set(format!("{}", it.row.input_per_1k));
             f_output.set(format!("{}", it.row.output_per_1k));
             f_mult.set(format!("{}", it.row.multiplier));
+            f_price_mode.set(it.price_mode);
+            f_modal_tab.set(0);
             modal_state.set(AliasModalState::Edit(key));
         }
     };
 
-    // 删除:走真实 DELETE,成功后 notice + 重拉列表(对齐 GroupsPage 写路径)
+    // 卡片面板上的定价 toggle:更新该 card 独立的定价模式(per-card,不共享),
+    // 写回 rows 里对应 item 的 price_mode;后端不落地,纯 UI 本地状态。
+    // `make_mode_handler` 每次返回独立 EventHandler,move 进 rsx 闭包。
+    let make_mode_handler = |key: String| -> EventHandler<PriceMode> {
+        let mut items_sig = rows;
+        EventHandler::new(move |mode: PriceMode| {
+            let mut items = items_sig().to_vec();
+            if let Some(it) = items.iter_mut().find(|it| it.key == key) {
+                it.price_mode = mode;
+            }
+            items_sig.set(items);
+        })
+    };
+
+    // 删除:走真实 DELETE,成功后本地从 rows 移除该项(不整体重拉,避免列表
+    // 闪 loading 骨架 + 高度剧变引起页面跳动);只有错误才提示,成功静默。
     let write_delete = move |key: String| {
-        let (mut b, mut n, mut r) = (busy, notice, reload);
+        let (mut b, mut n, mut items_sig) = (busy, notice, rows);
         spawn(async move {
             b.set(true);
             n.set(None);
             let client = ApiClient::shared().clone();
             match delete_model_alias_api(&client, &key).await {
                 Ok(_) => {
-                    n.set(Some("操作成功".to_string()));
-                    r.set(r() + 1);
+                    // 成功:本地直接移除,不 bump reload
+                    let mut items = items_sig().to_vec();
+                    items.retain(|it| it.key != key);
+                    items_sig.set(items);
+                    n.set(Some("已删除".to_string()));
                 }
-                Err(e) => n.set(Some(format!("操作失败:{e}"))),
+                Err(e) => n.set(Some(format!("删除失败:{e}"))),
             }
             b.set(false);
         });
     };
 
-    // 弹窗关闭并触发重拉(保存后列表以服务端为准)
-    let close_and_reload = move |_| {
+    // 弹窗关闭:只关弹窗(价格/模式是 UI 本地态,保存仅写 name,无需整体重拉列表)
+    let close_modal = move |_| {
         modal_state.set(AliasModalState::Closed);
-        reload.set(reload() + 1);
     };
 
     rsx! {
@@ -214,7 +273,7 @@ pub fn AliasesPage() -> Element {
 
                 // 数据与写路径说明(后端 models 端点暂无计费字段)
                 div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
-                    span { "别名来自真实 /api/models;编辑与删除已接后端;新建暂未开放(后端需要 owner/api_key 字段);价格字段后端暂未提供,显示为 0" }
+                    span { "别名来自真实 /api/models;编辑与删除已接后端;定价模式与价格配置为 UI 层本地状态,后端扩展 pricing 列前保存不写库;新建暂未开放(后端需要 owner/api_key 字段)" }
                 }
                 // 1. 统计区
                 section { id: "aliases-sec-stats", class: "scroll-mt-8 space-y-3",
@@ -302,12 +361,20 @@ pub fn AliasesPage() -> Element {
                             "data-testid": "aliases-list",
                             for (idx, it) in filtered {
                                 {
+                                    let key_ref = it.key.clone();
                                     rsx! {
                                         AliasCard {
                                             key: "{it.key}",
                                             alias_key: it.key,
                                             alias: it.row,
                                             index: idx,
+                                            price_mode: it.price_mode,
+                                            groups: groups.read().clone(),
+                                            c_output_on: c_output_on(),
+                                            c_cache_read_on: c_cache_read_on(),
+                                            c_cache_write_on: c_cache_write_on(),
+                                            c_completion_on: c_completion_on(),
+                                            on_mode_change: make_mode_handler(key_ref),
                                             on_edit: open_edit,
                                             on_delete: write_delete,
                                         }
@@ -331,9 +398,21 @@ pub fn AliasesPage() -> Element {
                     input_rate: f_input,
                     output_rate: f_output,
                     multiplier: f_mult,
+                    price_mode: f_price_mode,
+                    active_tab: f_modal_tab,
+                    p_input,
+                    p_output,
+                    p_cache_read,
+                    p_cache_write,
+                    p_completion,
+                    p_per_call,
+                    c_output_on,
+                    c_cache_read_on,
+                    c_cache_write_on,
+                    c_completion_on,
                     notice,
                     on_cancel: move |_| modal_state.set(AliasModalState::Closed),
-                    on_submit: close_and_reload,
+                    on_submit: close_modal,
                 }
             }
     }
@@ -345,50 +424,22 @@ fn AliasCard(
     alias_key: String,
     alias: AliasRow,
     index: usize,
+    /// 该 card 独立持有的定价模式(per-card,非共享)
+    price_mode: PriceMode,
+    /// 全部分组(用于展示「哪些分组可用此别名 + 各分组倍率」)
+    groups: Vec<GroupDto>,
+    /// 各补充通道的启用状态(「基本」tab 胶囊开关控制;未启用通道不出现在卡片)
+    c_output_on: bool,
+    c_cache_read_on: bool,
+    c_cache_write_on: bool,
+    c_completion_on: bool,
+    on_mode_change: EventHandler<PriceMode>,
     on_edit: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
     // 回调各持一份克隆,避免单一 String 被两个闭包争用所有权
     let edit_key = alias_key.clone();
     let delete_key = alias_key;
-    let initial = alias
-        .alias
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_uppercase()
-        .to_string();
-    let m = alias.multiplier;
-
-    let (mult_badge_text, mult_badge_tone, bar_tone, bar_width_pct) = if m == 0.0 {
-        (
-            "免费 0×".to_string(),
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "bg-emerald-500",
-            15,
-        )
-    } else if (m - 1.0).abs() < 0.001 {
-        (
-            "标准 1.00×".to_string(),
-            "border-zinc-700 bg-zinc-800/80 text-zinc-300",
-            "bg-zinc-200",
-            50,
-        )
-    } else if m < 1.0 {
-        (
-            format!("优惠 {m:.2}×"),
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "bg-emerald-500",
-            ((m / 2.0) * 100.0).clamp(15.0, 100.0) as u32,
-        )
-    } else {
-        (
-            format!("溢价 {m:.2}×"),
-            "border-amber-500/30 bg-amber-500/20 text-amber-400",
-            "bg-amber-500",
-            ((m / 2.0) * 100.0).clamp(15.0, 100.0) as u32,
-        )
-    };
 
     let display_title = if alias.display.is_empty() {
         alias.alias.clone()
@@ -396,53 +447,120 @@ fn AliasCard(
         alias.display.clone()
     };
 
+    // 分组倍率标签:展示可用此别名的分组及其倍率。
+    // 后端 model_whitelist 为「分组内可用的模型名列表」;空白名单 = 该分组可用全部模型。
+    // 因此「可用此别名」= whitelist 为空(默认全可用) 或 显式包含该别名。
+    let alias_name = alias.alias.clone();
+    let usable_groups: Vec<(String, f64)> = groups
+        .iter()
+        .filter(|g| {
+            let names = parse_whitelist(&g.model_whitelist);
+            names.is_empty() || names.iter().any(|n| n == &alias_name)
+        })
+        .map(|g| (g.name.clone(), g.ratio))
+        .collect();
+    // 卡片空间有限,最多展示 4 个分组标签,超出折叠
+    let shown_groups = usable_groups.iter().take(4).collect::<Vec<_>>();
+    let overflow_groups = usable_groups.len().saturating_sub(4);
+
+    // 定价:按量 = 输入 + 启用中的补充通道($/1M),按次 = 单项。卡片上放静态默认值
+    // 作展示,真实可编辑值在弹窗里(后端无 pricing 列,此处为 UI 占位)。
+    // 未启用的通道(开关关闭)不出现在卡片上。
+    let price_rows: Vec<(String, String)> = if price_mode == PriceMode::PerCall {
+        vec![("单次调用".into(), "0.05".into())]
+    } else {
+        let mut rows = vec![("输入".into(), "3".into())];
+        if c_output_on {
+            rows.push(("输出".into(), "15".into()));
+        }
+        if c_cache_read_on {
+            rows.push(("缓存读取".into(), "0.3".into()));
+        }
+        if c_cache_write_on {
+            rows.push(("缓存写入".into(), "0.75".into()));
+        }
+        if c_completion_on {
+            rows.push(("补全".into(), "2.5".into()));
+        }
+        rows
+    };
+    // 单位列:按量统一 $/1M,按次为 USD/次
+    let shared_unit = if price_mode == PriceMode::PerCall {
+        "USD/次".to_string()
+    } else {
+        "$/1M".to_string()
+    };
+
     rsx! {
         div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-            div { class: "space-y-3",
-                div { class: "flex items-start gap-3",
-                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
-                        "{initial}"
+            "data-testid": "alias-card",
+            div { class: "space-y-3.5",
+                // 头部:别名 + 序号
+                div { class: "flex items-center justify-between gap-2",
+                    div { class: "min-w-0",
+                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{alias.alias}" }
+                        if !display_title.is_empty() && display_title != alias.alias {
+                            p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{display_title}" }
+                        }
                     }
-                    div { class: "min-w-0 flex-1",
-                        div { class: "flex items-center justify-between gap-2",
-                            h3 { class: "truncate text-sm font-medium text-zinc-100", "{alias.alias}" }
-                            span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
-                                "#{index + 1}"
+                    span { class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+                        "#{index + 1}"
+                    }
+                }
+
+                // 分组倍率标签:哪些分组可用此别名 + 各分组倍率(替代原计费倍率进度条)
+                div { class: "space-y-1.5",
+                    p { class: "text-[11px] text-zinc-400", "可用分组 × 倍率" }
+                    div { class: "flex flex-wrap gap-1.5",
+                        if shown_groups.is_empty() {
+                            span { class: "text-[11px] text-zinc-500", "无分组引用" }
+                        } else {
+                            for (gname, gratio) in shown_groups {
+                                {
+                                    let ratio_str = format!("×{gratio:.1}");
+                                    let tone = if (*gratio - 1.0).abs() < 0.001 {
+                                        "border-zinc-700 bg-zinc-800/80 text-zinc-300"
+                                    } else if *gratio < 1.0 {
+                                        "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                    } else {
+                                        "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                                    };
+                                    rsx! {
+                                        span { class: "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] {tone}",
+                                            "{gname}"
+                                            span { class: "text-[10px] font-mono opacity-70", "{ratio_str}" }
+                                        }
+                                    }
+                                }
+                            }
+                            if overflow_groups > 0 {
+                                span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-400",
+                                    "+{overflow_groups}"
+                                }
                             }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{display_title}" }
                     }
                 }
 
-                div { class: "flex flex-wrap gap-1.5",
-                    Badge { text: mult_badge_text, tone: mult_badge_tone }
-                    Badge { text: format!("入: ¥{}/1k", alias.input_per_1k), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
-                    Badge { text: format!("出: ¥{}/1k", alias.output_per_1k), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-300" }
-                }
-
-                div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 text-[11px]",
-                        span { class: "text-zinc-400", "计费倍率" }
-                        span { class: "whitespace-nowrap font-medium text-zinc-200", "×{m:.2}" }
+                // 定价:标题行(左) + 模式 toggle(右),同排;价格列表按启用通道渲染
+                div { class: "space-y-2",
+                    div { class: "flex items-center justify-between gap-2",
+                        p { class: "text-[11px] font-medium text-zinc-400",
+                            if price_mode == PriceMode::PerCall { "按次定价" } else { "按量定价" }
+                        }
+                        PriceModeToggle { active: price_mode, on_change: move |m: PriceMode| on_mode_change.call(m) }
                     }
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
-                        div { class: "h-full rounded-full {bar_tone} transition-all duration-300", style: "width: {bar_width_pct}%" }
-                    }
-                }
-
-                div { class: "space-y-1.5 text-xs pt-1",
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "输入单价" }
-                        span { class: "font-mono font-medium text-zinc-200", "¥ {alias.input_per_1k} / 1k" }
-                    }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "输出单价" }
-                        span { class: "font-mono font-medium text-zinc-200", "¥ {alias.output_per_1k} / 1k" }
-                    }
-                    div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "1M tokens 测算" }
-                        span { class: "font-mono font-medium text-zinc-200",
-                            "¥ {((alias.input_per_1k + alias.output_per_1k * 2.0) * 1000.0 * m).round() / 1000.0}"
+                    if !price_rows.is_empty() {
+                        div { class: "space-y-1",
+                            for (label, value) in &price_rows {
+                                div { class: "flex items-center justify-between gap-2 text-[11px]",
+                                    span { class: "shrink-0 text-zinc-500", "{label}" }
+                                    div { class: "flex items-baseline gap-1 font-mono",
+                                        span { class: "text-zinc-200", "{value}" }
+                                        span { class: "text-[10px] text-zinc-500", "{shared_unit}" }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -476,6 +594,18 @@ fn AliasFormModal(
     input_rate: Signal<String>,
     output_rate: Signal<String>,
     multiplier: Signal<String>,
+    price_mode: Signal<PriceMode>,
+    active_tab: Signal<usize>,
+    p_input: Signal<String>,
+    p_output: Signal<String>,
+    p_cache_read: Signal<String>,
+    p_cache_write: Signal<String>,
+    p_completion: Signal<String>,
+    p_per_call: Signal<String>,
+    c_output_on: Signal<bool>,
+    c_cache_read_on: Signal<bool>,
+    c_cache_write_on: Signal<bool>,
+    c_completion_on: Signal<bool>,
     notice: Signal<Option<String>>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
@@ -492,6 +622,13 @@ fn AliasFormModal(
     };
 
     let submitting = use_signal(|| false);
+    // 弹窗内 tab 信号:由页面持有(active_tab),弹窗内切换只影响弹窗本体
+    let mut modal_tab = active_tab;
+    // 定价模式 toggle 的写回调:更新页面级 f_price_mode
+    let on_mode_change = {
+        let mut pm = price_mode;
+        move |mode: PriceMode| pm.set(mode)
+    };
 
     // 工厂式复制,避免把原 signal 移动出闭包(供 rsx 中 submitting() 继续读取)
     let submitting2 = submitting;
@@ -507,8 +644,9 @@ fn AliasFormModal(
         let (mut sub, cb, mut note) = (submitting2, on_submit2, notice2);
         match key {
             // 编辑:PUT /api/models/{key}。请求体只带 name — 后端 models 域
-            // 与别名页对应的列只有 name,display/价格/倍率无对应列,置空后
-            // 由后端 UpdateModelRequest(全 Option)忽略,不写库。
+            // 与别名页对应的列只有 name,display/价格/倍率/定价模式无对应列,
+            // 由后端 UpdateModelRequest(全 Option)忽略,不写库。定价字段为 UI 层
+            // 本地状态,后端落地时再扩展 models 域。
             Some(k) => {
                 spawn(async move {
                     sub.set(true);
@@ -535,57 +673,208 @@ fn AliasFormModal(
         }
     };
 
+    // 弹窗按量 tab:紧凑单列排布 — 主通道(输入)+ 可关闭补充通道,
+    // 每行 = 标题+开关 + 价格输入框(单行紧凑);开关控制通道是否启用。
+    // 三 tab 内容统一固定高度,切换时弹窗不伸缩。
+    let TAB_CONTENT_H: &str = "min-h-[300px]";
+    let price_panel = |channel_title: String,
+                       channel_desc: String,
+                       mut enabled: Signal<bool>,
+                       mut price: Signal<String>,
+                       testid: String| {
+        rsx! {
+            div {
+                class: "rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5",
+                div { class: "flex items-center gap-3",
+                    // 标题 + 悬停说明(title 属性,不占固定行高)
+                    div {
+                        class: "shrink-0 w-20",
+                        title: "{channel_desc}",
+                        p { class: "text-xs font-medium text-zinc-100 truncate", "{channel_title}" }
+                    }
+                    // 价格输入框
+                    div { class: "flex-1 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5",
+                        span { class: "text-[11px] text-zinc-500", "$" }
+                        input {
+                            class: "w-full bg-transparent font-mono text-xs text-zinc-100 focus:outline-none",
+                            r#type: "text",
+                            "data-testid": "{testid}",
+                            value: "{price}",
+                            oninput: move |e| price.set(e.value()),
+                        }
+                        span { class: "shrink-0 text-[10px] text-zinc-500", "USD" }
+                    }
+                    // 开关:点击切换启用状态
+                    button {
+                        class: "relative h-5 w-9 shrink-0 rounded-full transition-colors cursor-pointer",
+                        style: if enabled() { "background-color: #525252" } else { "background-color: #3f3f46" },
+                        "data-testid": "{testid}-toggle",
+                        role: "switch",
+                        aria_checked: "{enabled()}",
+                        onclick: move |_| enabled.set(!enabled()),
+                        div {
+                            class: "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all",
+                            style: if enabled() { "left: 18px" } else { "left: 2px" },
+                        }
+                    }
+                }
+            }
+        }
+    };
+
     rsx! {
         Modal { title: title.to_string(), on_close: move |_| on_cancel.call(()),
             div { class: "space-y-4",
+                // 顶部 tab 栏:基本 / 按量定价 / 按次定价
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "别名标识 (API 请求匹配名)" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                        placeholder: "例如: gpt-4o, claude-3-5-sonnet",
-                        value: "{alias}",
-                        oninput: move |e| alias.set(e.value()),
-                    }
-                }
-
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "展示名称 (可选)" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
-                        placeholder: "例如: GPT-4o 旗舰模型",
-                        value: "{display}",
-                        oninput: move |e| display.set(e.value()),
-                    }
-                }
-
-                div { class: "grid grid-cols-2 gap-3",
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "输入单价 ¥/1k" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                            placeholder: "0.0175",
-                            value: "{input_rate}",
-                            oninput: move |e| input_rate.set(e.value()),
-                        }
-                    }
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "输出单价 ¥/1k" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                            placeholder: "0.07",
-                            value: "{output_rate}",
-                            oninput: move |e| output_rate.set(e.value()),
+                    class: "flex w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-xs",
+                    role: "tablist",
+                    "aria-label": "别名编辑选项",
+                    for (i, tab_label) in (["基本", "按量定价", "按次定价"]).into_iter().enumerate() {
+                        button {
+                            key: "{i}",
+                            class: if i == active_tab() {
+                                "flex-1 rounded-md bg-zinc-100 px-3 py-2 font-medium text-zinc-900 transition-colors"
+                            } else {
+                                "flex-1 rounded-md px-3 py-2 text-zinc-400 transition-colors hover:text-zinc-200"
+                            },
+                            role: "tab",
+                            aria_selected: "{i == active_tab()}",
+                            "data-testid": "alias-modal-tab-{i}",
+                            onclick: move |_| modal_tab.set(i),
+                            "{tab_label}"
                         }
                     }
                 }
 
-                div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (multiplier ≥ 0)" }
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
-                        placeholder: "1.0",
-                        value: "{multiplier}",
-                        oninput: move |e| multiplier.set(e.value()),
+                // ---- tab 0:基本 — 标识 / 展示名 / 倍率 / 定价模式 toggle(与卡片同状态) ----
+                if active_tab() == 0 {
+                    div { class: "space-y-4 {TAB_CONTENT_H}",
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "别名标识 (API 请求匹配名)" }
+                            input {
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
+                                "data-testid": "alias-name",
+                                placeholder: "例如: gpt-4o, claude-3-5-sonnet",
+                                value: "{alias}",
+                                oninput: move |e| alias.set(e.value()),
+                            }
+                        }
+
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "展示名称 (可选)" }
+                            input {
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
+                                "data-testid": "alias-display",
+                                placeholder: "例如: GPT-4o 旗舰模型",
+                                value: "{display}",
+                                oninput: move |e| display.set(e.value()),
+                            }
+                        }
+
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (multiplier ≥ 0)" }
+                            input {
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                                "data-testid": "alias-multiplier",
+                                placeholder: "1.0",
+                                value: "{multiplier}",
+                                oninput: move |e| multiplier.set(e.value()),
+                            }
+                        }
+
+                        // 定价模式 toggle:与卡片面板同一状态(非 compact 全宽)
+                        div { class: "space-y-1.5",
+                            label { class: "block text-xs text-zinc-400", "定价模式 (启用哪种定价)" }
+                            PriceModeToggle { active: price_mode(), on_change: on_mode_change, compact: false }
+                            p { class: "mt-1 text-[11px] text-zinc-500", "切换到按量定价后,补充通道的启用开关在「按量定价」tab" }
+                        }
+                    }
+                }
+
+                // ---- tab 1:按量定价 — 输入/输出/缓存读取/缓存写入/补全 5 项($/1M) ----
+                if active_tab() == 1 {
+                    div { class: "space-y-3 {TAB_CONTENT_H}",
+                        // 输入价格:主通道,固定开启,不带 toggle
+                        div { class: "space-y-1.5",
+                            div {
+                                label { class: "block text-sm font-medium text-zinc-100", "输入价格" }
+                                p { class: "mt-0.5 text-[11px] text-zinc-500", "每 100 万输入 token 的价格。" }
+                            }
+                            div { class: "flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2",
+                                span { class: "text-xs text-zinc-500", "$" }
+                                input {
+                                    class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
+                                    r#type: "text",
+                                    "data-testid": "alias-input-price",
+                                    value: "{p_input}",
+                                    oninput: move |e| p_input.set(e.value()),
+                                }
+                                span { class: "shrink-0 text-[11px] text-zinc-500", "$/1M" }
+                            }
+                        }
+
+                        // 补充通道:紧凑单行面板(标题+悬停说明 / 价格框 / 开关)
+                        {
+                            price_panel(
+                                "输出价格".to_string(),
+                                "生成内容的输出 token 价格(悬停标题查看)".to_string(),
+                                c_output_on,
+                                p_output,
+                                "alias-output-price".to_string(),
+                            )
+                        }
+                        {
+                            price_panel(
+                                "缓存读取价格".to_string(),
+                                "缓存读取 token 价格(悬停标题查看)".to_string(),
+                                c_cache_read_on,
+                                p_cache_read,
+                                "alias-cache-read-price".to_string(),
+                            )
+                        }
+                        {
+                            price_panel(
+                                "缓存写入价格".to_string(),
+                                "缓存写入 token 价格(悬停标题查看)".to_string(),
+                                c_cache_write_on,
+                                p_cache_write,
+                                "alias-cache-write-price".to_string(),
+                            )
+                        }
+                        {
+                            price_panel(
+                                "补全价格".to_string(),
+                                "补全(输出)调用的 token 价格(悬停标题查看)".to_string(),
+                                c_completion_on,
+                                p_completion,
+                                "alias-completion-price".to_string(),
+                            )
+                        }
+                    }
+                }
+
+                // ---- tab 2:按次定价 — 每次调用固定费用 ----
+                if active_tab() == 2 {
+                    div { class: "space-y-3 {TAB_CONTENT_H}",
+                        div {
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "单次调用价格" }
+                            p { class: "text-[11px] text-zinc-500", "每次调用(不论 token 数)固定扣费。" }
+                        }
+                        div {
+                            class: "flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5",
+                            span { class: "text-xs text-zinc-500", "$" }
+                            input {
+                                class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
+                                r#type: "text",
+                                "data-testid": "alias-call-price",
+                                placeholder: "例如: 0.05",
+                                value: "{p_per_call}",
+                                oninput: move |e| p_per_call.set(e.value()),
+                            }
+                            span { class: "shrink-0 text-[11px] text-zinc-500", "USD/次" }
+                        }
+                        p { class: "text-[11px] text-zinc-500", "后端落地前按次价格暂存于倍率字段,仅 UI 层生效。" }
                     }
                 }
             }
@@ -593,15 +882,92 @@ fn AliasFormModal(
             div { class: "mt-6 flex gap-3",
                 button {
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    "data-testid": "alias-cancel",
                     onclick: move |_| on_cancel.call(()),
                     "取消"
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    "data-testid": "alias-submit",
                     disabled: submitting(),
                     onclick: do_submit,
                     "{submit_label}"
                 }
+            }
+        }
+    }
+}
+
+// ============ 定价模式 toggle（共享组件,卡片与弹窗共用） ============
+
+/// 定价模式:按量(Token 计费) / 按次(按调用次数计费)。
+/// 后端 models 域暂无对应列,UI 层本地状态,保存路径见 AliasFormModal。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PriceMode {
+    PerToken,
+    PerCall,
+}
+
+/// 定价模式 toggle:两个分段胶囊,激活段浅色底。
+///
+/// - `compact`(默认 true):小号胶囊,用在卡片面板里(不占满,视觉克制)。
+/// - 非 compact:全宽,用在编辑弹窗「基本」tab 里。
+/// 后端 models 域暂无对应列,UI 层本地状态,保存路径见 AliasFormModal。
+#[component]
+pub fn PriceModeToggle(
+    /// 当前激活模式
+    active: PriceMode,
+    /// 切换回调
+    on_change: EventHandler<PriceMode>,
+    /// 紧凑模式(卡片用);默认 true
+    #[props(default = true)]
+    compact: bool,
+) -> Element {
+    // 容器:略提亮 zinc-800/60 底;激活段用深色高对比底 + 白字(不依赖渐变对比,
+    // 避免浅色字在亮底上看不清)。
+    let container_cls = if compact {
+        "inline-flex items-center rounded-full border border-zinc-700/60 bg-zinc-800/60 p-0.5 text-[11px] shadow-sm"
+    } else {
+        "flex w-full overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-0.5 text-xs shadow-sm"
+    };
+    let active_cls = if compact {
+        "rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-950 shadow-sm transition-colors"
+    } else {
+        "flex-1 rounded-md bg-zinc-100 px-3 py-1.5 text-center font-semibold text-zinc-950 shadow-sm transition-colors"
+    };
+    let idle_cls = if compact {
+        "rounded-full px-2.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:text-zinc-200"
+    } else {
+        "flex-1 rounded-md px-3 py-1.5 text-center text-zinc-400 transition-colors hover:text-zinc-200"
+    };
+    rsx! {
+        div {
+            class: "{container_cls}",
+            role: "tablist",
+            "aria-label": "定价模式",
+            button {
+                class: if active == PriceMode::PerToken {
+                    "{active_cls}"
+                } else {
+                    "{idle_cls}"
+                },
+                role: "tab",
+                aria_selected: "{active == PriceMode::PerToken}",
+                "data-testid": "price-mode-token",
+                onclick: move |_| on_change.call(PriceMode::PerToken),
+                "按量"
+            }
+            button {
+                class: if active == PriceMode::PerCall {
+                    "{active_cls}"
+                } else {
+                    "{idle_cls}"
+                },
+                role: "tab",
+                aria_selected: "{active == PriceMode::PerCall}",
+                "data-testid": "price-mode-call",
+                onclick: move |_| on_change.call(PriceMode::PerCall),
+                "按次"
             }
         }
     }
