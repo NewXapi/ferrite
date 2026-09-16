@@ -1076,6 +1076,9 @@ async fn token_crud_lifecycle_minimal_diff() {
 ///   lastActive/expiresAt/current），current 标注来自 access token 的 sid claim；
 /// - DELETE /self/sessions/{sid} 吊销该会话并**连坐吊销对应 refresh token**
 ///   （被吊会话的 refresh → 401），当前会话不受影响（其 refresh 仍可轮换）；
+/// - 吊销**即时踢下线**：被吊会话的 access token 虽在 TTL 内，访问 /self
+///   必须 401（self_by_access 对照 auth_user_sessions；page-audit-users
+///   实测生产缺口已闭环）；refresh 轮换签发新 sid 后，旧 access 同样失效；
 /// - 后端对吊销「当前设备」无特殊拦截（DELETE 当前 sid 也成功）——这是实测
 ///   行为，前端确认弹窗是唯一防线（audit E-3）；
 /// - 非法 sid 字符串 → 400；不存在的 sid → 404。
@@ -1154,6 +1157,21 @@ async fn sessions_list_shape_and_revocation_semantics() {
     assert_eq!(sessions.len(), 1, "被吊会话必须从列表消失: {body}");
     assert_eq!(sessions[0]["sid"], sid1);
 
+    // 吊销即时踢下线：当前会话 access 仍可用（200），被吊会话 access 即刻 401
+    // ——尽管它仍在 TTL 内（self_by_access 对照 auth_user_sessions）。
+    let resp = call(&app, "GET", "/api/user/self", &access1, None).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "未吊会话的 access 不受牵连: {resp:?}"
+    );
+    let resp = call(&app, "GET", "/api/user/self", &access2, None).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "被吊会话的 access token 必须立即失效（TTL 内也一样）"
+    );
+
     // 吊销连坐 refresh：被吊会话的 refresh token → 401。
     let resp = refresh_call(&app, &refresh2).await;
     assert_eq!(
@@ -1165,6 +1183,14 @@ async fn sessions_list_shape_and_revocation_semantics() {
     // 当前会话的 refresh 未受影响：仍可轮换（200；轮换会签发新 sid，属既有语义）。
     let resp = refresh_call(&app, &refresh1).await;
     assert_eq!(resp.status(), StatusCode::OK, "未吊会话的 refresh 不受牵连");
+
+    // 轮换吊销旧 sid → 旧 access 立即失效（吊销即时生效语义的另一半）。
+    let resp = call(&app, "GET", "/api/user/self", &access1, None).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "refresh 轮换后旧 access 必须失效（旧 sid 已被吊销）"
+    );
 
     // 非法 sid → 400；不存在 sid → 404。
     let resp = call(

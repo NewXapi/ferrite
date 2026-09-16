@@ -373,7 +373,7 @@ pub async fn generate_redemptions_api(
     Ok(r.codes)
 }
 
-/// 真实调用: DELETE /api/redemption/{key} — 后端语义为停用 (status→2)。
+/// 真实调用: DELETE /api/redemption/{key} — 后端语义为停用 (status→3;核销为 2)。
 pub async fn disable_redemption_api(client: &ApiClient, key: &str) -> ApiResult<()> {
     client
         .delete::<serde_json::Value>(&format!("/api/redemption/{key}"))

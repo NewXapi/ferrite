@@ -19,11 +19,9 @@
 //!    5 个注册表 key + 类型化 validator；未知 key / 类型不符 / 越界
 //!    一律 400 且不落库；合法写入可经 `GET /api/option` 与
 //!    `GET /api/option/{key}` 两种读形状读回。
-//! 3. **渠道 update 的 groups 空守卫缺失**——create 有守卫（空 groups
-//!    400），update 没有：显式 `"groups": []` 会 200 并把落库值清成
-//!    空数组 → snapshot 展开零路由单元，渠道静默永不路由。
-//!    本文件按**当前真实行为**钉（known-gap）：后端补守卫后需把该
-//!    用例的 200/空数组断言翻转为 400/保持。
+//! 3. **渠道 update 的 groups 空守卫**——create 与 update 均有守卫（空 groups
+//!    一律 400）：显式 `"groups": []` 拒绝且落库保持；缺席仍 COALESCE
+//!    保持（最小 diff 语义）。本用例钉修复后行为。
 
 use std::sync::Arc;
 
@@ -748,20 +746,18 @@ async fn option_put_roundtrip_unknown_key_and_range_rejected() {
 }
 
 // ============================================================================
-// 用例 4：渠道 update 的 groups 语义（omitted 保持 / 显式空数组清空 = known-gap）
+// 用例 4：渠道 update 的 groups 语义（omitted 保持 / 显式空数组拒绝）
 // ============================================================================
 
-/// 渠道 update 对 groups 的**当前真实行为**（对照 create 守卫）：
+/// 渠道 update 对 groups 的守卫语义（与 create 对齐）：
 /// - create 显式 `"groups": []` → 400（写侧守卫：空 groups = snapshot 展开
 ///   零路由单元，admin-catalog/channels.rs create 分支）；
 /// - update **缺席** groups → COALESCE 保持落库值（最小 diff 语义）；
-/// - update **显式** `"groups": []` → 200 且落库清成空数组。
-///   **known-gap（todo/page-audit-manage.md §3-5）**：update 无 groups 非空
-///   守卫，前端渠道弹窗 chips 全取消即触发——渠道从所有分组消失、网关
-///   快照不再装配、路由静默失效且无任何提示。本用例按现状钉死，后端补
-///   守卫后，请把「显式空数组」两处断言翻转为 400/落库不变。
+/// - update **显式** `"groups": []` → 400 且落库**保持**不变。
+///   历史注记：本用例曾按 known-gap 钉「200 且清空」，后端补齐 update
+///   守卫后翻转为 400/保持（todo/page-audit-manage.md §3-5 闭环）。
 #[tokio::test]
-async fn channel_update_groups_omitted_preserved_empty_clears_known_gap() {
+async fn channel_update_groups_omitted_preserved_empty_rejected() {
     let Some(pool) = pg_pool().await else {
         return;
     };
@@ -820,7 +816,7 @@ async fn channel_update_groups_omitted_preserved_empty_clears_known_gap() {
         "update 缺席 groups 必须保持落库值（COALESCE）"
     );
 
-    // known-gap：update 显式空数组 → 200 + 落库清空（后端补守卫后翻转为 400）。
+    // update 显式空数组 → 400 且落库保持（守卫与 create 对齐）。
     let resp = call(
         &app,
         "PUT",
@@ -831,14 +827,12 @@ async fn channel_update_groups_omitted_preserved_empty_clears_known_gap() {
     .await;
     assert_eq!(
         resp.status(),
-        StatusCode::OK,
-        "known-gap：update 空 groups 当前被接受（create 有守卫、update 没有）"
+        StatusCode::BAD_REQUEST,
+        "update 空 groups 必须被守卫拒绝（与 create 同款）"
     );
-    let body = response_to_json(resp).await;
-    assert_eq!(body["groups"], json!([]), "known-gap：响应回显空 groups");
     assert_eq!(
         db_channel_groups(&pool, &ch_key).await,
-        Vec::<String>::new(),
-        "known-gap：落库 groups 被清空 → 渠道静默永不路由"
+        vec!["default".to_string()],
+        "被拒的 update 不得改动落库 groups → 渠道仍在 default 分组"
     );
 }
