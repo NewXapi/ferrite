@@ -90,28 +90,52 @@ fn affiliate_overview_missing_fields_default_to_zero() {
 #[test]
 fn open_topup_request_serializes_exact_camel_case() {
     // 后端 topup.rs 用 contract TopUpRequest (camelCase rename) 反序列化:
-    // wire 必须是 userKey/currency/amount 三字段,误写 snake_case 即 422。
+    // wire 必须是 userKey/currency/amount(+provider) 字段,误写 snake_case 即 422。
+    // provider: None 时不发送该键 (skip_serializing_if) —— manual 与后端缺省同义。
     let req = OpenTopupRequest {
         user_key: "u-9".into(),
         currency: "FREE".into(),
         amount: 100,
+        provider: None,
     };
     let v = serde_json::to_value(&req).unwrap();
     assert_eq!(
         v,
         serde_json::json!({ "userKey": "u-9", "currency": "FREE", "amount": 100 })
     );
+    // 指定真渠道时该键出现,epay 路径靠它分流。
+    let req = OpenTopupRequest {
+        user_key: "u-9".into(),
+        currency: "FREE".into(),
+        amount: 10,
+        provider: Some("epay".into()),
+    };
+    assert_eq!(
+        serde_json::to_value(&req).unwrap(),
+        serde_json::json!({ "userKey": "u-9", "currency": "FREE", "amount": 10, "provider": "epay" })
+    );
 }
 
 #[test]
 fn topup_order_response_keeps_snake_case_order_id() {
-    // 后端 handler 用 json!({"order_id": …}) 字面量 — 键逐字 snake_case,
+    // 后端 handler 序列化 OpenTopupResult — 键逐字 snake_case,
     // DTO 若误加 camelCase rename 这条第一时间红。
     let ok: TopupOrder = serde_json::from_str(r#"{"order_id":"abc-123"}"#).unwrap();
     assert_eq!(ok.order_id.as_deref(), Some("abc-123"));
     // 缺 order_id → None:面板降级为无单号文案,不假造单号。
     let missing: TopupOrder = serde_json::from_str("{}").unwrap();
     assert_eq!(missing.order_id, None);
+    // 真渠道开单带 payment_url → 「去支付」按钮渲染;manual 响应省略该键 → None。
+    let paid: TopupOrder = serde_json::from_str(
+        r#"{"order_id":"abc-123","payment_url":"https://pay.example.com/mapi.php?m=buy"}"#,
+    )
+    .unwrap();
+    assert_eq!(paid.order_id.as_deref(), Some("abc-123"));
+    assert_eq!(
+        paid.payment_url.as_deref(),
+        Some("https://pay.example.com/mapi.php?m=buy")
+    );
+    assert_eq!(missing.payment_url, None);
 }
 
 #[test]
