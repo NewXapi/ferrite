@@ -111,7 +111,9 @@ pub(crate) fn debug_auto_login_on_boot() {
 
 /// 触发点 b —— 401 清会话后的自动重登。同页只发起一次（并发 401 风暴下多个请求
 /// 各自触发 handle_unauthorized，不能每个都 spawn 登录+reload）；成功 reload 停留
-/// 当前页，失败跳 #signup（回落原逻辑）。用 `spawn_local` 而非 dioxus `spawn`：
+/// 当前页，失败纯静默回落（不 set_hash，跳 #signup 统一由 handle_unauthorized 原路径
+/// 或下一次 401 兜底负责——本函数失败路径的 set_hash 会与外层清理尾部/后续 handler
+/// 的 set_hash 并发竞态）。用 `spawn_local` 而非 dioxus `spawn`：
 /// 本函数在异步请求 poll 途中被同步回调，不保证处于 reactive scope。
 #[cfg(feature = "debug-auto-login")]
 fn debug_auto_login_after_unauthorized() {
@@ -126,12 +128,14 @@ fn debug_auto_login_after_unauthorized() {
     RELOGIN_SPAWNED.with(|c| c.set(true));
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async {
-        if debug_auto_login().await {
-            if let Some(w) = web_sys::window() {
-                let _ = w.location().reload();
-            }
-        } else if let Some(w) = web_sys::window() {
-            let _ = w.location().set_hash("#signup");
+        let ok = debug_auto_login().await;
+        if !ok {
+            // 失败不 set_hash（纯静默回落）——与 handle_unauthorized 尾部/后续 401 的
+            // set_hash("#signup") 并发竞态，跳登录页统一由那条原路径兜底负责。
+            return;
+        }
+        if let Some(w) = web_sys::window() {
+            let _ = w.location().reload();
         }
     });
     #[cfg(not(target_arch = "wasm32"))]
@@ -143,7 +147,7 @@ fn debug_auto_login_after_unauthorized() {
 /// 刷新不可恢复时的统一清理: 4 个登录态存储 key + client 内存 token 全部清空,
 /// 并把 hash 切到 #signup 让 RootApp 渲染登录页。
 /// debug-auto-login 开启时: 清空后先用 dev 种子账号尝试自动重登（成功 reload
-/// 停留当前页），失败才跳 #signup。
+/// 停留当前页）；失败纯静默回落，跳 #signup 由下方尾部/后续 401 兜底。
 fn handle_unauthorized() {
     ui::remove_storage_item("ferrite_access_token");
     ui::remove_storage_item("ferrite_refresh_token");
