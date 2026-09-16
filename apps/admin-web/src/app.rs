@@ -39,6 +39,14 @@ pub fn RootApp() -> Element {
         });
     });
 
+    // debug-auto-login（仅 --features debug-auto-login 编译进产物）：启动时无 token
+    // 且不在登录页 → 用 dev 种子账号静默登录，成功后整页 reload。选 reload 而非刷新
+    // 信号：HomePage 的 logged_user / token 注入 / 面板 hydrate 都是挂载时一次性读取，
+    // 没有现成跨树刷新机制，穿透新信号要动 HomePage + 各面板，回归面大；reload 复用
+    // 既有「启动恢复」路径（storage 有 token 即全量恢复），失败不 reload，无循环风险。
+    #[cfg(feature = "debug-auto-login")]
+    use_hook(crate::debug_auto_login_on_boot);
+
     use_hook(move || {
         let cb = Closure::<dyn FnMut()>::new(move || {
             let h = current_hash();

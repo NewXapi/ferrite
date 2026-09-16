@@ -103,6 +103,7 @@ crates/web/<prefix-feature>/
 - **共享 dev 后端（127.0.0.1:3211）生命周期只走 `scripts/dev-backend.sh`**（start / update / stop / status，或 `just dev-backend <args>`）：发现 404/502 先 `just dev-check` 或 `dev-backend.sh status` 判断死活，重启对前端透明（登录态不丢）。
 - **「用户侧报错但 curl / 无缓存浏览器实测全 200」→ 先怀疑浏览器 HTTP 缓存重放**：IAB 有独立缓存，代理误配期毒化的错误响应会被本地重放且**不出网**（dx 代理日志 grep 该路径查无请求 = 实锤）。诊断顺序：dx 日志 → IAB 内直接导航该 API URL 看渲染。服务端无法驱逐已毒化条目（只能用户清缓存/重启 webview）；后端 `/api`、`/tavern` 已加 `Cache-Control: no-store` 防复发。
 - **dev 起停/种子/体检一律走 `justfile` 配方**，命令清单与使用场景见 `justfile` 顶部「使用场景速查」、疑难处置见其末尾「疑难问题 → 推荐处理」块：`just dev-check`（环境体检）、`just dev-backend start|update|stop|status`（共享后端）、`just db-seed` / `just db-reset`（dev 种子）、`just verify`（fmt-check + clippy + check 全套）。开工前先 `just dev-check` 一条命令自检环境，别再手工拼这些命令。
+- **免登录调试前端（`debug-auto-login` feature，默认关）**：admin-web 编译期 dev 专用自动登录——无 token 且不在 `#login`/`#signup`/`#auth` 时静默登录 dev 种子账号 `admin_dev`（仅 dev 种子，生产构建不含此 feature），401 清会话后先尝试自动重登。开启：`just dev-web <port> debug` 或 `dx serve --features debug-auto-login`；要手动调登录页直接打开 `#login`（auth hash 不触发）；彻底关闭用不带 debug 的构建（`just dev-web <port>`）。主动「退出登录」不被自动重登顶掉。
 
 ### 测试分层与 CI 驱动原则
 
