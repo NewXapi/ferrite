@@ -61,7 +61,9 @@ pub fn fmt_created_date(created_at: &str) -> String {
     let t = created_at.trim();
     let is_date_like = t.len() >= 10 && t.as_bytes()[4] == b'-' && t.as_bytes()[7] == b'-';
     if is_date_like {
-        t[..10].to_string()
+        // get(..10) 边界安全:即便落库时刻含多字节字符也不会 panic
+        // (chrono RFC3339 保证 ASCII,这是防御性兜底)
+        t.get(..10).unwrap_or(t).to_string()
     } else {
         t.to_string()
     }
@@ -70,8 +72,16 @@ pub fn fmt_created_date(created_at: &str) -> String {
 /// UUID key 的截断展示:`前 8 位…后 4 位`(短于 13 位原样返回)。
 ///
 /// 完整 key 不进视觉主区(一行排不下),hover 经原生 `title` 提示全值。
+/// key 是纯 ASCII,直接按字节切片省一次 `Vec<char>` 分配;非 ASCII
+/// (理论不会出现)回落字符路径,避免切到多字节字符中间。
 pub fn short_key(key: &str) -> String {
     let k = key.trim();
+    if k.is_ascii() {
+        if k.len() <= 13 {
+            return k.to_string();
+        }
+        return format!("{}…{}", &k[..8], &k[k.len() - 4..]);
+    }
     let chars: Vec<char> = k.chars().collect();
     if chars.len() <= 13 {
         return k.to_string();

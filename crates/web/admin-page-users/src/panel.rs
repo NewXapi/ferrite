@@ -371,7 +371,10 @@ pub fn UsersPanel() -> Element {
                 on_create: move |req: api::CreateUserRequest| {
                     let mut n = notice;
                     let mut r = reload;
+                    let mut b = busy;
                     n.set(None);
+                    // 与 manage 路径同款:创建期间置 busy,通知条显示进行中
+                    b.set(true);
                     spawn(async move {
                         let client = ApiClient::shared().clone();
                         match api::create_user_api(&client, &req).await {
@@ -381,6 +384,7 @@ pub fn UsersPanel() -> Element {
                             }
                             Err(e) => n.set(Some(format!("创建失败:{e}"))),
                         }
+                        b.set(false);
                     });
                     form.set(Form::Closed);
                 },

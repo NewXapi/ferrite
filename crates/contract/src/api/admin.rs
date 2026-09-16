@@ -101,6 +101,8 @@ pub struct AdminUserDto {
 
 impl From<&UserRecord> for AdminUserDto {
     fn from(r: &UserRecord) -> Self {
+        // 快照侧只有单值 group,groups 复用同一个 clone
+        let group = r.group.clone();
         Self {
             key: r.meta.key.clone(),
             username: r.username.clone(),
@@ -109,8 +111,8 @@ impl From<&UserRecord> for AdminUserDto {
             quota: r.quota,
             used_quota: r.used_quota,
             request_count: r.request_count,
-            group: r.group.clone(),
-            groups: vec![r.group.clone()],
+            group: group.clone(),
+            groups: vec![group],
             status: r.status,
             role: r.role,
             created_at: r.created_at.format("%Y-%m-%d").to_string(),
