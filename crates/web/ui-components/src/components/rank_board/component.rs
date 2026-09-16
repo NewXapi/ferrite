@@ -8,10 +8,12 @@
 //! - 卡壳复用 crate 内 [`crate::components::card::Card`](hoverable)——hover 仅边框
 //!   变亮（secondary-hover token），与全站面板一致；Header/Title/Description 走
 //!   shadcn 子件，内容区不再额外叠 padding。
-//! - 条目双列摊开（`md:grid-cols-2`，移动端单列）；行 = 名次角标 + 名称 +
-//!   右对齐数值 + 行内元信息（环比/份额）+ 比例条。条目无底色（维护者反馈：
-//!   行内底色块很难看），呼吸感由 `gap-y-4` 行距承担。
+//! - 条目单列排布（xl 三卡并排时卡内容区仅 ~320px，双列会把行挤到 ~158px/列）；
+//!   行 = 名次角标 + 名称 + 右对齐数值 + 行内元信息（环比/份额）+ 比例条。条目
+//!   无底色（维护者反馈：行内底色块很难看），呼吸感由 `gap-y-5` 行距承担。
 //! - `rows` 的条数与顺序即展示顺序：调用方负责排序与截断（如只取前 10）。
+//! - 来源契约：`bar_color` 必须来自调用方静态常量（品牌色表），`bar_pct` 渲染时
+//!   钳制 0..=100；两者均不接受运行时用户输入，防止共享组件被误用为注入面。
 
 use dioxus::prelude::*;
 
@@ -55,20 +57,20 @@ pub struct RankRowView {
 /// * `title` / `subtitle` — 卡头标题与一行口径说明。
 /// * `rows` — 已排序、已格式化的条目（组件按给定顺序渲染）。
 /// * `footnote` — 卡底口径小字（可空；有值时上边框分隔）。
-/// * `testid` — 卡壳 data-testid（可空）。
+/// * `testid` — 卡壳 data-testid（必填，供 UI 验证语义定位）。
 #[component]
 pub fn RankBoard(
     title: String,
     subtitle: String,
     rows: Vec<RankRowView>,
     footnote: Option<String>,
-    testid: Option<String>,
+    testid: String,
 ) -> Element {
     rsx! {
         Card {
             hoverable: true,
             class: "p-5",
-            "data-testid": testid.unwrap_or_default(),
+            "data-testid": "{testid}",
             div { class: "space-y-4",
                 CardHeader { class: "p-0",
                     CardTitle { class: "text-sm text-zinc-100", "{title}" }
@@ -104,7 +106,9 @@ pub fn RankBoard(
                                 div { class: "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                                     div {
                                         class: "h-full rounded-full transition-all duration-300",
-                                        style: "width: {r.bar_pct:.1}%; background: {r.bar_color}",
+                                        // bar_pct 钳到 0..=100;bar_color 只接受调用方静态
+                                        // 常量(品牌 hex 表),不接受任何运行时用户输入
+                                        style: "width: {r.bar_pct.clamp(0.0, 100.0):.1}%; background: {r.bar_color}",
                                     }
                                 }
                             }
