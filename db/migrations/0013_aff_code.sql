@@ -16,6 +16,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS auth_users_aff_code_uidx
 -- ponytail: substr(md5(random())) 的 8 hex ≈ 43 亿空间，万级用户内生日冲突
 -- 可忽略；唯一索引 + 重试兜底，不引额外序列或应用侧回填脚本。循环只动
 -- aff_code IS NULL 的行，重跑（迁移幂等）时不覆盖已生成的码。
+-- 注意与运行时 generate_aff_code（base62 6 位）字母表/长度不同：这是有意
+-- 的——两者只要求"随机 + 唯一"，走同一条 resolve_invite_code 解析路径，
+-- 格式差异对功能无影响；存量码不重写。
 DO $$
 DECLARE
     rec     RECORD;
