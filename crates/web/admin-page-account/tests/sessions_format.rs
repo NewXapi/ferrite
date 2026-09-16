@@ -54,7 +54,10 @@ fn summarize_ua_empty_or_garbage_falls_back() {
     assert_eq!(summarize_ua(""), "未知设备");
     assert_eq!(summarize_ua("乱七八糟的字符串"), "未知设备");
     // 只识别出一半 (有 OS 无浏览器) 仍给出已知部分, 不算未知
-    assert_eq!(summarize_ua("Mozilla/5.0 (Windows NT 10.0)"), "其他浏览器 · Windows");
+    assert_eq!(
+        summarize_ua("Mozilla/5.0 (Windows NT 10.0)"),
+        "其他浏览器 · Windows"
+    );
 }
 
 // ---- fmt_time_minute: 正常输入与回退 ----
