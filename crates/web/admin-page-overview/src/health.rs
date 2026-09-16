@@ -7,8 +7,7 @@ use dioxus::prelude::*;
 
 use crate::api;
 use client::ApiClient;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
-use ui::components::card::{Card, CardAction, CardContent, CardHeader, CardTitle};
+use ui::components::card::{Card, CardContent, CardHeader, CardTitle};
 
 /// 一行渠道健康汇总。
 #[derive(Clone, PartialEq)]
@@ -26,10 +25,10 @@ pub fn ChannelHealth() -> Element {
     let mut rows = use_signal(Vec::<ChannelHealthRow>::new);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
-    let mut reload = use_signal(|| 0u32);
 
+    // 进面板自动拉一次(use_effect 无信号依赖 → 仅挂载执行);失败时 err 只留
+    // 在内存,不驱动任何 UI 重试(8090 预览反馈①②)。
     use_effect(move || {
-        let _ = reload();
         loading.set(true);
         err.set(None);
         spawn(async move {
@@ -123,28 +122,16 @@ pub fn ChannelHealth() -> Element {
             hoverable: true,
             CardHeader {
                 CardTitle { class: "text-lg text-foreground", "渠道健康 (近 7 天)" }
-                CardAction {
-                    Button {
-                        variant: ButtonVariant::Outline,
-                        size: ButtonSize::Sm,
-                        "data-testid": "refresh-health",
-                        onclick: move |_| reload.set(reload() + 1),
-                        "刷新"
-                    }
-                }
             }
             CardContent {
                 section { "data-testid": "channel-health",
                     class: "space-y-3",
-                    if let Some(e) = err {
-                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                            p { class: "text-sm text-red-300", "加载渠道健康失败" }
-                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
-                            button {
-                                class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent",
-                                onclick: move |_| reload.set(reload() + 1),
-                                "重试"
-                            }
+                    // 拉取失败 → 中性占位(8090 预览反馈①):与空态同风格的
+                    // dashed 骨架 + 一行 muted 小字;失败文案 / HTTP 状态码 /
+                    // 重试按钮均不上 UI,err 保留在内存供后续自动重试。
+                    if err.is_some() {
+                        div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                            p { class: "text-sm text-zinc-500", "暂无数据" }
                         }
                     } else if loading {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",

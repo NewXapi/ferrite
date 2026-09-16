@@ -2,13 +2,13 @@
 //! 按模型聚合，count 降序，见 contract `UsageErrorStatPage`）。
 //!
 //! 独立信号独立拉取，不阻塞总览面板其它数据；卡形态与三态写法对齐
-//! `health.rs` 的渠道健康卡（同宽同风格、诚实空态、内联报错 + 重试）。
+//! `health.rs` 的渠道健康卡（同宽同风格、诚实空态）。拉取失败走中性占位
+//! （卡头合计显示 `—`、列表区一行 muted「暂无数据」），不上失败文案与重试按钮。
 
 use dioxus::prelude::*;
 
 use crate::api;
 use contract::api::usage::UsageErrorStatPage;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
 use ui::components::card::{Card, CardAction, CardContent, CardHeader, CardTitle};
 
 /// 近 24 小时错误卡：卡头（标题 + 合计错误数大数字 + asOf 裸本地时间）+
@@ -18,10 +18,10 @@ pub fn ErrorsPanel() -> Element {
     let mut page = use_signal(|| None::<UsageErrorStatPage>);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
-    let mut reload = use_signal(|| 0u32);
 
+    // 进面板自动拉一次(use_effect 无信号依赖 → 仅挂载执行);失败时 err 只留
+    // 在内存,不驱动任何 UI 重试(8090 预览反馈①②)。
     use_effect(move || {
-        let _ = reload();
         loading.set(true);
         err.set(None);
         spawn(async move {
@@ -74,29 +74,18 @@ pub fn ErrorsPanel() -> Element {
                                 "{t}"
                             }
                         }
-                        Button {
-                            variant: ButtonVariant::Outline,
-                            size: ButtonSize::Sm,
-                            "data-testid": "refresh-errors",
-                            onclick: move |_| reload.set(reload() + 1),
-                            "刷新"
-                        }
                     }
                 }
             }
             CardContent {
                 section { "data-testid": "errors-panel",
                     class: "space-y-3",
-                    if let Some(e) = err {
-                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                            p { class: "text-sm text-red-300", "加载错误统计失败" }
-                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
-                            button {
-                                class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent",
-                                "data-testid": "retry-errors",
-                                onclick: move |_| reload.set(reload() + 1),
-                                "重试"
-                            }
+                    // 拉取失败 → 中性占位(8090 预览反馈①):卡头合计已显示 —,
+                    // 列表区与空态同风格,一行 muted 小字;失败文案 / HTTP 状态码 /
+                    // 重试按钮均不上 UI,err 保留在内存供后续自动重试。
+                    if err.is_some() {
+                        div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                            p { class: "text-sm text-zinc-500", "暂无数据" }
                         }
                     } else if loading {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",

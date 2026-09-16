@@ -23,9 +23,8 @@ pub fn OverviewPanel() -> Element {
     let mut summary = use_signal(|| None::<DashboardSummaryDto>);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
-    let mut reload = use_signal(|| 0u32);
 
-    // 趋势 + Top10 共用的窗口数据源：timeframe/reload 变化即重拉。
+    // 趋势 + Top10 共用的窗口数据源：timeframe 变化即重拉。
     let mut top_users = use_signal(Vec::<TopRowFE>::new);
     let mut top_models = use_signal(Vec::<TopRowFE>::new);
     let mut top_users_total = use_signal(|| 0i64);
@@ -40,7 +39,6 @@ pub fn OverviewPanel() -> Element {
 
     use_effect(move || {
         let tf = timeframe();
-        let _ = reload();
         data_loading.set(true);
         data_err.set(None);
         spawn(async move {
@@ -110,8 +108,8 @@ pub fn OverviewPanel() -> Element {
         });
     });
 
+    // 汇总拉取:进面板自动拉一次(use_effect 无信号依赖 → 仅挂载执行)。
     use_effect(move || {
-        let _ = reload();
         loading.set(true);
         err.set(None);
         spawn(async move {
@@ -130,7 +128,20 @@ pub fn OverviewPanel() -> Element {
     });
 
     // 把实时 DTO 展开成 (值, 中文标签) 卡片列表(rsx! 之外计算,避免宏内 let)。
-    let stats_opt: Option<Vec<(String, &'static str)>> = summary().as_ref().map(dashboard_stats);
+    // 拉取失败 → 中性占位(8090 预览反馈①):不渲染红色错误盒,改用全零 DTO
+    // 照常渲染 7 张统计卡(额度卡 $0.00、runway 卡「无近期消耗」灰点)、顶部
+    // asOf 位随 summary 为 None 自然隐藏;err signal 保留在内存供后续自动
+    // 重试,失败文案 / HTTP 状态码 / 重试按钮均不上 UI。
+    let summary_err = err();
+    let effective_summary = summary().or_else(|| {
+        if summary_err.is_some() {
+            Some(DashboardSummaryDto::default())
+        } else {
+            None
+        }
+    });
+    let stats_opt: Option<Vec<(String, &'static str)>> =
+        effective_summary.as_ref().map(dashboard_stats);
     // 统计卡四元组:值 / 标签 / sparkline 序列(仅今日两卡) / SVG 渐变 id。
     // 在 rsx! 之外整形——宏体内 let 不支持任意绑定,for 循环的元组解构才支持。
     // 仅「今日请求 / 今日额度」两张卡带 12 点迷你面积线;
@@ -174,7 +185,8 @@ pub fn OverviewPanel() -> Element {
                 div { class: "flex items-center justify-between",
                     h2 { class: "text-lg font-medium text-foreground", "总览统计" }
                     div { class: "flex items-center gap-3",
-                        // asOf 本地时间裸值(维护者要求:不写「数据截至」字样)
+                        // asOf 本地时间裸值(维护者要求:不写「数据截至」字样);
+                        // 拉取失败时 summary 为 None,时间位自然隐藏(中性占位)。
                         if let Some(t) = as_of_time {
                             span {
                                 class: "text-xs font-mono tabular-nums text-muted-foreground",
@@ -182,36 +194,21 @@ pub fn OverviewPanel() -> Element {
                                 "{t}"
                             }
                         }
-                        button {
-                            class: "shrink-0 rounded-xl border border-border px-3 py-2 text-xs text-foreground/80 transition-colors hover:bg-accent",
-                            "data-testid": "refresh-overview",
-                            onclick: move |_| reload.set(reload() + 1),
-                            "刷新"
-                        }
                     }
                 }
                 section { "data-testid": "overview-stats",
                     class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5",
-                    if let Some(e) = err() {
-                        div { class: "col-span-full rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                            p { class: "text-sm text-red-300", "加载统计失败" }
-                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
-                            button {
-                                class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-foreground/80 hover:bg-accent",
-                                onclick: move |_| reload.set(reload() + 1),
-                                "重试"
-                            }
-                        }
-                    } else if loading() {
+                    if loading() {
                         div { class: "col-span-full rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                             p { class: "text-muted-foreground", "正在加载统计…" }
                         }
-                    } else if stats_opt.is_some() {
+                    } else {
                         for (value, label, sparkline, gradient_id) in stat_cards {
                             StatCard { value, label, sparkline, gradient_id }
                         }
-                        // 第 7 张卡:额度余量 + runway 可用天数(W1 后端已供 quotaRemaining)
-                        if let Some(d) = summary() {
+                        // 第 7 张卡:额度余量 + runway 可用天数(W1 后端已供 quotaRemaining);
+                        // 拉取失败时 effective_summary 为全零 DTO,$0.00 + 「无近期消耗」灰点。
+                        if let Some(d) = effective_summary {
                             QuotaRemainingCard { remaining: d.quota_remaining, today: d.quota_today }
                         }
                     }

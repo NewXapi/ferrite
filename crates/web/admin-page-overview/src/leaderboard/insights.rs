@@ -441,7 +441,9 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
                     }
                 }
             }
-            div { class: "grid grid-cols-1 gap-x-6 gap-y-2 pt-1 sm:grid-cols-2",
+            // 厂商行距 gap-y-3.5(8090 预览反馈⑤);卡内段落间距由容器 space-y-4 承担,
+            // 与上方演示区 / 下方真实用量榜的外层间距由页面根 gap-6(md:gap-8)保证
+            div { class: "grid grid-cols-1 gap-x-6 gap-y-3.5 pt-1 sm:grid-cols-2",
                 for (i, s) in shares.iter().enumerate() {
                     {
                         let color = vendor_color(s.vendor, i);

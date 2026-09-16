@@ -108,8 +108,9 @@ fn RankCard(
                 h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
                 p { class: "text-[11px] text-zinc-500", "{subtitle}" }
             }
-            // 双列摊开(参照 new-api model-leaderboard 对半切,移动端单列)
-            div { class: "grid grid-cols-1 gap-x-5 gap-y-2.5 pt-1 md:grid-cols-2",
+            // 双列摊开(参照 new-api model-leaderboard 对半切,移动端单列);
+            // 行距 gap-y-4 + 行内轻底色块(8090 预览反馈③),10 行条目明显呼吸开
+            div { class: "grid grid-cols-1 gap-x-5 gap-y-4 pt-1 md:grid-cols-2",
                 for (i, r) in top_n {
                     {
                         let v = metric.of(r);
@@ -120,7 +121,9 @@ fn RankCard(
                         let growth = growth_of(r.previous_tokens, r.tokens);
                         let share = share_text(v, total);
                         rsx! {
-                            div { key: "{r.name}", class: "flex items-center gap-2.5",
+                            // 行容器带轻量内边距与底色(比卡面 zinc-900 亮一档的
+                            // zinc-800/40,任务建议的 zinc-900/40 与父卡同色不可见)
+                            div { key: "{r.name}", class: "flex items-center gap-2.5 rounded-lg bg-zinc-800/40 px-2.5 py-2",
                                 span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm", "{i + 1}" }
                                 div { class: "min-w-0 flex-1",
                                     div { class: "flex items-center justify-between gap-3",
@@ -209,9 +212,12 @@ pub fn LeaderboardPanel() -> Element {
     let mut rows = use_signal(Vec::<UsageTopRow>::new);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
+    // 本面板错误红盒保留「重试」(不在 8090 反馈①的三面板范围内),reload 仅由
+    // 重试按钮驱动;刷新按钮已删(反馈②),数据进面板自动拉一次。
     let mut reload = use_signal(|| 0u32);
     let mut movers = use_signal(|| MoversState::Loading);
 
+    // 进面板自动拉一次;时间窗切换 / 重试仍驱动重拉。
     use_effect(move || {
         let tf = timeframe();
         let _ = reload();
@@ -270,8 +276,8 @@ pub fn LeaderboardPanel() -> Element {
                 }
             }
 
-            // 时间窗切换 + 刷新(口径与总览页 trend 一致)
-            div { class: "flex flex-wrap items-center justify-between gap-3",
+            // 时间窗切换(口径与总览页 trend 一致;数据进面板自动拉取,无刷新按钮)
+            div { class: "flex flex-wrap items-center gap-3",
                 div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
                     for t in ["今天", "本周", "本月", "今年"] {
                         button {
@@ -283,12 +289,6 @@ pub fn LeaderboardPanel() -> Element {
                             "{t}"
                         }
                     }
-                }
-                button {
-                    class: "rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
-                    "data-testid": "refresh-leaderboard",
-                    onclick: move |_| reload.set(reload() + 1),
-                    "刷新"
                 }
             }
 
@@ -314,7 +314,8 @@ pub fn LeaderboardPanel() -> Element {
                         p { class: "mt-1 text-xs text-zinc-600", "发起一次 /v1 调用后这里会展示真实用量排行" }
                     }
                 } else {
-                    div { class: "grid grid-cols-1 gap-4 xl:grid-cols-3 pt-2",
+                    // 三卡间距 gap-6(8090 预览反馈④),卡片 p-5 保持
+                    div { class: "grid grid-cols-1 gap-6 xl:grid-cols-3 pt-2",
                         RankCard {
                             title: "Token 消耗 Top",
                             subtitle: "窗口内 prompt + completion tokens 合计",
