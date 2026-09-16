@@ -3,8 +3,12 @@
 //! 另断言 models / leaderboard 新接的真实端点响应形状(字段名用后端 camelCase 原名):
 //! - GET /api/models → {"items":[ModelView], "total"} (admin-catalog models.rs)
 //! - GET /api/log/top → {"items":[UsageTopRow]}       (admin-observe logs.rs)
+//! 以及统计卡新增的纯展示函数: fmt_usd / sparkline 重切与归一化 / 增长率三态 / 份额。
 
-use admin_page_overview::api::{ModelCardView, UsageTopRow, UsageTrendRow, pivot_trend};
+use admin_page_overview::api::{
+    Growth, ModelCardView, UsageTopRow, UsageTrendRow, as_of_local_time, fmt_usd, growth_of,
+    hourly_sums, pivot_trend, reslice_sum, share_text, sparkline_points, sparkline_svg_paths,
+};
 
 fn row(bucket: &str, model: &str, tokens: i64) -> UsageTrendRow {
     UsageTrendRow {
@@ -136,26 +140,39 @@ fn model_card_view_defaults_on_missing_fields() {
     assert!(!v.is_vision && !v.is_tool);
 }
 
-/// GET /api/log/top 行:后端 UsageTopRow 是 {name, tokens, quota, calls}(camelCase 无差异)。
-/// 排行榜三个榜单(Token/调用数/费用)都从这一行的不同字段取数。
+/// GET /api/log/top 行:后端 UsageTopRow 是 {name, tokens, quota, calls, previousTokens}(camelCase)。
+/// 排行榜三个榜单(Token/调用数/费用)都从这一行的不同字段取数;
+/// previousTokens 是 W1 新增的上一等长窗口环比字段。
 #[test]
 fn usage_top_row_maps_backend_fields() {
-    let raw = r#"{"name":"gpt-x","tokens":1500,"quota":750000,"calls":3}"#;
+    let raw = r#"{"name":"gpt-x","tokens":1500,"quota":750000,"calls":3,"previousTokens":1200}"#;
     let v: UsageTopRow = serde_json::from_str(raw).expect("UsageTopRow 应可反序列化");
     assert_eq!(v.name, "gpt-x");
     assert_eq!(v.tokens, 1500);
     assert_eq!(v.quota, 750_000);
     assert_eq!(v.calls, 3);
+    assert_eq!(v.previous_tokens, 1200, "新 wire 的 previousTokens 应命中");
     assert_eq!(
         UsageTopRow::default(),
         UsageTopRow {
             name: String::new(),
             tokens: 0,
             quota: 0,
-            calls: 0
+            calls: 0,
+            previous_tokens: 0
         },
         "Default 用于空窗兜底"
     );
+}
+
+/// 旧后端 wire 不带 previousTokens(字段晚于页面出现):缺字段必须按 0 兜底,
+/// 整行解析不失败——增长率据此诚实降级为「上窗无数据」。
+#[test]
+fn usage_top_row_previous_tokens_defaults_on_missing_field() {
+    let raw = r#"{"name":"legacy","tokens":42,"quota":21,"calls":2}"#;
+    let v: UsageTopRow = serde_json::from_str(raw).expect("旧 wire 缺 previousTokens 也应可解析");
+    assert_eq!(v.previous_tokens, 0, "缺字段 serde default → 0");
+    assert_eq!(v.tokens, 42);
 }
 
 /// /api/log/top 的包装形状 {"items": [...]}:与 api.rs 的 Items<T> 剥壳逻辑一致。
@@ -163,7 +180,7 @@ fn usage_top_row_maps_backend_fields() {
 fn usage_top_items_wrapper_peels_items_field() {
     let raw = r#"{"items":[
         {"name":"a","tokens":100,"quota":10,"calls":1},
-        {"name":"b","tokens":900,"quota":90,"calls":9}
+        {"name":"b","tokens":900,"quota":90,"calls":9,"previousTokens":800}
     ]}"#;
     #[derive(serde::Deserialize)]
     struct Items<T> {
@@ -175,4 +192,226 @@ fn usage_top_items_wrapper_peels_items_field() {
     // 后端按 tokens DESC 返回;排行榜本地重排 calls/quota 榜依赖行内字段完整性
     assert_eq!(v.items[0].tokens, 100);
     assert_eq!(v.items[1].tokens, 900);
+    // 混合 wire:带 previousTokens 的行命中、不带的行兜底 0
+    assert_eq!(v.items[0].previous_tokens, 0);
+    assert_eq!(v.items[1].previous_tokens, 800);
+}
+
+// ---- 统计卡纯展示函数（W2：fmt_usd / sparkline / 增长率 / 份额 / asOf）----
+
+/// fmt_usd 三档:万元内两位小数原值、万美元起切紧凑 K/M/B(500_000 = $1)。
+#[test]
+fn fmt_usd_formats_zero_decimal_and_tiers() {
+    assert_eq!(fmt_usd(0), "$0.00", "零额度显示 $0.00");
+    assert_eq!(fmt_usd(500_000), "$1.00", "500_000 内部单位 = $1");
+    assert_eq!(fmt_usd(20_900_000), "$41.80", "小数保留两位");
+    assert_eq!(fmt_usd(1_048_575_000), "$2097.15", "万元内不切档");
+    assert_eq!(fmt_usd(20_900_000_000), "$41.8K", "万美元起切 K");
+    assert_eq!(fmt_usd(20_900_000_000_000), "$41.8M", "切 M");
+    assert_eq!(fmt_usd(20_900_000_000_000_000), "$41.8B", "切 B");
+}
+
+/// 24 桶重切 12 桶 = 相邻两桶合并求和。
+#[test]
+fn reslice_sum_merges_24_buckets_into_12_pairwise() {
+    let series: Vec<f64> = (1..=24).map(|i| i as f64).collect();
+    let out = reslice_sum(&series, 12);
+    assert_eq!(out.len(), 12, "24 → 12 桶");
+    assert_eq!(out[0], 3.0, "桶 0 = 1+2");
+    assert_eq!(out[11], 47.0, "桶 11 = 23+24");
+    assert_eq!(out.iter().sum::<f64>(), 300.0, "重切不丢总量");
+}
+
+/// 空输入返回空(调用方渲染等高占位);单点保持单桶。
+#[test]
+fn reslice_sum_handles_empty_and_single_point() {
+    assert!(reslice_sum(&[], 12).is_empty(), "空输入 → 空,不做占位造假");
+    assert_eq!(reslice_sum(&[5.0], 12), vec![5.0], "单点不足一组长存原值");
+}
+
+/// min-max 归一化:最低点贴下缘(y = 高-2.5)、最高点贴上缘(y = 2.5),x 等距铺满。
+#[test]
+fn sparkline_points_normalize_min_max_with_padding() {
+    let pts = sparkline_points(&[0.0, 100.0], 160.0, 36.0);
+    assert_eq!(pts.len(), 2);
+    let (x0, y0) = pts[0];
+    let (x1, y1) = pts[1];
+    assert!(
+        (x0 - 0.0).abs() < 1e-9 && (x1 - 160.0).abs() < 1e-9,
+        "x 铺满 0..160"
+    );
+    assert!((y0 - 33.5).abs() < 1e-9, "最低点贴下缘留 2.5px 描边余量");
+    assert!((y1 - 2.5).abs() < 1e-9, "最高点贴上缘留 2.5px 描边余量");
+}
+
+/// 全等序列(全零/恒值)压成等高水平线 y = 0.75 × 高——诚实呈现「无起伏」。
+#[test]
+fn sparkline_points_flattens_equal_series() {
+    let pts = sparkline_points(&[0.0; 12], 160.0, 36.0);
+    assert_eq!(pts.len(), 12);
+    assert!(
+        pts.iter().all(|(_, y)| (y - 27.0).abs() < 1e-9),
+        "全零序列 → y = 0.75 × 36 的水平线"
+    );
+    assert!((pts[0].0 - 0.0).abs() < 1e-9 && (pts[11].0 - 160.0).abs() < 1e-9);
+}
+
+/// 空输入无点(渲染占位);单点退化为等高单点(不足两点,路径层同样降级占位)。
+#[test]
+fn sparkline_points_empty_and_single() {
+    assert!(sparkline_points(&[], 160.0, 36.0).is_empty());
+    let pts = sparkline_points(&[42.0], 160.0, 36.0);
+    assert_eq!(pts.len(), 1);
+    assert!((pts[0].1 - 27.0).abs() < 1e-9, "单点按全等规则落在等高线");
+}
+
+/// line path 覆盖全部点;area path = line path + 底边闭合(渐变面积)。
+#[test]
+fn sparkline_svg_paths_area_encloses_line() {
+    let (line, area) = sparkline_svg_paths(&[0.0, 100.0], 160.0, 36.0).expect("两点应出路径");
+    assert!(line.starts_with("M"), "line 以 M 起笔");
+    assert!(area.starts_with(&line), "area 复用 line 的点序列");
+    assert!(area.ends_with('Z'), "area 闭合");
+    assert_eq!(area.matches("36.0").count(), 2, "底边两次触底(右下+左下)");
+    assert!(
+        sparkline_svg_paths(&[], 160.0, 36.0).is_none(),
+        "空序列 → None,调用方渲染等高占位"
+    );
+    assert!(
+        sparkline_svg_paths(&[7.0], 160.0, 36.0).is_none(),
+        "单点画不出趋势 → None 诚实降级"
+    );
+}
+
+/// 增长率三态:prev>0 比百分比(↑绿/↓红)、prev==0 且 cur>0 为 new、cur==0 不显示。
+#[test]
+fn growth_of_covers_three_states() {
+    assert_eq!(growth_of(0, 0), None, "两窗皆零 → 不显示");
+    assert_eq!(growth_of(10, 0), None, "本窗归零 → 不显示(诚实,不秀 ↓100%)");
+    assert_eq!(growth_of(0, 5), Some(Growth::New), "上窗无该实体 → new");
+    assert_eq!(growth_of(10, 15), Some(Growth::Up(50)), "升 50%");
+    assert_eq!(growth_of(10, 5), Some(Growth::Down(50)), "降 50%");
+    assert_eq!(growth_of(10, 10), Some(Growth::Up(0)), "持平记 ↑0%");
+    assert_eq!(growth_of(3, 4), Some(Growth::Up(33)), "百分比四舍五入");
+    assert_eq!(growth_of(4, 3), Some(Growth::Down(25)), "百分比四舍五入");
+}
+
+/// 箭头编进文本保证 tabular-nums 列对齐;↑/new 绿、↓ 红。
+#[test]
+fn growth_label_embeds_arrow_for_alignment() {
+    assert_eq!(Growth::Up(50).label(), "↑50%");
+    assert_eq!(Growth::Down(50).label(), "↓50%");
+    assert_eq!(Growth::New.label(), "↑new");
+    assert_eq!(Growth::Up(0).label(), "↑0%");
+    assert_eq!(
+        Growth::Up(1).text_class(),
+        Growth::New.text_class(),
+        "升与 new 同绿色档"
+    );
+    assert_ne!(
+        Growth::Up(1).text_class(),
+        Growth::Down(1).text_class(),
+        "升/降双色档"
+    );
+}
+
+/// 份额:1 位小数百分比;正值不足 0.1% 显示 <0.1%;合计为 0 不显示。
+#[test]
+fn share_text_covers_normal_zero_total_and_sub_tenth() {
+    assert_eq!(share_text(25, 100), Some("25.0%".to_string()));
+    assert_eq!(share_text(1, 3), Some("33.3%".to_string()), "1 位小数");
+    assert_eq!(
+        share_text(0, 100),
+        Some("0.0%".to_string()),
+        "零值行显 0.0%"
+    );
+    assert_eq!(share_text(1, 2000), Some("<0.1%".to_string()), "0.05% 特判");
+    assert_eq!(
+        share_text(1, 1000),
+        Some("0.1%".to_string()),
+        "恰好 0.1% 不特判"
+    );
+    assert_eq!(share_text(5, 0), None, "合计 0 → 不显示(不伪造份额)");
+}
+
+/// 24 小时桶聚合:同小时多模型合并、窗口外行丢弃、start 漂移行不越界。
+#[test]
+fn hourly_sums_buckets_rows_into_24_hourly_slots() {
+    let start = "2026-09-09T00:00:00Z";
+    let rows = vec![
+        UsageTrendRow {
+            bucket: "2026-09-09T00:30:00Z".into(),
+            model_name: "gpt".into(),
+            tokens: 100,
+            quota: 500,
+            calls: 1,
+        },
+        UsageTrendRow {
+            bucket: "2026-09-09T00:45:00Z".into(),
+            model_name: "claude".into(),
+            tokens: 50,
+            quota: 250,
+            calls: 2,
+        },
+        UsageTrendRow {
+            bucket: "2026-09-09T13:00:00Z".into(),
+            model_name: "gpt".into(),
+            tokens: 700,
+            quota: 3500,
+            calls: 3,
+        },
+        // 窗口外:窗口前 / 第 24 小时(越界) → 丢弃
+        UsageTrendRow {
+            bucket: "2026-09-08T23:59:00Z".into(),
+            model_name: "gpt".into(),
+            tokens: 999,
+            quota: 999,
+            calls: 9,
+        },
+        UsageTrendRow {
+            bucket: "2026-09-10T00:00:00Z".into(),
+            model_name: "gpt".into(),
+            tokens: 999,
+            quota: 999,
+            calls: 9,
+        },
+        // 桶解析失败 → 丢弃
+        UsageTrendRow {
+            bucket: "not-a-time".into(),
+            model_name: "gpt".into(),
+            tokens: 999,
+            quota: 999,
+            calls: 9,
+        },
+    ];
+    let (tokens, calls) = hourly_sums(&rows, start);
+    assert_eq!(tokens.len(), 24, "固定 24 个小时桶");
+    assert_eq!(calls.len(), 24);
+    assert_eq!(tokens[0], 150.0, "同小时两行合并(100+50)");
+    assert_eq!(calls[0], 3.0, "同小时 calls 合并(1+2)");
+    assert_eq!(tokens[13], 700.0, "13 时桶命中");
+    assert_eq!(calls[13], 3.0);
+    assert_eq!(tokens.iter().sum::<f64>(), 850.0, "窗口外与坏桶行全部丢弃");
+}
+
+/// start 解析失败 → 空序列(调用方渲染占位,诚实降级)。
+#[test]
+fn hourly_sums_bad_start_yields_empty() {
+    let (tokens, calls) = hourly_sums(&[], "not-a-time");
+    assert!(tokens.is_empty() && calls.is_empty());
+}
+
+/// asOf 本地时间:合法 RFC3339 → HH:MM:SS(本地时区,断言形状不依赖机器时区);
+/// 空串/垃圾串 → None(诚实降级不显示)。
+#[test]
+fn as_of_local_time_parses_or_hides() {
+    let t = as_of_local_time("2026-09-16T17:00:00Z").expect("合法 RFC3339 应可解析");
+    assert_eq!(t.len(), 8, "HH:MM:SS 共 8 字符");
+    assert!(
+        t.as_bytes()[2] == b':' && t.as_bytes()[5] == b':',
+        "HH:MM:SS 冒号位"
+    );
+    assert!(t.chars().all(|c| c.is_ascii_digit() || c == ':'));
+    assert_eq!(as_of_local_time(""), None, "空 asOf → 不显示");
+    assert_eq!(as_of_local_time("yesterday"), None, "垃圾串 → 不显示");
 }

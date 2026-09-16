@@ -26,8 +26,13 @@ pub fn OverviewPanel() -> Element {
     let mut reload = use_signal(|| 0u32);
 
     // 趋势 + Top10 共用的窗口数据源：timeframe/reload 变化即重拉。
-    let mut top_users = use_signal(Vec::<(String, String, f64)>::new);
-    let mut top_models = use_signal(Vec::<(String, String, f64)>::new);
+    let mut top_users = use_signal(Vec::<TopRowFE>::new);
+    let mut top_models = use_signal(Vec::<TopRowFE>::new);
+    let mut top_users_total = use_signal(|| 0i64);
+    let mut top_models_total = use_signal(|| 0i64);
+    // 统计卡 sparkline（今日 24h → 12 点）：额度卡用 tokens 序列、请求卡用 calls 序列。
+    let mut spark_tokens = use_signal(Vec::<f64>::new);
+    let mut spark_calls = use_signal(Vec::<f64>::new);
     let mut buckets = use_signal(Vec::<TrendBucketFE>::new);
     let mut model_order = use_signal(Vec::<String>::new);
     let mut data_loading = use_signal(|| true);
@@ -45,52 +50,56 @@ pub fn OverviewPanel() -> Element {
                 "今年" => "month",
                 _ => "day",
             };
-            // 趋势 + 两个 Top 榜并行拉；一个失败即报错（数据完整性优先）。
-            let (trend_r, users_r, models_r) = (
+            // sparkline 固定取「今天」24h 窗：与两张今日卡的口径一致，且与当前
+            // 切换的 timeframe 解耦；start 只算一次、拉数与重切共用，避免跨小时漂移。
+            let spark_start = api::window_start("今天");
+            // 趋势 + 两个 Top 榜 + sparkline 源并行拉；主数据一个失败即报错（数据完整性优先）。
+            let (trend_r, users_r, models_r, spark_r) = (
                 api::trend_api(granularity, &start).await,
                 api::top_usage_api("user", &start, 10).await,
                 api::top_usage_api("model", &start, 10).await,
+                api::trend_api("hour", &spark_start).await,
             );
             match (trend_r, users_r, models_r) {
                 (Ok(rows), Ok(users), Ok(models)) => {
                     let (b, order) = api::pivot_trend(rows, tf);
                     buckets.set(b);
                     model_order.set(order);
-                    // 用户榜按消耗(quota→¥)排,模型榜按 tokens 排;百分比各自占总和
+                    // 用户榜按消耗折 $ 展示、模型榜按 tokens 展示；份额 = 行值占前 10
+                    // 名合计；增长率 = 本窗 tokens 环比上一等长窗口 previous_tokens。
                     let u_tot: i64 = users.iter().map(|r| r.quota).sum();
+                    top_users_total.set(u_tot);
                     top_users.set(
                         users
                             .iter()
-                            .map(|r| {
-                                (
-                                    r.name.clone(),
-                                    fmt_cny(r.quota),
-                                    if u_tot > 0 {
-                                        r.quota as f64 / u_tot as f64 * 100.0
-                                    } else {
-                                        0.0
-                                    },
-                                )
+                            .map(|r| TopRowFE {
+                                name: r.name.clone(),
+                                amount: api::fmt_usd(r.quota),
+                                share: api::share_text(r.quota, u_tot),
+                                growth: api::growth_of(r.previous_tokens, r.tokens),
                             })
                             .collect(),
                     );
                     let m_tot: i64 = models.iter().map(|r| r.tokens).sum();
+                    top_models_total.set(m_tot);
                     top_models.set(
                         models
                             .iter()
-                            .map(|r| {
-                                (
-                                    r.name.clone(),
-                                    fmt_raw(r.tokens),
-                                    if m_tot > 0 {
-                                        r.tokens as f64 / m_tot as f64 * 100.0
-                                    } else {
-                                        0.0
-                                    },
-                                )
+                            .map(|r| TopRowFE {
+                                name: r.name.clone(),
+                                amount: fmt_raw(r.tokens),
+                                share: api::share_text(r.tokens, m_tot),
+                                growth: api::growth_of(r.previous_tokens, r.tokens),
                             })
                             .collect(),
                     );
+                    // sparkline 是装饰性最佳努力：拉失败保持空 → 卡内渲染等高占位
+                    // （诚实降级），不影响主数据展示。
+                    if let Ok(srows) = spark_r {
+                        let (tokens, calls) = api::hourly_sums(&srows, &spark_start);
+                        spark_tokens.set(api::reslice_sum(&tokens, 12));
+                        spark_calls.set(api::reslice_sum(&calls, 12));
+                    }
                     data_loading.set(false);
                 }
                 (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
@@ -122,6 +131,26 @@ pub fn OverviewPanel() -> Element {
 
     // 把实时 DTO 展开成 (值, 中文标签) 卡片列表(rsx! 之外计算,避免宏内 let)。
     let stats_opt: Option<Vec<(String, &'static str)>> = summary().as_ref().map(dashboard_stats);
+    // 统计卡四元组:值 / 标签 / sparkline 序列(仅今日两卡) / SVG 渐变 id。
+    // 在 rsx! 之外整形——宏体内 let 不支持任意绑定,for 循环的元组解构才支持。
+    // 仅「今日请求 / 今日额度」两张卡带 12 点迷你面积线;
+    // 空序列(拉数失败或窗口无数据)由 Sparkline 渲染等高占位。
+    let stat_cards: Vec<(String, &'static str, Option<Vec<f64>>, &'static str)> = stats_opt
+        .iter()
+        .flatten()
+        .map(|(value, label)| {
+            let (spark, gid) = match *label {
+                "今日请求" => (Some(spark_calls()), "sparkline-requests"),
+                "今日额度" => (Some(spark_tokens()), "sparkline-quota"),
+                _ => (None, ""),
+            };
+            (value.clone(), *label, spark, gid)
+        })
+        .collect();
+    // 数据新鲜度: asOf 的本地时间直接亮在统计卡区头部;解析失败不显示(诚实降级)。
+    let as_of_time = summary()
+        .as_ref()
+        .and_then(|d| api::as_of_local_time(&d.as_of));
     let trend_loading = data_loading();
     let trend_err = data_err();
     // 用计算后的 buckets 判空 (单一数据源): pivot 后如果每桶 total 都是 0,
@@ -141,11 +170,21 @@ pub fn OverviewPanel() -> Element {
             div { class: "space-y-3",
                 div { class: "flex items-center justify-between",
                     h2 { class: "text-lg font-medium text-foreground", "总览统计" }
-                    button {
-                        class: "shrink-0 rounded-xl border border-border px-3 py-2 text-xs text-foreground/80 transition-colors hover:bg-accent",
-                        "data-testid": "refresh-overview",
-                        onclick: move |_| reload.set(reload() + 1),
-                        "刷新"
+                    div { class: "flex items-center gap-3",
+                        // asOf 本地时间裸值(维护者要求:不写「数据截至」字样)
+                        if let Some(t) = as_of_time {
+                            span {
+                                class: "text-xs font-mono tabular-nums text-muted-foreground",
+                                "data-testid": "overview-as-of",
+                                "{t}"
+                            }
+                        }
+                        button {
+                            class: "shrink-0 rounded-xl border border-border px-3 py-2 text-xs text-foreground/80 transition-colors hover:bg-accent",
+                            "data-testid": "refresh-overview",
+                            onclick: move |_| reload.set(reload() + 1),
+                            "刷新"
+                        }
                     }
                 }
                 section { "data-testid": "overview-stats",
@@ -164,9 +203,13 @@ pub fn OverviewPanel() -> Element {
                         div { class: "col-span-full rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                             p { class: "text-muted-foreground", "正在加载统计…" }
                         }
-                    } else if let Some(stats) = stats_opt {
-                        for (value, label) in stats {
-                            StatCard { value, label }
+                    } else if stats_opt.is_some() {
+                        for (value, label, sparkline, gradient_id) in stat_cards {
+                            StatCard { value, label, sparkline, gradient_id }
+                        }
+                        // 第 7 张卡:额度余量 + runway 可用天数(W1 后端已供 quotaRemaining)
+                        if let Some(d) = summary() {
+                            QuotaRemainingCard { remaining: d.quota_remaining, today: d.quota_today }
                         }
                     }
                 }
@@ -174,7 +217,7 @@ pub fn OverviewPanel() -> Element {
 
             // Top 10 breakdowns —— 真实 /api/log/top 聚合
             // 面板卡挂 hoverable（维护者要求悬停边框变亮的动态全站回归）;
-            // 调用方 py-0!/gap-0!/px-4!/py-3!/p-4! 覆盖 Card 基串的
+            // 调用方 py-0!/gap-0!/px-4!/py-3!/p-4!/pb-3! 覆盖 Card 基串的
             // py-6/gap-6/px-6, 尾缀 ! 确保压过 Tailwind 同属性工具类, 保留原紧凑条头布局。
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
                 // Top 10 Models
@@ -183,24 +226,24 @@ pub fn OverviewPanel() -> Element {
                     class: "gap-0! overflow-hidden py-0!",
                     CardHeader {
                         class: "border-b border-border/50 px-4! py-3!",
-                        h3 { class: "text-sm font-medium text-foreground", "消耗前十模型" }
+                        div { class: "flex items-center justify-between gap-3",
+                            h3 { class: "text-sm font-medium text-foreground", "消耗前十模型" }
+                            div { class: "text-right", "data-testid": "top-models-total",
+                                p { class: "text-sm font-semibold font-mono tabular-nums text-foreground", "{fmt_raw(top_models_total())}" }
+                                p { class: "text-[10px] text-muted-foreground", "tokens 合计" }
+                            }
+                        }
                     }
                     CardContent {
-                        class: "flex-1 space-y-3 p-4!",
+                        class: "flex-1 space-y-3 p-4! pb-3!",
                         if top_models().is_empty() {
                             p { class: "py-6 text-center text-xs text-muted-foreground", "该时间窗内暂无调用" }
                         }
-                        for (i, (name, amount, pct)) in top_models().iter().enumerate() {
-                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-accent cursor-default",
-                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{i + 1}" }
-                                div { class: "flex-1 min-w-0 flex items-center justify-between",
-                                    span { class: "truncate text-sm font-medium text-foreground/80 transition-colors hover:text-foreground", "{name}" }
-                                    div { class: "flex items-center gap-3",
-                                        span { class: "text-xs font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
-                                        span { class: "w-10 text-right text-xs text-muted-foreground font-medium", "{pct:.1}%" }
-                                    }
-                                }
-                            }
+                        for (i, row) in top_models().iter().enumerate() {
+                            TopRowItem { index: i, name: row.name.clone(), amount: row.amount.clone(), growth: row.growth.clone(), share: row.share.clone() }
+                        }
+                        p { class: "pt-1 text-[10px] leading-4 text-muted-foreground/60",
+                            "份额为该行占前 10 名合计的比例 · 增长环比上一等长窗口 tokens"
                         }
                     }
                 }
@@ -211,24 +254,24 @@ pub fn OverviewPanel() -> Element {
                     class: "gap-0! overflow-hidden py-0!",
                     CardHeader {
                         class: "border-b border-border/50 px-4! py-3!",
-                        h3 { class: "text-sm font-medium text-foreground", "消耗前十用户" }
+                        div { class: "flex items-center justify-between gap-3",
+                            h3 { class: "text-sm font-medium text-foreground", "消耗前十用户" }
+                            div { class: "text-right", "data-testid": "top-users-total",
+                                p { class: "text-sm font-semibold font-mono tabular-nums text-foreground", "{api::fmt_usd(top_users_total())}" }
+                                p { class: "text-[10px] text-muted-foreground", "$ 合计" }
+                            }
+                        }
                     }
                     CardContent {
-                        class: "flex-1 space-y-3 p-4!",
+                        class: "flex-1 space-y-3 p-4! pb-3!",
                         if top_users().is_empty() {
                             p { class: "py-6 text-center text-xs text-muted-foreground", "该时间窗内暂无调用" }
                         }
-                        for (i, (name, amount, pct)) in top_users().iter().enumerate() {
-                            div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-accent cursor-default",
-                                div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{i + 1}" }
-                                div { class: "flex-1 min-w-0 flex items-center justify-between",
-                                    span { class: "truncate text-sm font-medium text-foreground/80 transition-colors hover:text-foreground", "{name}" }
-                                    div { class: "flex items-center gap-3",
-                                        span { class: "text-xs font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
-                                        span { class: "w-10 text-right text-xs text-muted-foreground font-medium", "{pct:.1}%" }
-                                    }
-                                }
-                            }
+                        for (i, row) in top_users().iter().enumerate() {
+                            TopRowItem { index: i, name: row.name.clone(), amount: row.amount.clone(), growth: row.growth.clone(), share: row.share.clone() }
+                        }
+                        p { class: "pt-1 text-[10px] leading-4 text-muted-foreground/60",
+                            "份额为该行占前 10 名合计的比例 · 增长环比上一等长窗口 tokens"
                         }
                     }
                 }
@@ -243,14 +286,182 @@ pub fn OverviewPanel() -> Element {
 /// 统计卡挂 hoverable：悬停边框变亮是管理台统一交互（维护者拍板），
 /// 原面板级 hover 位移/阴影装饰不回归（dsh 规格仅边框动态）；
 /// `py-3!`/`gap-0!` 覆盖 Card 基串的 py-6/gap-6，保留原紧凑单行布局。
+/// `sparkline` 传 `Some` 时在卡底渲染 12 点迷你面积线（空序列 → 等高占位）。
 #[component]
-fn StatCard(value: String, label: &'static str) -> Element {
+fn StatCard(
+    value: String,
+    label: &'static str,
+    #[props(default)] sparkline: Option<Vec<f64>>,
+    /// SVG 渐变 id：同页多张 sparkline 各持一份，避免 `url(#id)` 串线。
+    #[props(default)]
+    gradient_id: &'static str,
+) -> Element {
     rsx! {
         Card {
             hoverable: true,
             class: "cursor-default gap-0! px-4 py-3!",
+            "data-testid": "{label}",
             p { class: "truncate text-base font-semibold text-foreground md:text-lg", "{value}" }
             p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{label}" }
+            if let Some(series) = sparkline {
+                Sparkline { series, gradient_id }
+            }
+        }
+    }
+}
+
+/// 统计卡底部的 12 点手绘迷你面积线（无图表库；配方见 deepdive §二-3：
+/// 160x36 viewBox + preserveAspectRatio="none"、min-max 归一化、line+area 双 path、
+/// area 用 currentColor 线性渐变 0.24→0、non-scaling-stroke 保证任意拉伸线宽恒定）。
+///
+/// 数据不足两点（空序列 / 单点）→ 渲染等高占位防布局跳动（诚实降级）。
+#[component]
+fn Sparkline(series: Vec<f64>, gradient_id: &'static str) -> Element {
+    let Some((line_d, area_d)) = api::sparkline_svg_paths(&series, 160.0, 36.0) else {
+        return rsx! {
+            div {
+                class: "pointer-events-none mt-2 h-9 rounded-md border border-dashed border-border/60 bg-accent/30",
+                aria_hidden: "true",
+            }
+        };
+    };
+    rsx! {
+        svg {
+            class: "pointer-events-none mt-2 h-9 w-full text-muted-foreground",
+            view_box: "0 0 160 36",
+            preserve_aspect_ratio: "none",
+            "aria-hidden": "true",
+            "data-testid": "{gradient_id}",
+            defs {
+                linearGradient {
+                    id: "{gradient_id}",
+                    x1: "0",
+                    y1: "0",
+                    x2: "0",
+                    y2: "1",
+                    stop { offset: "0", stop_color: "currentColor", stop_opacity: "0.24" }
+                    stop { offset: "1", stop_color: "currentColor", stop_opacity: "0" }
+                }
+            }
+            path { d: "{area_d}", fill: "url(#{gradient_id})" }
+            path {
+                d: "{line_d}",
+                fill: "none",
+                stroke: "currentColor",
+                stroke_width: "2.25",
+                vector_effect: "non-scaling-stroke",
+                stroke_linecap: "round",
+                stroke_linejoin: "round",
+            }
+        }
+    }
+}
+
+/// 第 7 张统计卡「额度余量」：剩余总额度折 $ 大数字 + runway 可用天数 + 口径小字。
+///
+/// runway = `quota_remaining / quota_today`（今日消耗速率），三态健康点
+/// （阈值语义参照 deepdive §二-5）：
+/// - `quota_today == 0` → 「无近期消耗」（灰点：无消耗速率，不做健康判断）；
+/// - `remaining <= 0` → 「已耗尽」红点红字；
+/// - runway < 3 天 → 黄点黄字（<1 天特判文案；≥999 天显示 999+ 天）；
+/// - 其余 → 绿点。
+#[component]
+fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
+    let (runway_line, runway_class, dot_class) = if today <= 0 {
+        (
+            "无近期消耗".to_string(),
+            "text-muted-foreground".to_string(),
+            "bg-zinc-500",
+        )
+    } else if remaining <= 0 {
+        (
+            "已耗尽".to_string(),
+            "text-red-400".to_string(),
+            "bg-red-500",
+        )
+    } else {
+        let days = remaining as f64 / today as f64;
+        let days_text = if days < 1.0 {
+            "<1 天".to_string()
+        } else if days >= 999.0 {
+            "999+ 天".to_string()
+        } else {
+            format!("{days:.1} 天")
+        };
+        if days < 3.0 {
+            (
+                format!("可用 {days_text}"),
+                "text-yellow-400".to_string(),
+                "bg-yellow-400",
+            )
+        } else {
+            (
+                format!("可用 {days_text}"),
+                "text-emerald-400".to_string(),
+                "bg-emerald-400",
+            )
+        }
+    };
+    rsx! {
+        Card {
+            hoverable: true,
+            class: "cursor-default gap-0! px-4 py-3!",
+            "data-testid": "额度余量",
+            div { class: "flex items-center gap-1.5",
+                p { class: "truncate text-base font-semibold font-mono tabular-nums text-foreground md:text-lg", "{api::fmt_usd(remaining)}" }
+                span { class: "h-2 w-2 shrink-0 rounded-full {dot_class}", aria_hidden: "true" }
+            }
+            p { class: "mt-0.5 truncate text-xs text-muted-foreground", "额度余量" }
+            p {
+                class: "mt-0.5 truncate text-xs font-medium {runway_class}",
+                "data-testid": "额度余量可用天数",
+                "{runway_line}"
+            }
+            p { class: "mt-1 text-[10px] leading-4 text-muted-foreground/70",
+                "启用用户余额合计 ÷ 今日消耗"
+            }
+        }
+    }
+}
+
+/// Top 榜单行渲染所需的前端视图（在 use_effect 内从 `UsageTopRow` 整形一次）。
+#[derive(Clone, PartialEq)]
+struct TopRowFE {
+    name: String,
+    /// 展示值：用户榜 `fmt_usd(quota)`、模型榜 `fmt_raw(tokens)`。
+    amount: String,
+    /// 行值占前 10 名合计的份额（合计 ≤ 0 时为 `None`，不显示）。
+    share: Option<String>,
+    /// 本窗 tokens 环比上一等长窗口的增长率（本窗为 0 时为 `None`，不显示）。
+    growth: Option<api::Growth>,
+}
+
+/// Top 榜单行：名次 + 名称 + 右侧「数值在上、增长率与份额在下」双行列对齐。
+#[component]
+fn TopRowItem(
+    index: usize,
+    name: String,
+    amount: String,
+    growth: Option<api::Growth>,
+    share: Option<String>,
+) -> Element {
+    rsx! {
+        div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-accent cursor-default",
+            div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{index + 1}" }
+            div { class: "flex-1 min-w-0 flex items-center justify-between gap-3",
+                span { class: "truncate text-sm font-medium text-foreground/80 transition-colors hover:text-foreground", "{name}" }
+                div { class: "flex shrink-0 flex-col items-end gap-0.5",
+                    span { class: "text-xs font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
+                    div { class: "flex items-center gap-1.5 text-[10px] leading-none",
+                        if let Some(g) = growth {
+                            span { class: "font-medium tabular-nums {g.text_class()}", "{g.label()}" }
+                        }
+                        if let Some(s) = share {
+                            span { class: "text-muted-foreground/70 tabular-nums", "{s}" }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -259,6 +470,7 @@ fn StatCard(value: String, label: &'static str) -> Element {
 ///
 /// 顺序与标签:`总用户=users`、`启用渠道=channels_enabled`、`令牌=tokens`、
 /// `分组=groups`、`今日请求=requests_today`、`今日额度=quota_today`。
+/// 今日额度按 `fmt_usd` 折算 $ 展示(500_000 = $1),与 Top10 用户榜同口径。
 fn dashboard_stats(d: &DashboardSummaryDto) -> Vec<(String, &'static str)> {
     vec![
         (d.users.to_string(), "总用户"),
@@ -266,7 +478,7 @@ fn dashboard_stats(d: &DashboardSummaryDto) -> Vec<(String, &'static str)> {
         (d.tokens.to_string(), "令牌"),
         (d.groups.to_string(), "分组"),
         (d.requests_today.to_string(), "今日请求"),
-        (d.quota_today.to_string(), "今日额度"),
+        (api::fmt_usd(d.quota_today), "今日额度"),
     ]
 }
 
@@ -288,11 +500,6 @@ fn fmt_raw(n: i64) -> String {
     } else {
         n.to_string()
     }
-}
-
-/// 内部计费额度 → 人民币展示 (500000 = ¥1)
-fn fmt_cny(quota: i64) -> String {
-    format!("¥{:.2}", quota as f64 / 500_000.0)
 }
 
 /// 趋势图悬浮卡: 整列分解 / 单色块详情
