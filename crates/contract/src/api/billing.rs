@@ -149,6 +149,15 @@ pub struct CurrencyView {
     pub internal_rate: f64,
     pub enabled: bool,
     pub remark: String,
+    /// 展示符号（¥ / $ / P）；fiat 必填，points 可空。
+    #[serde(default)]
+    pub symbol: String,
+    /// `points` = 可扣费余额货币；`fiat` = 仅计价展示（不进余额）。
+    #[serde(default)]
+    pub kind: String,
+    /// 展示小数位：法币 2、点数 0。
+    #[serde(default)]
+    pub precision: i16,
 }
 
 /// 用户余额项 DTO
@@ -157,6 +166,9 @@ pub struct CurrencyView {
 pub struct UserBalanceDto {
     pub currency_code: String,
     pub amount: i64,
+    /// 该货币展示符号（来自 currency_defs.symbol；旧后端无此字段时为空串）。
+    #[serde(default)]
+    pub symbol: String,
 }
 
 /// 用户钱包 DTO — 综合展示

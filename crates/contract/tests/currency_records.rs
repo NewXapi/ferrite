@@ -19,6 +19,9 @@ fn currency_def_record_roundtrip() {
         internal_rate: 1.0,
         enabled: true,
         remark: "".to_string(),
+        symbol: "P".to_string(),
+        kind: "points".to_string(),
+        precision: 0,
     };
     let json = serde_json::to_string(&record).unwrap();
     let decoded: CurrencyDefRecord = serde_json::from_str(&json).unwrap();
@@ -52,6 +55,9 @@ fn currency_view_roundtrip() {
         internal_rate: 1.0,
         enabled: true,
         remark: "".to_string(),
+        symbol: "P".to_string(),
+        kind: "points".to_string(),
+        precision: 0,
     };
     let json = serde_json::to_string(&view).unwrap();
     let decoded: CurrencyView = serde_json::from_str(&json).unwrap();
@@ -63,6 +69,7 @@ fn user_balance_dto_roundtrip() {
     let dto = UserBalanceDto {
         currency_code: "FREE".to_string(),
         amount: 500000,
+        symbol: "P".to_string(),
     };
     let json = serde_json::to_string(&dto).unwrap();
     let decoded: UserBalanceDto = serde_json::from_str(&json).unwrap();
@@ -77,10 +84,12 @@ fn wallet_view_roundtrip() {
             UserBalanceDto {
                 currency_code: "FREE".to_string(),
                 amount: 500000,
+                symbol: "P".to_string(),
             },
             UserBalanceDto {
                 currency_code: "PAID".to_string(),
                 amount: 300000,
+                symbol: "P".to_string(),
             },
         ],
         available_i64: 800000,

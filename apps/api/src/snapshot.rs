@@ -102,7 +102,7 @@ async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>>
                    9223372036854775807::double precision
                )::BIGINT AS available
         FROM user_balances ub
-        JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled
+        JOIN currency_defs cd ON cd.code = ub.currency_code AND cd.enabled AND cd.kind = 'points'
         JOIN auth_users u ON u.key = ub.user_key
         GROUP BY ub.user_key
         "#,

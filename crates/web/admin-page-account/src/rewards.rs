@@ -332,7 +332,7 @@ pub fn RewardsPanel() -> Element {
                                         "已连后端"
                                     }
                                 }
-                                // 多币种余额逐行: 币种 code + 该币种单位余额
+                                // 多币种余额逐行: symbol (空则回退 code) + 该币种单位余额
                                 if w.balances.is_empty() {
                                     div {
                                         class: "mt-6 rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
@@ -345,7 +345,9 @@ pub fn RewardsPanel() -> Element {
                                             div {
                                                 class: "flex justify-between py-3 text-sm first:pt-0 last:pb-0",
                                                 "data-testid": format!("wallet-balance-{}", b.currency_code),
-                                                span { class: "text-zinc-400", "{b.currency_code.clone()}" }
+                                                span { class: "text-zinc-400",
+                                                    if b.symbol.is_empty() { "{b.currency_code.clone()}" } else { "{b.symbol.clone()}" }
+                                                }
                                                 span { class: "font-medium text-zinc-100 tabular-nums", "{fmt_num(b.amount)}" }
                                             }
                                         }
