@@ -204,10 +204,10 @@ impl ChannelService {
         // groups 显式给空数组 → 与 create 同款守卫：渠道会从所有分组消失，
         // snapshot 展开零路由单元，静默"永不路由"（manage_wire_contract 曾钉假成功）。
         // 缺席(None)仍 COALESCE 保持现值，不影响最小 diff 更新。
-        if let Some(groups) = groups {
-            if groups.is_empty() || groups.iter().any(|g| g.trim().is_empty()) {
-                return Err(AuthError::BadRequest("groups: 至少一个非空分组名".into()));
-            }
+        if let Some(groups) = groups
+            && (groups.is_empty() || groups.iter().any(|g| g.trim().is_empty()))
+        {
+            return Err(AuthError::BadRequest("groups: 至少一个非空分组名".into()));
         }
         let mn = name.unwrap_or(&existing.name);
         let mt = channel_type.unwrap_or(&existing.channel_type);
