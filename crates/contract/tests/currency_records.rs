@@ -111,6 +111,7 @@ fn top_up_request_roundtrip() {
         user_key: "user1".to_string(),
         currency: "FREE".to_string(),
         amount: 100000,
+        provider: "manual".into(),
     };
     let json = serde_json::to_string(&request).unwrap();
     let decoded: TopUpRequest = serde_json::from_str(&json).unwrap();

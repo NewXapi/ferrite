@@ -9,7 +9,7 @@
 //! use sqlx::PgPool;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! # let cfg = Config { database_url: String::new(), listen: "0.0.0.0:3000".into(), log_level: "info".into() };
+//! # let cfg = Config { database_url: String::new(), listen: "0.0.0.0:3000".into(), log_level: "info".into(), payment: api::config::PaymentConfig::default() };
 //! # let pool = sqlx::PgPool::connect("postgres://localhost/ferrite").await?;
 //! let router = build_app(pool, &cfg).await?;
 //! # Ok(())
@@ -54,9 +54,9 @@ use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 const FORWARD_MAX_CONCURRENCY: usize = 64;
 
 /// 组装完整应用 Router：admin-api + tavern + pipeline gateway（含计费结算）+ reload。
-pub async fn build_app(pool: PgPool, _cfg: &Config) -> anyhow::Result<Router> {
+pub async fn build_app(pool: PgPool, cfg: &Config) -> anyhow::Result<Router> {
     let egress: Arc<dyn forward::egress::Egress> = Arc::new(ReqwestEgress::new());
-    assemble(pool, egress, true).await
+    assemble(pool, egress, true, cfg.payment.clone()).await
 }
 
 /// 组装完整应用 Router 的公共实现。
@@ -72,6 +72,7 @@ async fn assemble(
     pool: PgPool,
     egress: Arc<dyn forward::egress::Egress>,
     wire_proxy_pool: bool,
+    payment: crate::config::PaymentConfig,
 ) -> anyhow::Result<Router> {
     // 建表必须先于任何查询：本函数在 admin_router::router（其内部也跑一遍
     // run_migrations，幂等）之前就调 load_snapshots 查 api_channels 等表，
@@ -107,6 +108,7 @@ async fn assemble(
         proxies.clone(),
         dispatcher.clone(),
         health.clone(),
+        payment.epay,
     )
     .await
     .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
@@ -240,7 +242,8 @@ pub async fn build_app_with_egress(
     pool: PgPool,
     egress: std::sync::Arc<dyn forward::egress::Egress>,
 ) -> anyhow::Result<Router> {
-    assemble(pool, egress, false).await
+    // 测试路径不走真支付：PaymentConfig::default() = 不注册任何真渠道。
+    assemble(pool, egress, false, crate::config::PaymentConfig::default()).await
 }
 
 /// pipeline 数据面路径守卫：只放行 `/healthz`、`/v1`、`/v1/*`、`/v1beta*`。

@@ -320,6 +320,7 @@ async fn open_topup_rejects_fiat() {
             user_key: Uuid::new_v4().to_string(),
             currency: "CNY".to_string(),
             amount: 100,
+            provider: "manual".into(),
         })
         .await
         .expect_err("fiat topup order must be rejected at open time");

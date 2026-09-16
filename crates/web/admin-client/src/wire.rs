@@ -183,7 +183,11 @@ pub struct RedeemRequest {
 }
 
 /// 充值开单请求体 — 对齐后端 `contract::api::billing::TopUpRequest`
-/// (camelCase: `userKey` / `currency` / `amount`)。
+/// (camelCase: `userKey` / `currency` / `amount` / `provider`)。
+///
+/// 金额口径随 provider 不同 (后端落库前折算):
+/// - manual: amount = 直接入账的点数 (currency 单位);
+/// - epay: amount = 要付的人民币**元**, currency = 入账的目标点数货币。
 #[derive(Debug, Clone, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenTopupRequest {
@@ -193,17 +197,23 @@ pub struct OpenTopupRequest {
     pub currency: String,
     /// 充值金额 (该币种单位, >0)。
     pub amount: i64,
+    /// 支付渠道: None/"manual" = 人工确认 (后端缺省); "epay" = 在线支付。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 /// 充值开单成功响应 — 裸 `{"order_id": "..."}`。
 ///
-/// 注意 key 逐字是 snake_case `order_id` (后端 `json!` 字面量,非 camelCase)。
-/// 缺省时 `order_id = None`,调用方降级为通用文案,不假造单号。
+/// 注意 key 逐字是 snake_case `order_id` (后端结构体序列化,非 camelCase);
+/// payment_url 仅真渠道开单才有 (manual 单省略该 key)。
+/// 缺省时各字段为 None,调用方降级为通用文案,不假造单号与支付链接。
 #[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
 #[serde(default)]
 pub struct TopupOrder {
     /// pending 订单号 (UUID 字符串)。
     pub order_id: Option<String>,
+    /// 支付跳转 URL (真渠道开单返回;manual 为 None → 不渲染「去支付」)。
+    pub payment_url: Option<String>,
 }
 
 /// 拉取当前用户钱包:`GET /api/user/wallet` (self),解包 `{"wallet": ...}`。

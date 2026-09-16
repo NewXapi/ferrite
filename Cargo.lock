@@ -578,6 +578,7 @@ dependencies = [
  "db-bootstrap",
  "hex",
  "http",
+ "md-5 0.10.6",
  "rand 0.8.8",
  "serde",
  "serde_json",
@@ -587,6 +588,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "url",
  "uuid",
 ]
 
