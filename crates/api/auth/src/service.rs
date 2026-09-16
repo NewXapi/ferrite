@@ -412,6 +412,24 @@ impl AuthService {
         if user.status != 1 {
             return Err(AuthError::UserDisabled);
         }
+        // 会话吊销/轮换必须即时生效：access token 在 TTL 内仍携带 sid claim，
+        // 若不对照 auth_user_sessions，被吊销（revoke_session / revoke-others /
+        // refresh 轮换）的会话在过期前依旧能访问 self 端点——「吊销当前设备
+        // 踢下线」在生产上是缺口（page-audit-users 实测项，已闭环）。
+        let sid = Uuid::parse_str(&claims.sid).map_err(|_| AuthError::InvalidToken)?;
+        let session_live = sqlx::query_scalar::<_, i32>(
+            r#"SELECT 1 FROM auth_user_sessions
+               WHERE sid = $1 AND user_key = $2
+                 AND revoked_at IS NULL AND expires_at > now()"#,
+        )
+        .bind(sid)
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await?
+        .is_some();
+        if !session_live {
+            return Err(AuthError::InvalidToken);
+        }
         Ok(user)
     }
 

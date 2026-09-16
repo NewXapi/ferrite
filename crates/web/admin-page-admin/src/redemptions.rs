@@ -1,6 +1,6 @@
 //! 兑换码管理页:卡片式网格,对齐 GroupsPage / ChannelsPage / UsersPanel 规范。
 //! 数据来自真实后端 `/api/redemption`(列表 / 批量生成 / 停用)。
-//! 后端语义:DELETE 即停用 (status→2,无硬删、无重新启用);
+//! 后端语义:DELETE 即停用 (status→3,无硬删、无重新启用;核销 SET status=2);
 //! 明文码只在生成响应里出现一次,页面用弹窗展示。
 
 use dioxus::prelude::*;
@@ -31,7 +31,7 @@ pub struct RedRowFE {
     pub key: String,
     pub code_preview: String,
     pub quota_cny: f64,
-    pub status: u8, // 1 未用 / 2 停用 / 3 已核销
+    pub status: u8, // 1 未用 / 2 已核销 / 3 已停用（与 redeem.rs 写侧语义一致，测试钉死）
     pub redeemed_by: Option<String>,
     pub redeemed_at: String,
     pub created: String,
@@ -50,6 +50,43 @@ pub fn map_redemption_view(v: RedemptionView) -> RedRowFE {
         redeemed_by: v.redeemed_by,
         redeemed_at: v.redeemed_at.unwrap_or_default(),
         created: v.created_at,
+    }
+}
+
+/// 兑换码状态的展示语义（单一事实源）。
+///
+/// 与后端 `admin-billing/redeem.rs` 写侧对齐:生成 = 1(列默认值)、
+/// 核销 CAS `SET status=2`、停用 CAS `SET status=3`;2/3 均为终态。
+/// 历史事故:本页曾把 2/3 的文案与统计对调,后端语义由
+/// `tests/manage_wire_contract.rs` 钉死后,此处以用例回归防再翻。
+pub struct StatusDisplay {
+    pub label: &'static str,
+    pub badge_tone: &'static str,
+    pub bar_tone: &'static str,
+    /// 「可用面额」进度条占比:未使用满格、已停用冻结、已核销耗尽。
+    pub bar_pct: u32,
+}
+
+pub fn status_display(status: u8) -> StatusDisplay {
+    match status {
+        1 => StatusDisplay {
+            label: "未使用",
+            badge_tone: "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
+            bar_tone: "bg-emerald-500",
+            bar_pct: 100,
+        },
+        2 => StatusDisplay {
+            label: "已核销",
+            badge_tone: "border-zinc-700 bg-zinc-800/80 text-zinc-400",
+            bar_tone: "bg-zinc-700",
+            bar_pct: 0,
+        },
+        _ => StatusDisplay {
+            label: "已停用",
+            badge_tone: "border-amber-500/30 bg-amber-500/20 text-amber-400",
+            bar_tone: "bg-amber-500",
+            bar_pct: 40,
+        },
     }
 }
 
@@ -92,8 +129,8 @@ pub fn RedemptionsPage() -> Element {
     let red_list = reds.read().clone();
     let total = red_list.len();
     let unused_count = red_list.iter().filter(|r| r.status == 1).count();
-    let used_count = red_list.iter().filter(|r| r.status == 3).count();
-    let disabled_count = red_list.iter().filter(|r| r.status == 2).count();
+    let used_count = red_list.iter().filter(|r| r.status == 2).count();
+    let disabled_count = red_list.iter().filter(|r| r.status == 3).count();
 
     let total_quota: f64 = red_list.iter().map(|r| r.quota_cny).sum();
     let available_quota: f64 = red_list
@@ -131,8 +168,8 @@ pub fn RedemptionsPage() -> Element {
                 }
                 match tier {
                     1 => r.status == 1,
-                    2 => r.status == 3,
-                    3 => r.status == 2,
+                    2 => r.status == 2,
+                    3 => r.status == 3,
                     _ => true,
                 }
             })
@@ -347,26 +384,9 @@ fn RedemptionCard(
     let preview = item.code_preview.clone();
     let _ = preview;
 
-    let (status_text, status_tone, bar_tone, bar_pct) = match item.status {
-        1 => (
-            "未使用",
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "bg-emerald-500",
-            100,
-        ),
-        2 => (
-            "已停用",
-            "border-amber-500/30 bg-amber-500/20 text-amber-400",
-            "bg-amber-500",
-            40,
-        ),
-        _ => (
-            "已核销",
-            "border-zinc-700 bg-zinc-800/80 text-zinc-400",
-            "bg-zinc-700",
-            0,
-        ),
-    };
+    let sd = status_display(item.status);
+    let (status_text, status_tone, bar_tone, bar_pct) =
+        (sd.label, sd.badge_tone, sd.bar_tone, sd.bar_pct);
 
     let key_clone = item.key.clone();
     let disable_key = item.key.clone();
@@ -451,17 +471,17 @@ fn RedemptionCard(
                     }
                 } else if item.status == 2 {
                     button {
-                        "data-testid": "disabled-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
-                        disabled: true,
-                        "已停用"
-                    }
-                } else {
-                    button {
                         "data-testid": "redeemed-redemption",
                         class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "已核销"
+                    }
+                } else {
+                    button {
+                        "data-testid": "disabled-redemption",
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        disabled: true,
+                        "已停用"
                     }
                 }
             }

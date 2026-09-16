@@ -95,6 +95,31 @@ fn map_passthrough_fields() {
     assert_eq!(row.created, "2026-09-01 00:00:00");
 }
 
+/// 状态展示语义回归闸:与后端 redeem.rs 写侧一致——核销 SET 2、停用 SET 3。
+/// 历史事故:本页曾把 2/3 的文案/统计对调(管理员看到核销↔停用整体颠倒)。
+/// 语义由 tests/manage_wire_contract.rs 在后端钉死,此处钉前端,防再翻。
+#[test]
+fn status_display_matches_backend_semantics() {
+    use admin_page_admin::redemptions::status_display;
+
+    let unused = status_display(1);
+    assert_eq!(unused.label, "未使用");
+    assert_eq!(unused.bar_pct, 100);
+
+    // 2 = 已核销(CAS 核销终态):面额耗尽,不是停用。
+    let redeemed = status_display(2);
+    assert_eq!(redeemed.label, "已核销");
+    assert_eq!(redeemed.bar_pct, 0);
+
+    // 3 = 已停用(DELETE 终态):面额冻结,不是核销。
+    let disabled = status_display(3);
+    assert_eq!(disabled.label, "已停用");
+    assert_eq!(disabled.bar_pct, 40);
+
+    // 未知值兜底落「已停用」而非「已核销」——保守展示不夸大剩余面额。
+    assert_eq!(status_display(9).label, "已停用");
+}
+
 /// 未核销的码:redeemed_at 缺省映射为空串(卡片据此隐藏核销时间行)。
 #[test]
 fn map_default_empty_redeemed_at() {
