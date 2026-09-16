@@ -41,8 +41,9 @@ verify: fmt-check clippy check
 #   改了 crates/api 代码   : just dev-backend update   (重建+重启, 登录态不丢, ~3s)
 #   前端联调起不来/报 500 : just dev-check            (查 3211/8090 监听 + 后端状态)
 #   重置脏数据            : just db-reset && just db-seed
-#   起前端 web            : cd apps/admin-web && dx serve --platform web --port 8090
-#                           (务必用会话的持久后台任务起, 不要 nohup &, 见文末疑难)
+#   起前端 web            : just dev-web 8090          (dx serve --platform web, --watch false 防 watch 卡死)
+#   免登录调试前端        : just dev-web 8090 debug    (debug-auto-login feature, 自动登录 dev 种子 admin_dev;
+#                                          打开 #login/#signup/#auth 仍可手动调试登录页)
 
 # PG 连接参数 (容器名/库可按环境覆盖)
 PG_CONTAINER := "uf-local-postgres"
@@ -93,6 +94,21 @@ wt-targets-clean:
 # 注意: 必须从跟踪 newxapi/main 的主检出运行, 不要在 .wt 工作树里起共享实例
 dev-backend *args:
     bash scripts/dev-backend.sh {{args}}
+
+# 起 admin 前端 web dev server（务必用会话的持久后台任务起, 起后 ss 验证端口, 见文末疑难）
+#   普通前端    : just dev-web 8090
+#   免登录调试  : just dev-web 8090 debug
+#     debug 档启用 debug-auto-login feature: 无 token 且不在登录页时自动登录 dev 种子
+#     账号 admin_dev (401 清会话后也会先自动重登); 打开 #login/#signup/#auth 仍可
+#     手动调试登录页, 主动「退出登录」不会被自动重登顶掉。彻底关闭用普通档重新起。
+#   全部 --watch false (仓库已知 dx watch 重建卡死)。
+dev-web port="8090" mode="":
+    #!/usr/bin/env bash
+    if [ "{{mode}}" = "debug" ]; then
+      cd apps/admin-web && dx serve --platform web --port {{port}} --watch false --features debug-auto-login
+    else
+      cd apps/admin-web && dx serve --platform web --port {{port}} --watch false
+    fi
 
 # dev 环境体检：查共享后端(3211)/前端 serve(8090) 监听 + 打印进程卫生提醒
 # 场景: 前端页面报 500/连不上, 或 agent 开工前确认环境活着
