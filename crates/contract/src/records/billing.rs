@@ -80,6 +80,12 @@ pub struct CurrencyDefRecord {
     pub internal_rate: f64,
     pub enabled: bool,
     pub remark: String,
+    /// 展示符号（¥ / $ / P）； fiat 必填，points 可空。
+    pub symbol: String,
+    /// `points` = 可扣费余额货币；`fiat` = 仅计价展示（不进 user_balances）。
+    pub kind: String,
+    /// 展示小数位：法币 2、点数 0。
+    pub precision: i16,
 }
 
 /// 用户货币余额 (user_balances 表)。

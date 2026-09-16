@@ -94,7 +94,7 @@ crates/web/<prefix-feature>/
 
 ### cpulimit
 
-- CPU-heavy 命令必须套 `cpulimit -l 70 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
+- CPU-heavy 命令必须套 `cpulimit -l 65 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
 ### 本机 dev 服务与进程卫生（硬约束）
 
@@ -222,7 +222,7 @@ loop1:
 
 #### 4. test
 
-- 全部子任务通过 audit 后，本地仅运行极小范围的类型检查（`cargo check -p <crate>`，CPU-heavy 必须套 `cpulimit -l 70 -i --`）。
+- 全部子任务通过 audit 后，本地仅运行极小范围的类型检查（`cargo check -p <crate>`，CPU-heavy 必须套 `cpulimit -l 65 -i --`）。
 - **尽可能不要在本地运行 `cargo test`**：所有集成测试、多 crate 联调与重型测试一律推送到 PR 分支，交给 GitHub CI 依据 `git diff` 动态按需执行。
 - **重型测试**（>2 min、需要容器 / 网络 / 大数据）放 CI；CI 未跑完前不得 closeout / merge。
 - **CI 驱动闭环**：以 GitHub CI 运行报告为准；CI 未全部跑绿前不得 closeout / merge。
