@@ -349,7 +349,7 @@ pub fn vendor_color(vendor: &str, fallback_index: usize) -> &'static str {
         .iter()
         .find(|(n, _)| *n == vendor)
         .map(|(_, c)| *c)
-        .unwrap_or(&VENDOR_FALLBACK_COLORS[fallback_index % VENDOR_FALLBACK_COLORS.len()])
+        .unwrap_or(VENDOR_FALLBACK_COLORS[fallback_index % VENDOR_FALLBACK_COLORS.len()])
 }
 
 /// 厂商份额聚合行。

@@ -3,6 +3,7 @@
 //! 另断言 models / leaderboard 新接的真实端点响应形状(字段名用后端 camelCase 原名):
 //! - GET /api/models → {"items":[ModelView], "total"} (admin-catalog models.rs)
 //! - GET /api/log/top → {"items":[UsageTopRow]}       (admin-observe logs.rs)
+//!
 //! 以及统计卡新增的纯展示函数: fmt_usd / sparkline 重切与归一化 / 增长率三态 / 份额。
 //! W4 追加: /api/log/errors 信封解析、趋势悬浮卡排序+Total+折叠、时间窗副标题文案、
 //! lastSeen 本地时间格式化。
