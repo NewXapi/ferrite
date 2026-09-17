@@ -7,6 +7,8 @@
 
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
+use ui::StatCard;
+use ui::StatSize;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use contract::api::usage::{UsageLogDto, UsageStatDto};
@@ -195,11 +197,12 @@ pub fn UsageLogsPanel() -> Element {
             section { id: "usage-sec-stats", class: "scroll-mt-8 space-y-3",
                 h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                    StatCard { value: stat_val(|v| v.requests), label: "今日请求" }
-                    StatCard { value: stat_val(|v| v.quota), label: "今日消耗 (额度单位)" }
-                    StatCard { value: stat_val(|v| v.rpm), label: "RPM (近 60s)" }
-                    StatCard { value: stat_val(|v| v.tpm), label: "TPM (近 60s)" }
-                    StatCard { value: "—".to_string(), label: "成功率 (暂无数据)" }
+                    // 本页统计卡统一用 Lg 档（px-5 py-4 + text-2xl 等宽值），与迁移前标记逐字一致。
+                    StatCard { value: stat_val(|v| v.requests), label: "今日请求", size: StatSize::Lg }
+                    StatCard { value: stat_val(|v| v.quota), label: "今日消耗 (额度单位)", size: StatSize::Lg }
+                    StatCard { value: stat_val(|v| v.rpm), label: "RPM (近 60s)", size: StatSize::Lg }
+                    StatCard { value: stat_val(|v| v.tpm), label: "TPM (近 60s)", size: StatSize::Lg }
+                    StatCard { value: "—".to_string(), label: "成功率 (暂无数据)", size: StatSize::Lg }
                 }
             }
 
@@ -273,16 +276,6 @@ pub fn UsageLogsPanel() -> Element {
                     on_close: move |_| detail.set(None),
                 }
             }
-        }
-    }
-}
-
-#[component]
-fn StatCard(value: String, label: &'static str) -> Element {
-    rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-5 py-4 hover:border-zinc-600 transition-colors",
-            p { class: "text-2xl font-semibold text-zinc-100 tabular-nums", "{value}" }
-            p { class: "mt-1 text-xs text-zinc-500", "{label}" }
         }
     }
 }

@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
+use ui::StatCard;
 
 use client::ApiClient;
 use contract::api::admin::{AdminUserDto, ManageUserRequest};
@@ -402,17 +403,6 @@ pub fn UsersPanel() -> Element {
                     topup.set(None);
                 },
             }
-        }
-    }
-}
-
-#[component]
-fn StatCard(value: String, label: &'static str) -> Element {
-    rsx! {
-        div {
-            class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
-            p { class: "text-xl font-semibold tracking-tight text-white", "{value}" }
-            p { class: "mt-0.5 text-xs text-zinc-500", "{label}" }
         }
     }
 }

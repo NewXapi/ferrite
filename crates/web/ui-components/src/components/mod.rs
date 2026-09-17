@@ -19,3 +19,6 @@ pub mod showcase;
 
 // 排行榜条目卡（feat/overview-ui #204）
 pub mod rank_board;
+
+// 管理台统计卡（收敛 groups/users/keys/usage_logs 四处重复定义）
+pub mod stat_card;
