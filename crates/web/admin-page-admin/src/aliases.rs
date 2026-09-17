@@ -481,9 +481,8 @@ fn AliasCard(
     on_edit: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
-    // 回调各持一份克隆,避免单一 String 被两个闭包争用所有权
-    let edit_key = alias_key.clone();
-    let delete_key = alias_key;
+    // 保留参数以维持组件签名,渲染处暂不使用
+    let _ = (alias_key, on_edit, on_delete);
 
     let display_title = if alias.display.is_empty() {
         alias.alias.clone()
@@ -607,21 +606,6 @@ fn AliasCard(
                             }
                         }
                     }
-                }
-            }
-
-            div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    "data-testid": "edit-alias",
-                    onclick: move |_| on_edit.call(edit_key.clone()),
-                    "编辑"
-                }
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
-                    "data-testid": "delete-alias",
-                    onclick: move |_| on_delete.call(delete_key.clone()),
-                    "删除"
                 }
             }
         }
