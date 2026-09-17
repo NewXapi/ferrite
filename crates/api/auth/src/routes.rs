@@ -69,7 +69,7 @@ pub fn router_with_svc_and_hook(
         .route("/self", get(self_view))
         .route("/self", put(update_self))
         .route("/self", delete(delete_self))
-        .route("/users", get(list_users))
+        .route("/users", get(list_users).post(create_user))
         .route("/users/search", get(search_users))
         .route("/users/{key}", get(get_user))
         .route("/users/manage", post(manage_user))
@@ -293,6 +293,7 @@ enum ManageUserAction {
     Disable,
     SetRole,
     AdjustQuota,
+    SetGroups,
     ResetPassword,
 }
 
@@ -303,9 +304,37 @@ impl ManageUserAction {
             Self::Disable => "disable",
             Self::SetRole => "set_role",
             Self::AdjustQuota => "adjust_quota",
+            Self::SetGroups => "set_groups",
             Self::ResetPassword => "reset_password",
         }
     }
+}
+
+/// POST /api/user/users — admin 创建用户请求体。
+/// 字段与 `AuthService::admin_create_user` 参数一一对应 (camelCase wire)。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateUserRequest {
+    username: String,
+    password: String,
+    #[serde(default)]
+    email: Option<String>,
+    /// 1 | 10 | 100 (缺省 1 = 普通用户)。
+    #[serde(default = "default_role")]
+    role: u16,
+    /// 初始额度 (内部单位, 缺省 0)。
+    #[serde(default)]
+    quota: i64,
+    /// 生效分组数组 (缺省 ["default"]);groups[1] 为生效分组。
+    #[serde(default = "default_groups")]
+    groups: Vec<String>,
+}
+
+fn default_role() -> u16 {
+    1
+}
+fn default_groups() -> Vec<String> {
+    vec!["default".into()]
 }
 
 async fn update_self(
@@ -377,6 +406,33 @@ struct ListQuery {
     search: Option<String>,
     page: Option<i64>,
     size: Option<i64>,
+}
+
+/// POST /api/user/users — admin 创建用户 (指定 role/quota/分组)。
+async fn create_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateUserRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorBody>)> {
+    let user = bearer_user(&state.svc, &headers)
+        .await
+        .map_err(err_response)?;
+    require_admin(&user).map_err(err_response)?;
+    match state
+        .svc
+        .admin_create_user(
+            &req.username,
+            &req.password,
+            req.email.as_deref(),
+            req.role,
+            req.quota,
+            &req.groups,
+        )
+        .await
+    {
+        Ok(u) => Ok(Json(json!(u))),
+        Err(e) => Err(err_response(e)),
+    }
 }
 
 async fn manage_user(

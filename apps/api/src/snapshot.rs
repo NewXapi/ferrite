@@ -80,13 +80,14 @@ pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64
 /// 一次 JOIN 算出全部启用货币用户的折算综合可用值（#179 多货币）。
 ///
 /// `available_i64 = COALESCE(SUM(amount × internal_rate), 0)`，仅启用货币。
-/// 返回 `user UUID 字符串 → i64`；user_balances 无行的用户不进 map
+/// 返回 `(user UUID 字符串 → i64)`；user_balances 无行的用户不进 map
 /// （消费方 `unwrap_or(0)`，语义 = 没充值就拦截）。
 async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>> {
     // 口径对齐 WalletService::available_i64(user, group)（#188 阶段 2 接线）：
     // - 冻结不可用：每行只计 (amount - frozen_amount)；
-    // - 组倍率：currency_defs.group_rates 按用户 auth_users.group_id 取
-    //   （COALESCE 缺组/NULL = 1.0，行为与无配置完全一致）；
+    // - 组倍率：currency_defs.group_rates 按用户生效分组取（迁移 0015 起
+    //   多值数组,groups[1] 为生效分组；空数组/缺组/NULL = 1.0,行为与无配置
+    //   完全一致）；
     // - LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
     //   乘积可能超出 BIGINT 域（PG 直接抛 numeric out of range，boot 会挂）。
     //   夹在 SQL 侧比 Rust 侧安全：转换前就不可能越界。
@@ -97,7 +98,7 @@ async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>>
                    COALESCE(SUM(
                        (ub.amount - ub.frozen_amount)
                        * cd.internal_rate
-                       * COALESCE((cd.group_rates->>u.group_id)::float8, 1.0)
+                       * COALESCE((cd.group_rates->>u.groups[1])::float8, 1.0)
                    ), 0),
                    9223372036854775807::double precision
                )::BIGINT AS available
@@ -627,7 +628,7 @@ pub fn parse_token_allowed_models(value: &Value) -> Option<Vec<String>> {
 async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnapshot)> {
     let rows = sqlx::query(
         r#"
-        SELECT key, username, display_name, email, quota, used_quota, group_id, role, status, created_at
+        SELECT key, username, display_name, email, quota, used_quota, groups, role, status, created_at
         FROM auth_users
         WHERE status = 1
         "#,
@@ -647,7 +648,9 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnaps
         let email = email.unwrap_or_default();
         let quota: i64 = row.try_get("quota")?;
         let used_quota: i64 = row.try_get("used_quota")?;
-        let group_id: String = row.try_get("group_id")?;
+        // 多值分组（迁移 0015）：生效分组 = groups[1]（token 未设组时的回落值）
+        let groups: Vec<String> = row.try_get("groups")?;
+        let group = groups.into_iter().next().unwrap_or_default();
         let role: i16 = row.try_get("role")?;
         let status: i16 = row.try_get("status")?;
         let created_at: chrono::DateTime<Utc> = row.try_get("created_at")?;
@@ -666,7 +669,7 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnaps
             quota,
             used_quota,
             request_count: 0,
-            group: group_id,
+            group,
             status: status as u8,
             role: role as u16,
             created_at,
