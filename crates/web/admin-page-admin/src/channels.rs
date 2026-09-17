@@ -9,6 +9,7 @@
 
 use dioxus::prelude::*;
 use serde_json::json;
+use ui::ChannelCard as PrototypeChannelCard;
 use ui::SegmentedCapsule;
 
 use client::ApiClient;
@@ -373,6 +374,21 @@ pub fn ChannelsPage() -> Element {
                             p { class: "text-zinc-400", "没有匹配的渠道" }
                         }
                     } else {
+                        if let Some(channel) = filtered.first().cloned() {
+                            {
+                                rsx! {
+                                    div {
+                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                                        role: "region",
+                                        "aria-label": "新卡示例",
+                                        "data-testid": "channel-card-prototype",
+                                        PrototypeChannelCard {
+                                            channel,
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             "data-testid": "channels-list",
                             for c in filtered {

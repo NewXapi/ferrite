@@ -1,0 +1,33 @@
+page: "#groups"
+name: "分组管理"
+
+# 契约源：crates/web/admin-page-admin/src/groups.rs 的 GroupsPage，及
+# crates/web/ui-components/src/components/admin_card/{card,dot_tab,groups}.rs。
+# 导航入口：管理区「分组」tab（Section::Manage index 2）或 #groups hash。
+
+elements:
+  # ---------- 新卡示例 ----------
+  - role: region
+    name: "新卡示例"
+    required: false
+    testid: "group-card-prototype"
+
+  # 共享卡内的四颗圆点是普通按钮，切换只读内容（不采用 ARIA tab 语义）。
+  - role: group
+    name: "内容页签"
+    required: false
+
+  - role: button
+    name: "概览 / 倍率 / 白名单 / 系统"
+    required: false
+    testid: "dot-tab-0..3"
+    action: click
+    effect: "切换只读内容"
+
+  # 当前入口只转发既有编辑回调；Popover 尚未实现。
+  - role: button
+    name: "编辑入口（未来可接 Popover）"
+    required: false
+    testid: "admin-card-edit"
+    action: click
+    effect: "触发现有编辑入口（不是 Popover 已实现）"

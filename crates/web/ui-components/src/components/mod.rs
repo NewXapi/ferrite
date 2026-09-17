@@ -19,3 +19,6 @@ pub mod showcase;
 
 // 排行榜条目卡（feat/overview-ui #204）
 pub mod rank_board;
+
+// 管理面板专用卡牌组件（feat/admin-card-kit）
+pub mod admin_card;
