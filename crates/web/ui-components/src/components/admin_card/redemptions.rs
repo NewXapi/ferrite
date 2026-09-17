@@ -59,6 +59,53 @@ pub fn RedemptionCard(
     let redeemed_by_str = redeemed_by.clone().unwrap_or_else(|| "未核销".to_string());
     let redeemed_at_str = redeemed_at.clone().unwrap_or_else(|| "—".to_string());
 
+    // 四个页签内容各自为独立 Element，传给 AdminCard 同格叠加渲染。
+    let short_k = short_key(&redemption_key);
+    let panel_basic = rsx! {
+        div { class: "space-y-2.5",
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "码预览" }
+                span { class: "font-medium text-zinc-200 truncate", "{code_preview}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "额度" }
+                span { class: "font-medium text-zinc-200", "¥{quota_cny:.2}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "状态" }
+                span { class: "font-medium text-zinc-200", "{status_str}" }
+            }
+        }
+    };
+    let panel_redeem = rsx! {
+        div { class: "space-y-2 text-xs",
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "核销人" }
+                span { class: "text-zinc-200", "{redeemed_by_str}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "核销时间" }
+                span { class: "text-zinc-200", "{redeemed_at_str}" }
+            }
+        }
+    };
+    let panel_generated = rsx! {
+        div { class: "space-y-2 text-xs",
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "生成时间" }
+                span { class: "text-zinc-200", "{created_at}" }
+            }
+        }
+    };
+    let panel_system = rsx! {
+        div { class: "space-y-2 text-xs",
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "Key" }
+                span { class: "font-mono text-zinc-200", "{short_k}" }
+            }
+        }
+    };
+
     rsx! {
         AdminCard {
             title: "兑换码",
@@ -67,56 +114,10 @@ pub fn RedemptionCard(
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
             testid: Some("redemption-card-new".to_string()),
-
-            {
-                match tab() {
-                    0 => rsx! {
-                        div { class: "space-y-2.5",
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "码预览" }
-                                span { class: "font-medium text-zinc-200 truncate", "{code_preview}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "额度" }
-                                span { class: "font-medium text-zinc-200", "¥{quota_cny:.2}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "状态" }
-                                span { class: "font-medium text-zinc-200", "{status_str}" }
-                            }
-                        }
-                    },
-                    1 => rsx! {
-                        div { class: "space-y-2 text-xs",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "核销人" }
-                                span { class: "text-zinc-200", "{redeemed_by_str}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "核销时间" }
-                                span { class: "text-zinc-200", "{redeemed_at_str}" }
-                            }
-                        }
-                    },
-                    2 => rsx! {
-                        div { class: "space-y-2 text-xs",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "生成时间" }
-                                span { class: "text-zinc-200", "{created_at}" }
-                            }
-                        }
-                    },
-                    3 => rsx! {
-                        div { class: "space-y-2 text-xs",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "Key" }
-                                span { class: "font-mono text-zinc-200", "{short_key(&redemption_key)}" }
-                            }
-                        }
-                    },
-                    _ => rsx! {},
-                }
-            }
+            panel_0: panel_basic,
+            panel_1: panel_redeem,
+            panel_2: panel_generated,
+            panel_3: panel_system,
         }
     }
 }

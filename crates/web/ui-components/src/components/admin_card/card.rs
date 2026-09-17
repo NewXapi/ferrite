@@ -5,13 +5,17 @@ use super::dot_tab::DotTabBar;
 /// 渲染管理页实体摘要的共享卡片外壳。
 ///
 /// `title` 和可选的 `subtitle` 用作卡片标题；`tabs` 是只读内容页签的标签，
-/// `active_tab` 指明当前圆点，`on_tab_change` 接收用户选择的索引。`children`
-/// 是当前页签对应的内容。`testid` 可为整个卡片指定测试标识。
+/// `active_tab` 指明当前圆点，`on_tab_change` 接收用户选择的索引。
 ///
-/// 当 `tabs` 为空或 `active_tab` 超出 `tabs` 范围时不会产生错误：前者不渲染
-/// 圆点，后者不激活任何圆点。
+/// `panel_0` 到 `panel_3` 是四个页签各自的内容。四个 panel 始终同格渲染
+/// （grid 叠加在 `col-start-1 row-start-1`），非激活的加 `invisible`
+/// （`visibility:hidden`，仍占布局高度）与 `pointer-events-none`，因此容器
+/// 高度由最高的 panel 决定，切换页签时卡片高度不跳动。`testid` 可为整张
+/// 卡片指定测试标识。
 ///
-/// 例如，实体卡可传入两个摘要页签，并在回调中切换其本地内容状态。
+/// 当 `tabs` 为空时不渲染圆点；`active_tab` 超出 `tabs` 范围时不激活任何圆点。
+///
+/// 例如，实体卡可传入四个摘要页签内容，并在回调中切换其本地页签状态。
 #[component]
 pub fn AdminCard(
     title: String,
@@ -19,11 +23,31 @@ pub fn AdminCard(
     tabs: Vec<&'static str>,
     active_tab: usize,
     on_tab_change: EventHandler<usize>,
-    children: Element,
+    /// 页签 0（基本信息类页签）的内容。
+    panel_0: Element,
+    /// 页签 1 的内容。
+    panel_1: Element,
+    /// 页签 2 的内容。
+    panel_2: Element,
+    /// 页签 3（系统类页签）的内容。
+    panel_3: Element,
     /// 整张卡片的可选测试标识；未传时渲染空值。
     #[props(default)]
     testid: Option<String>,
 ) -> Element {
+    // 非激活页签：invisible（占布局高度）+ pointer-events-none（不可交互）。
+    let off_cls = "invisible pointer-events-none";
+    let cls = |i: usize| {
+        if i == active_tab {
+            "col-start-1 row-start-1".to_string()
+        } else {
+            format!("col-start-1 row-start-1 {off_cls}")
+        }
+    };
+    let c0 = cls(0);
+    let c1 = cls(1);
+    let c2 = cls(2);
+    let c3 = cls(3);
     rsx! {
         div {
             class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
@@ -48,8 +72,13 @@ pub fn AdminCard(
                 }
             }
 
-            // Tab content (no bottom button row).
-            div { class: "mt-3", {children} }
+            // Tab content: 四个 panel 同格叠加，容器高度取最高者，切页签不跳动。
+            div { class: "mt-3 grid grid-cols-1",
+                div { class: "{c0}", {panel_0} }
+                div { class: "{c1}", {panel_1} }
+                div { class: "{c2}", {panel_2} }
+                div { class: "{c3}", {panel_3} }
+            }
         }
     }
 }

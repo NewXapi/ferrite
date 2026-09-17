@@ -77,6 +77,88 @@ pub fn ChannelCard(
         .map(|v| v.iter().map(|k| mask_key(k)).collect())
         .unwrap_or_default();
 
+    // 四个页签内容各自为独立 Element，传给 AdminCard 同格叠加渲染。
+    let groups_joined = channel.groups.join(", ");
+    let panel_basic = rsx! {
+        div { class: "space-y-2.5",
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "类型" }
+                span { class: "font-medium text-zinc-200", "{channel.channel_type}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "状态" }
+                span { class: "font-medium text-zinc-200", "{channel_status_str}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "地址" }
+                span { class: "font-medium text-zinc-200 truncate", "{channel.base_url}" }
+            }
+        }
+    };
+    let panel_keys = rsx! {
+        div { class: "space-y-2",
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "密钥数" }
+                span { class: "font-medium text-zinc-200", "{channel.key_count}" }
+            }
+            for mk in &masked_keys {
+                div { class: "flex justify-between gap-2 text-xs",
+                    span { class: "text-zinc-400", "密钥" }
+                    span { class: "font-mono text-zinc-200", "{mk}" }
+                }
+            }
+            div { class: "space-y-1.5",
+                p { class: "text-[11px] text-zinc-400", "调度模型" }
+                if dispatch_models.is_empty() {
+                    span { class: "text-[11px] text-zinc-500", "无调度模型" }
+                } else {
+                    for m in &dispatch_models {
+                        span {
+                            class: "inline-flex rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300 mr-1.5 mb-1",
+                            "{m}"
+                        }
+                    }
+                }
+            }
+        }
+    };
+    let panel_dispatch = rsx! {
+        div { class: "space-y-2 text-xs",
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "优先级" }
+                span { class: "text-zinc-200", "{channel.priority}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "权重" }
+                span { class: "text-zinc-200", "{channel.weight}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "分组" }
+                span { class: "text-zinc-200", "{groups_joined}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "测试模型" }
+                span { class: "text-zinc-200 truncate", "{test_model}" }
+            }
+        }
+    };
+    let panel_system = rsx! {
+        div { class: "space-y-2 text-xs",
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "备注" }
+                span { class: "text-zinc-200 truncate", "{remark}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "创建" }
+                span { class: "text-zinc-200", "{channel.created_at}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "更新" }
+                span { class: "text-zinc-200", "{updated_at}" }
+            }
+        }
+    };
+
     rsx! {
         AdminCard {
             title: "{channel.name}",
@@ -85,91 +167,10 @@ pub fn ChannelCard(
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
             testid: Some("channel-card-new".to_string()),
-
-            {
-                match tab() {
-                    0 => rsx! {
-                        div { class: "space-y-2.5",
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "类型" }
-                                span { class: "font-medium text-zinc-200", "{channel.channel_type}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "状态" }
-                                span { class: "font-medium text-zinc-200", "{channel_status_str}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "地址" }
-                                span { class: "font-medium text-zinc-200 truncate", "{channel.base_url}" }
-                            }
-                        }
-                    },
-                    1 => rsx! {
-                        div { class: "space-y-2",
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "密钥数" }
-                                span { class: "font-medium text-zinc-200", "{channel.key_count}" }
-                            }
-                            for mk in &masked_keys {
-                                div { class: "flex justify-between gap-2 text-xs",
-                                    span { class: "text-zinc-400", "密钥" }
-                                    span { class: "font-mono text-zinc-200", "{mk}" }
-                                }
-                            }
-                            div { class: "space-y-1.5",
-                                p { class: "text-[11px] text-zinc-400", "调度模型" }
-                                if dispatch_models.is_empty() {
-                                    span { class: "text-[11px] text-zinc-500", "无调度模型" }
-                                } else {
-                                    for m in &dispatch_models {
-                                        span {
-                                            class: "inline-flex rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300 mr-1.5 mb-1",
-                                            "{m}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    2 => rsx! {
-                        div { class: "space-y-2 text-xs",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "优先级" }
-                                span { class: "text-zinc-200", "{channel.priority}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "权重" }
-                                span { class: "text-zinc-200", "{channel.weight}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "分组" }
-                                span { class: "text-zinc-200", "{channel.groups.join(\", \")}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "测试模型" }
-                                span { class: "text-zinc-200 truncate", "{test_model}" }
-                            }
-                        }
-                    },
-                    3 => rsx! {
-                        div { class: "space-y-2 text-xs",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "备注" }
-                                span { class: "text-zinc-200 truncate", "{remark}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "创建" }
-                                span { class: "text-zinc-200", "{channel.created_at}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "更新" }
-                                span { class: "text-zinc-200", "{updated_at}" }
-                            }
-                        }
-                    },
-                    _ => rsx! {},
-                }
-            }
+            panel_0: panel_basic,
+            panel_1: panel_keys,
+            panel_2: panel_dispatch,
+            panel_3: panel_system,
         }
     }
 }

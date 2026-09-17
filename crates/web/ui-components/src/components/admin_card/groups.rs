@@ -67,6 +67,66 @@ pub fn GroupCard(
         group.remark.clone()
     };
 
+    // 四个页签内容各自为独立 Element，传给 AdminCard 同格叠加渲染。
+    let panel_basic = rsx! {
+        div { class: "space-y-2.5",
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "名称" }
+                span { class: "font-medium text-zinc-200 truncate", "{group.name}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "状态" }
+                span { class: "font-medium text-zinc-200", "{group_status_str}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "备注" }
+                span { class: "font-medium text-zinc-200", "{remark}" }
+            }
+        }
+    };
+    let panel_ratio = rsx! {
+        div { class: "space-y-2",
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "倍率" }
+                span { class: "font-medium text-zinc-200", "{fmt_ratio(group.ratio)}" }
+            }
+            div { class: "flex justify-between gap-2 text-xs",
+                span { class: "text-zinc-400", "示例价格" }
+                span { class: "font-medium text-zinc-200", "100 单位 = {example_cost}" }
+            }
+        }
+    };
+    let panel_whitelist = rsx! {
+        div { class: "space-y-1.5",
+            if whitelist.is_empty() {
+                span { class: "text-[11px] text-zinc-500", "全模型可用" }
+            } else {
+                for m in &whitelist {
+                    span {
+                        class: "inline-flex rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300 mr-1.5 mb-1",
+                        "{m}"
+                    }
+                }
+            }
+        }
+    };
+    let panel_system = rsx! {
+        div { class: "space-y-2 text-xs",
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "Key" }
+                span { class: "font-mono text-zinc-200", "{short_k}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "创建" }
+                span { class: "text-zinc-200", "{group.created_at}" }
+            }
+            div { class: "flex justify-between gap-2",
+                span { class: "text-zinc-400", "更新" }
+                span { class: "text-zinc-200", "{group.updated_at}" }
+            }
+        }
+    };
+
     rsx! {
         AdminCard {
             title: "{group.name}",
@@ -75,70 +135,10 @@ pub fn GroupCard(
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
             testid: Some("group-card-new".to_string()),
-
-            {
-                match tab() {
-                    0 => rsx! {
-                        div { class: "space-y-2.5",
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "名称" }
-                                span { class: "font-medium text-zinc-200 truncate", "{group.name}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "状态" }
-                                span { class: "font-medium text-zinc-200", "{group_status_str}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "备注" }
-                                span { class: "font-medium text-zinc-200", "{remark}" }
-                            }
-                        }
-                    },
-                    1 => rsx! {
-                        div { class: "space-y-2",
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "倍率" }
-                                span { class: "font-medium text-zinc-200", "{fmt_ratio(group.ratio)}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "示例价格" }
-                                span { class: "font-medium text-zinc-200", "100 单位 = {example_cost}" }
-                            }
-                        }
-                    },
-                    2 => rsx! {
-                        div { class: "space-y-1.5",
-                            if whitelist.is_empty() {
-                                span { class: "text-[11px] text-zinc-500", "全模型可用" }
-                            } else {
-                                for m in &whitelist {
-                                    span {
-                                        class: "inline-flex rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300 mr-1.5 mb-1",
-                                        "{m}"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    3 => rsx! {
-                        div { class: "space-y-2 text-xs",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "Key" }
-                                span { class: "font-mono text-zinc-200", "{short_k}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "创建" }
-                                span { class: "text-zinc-200", "{group.created_at}" }
-                            }
-                            div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "更新" }
-                                span { class: "text-zinc-200", "{group.updated_at}" }
-                            }
-                        }
-                    },
-                    _ => rsx! {},
-                }
-            }
+            panel_0: panel_basic,
+            panel_1: panel_ratio,
+            panel_2: panel_whitelist,
+            panel_3: panel_system,
         }
     }
 }
