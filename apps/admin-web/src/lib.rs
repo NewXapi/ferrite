@@ -405,6 +405,7 @@ fn get_initial_route() -> (Section, u8) {
             "#redemptions" => (Section::Manage, 6),
             "#system" => (Section::Manage, 7),
             "#gw-health" => (Section::Manage, 8),
+            "#currency" => (Section::Manage, 9),
             _ => (Section::Dashboard, 0),
         };
     }
@@ -504,6 +505,7 @@ pub fn HomePage() -> Element {
             "兑换".into(),
             "系统".into(),
             "网关健康".into(),
+            "货币".into(),
         ],
     };
     // 越界的 dash_tab clamp 到当前 section 的末位 tab,保证选中态与内容一致
