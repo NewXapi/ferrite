@@ -4,6 +4,7 @@
 //! 明文码只在生成响应里出现一次,页面用弹窗展示。
 
 use dioxus::prelude::*;
+use ui::RedemptionCard as PrototypeRedemptionCard;
 use ui::SegmentedCapsule;
 
 use crate::api::{
@@ -30,8 +31,9 @@ enum RedModalState {
 pub struct RedRowFE {
     pub key: String,
     pub code_preview: String,
+    /// 页面展示使用的 CNY 金额（后端 `quota` 按 500000 单位换算）。
     pub quota_cny: f64,
-    pub status: u8, // 1 未用 / 2 停用 / 3 已核销
+    pub status: u8, // 1 未使用 / 2 已核销 / 3 已停用
     pub redeemed_by: Option<String>,
     pub redeemed_at: String,
     pub created: String,
@@ -294,6 +296,27 @@ pub fn RedemptionsPage() -> Element {
                             p { class: "text-zinc-400", "没有匹配的兑换码" }
                         }
                     } else {
+                        if let Some(row) = filtered_rows.first().cloned() {
+                            {
+                                let redeemed_at = (!row.redeemed_at.is_empty()).then_some(row.redeemed_at.clone());
+                                rsx! {
+                                    div {
+                                        role: "region",
+                                        "aria-label": "新卡示例",
+                                        "data-testid": "redemption-card-prototype",
+                                        PrototypeRedemptionCard {
+                                            redemption_key: row.key,
+                                            code_preview: row.code_preview,
+                                            quota_cny: row.quota_cny,
+                                            status: i16::from(row.status),
+                                            redeemed_by: row.redeemed_by,
+                                            redeemed_at,
+                                            created_at: row.created,
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             for r in filtered_rows {
                                 {

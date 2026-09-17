@@ -14,7 +14,7 @@ use client::ApiClient;
 use contract::api::admin::GroupDto;
 use contract::api::billing::AliasUpsertRequest;
 use dioxus::prelude::*;
-use ui::SegmentedCapsule;
+use ui::{AliasCard as PrototypeAliasCard, SegmentedCapsule};
 
 use crate::api::{
     delete_model_alias_api, list_groups_api, list_model_aliases_api, update_model_alias_api,
@@ -354,6 +354,35 @@ pub fn AliasesPage() -> Element {
                             p { class: "text-zinc-400", "没有匹配的模型别名" }
                         }
                     } else {
+                        if let Some((prototype_index, prototype_item)) = filtered.first() {
+                            {
+                                // 新卡示例仅消费当前筛选结果的首条真实数据；旧卡片网格与其写路径保持不变。
+                                let prototype_key = prototype_item.key.clone();
+                                let mut prototype_open_edit = open_edit;
+                                let prototype_alias = prototype_item.row.alias.clone();
+                                let prototype_display = prototype_item.row.display.clone();
+                                let prototype_input_per_1k = prototype_item.row.input_per_1k;
+                                let prototype_output_per_1k = prototype_item.row.output_per_1k;
+                                let prototype_multiplier = prototype_item.row.multiplier;
+                                let prototype_index = *prototype_index;
+                                rsx! {
+                                    div {
+                                        role: "region",
+                                        "aria-label": "别名新卡示例",
+                                        "data-testid": "alias-card-prototype",
+                                        PrototypeAliasCard {
+                                            alias: prototype_alias,
+                                            display: prototype_display,
+                                            input_per_1k: prototype_input_per_1k,
+                                            output_per_1k: prototype_output_per_1k,
+                                            multiplier: prototype_multiplier,
+                                            index: prototype_index,
+                                            on_edit: move |_| prototype_open_edit(prototype_key.clone()),
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         div {
                             class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             role: "list",
