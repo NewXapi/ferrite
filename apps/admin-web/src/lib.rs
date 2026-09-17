@@ -480,8 +480,6 @@ pub fn HomePage() -> Element {
                     SectionRail {
                         active_index: section_idx,
                         on_select: move |idx| section.set(SECTIONS[idx]),
-                        user_name: logged_user(),
-                        on_logout: move |_| do_logout(),
                     }
                 },
                 top_nav: rsx! {
@@ -504,6 +502,7 @@ pub fn HomePage() -> Element {
                         user_name: logged_user(),
                         is_light: is_light,
                         on_toggle_theme: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
+                        on_logout: move |_| do_logout(),
                     }
                 },
                 ConsolePanel {
