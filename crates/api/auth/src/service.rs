@@ -30,7 +30,7 @@ struct UserRow {
     status: i16,
     quota: i64,
     used_quota: i64,
-    /// 生效分组数组(迁移 0015);groups[1] 为生效分组 —— token 未显式设组时的
+    /// 生效分组数组(迁移 0016);groups[1] 为生效分组 —— token 未显式设组时的
     /// 回落值,也是 billing 组倍率的取数键。group_id 为旧死列,读取侧已全切到本列。
     groups: Vec<String>,
     auth_version: i64,

@@ -91,7 +91,7 @@ pub struct AdminUserDto {
     /// 生效分组 (`auth_users.groups[1]`,缺省 "default")。
     #[serde(default)]
     pub group: String,
-    /// 全部生效分组(迁移 0015 起多值);`groups[1]` 即 [`group`](Self::group)。
+    /// 全部生效分组(迁移 0016 起多值);`groups[1]` 即 [`group`](Self::group)。
     #[serde(default)]
     pub groups: Vec<String>,
     pub status: u8,

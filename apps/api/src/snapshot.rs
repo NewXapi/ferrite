@@ -85,7 +85,7 @@ pub async fn load_model_prices(pool: &PgPool) -> anyhow::Result<Vec<(String, f64
 async fn load_user_quotas(pool: &PgPool) -> anyhow::Result<HashMap<String, i64>> {
     // 口径对齐 WalletService::available_i64(user, group)（#188 阶段 2 接线）：
     // - 冻结不可用：每行只计 (amount - frozen_amount)；
-    // - 组倍率：currency_defs.group_rates 按用户生效分组取（迁移 0015 起
+    // - 组倍率：currency_defs.group_rates 按用户生效分组取（迁移 0016 起
     //   多值数组,groups[1] 为生效分组；空数组/缺组/NULL = 1.0,行为与无配置
     //   完全一致）；
     // - LEAST 夹住 i64::MAX：amount 是 BIGINT、internal_rate 是 DOUBLE，
@@ -648,7 +648,7 @@ async fn load_users(pool: &PgPool) -> anyhow::Result<(Vec<UserRecord>, UserSnaps
         let email = email.unwrap_or_default();
         let quota: i64 = row.try_get("quota")?;
         let used_quota: i64 = row.try_get("used_quota")?;
-        // 多值分组（迁移 0015）：生效分组 = groups[1]（token 未设组时的回落值）
+        // 多值分组（迁移 0016）：生效分组 = groups[1]（token 未设组时的回落值）
         let groups: Vec<String> = row.try_get("groups")?;
         let group = groups.into_iter().next().unwrap_or_default();
         let role: i16 = row.try_get("role")?;
