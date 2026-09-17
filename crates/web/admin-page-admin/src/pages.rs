@@ -215,13 +215,23 @@ pub fn SubscriptionsPage() -> Element {
             .ok()
             .filter(|&d| d >= 1)
             .unwrap_or(1);
-        // quota 展示口径直传；非有限/负值回落 0（后端同样拒绝负值）。
-        let quota = f_quota()
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .filter(|q| q.is_finite() && *q >= 0.0)
-            .unwrap_or(0.0);
+        // quota 展示口径直传；空串 = 0（无额度套餐），但显式非法值（非数字/负数）
+        // 必须报错而非静默存 0——否则用户拿到「已创建」成功提示却存了错数据。
+        let quota = {
+            let raw = f_quota().to_string();
+            let raw = raw.trim();
+            if raw.is_empty() {
+                0.0
+            } else {
+                match raw.parse::<f64>() {
+                    Ok(q) if q.is_finite() && q >= 0.0 => q,
+                    _ => {
+                        action_err.set(Some("额度必须是数字且不小于 0".into()));
+                        return;
+                    }
+                }
+            }
+        };
         let upgrade_group = {
             let g = f_group();
             if g.is_empty() || g == "不升级" {

@@ -253,9 +253,10 @@ impl From<SubscriptionRow> for SubscriptionDto {
 
 /// price NUMERIC 语义字符串校验：parse 成 f64，要求有限且非负。
 ///
-/// 返回解析值供入库前规范化（存 `to_string()` 的规范形式，避免 "09.90" 与
-/// "9.9" 在库里留下两种写法）。非法输入（"abc"、""、"-1"、"NaN"）→
-/// [`BillingErr::BadRequest`]（upsert 的入口校验，见 [`SubscriptionService::upsert`]）。
+/// 返回值**仅用于校验合法性**（非法即 BadRequest，不把垃圾字符串写进 TEXT 列）；
+/// 入库由调用方存 trim 后的**原字面量**（见 [`SubscriptionService::upsert`]）——
+/// f64 的 `to_string()` 回写会引入浮点漂移（"19.99" → "19.989999999999998"），
+/// TEXT 列保原字面量才精确。
 pub fn parse_price(price: &str) -> Result<f64, BillingErr> {
     let v: f64 = price.trim().parse().map_err(|_| {
         BillingErr::BadRequest(format!("price must be a numeric string, got {price:?}"))

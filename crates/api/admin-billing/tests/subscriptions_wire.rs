@@ -63,7 +63,8 @@ fn record_to_dto_field_mapping() {
     // 直映字段。
     assert_eq!(dto.name, "月度会员");
     assert_eq!(dto.price, Some(9.9), "price NUMERIC 字符串 → f64");
-    assert_eq!(dto.quota, Some(4_950_000.0), "quota 内部单位 as f64 直出");
+    // quota 记录层是内部单位（4_950_000），DTO 是展示口径（÷500_000 = 9.9）。
+    assert_eq!(dto.quota, Some(9.9), "quota 内部单位 → 展示口径 ÷500_000");
     assert_eq!(dto.enabled, Some(true));
 
     // new-api 独有、ferrite 侧未实现的字段必须为 None（前端按可选处理）。
