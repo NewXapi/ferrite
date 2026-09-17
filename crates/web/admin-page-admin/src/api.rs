@@ -5,7 +5,7 @@
 
 use client::{ApiClient, ApiError, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
-use contract::api::billing::AliasUpsertRequest;
+use contract::api::billing::{AliasUpsertRequest, SubscriptionUpsertRequest};
 use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
 
 // ---------------------------------------------------------------------------
@@ -521,4 +521,114 @@ pub async fn upsert_currency_api(
 ) -> ApiResult<CurrencyView> {
     let r: CurrencyResp = client.post("/api/currency", req).await?;
     Ok(r.currency)
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions (admin-billing /api/subscriptions)
+// ---------------------------------------------------------------------------
+
+/// 订阅套餐响应视图 — 与后端 `admin_billing::subscriptions::SubscriptionView`
+/// 的 JSON 形状逐字段一致:在 new-api 形状的 `SubscriptionDto` 之上 flatten
+/// `key` / `currency` / `createdAt` / `updatedAt`,全部 camelCase。
+///
+/// 前端**不能** `use` 后端服务层类型(`admin-page-admin` 不依赖 `admin-billing`),
+/// 这里按 JSON 输出形状重声明一份(风险点:两端形状漂移由
+/// `tests/subscriptions_wire.rs` 的解码断言钉死)。
+///
+/// 字段口径:`SubscriptionDto` 的字段后端只填表里有的列(name/price/quota/
+/// group/periodVal/periodUnit/maxPerUser/enabled/sortOrder),其余恒为 None
+/// ——前端统一按 Option 处理,`None` 映射为展示默认值(见
+/// [`crate::state::map_subscription_view`])。`key` 是 UUID 字符串,
+/// `DELETE /api/subscriptions/{key}` 的定位符。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionView {
+    /// 行 key(UUID)——DELETE 路径定位符;后端总是返回。
+    #[serde(default)]
+    pub key: String,
+    /// new-api 口径的数字 id;ferrite 侧无对应列,后端恒返回 None。
+    pub id: Option<u32>,
+    pub name: String,
+    pub description: Option<String>,
+    /// 价格(NUMERIC 语义,后端以字符串入库,JSON 里是数字)。
+    pub price: Option<f64>,
+    /// 套餐额度——**展示口径**:后端入库 ×500_000、读回 ÷500_000,
+    /// 前端拿到的已是展示值,不得再做换算。
+    pub quota: Option<f64>,
+    pub currency_price: Option<f64>,
+    pub payment_method: Option<String>,
+    /// 升级分组(后端 upgrade_group 列)。
+    pub group: Option<String>,
+    pub downgrade_group: Option<String>,
+    /// 有效期数值(后端 duration_days)。
+    pub period_val: Option<u32>,
+    /// 有效期单位——后端恒为 "days"(duration_days 直映)。
+    pub period_unit: Option<String>,
+    pub reset_cycle: Option<String>,
+    pub priority: Option<u32>,
+    pub enabled: Option<bool>,
+    pub allow_redeem: Option<bool>,
+    pub allow_wallet: Option<bool>,
+    /// 限购(后端 max_purchases);None/0 = 不限。
+    pub max_per_user: Option<u32>,
+    pub sort_order: Option<u32>,
+    pub stripe_price_id: Option<String>,
+    pub creem_product_id: Option<String>,
+    pub waffo_product_id: Option<String>,
+    /// 计价货币("CNY" | "USD"),决定价格展示符号。
+    #[serde(default)]
+    pub currency: String,
+    /// 建立时间(RFC3339)。
+    #[serde(default)]
+    pub created_at: String,
+    /// 最后修改时间(RFC3339)。
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// GET /api/subscriptions 响应包装 `{"items":[..],"total":n}`(total 未消费)。
+#[derive(Debug, Default, serde::Deserialize)]
+struct SubscriptionItems {
+    #[serde(default)]
+    items: Vec<SubscriptionView>,
+}
+
+/// POST /api/subscriptions 响应包装 `{"subscription": SubscriptionView}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct SubscriptionResp {
+    #[serde(default)]
+    subscription: SubscriptionView,
+}
+
+/// 真实调用: GET /api/subscriptions (套餐列表;后端按 sort_order 升序)。
+///
+/// 错误情况:未登录(401)、非 admin(403)、后端不可达 → `ApiError`
+/// (hydrate 侧容忍 401 保持空列表)。
+pub async fn list_subscriptions_api(client: &ApiClient) -> ApiResult<Vec<SubscriptionView>> {
+    let r: SubscriptionItems = client.get("/api/subscriptions").await?;
+    Ok(r.items)
+}
+
+/// 真实调用: POST /api/subscriptions (新增/更新套餐)。
+///
+/// 后端按 **name** upsert(`ON CONFLICT (name) DO UPDATE`):同名提交即更新
+/// 该行(返回更新后的视图),否则插入新行(key 由后端生成)。校验:name 与
+/// currency 非空、`duration_days ≥ 1`、price 可 parse 成有限非负数字、
+/// quota 有限非负——非法输入 400,不会静默落库。
+pub async fn upsert_subscription_api(
+    client: &ApiClient,
+    req: &SubscriptionUpsertRequest,
+) -> ApiResult<SubscriptionView> {
+    let r: SubscriptionResp = client.post("/api/subscriptions", req).await?;
+    Ok(r.subscription)
+}
+
+/// 真实调用: DELETE /api/subscriptions/{key} (删除套餐;key 为 UUID)。
+///
+/// 错误情况:key 非 UUID(400)、套餐不存在(404)→ `ApiError`。
+pub async fn delete_subscription_api(client: &ApiClient, key: &str) -> ApiResult<()> {
+    client
+        .delete::<serde_json::Value>(&format!("/api/subscriptions/{key}"))
+        .await?;
+    Ok(())
 }

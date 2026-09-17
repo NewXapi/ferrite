@@ -1,13 +1,15 @@
 //! 管理面板的共享实体 store：分组 / 模型别名 / 渠道 / 订阅套餐。
 //! 拓扑图、抽屉与「设置」tab 读写同一份数据，任一侧修改立即同步。
 //! 数据在应用启动时由 `hydrate()` 从真实后端灌入
-//! (/api/group + /api/channel + /api/models);
-//! 订阅套餐暂无后端端点,保持空列表(页面显示诚实空态)。
+//! (/api/group + /api/channel + /api/models + /api/subscriptions);
+//! 订阅页的增删改由 SubscriptionsPage 直接调 `crate::api` 的订阅端点,
+//! 写回成功后用返回的视图就地刷新本 store 的 plans signal。
 //! 兑换码不进本 store — RedemptionsPage 直接消费 /api/redemption。
 //!
 //! 网络拓扑(NetworkPanel)另走自己的实时拉取路径(network.rs
 //! `load_network_data`),store 侧 hydrate 结果只作为启动布局的兜底快照。
 
+use crate::api::{SubscriptionView, list_subscriptions_api};
 use client::ApiClient;
 use dioxus::prelude::*;
 
@@ -57,25 +59,41 @@ pub struct ChannelRow {
 /// 渠道类型选项(与后端 `POST /api/admin/channels` 接受的 `channel_type` 取值一致)。
 pub const CHANNEL_TYPES: &[&str] = &["openai", "openai-compat", "claude", "gemini"];
 
-/// 订阅套餐(对齐 new-api subscriptions 字段)
+/// 订阅套餐行(对齐 new-api subscriptions 字段;各字段语义见
+/// [`map_subscription_view`] 的映射注释)。
 #[derive(Clone, PartialEq)]
 pub struct PlanRow {
-    pub id: u32,
+    /// 行 key(UUID)——`DELETE /api/subscriptions/{key}` 的定位符,
+    /// 也是页面写回时按 key 就地刷新 signal 的依据。
+    pub key: String,
+    /// new-api 口径的数字 id;后端该列恒为 None,ferrite 侧无对应列。
+    pub id: Option<u32>,
+    /// 套餐名称(后端 name;upsert 按 name 定位,改名 = 新建一行)。
     pub title: String,
     pub subtitle: String,
+    /// 售价(后端 price,NUMERIC 语义;展示用)。
     pub price: f64,
+    /// 套餐额度——**展示口径**:后端入库侧 ×500_000、读回侧 ÷500_000,
+    /// 本字段拿到的已是展示值,任何地方都不得再换算。
     pub quota: f64,
+    /// 计价货币("CNY" | "USD")——决定价格符号 ¥/$;重建 upsert
+    /// 请求体(如启停切换)时必须回传,后端拒绝空 currency。
+    pub currency: String,
     pub currency_price: f64,
     pub payment_method: String,
+    /// 升级分组(后端 upgrade_group;空串 = 不升级)。
     pub group: String,
     pub downgrade_group: String,
+    /// 有效期数值(后端 duration_days)。
     pub period_val: u32,
+    /// 有效期单位——后端恒为 "days"。
     pub period_unit: String,
     pub reset_cycle: String,
     pub priority: i32,
     pub enabled: bool,
     pub allow_redeem: bool,
     pub allow_wallet: bool,
+    /// 限购(后端 max_purchases);0 = 不限。
     pub max_per_user: u32,
     pub sort_order: i32,
     pub stripe_price_id: String,
@@ -83,6 +101,48 @@ pub struct PlanRow {
     pub waffo_product_id: String,
 }
 pub const PLAN_PERIODS: &[&str] = &["month", "quarter", "year"];
+
+/// `SubscriptionView` → [`PlanRow`] 的纯映射:hydrate 拉取与页面写回成功后
+/// 共用同一份字段对齐逻辑(单测钉在 `tests/subscriptions_wire.rs`)。
+///
+/// 关键口径:
+/// - `key` 透传(UUID),写回与删除都靠它定位行;
+/// - `price` 取 f64;后端 price 是 NUMERIC 语义字符串,JSON 输出为数字;
+/// - `quota` **直接取 DTO 的 f64 展示值**——后端入库侧 ×500_000、读回侧
+///   ÷500_000 已对称还原,前端再乘一次会得到双倍换算的错误额度;
+/// - DTO 里后端不填的列(None)统一落到展示默认值(空串 / 0 / false),
+///   绝不用本地假数据回填(数据全部来自真实后端)。
+pub fn map_subscription_view(v: SubscriptionView) -> PlanRow {
+    PlanRow {
+        key: v.key,
+        id: v.id,
+        title: v.name,
+        subtitle: v.description.unwrap_or_default(),
+        price: v.price.unwrap_or(0.0),
+        quota: v.quota.unwrap_or(0.0),
+        currency: if v.currency.is_empty() {
+            "CNY".to_string()
+        } else {
+            v.currency
+        },
+        currency_price: v.currency_price.unwrap_or(0.0),
+        payment_method: v.payment_method.unwrap_or_default(),
+        group: v.group.unwrap_or_default(),
+        downgrade_group: v.downgrade_group.unwrap_or_default(),
+        period_val: v.period_val.unwrap_or(0),
+        period_unit: v.period_unit.unwrap_or_default(),
+        reset_cycle: v.reset_cycle.unwrap_or_default(),
+        priority: v.priority.map(|p| p as i32).unwrap_or(0),
+        enabled: v.enabled.unwrap_or(false),
+        allow_redeem: v.allow_redeem.unwrap_or(false),
+        allow_wallet: v.allow_wallet.unwrap_or(false),
+        max_per_user: v.max_per_user.unwrap_or(0),
+        sort_order: v.sort_order.map(|s| s as i32).unwrap_or(0),
+        stripe_price_id: v.stripe_price_id.unwrap_or_default(),
+        creem_product_id: v.creem_product_id.unwrap_or_default(),
+        waffo_product_id: v.waffo_product_id.unwrap_or_default(),
+    }
+}
 
 // 兑换码已从本 store 移除:RedemptionsPage 直接消费 `crate::api` 的
 // /api/redemption 真实端点,不再经过 EntityStore。
@@ -228,123 +288,9 @@ impl EntityStore {
                     dispatch: vec!["gemini-2.5-pro".into()],
                 },
             ]),
-            plans: Signal::new(vec![
-                PlanRow {
-                    id: 5,
-                    title: "开拓的封赏".into(),
-                    subtitle: "向你们致敬，向外开拓的勇士们！".into(),
-                    price: 0.0,
-                    quota: 0.0,
-                    currency_price: 0.0,
-                    payment_method: "无限制".into(),
-                    group: "不升级".into(),
-                    downgrade_group: "降级到购买前分组".into(),
-                    period_val: 6,
-                    period_unit: "小时".into(),
-                    reset_cycle: "不重置".into(),
-                    priority: 0,
-                    enabled: true,
-                    allow_redeem: true,
-                    allow_wallet: true,
-                    max_per_user: 0,
-                    sort_order: 0,
-                    stripe_price_id: "".into(),
-                    creem_product_id: "".into(),
-                    waffo_product_id: "".into(),
-                },
-                PlanRow {
-                    id: 4,
-                    title: "重置分组".into(),
-                    subtitle: "直接重置回原始分组，避免由于模型分组原因导致不可使用".into(),
-                    price: 0.0,
-                    quota: 0.01,
-                    currency_price: 0.01,
-                    payment_method: "仅扣菌种".into(),
-                    group: "default".into(),
-                    downgrade_group: "降级到购买前分组".into(),
-                    period_val: 1,
-                    period_unit: "秒".into(),
-                    reset_cycle: "不重置".into(),
-                    priority: 0,
-                    enabled: true,
-                    allow_redeem: true,
-                    allow_wallet: true,
-                    max_per_user: 0,
-                    sort_order: 0,
-                    stripe_price_id: "".into(),
-                    creem_product_id: "".into(),
-                    waffo_product_id: "".into(),
-                },
-                PlanRow {
-                    id: 3,
-                    title: "“杰瑞”的牛奶".into(),
-                    subtitle: "我的牛奶！不会有下次了！！！".into(),
-                    price: 1.0,
-                    quota: 10.0,
-                    currency_price: 10.0,
-                    payment_method: "仅扣菌种".into(),
-                    group: "vip".into(),
-                    downgrade_group: "降级到购买前分组".into(),
-                    period_val: 1,
-                    period_unit: "小时".into(),
-                    reset_cycle: "不重置".into(),
-                    priority: 0,
-                    enabled: true,
-                    allow_redeem: true,
-                    allow_wallet: true,
-                    max_per_user: 0,
-                    sort_order: 0,
-                    stripe_price_id: "".into(),
-                    creem_product_id: "".into(),
-                    waffo_product_id: "".into(),
-                },
-                PlanRow {
-                    id: 2,
-                    title: "大老鼠".into(),
-                    subtitle: "享受一折优惠！".into(),
-                    price: 100.0,
-                    quota: 150.0,
-                    currency_price: 150.0,
-                    payment_method: "仅扣菌种".into(),
-                    group: "svip".into(),
-                    downgrade_group: "降级到购买前分组".into(),
-                    period_val: 1,
-                    period_unit: "个月".into(),
-                    reset_cycle: "不重置".into(),
-                    priority: 0,
-                    enabled: true,
-                    allow_redeem: true,
-                    allow_wallet: true,
-                    max_per_user: 0,
-                    sort_order: 0,
-                    stripe_price_id: "price_1OvXx8...".into(),
-                    creem_product_id: "prod_creem_lar...".into(),
-                    waffo_product_id: "".into(),
-                },
-                PlanRow {
-                    id: 1,
-                    title: "小老鼠".into(),
-                    subtitle: "享受半价优惠".into(),
-                    price: 50.0,
-                    quota: 50.0,
-                    currency_price: 50.0,
-                    payment_method: "仅扣菌种".into(),
-                    group: "vip".into(),
-                    downgrade_group: "降级到购买前分组".into(),
-                    period_val: 14,
-                    period_unit: "天".into(),
-                    reset_cycle: "不重置".into(),
-                    priority: 0,
-                    enabled: false,
-                    allow_redeem: true,
-                    allow_wallet: true,
-                    max_per_user: 0,
-                    sort_order: 0,
-                    stripe_price_id: "price_1OvYy2...".into(),
-                    creem_product_id: "".into(),
-                    waffo_product_id: "".into(),
-                },
-            ]),
+            // 订阅套餐数据来自真实后端:由 hydrate() 从
+            // /api/subscriptions 灌入,seed 只给空列表兜底。
+            plans: Signal::new(Vec::new()),
         }
     }
 }
@@ -500,6 +446,17 @@ impl EntityStore {
             .collect();
         aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
         store.aliases.write().extend(aliases);
+
+        // 订阅套餐(/api/subscriptions)。失败容忍同 models:记日志 + 保持空,
+        // 不让订阅端点暂时不可用拖垮分组/渠道/别名的启动加载。
+        let plans = match list_subscriptions_api(&client).await {
+            Ok(items) => items.into_iter().map(map_subscription_view).collect(),
+            Err(e) => {
+                log_hydrate_error("subscriptions", &e);
+                Vec::new()
+            }
+        };
+        store.plans.write().extend(plans);
     }
 }
 

@@ -8,8 +8,8 @@
 - `src/gateway.rs` — 网关渠道健康面板(实时冷却/慢启动观测,5s 条件轮询)。
 - `src/currency.rs` — 货币管理面板（定义列表 + 新增/编辑/停用；`kind` 切 points/fiat，fiat 必带 symbol，USD 基准锁 rate=1）。
 - `src/network.rs` — 网络、代理与探活页面。
-- `src/pages.rs` — 管理页导航和各管理面板。
-- `src/state.rs` — 管理实体列表和编辑状态。
+- `src/pages.rs` — 管理页导航和各管理面板（订阅页直接对接 `/api/subscriptions`：列表由 store hydrate 灌入，增删改调真实端点并按 key 刷新）。
+- `src/state.rs` — 管理实体列表和编辑状态（`SubscriptionView → PlanRow` 映射保证 quota 展示口径不换算）。
 
 ## 路由入口
 
