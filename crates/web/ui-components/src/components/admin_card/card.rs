@@ -36,18 +36,13 @@ pub fn AdminCard(
     testid: Option<String>,
 ) -> Element {
     // 非激活页签：invisible（占布局高度）+ pointer-events-none（不可交互）。
-    let off_cls = "invisible pointer-events-none";
-    let cls = |i: usize| {
-        if i == active_tab {
-            "col-start-1 row-start-1".to_string()
-        } else {
-            format!("col-start-1 row-start-1 {off_cls}")
-        }
-    };
-    let c0 = cls(0);
-    let c1 = cls(1);
-    let c2 = cls(2);
-    let c3 = cls(3);
+    // 类名必须完整字面量出现在源码里，Tailwind 才会生成对应 CSS（动态拼串不会被扫描）。
+    const PANEL_ON: &str = "col-start-1 row-start-1";
+    const PANEL_OFF: &str = "col-start-1 row-start-1 invisible pointer-events-none";
+    let c0 = if active_tab == 0 { PANEL_ON } else { PANEL_OFF };
+    let c1 = if active_tab == 1 { PANEL_ON } else { PANEL_OFF };
+    let c2 = if active_tab == 2 { PANEL_ON } else { PANEL_OFF };
+    let c3 = if active_tab == 3 { PANEL_ON } else { PANEL_OFF };
     rsx! {
         div {
             class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
