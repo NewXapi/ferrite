@@ -39,9 +39,9 @@ pub fn AppShell(
                     class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 sm:px-6",
                     {children}
                 }
-                // 底部悬浮状态栏区
+                // 底部状态条：无背景细条，内容直接贴左右两端（维护者拍板去胶囊）
                 div {
-                    class: "flex shrink-0 justify-center px-4 pb-3 pt-2",
+                    class: "flex shrink-0 justify-between px-4 pb-1.5 pt-1",
                     {status_bar}
                 }
             }

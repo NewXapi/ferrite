@@ -1,6 +1,8 @@
-//! StatusBar — 底部悬浮状态栏（双分块：左下角用户头像+额度，右下角系统状态）。
+//! StatusBar — 底部细状态条（无背景胶囊，整条一个字高）。
 //!
-//! 契约：头像按钮点击展开下拉（账户资料/退出登录），占位数据后续通过 popover 注入。
+//! 契约（维护者拍板）：不做任何背景/边框/阴影包装，左下角=用户头像+额度占位，
+//! 右下角=系统状态纯数字占位（CPU·MEM 顺序，含义走 title 悬停提示）；
+//! 真实数据后续通过 hover popover 注入（组件留 `StatusItem.hint` 槽位）。
 
 use dioxus::prelude::*;
 
@@ -13,9 +15,9 @@ pub struct StatusItem {
     pub hint: Option<String>,
 }
 
-/// 用户头像 chip class（圆形按钮 + 首字母）。
+/// 用户头像 chip class（16px 圆点 + 首字母，对齐单字行高）。
 fn avatar_chip_class() -> &'static str {
-    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-[10px] font-semibold text-zinc-200 hover:border-zinc-600"
+    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-[9px] font-semibold text-zinc-200 hover:bg-zinc-600"
 }
 
 /// 用户下拉菜单 class。
@@ -25,12 +27,7 @@ const USER_MENU_CLASS: &str = "absolute bottom-full left-0 z-50 mb-2 w-36 rounde
 const MENU_ITEM_CLASS: &str =
     "block rounded-md px-2 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800";
 
-/// 系统状态 chip class。
-fn sys_chip_class() -> &'static str {
-    "flex h-6 shrink-0 items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/80 px-2 text-[10px] text-zinc-400"
-}
-
-/// 底部悬浮状态栏。
+/// 底部细状态条（无背景，单行文字高度）。
 ///
 /// - `user_name`：登录用户名；Some 时显示头像+下拉菜单，None 时占位「未登录」。
 /// - `is_light` / `on_toggle_theme`：主题切换。
@@ -52,10 +49,10 @@ pub fn StatusBar(
     let mut menu_open = use_signal(|| false);
     rsx! {
         div {
-            class: "flex w-full max-w-3xl items-center justify-between gap-3 rounded-full border border-zinc-800/80 bg-zinc-900/90 px-2.5 py-0.5 shadow-lg shadow-black/20 backdrop-blur",
+            class: "flex w-full items-center justify-between py-0.5 text-[11px] text-zinc-500",
             // 左下角：用户头像 + 额度占位
             div {
-                class: "flex items-center gap-2",
+                class: "flex items-center gap-1.5",
                 match user_name {
                     Some(name) => rsx! {
                         div {
@@ -97,29 +94,31 @@ pub fn StatusBar(
                                 }
                             }
                         }
-                        span { class: "text-[11px] text-zinc-500", "¥——.--" }
+                        span { class: "text-zinc-500", "¥——.--" }
                     },
                     None => rsx! {
-                        span { class: "text-[11px] text-zinc-500", "未登录" }
+                        span { class: "text-zinc-500", "未登录" }
                     },
                 }
             }
-            // 右下角：系统状态占位 + 主题切换
+            // 右下角：系统状态纯数字占位（CPU · MEM，含义走 title）+ 主题切换
             div {
-                class: "flex items-center gap-1.5",
-                div {
-                    class: sys_chip_class(),
-                    span { class: "text-zinc-500", "CPU" }
-                    span { class: "text-zinc-400", "——" }
+                class: "flex items-center gap-2",
+                span {
+                    class: "text-zinc-500",
+                    title: "CPU",
+                    "data-testid": "status-cpu",
+                    "12%"
                 }
                 span { class: "text-zinc-600", "·" }
-                div {
-                    class: sys_chip_class(),
-                    span { class: "text-zinc-500", "MEM" }
-                    span { class: "text-zinc-400", "——" }
+                span {
+                    class: "text-zinc-500",
+                    title: "内存",
+                    "data-testid": "status-mem",
+                    "34%"
                 }
                 button {
-                    class: "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                    class: "shrink-0 rounded px-1 text-[11px] text-zinc-500 transition-colors hover:text-zinc-300",
                     aria_label: "切换主题",
                     onclick: move |_| on_toggle_theme.call(()),
                     if is_light { "Dark" } else { "Light" }
