@@ -96,6 +96,10 @@ pub fn ChannelCard(
                     0 => rsx! {
                         div { class: "space-y-2.5",
                             div { class: "flex justify-between gap-2 text-xs",
+                                span { class: "text-zinc-400", "类型" }
+                                span { class: "font-medium text-zinc-200", "{channel.channel_type}" }
+                            }
+                            div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "状态" }
                                 span { class: "font-medium text-zinc-200", "{channel_status_str}" }
                             }

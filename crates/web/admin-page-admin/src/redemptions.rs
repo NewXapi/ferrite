@@ -301,6 +301,7 @@ pub fn RedemptionsPage() -> Element {
                                 let redeemed_at = (!row.redeemed_at.is_empty()).then_some(row.redeemed_at.clone());
                                 rsx! {
                                     div {
+                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                                         role: "region",
                                         "aria-label": "新卡示例",
                                         "data-testid": "redemption-card-prototype",

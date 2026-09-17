@@ -379,6 +379,7 @@ pub fn ChannelsPage() -> Element {
                                 let edit_key = channel.key.clone();
                                 rsx! {
                                     div {
+                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                                         role: "region",
                                         "aria-label": "新卡示例",
                                         "data-testid": "channel-card-prototype",

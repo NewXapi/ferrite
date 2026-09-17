@@ -365,8 +365,21 @@ pub fn AliasesPage() -> Element {
                                 let prototype_output_per_1k = prototype_item.row.output_per_1k;
                                 let prototype_multiplier = prototype_item.row.multiplier;
                                 let prototype_index = *prototype_index;
+                                // 分组可用性:白名单为空(全可用)或显式包含该别名,复用旧卡同一判定
+                                let p_alias_name = prototype_item.row.alias.clone();
+                                let prototype_usable_groups: Vec<(String, f64)> = groups
+                                    .read()
+                                    .iter()
+                                    .filter(|g| {
+                                        let names = parse_whitelist(&g.model_whitelist);
+                                        names.is_empty()
+                                            || names.iter().any(|n| n == &p_alias_name)
+                                    })
+                                    .map(|g| (g.name.clone(), g.ratio))
+                                    .collect();
                                 rsx! {
                                     div {
+                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                                         role: "region",
                                         "aria-label": "别名新卡示例",
                                         "data-testid": "alias-card-prototype",
@@ -377,6 +390,8 @@ pub fn AliasesPage() -> Element {
                                             output_per_1k: prototype_output_per_1k,
                                             multiplier: prototype_multiplier,
                                             index: prototype_index,
+                                            usable_groups: prototype_usable_groups,
+                                            alias_key: prototype_key.clone(),
                                             on_edit: move |_| prototype_open_edit(prototype_key.clone()),
                                         }
                                     }

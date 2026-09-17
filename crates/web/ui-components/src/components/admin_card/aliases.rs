@@ -5,15 +5,29 @@ fn fmt_price(v: f64) -> String {
     format!("¥{v:.4}")
 }
 
+/// Shortens a key by Unicode scalar value without splitting UTF-8 characters.
+fn short_key(key: &str) -> String {
+    const EDGE_CHARS: usize = 4;
+
+    let char_count = key.chars().count();
+    if char_count <= EDGE_CHARS * 2 {
+        return key.to_string();
+    }
+
+    let head: String = key.chars().take(EDGE_CHARS).collect();
+    let tail: String = key.chars().skip(char_count - EDGE_CHARS).collect();
+    format!("{head}…{tail}")
+}
+
 /// Renders a read-only four-tab prototype card for a model alias.
 ///
 /// The tabs are overview, pricing, groups, and system. The overview identifies
-/// the alias and its position, pricing presents caller-supplied CNY values per
-/// 1k tokens, groups presents only information derivable from the scalar props,
-/// and system currently has no data. Group availability still depends on the
-/// group's model whitelist and cannot be determined by this card alone. All
-/// tabs intentionally omit a bottom action row. The edit callback is only a
-/// future Popover integration point; this card does not edit or persist data.
+/// the alias, its display name, and position; pricing presents per-1k-token
+/// CNY unit prices plus the per-call multiplier with a mode label; groups
+/// lists the caller-computed usable groups (name + group ratio) as chips;
+/// system shows the full alias key, shortened char-safely. All tabs
+/// intentionally omit a bottom action row. The edit callback is only a future
+/// Popover integration point; this card does not edit or persist data.
 #[component]
 pub fn AliasCard(
     /// Alias used as the card title and passed to `on_edit`.
@@ -26,10 +40,15 @@ pub fn AliasCard(
     /// Page-supplied output price in CNY per 1k tokens, not a complete
     /// persisted backend pricing record.
     output_per_1k: f64,
-    /// Scalar multiplier displayed on the pricing and groups tabs.
+    /// Per-call multiplier displayed on the pricing tab.
     multiplier: f64,
     /// Zero-based card position, displayed as a one-based sequence number.
     index: usize,
+    /// Caller-computed list of groups usable by this alias: `(group name,
+    /// group ratio)`. Empty when no group references the alias.
+    usable_groups: Vec<(String, f64)>,
+    /// Backend alias key (UUID); displayed truncated on the system tab.
+    alias_key: String,
     /// Callback invoked with `alias` by the edit affordance; callers may later
     /// connect it to an edit Popover.
     on_edit: EventHandler<String>,
@@ -37,9 +56,16 @@ pub fn AliasCard(
     let mut tab = use_signal(|| 0usize);
     let tabs = vec!["概览", "定价", "分组", "系统"];
 
+    let shown_groups = usable_groups.iter().take(4).collect::<Vec<_>>();
+    let overflow_groups = usable_groups.len().saturating_sub(4);
+    let short_k = short_key(&alias_key);
+    // 卡片标题与编辑回调各持一份克隆,避免 `alias` 被 move 进回调闭包后
+    // 内容区仍借用而报错
+    let title_alias = alias.clone();
+
     rsx! {
         AdminCard {
-            title: "{alias}",
+            title: "{title_alias}",
             subtitle: if display.is_empty() { None } else { Some(display.clone()) },
             tabs: tabs,
             active_tab: tab(),
@@ -53,6 +79,14 @@ pub fn AliasCard(
                     0 => rsx! {
                         div { class: "space-y-2.5",
                             div { class: "flex justify-between gap-2 text-xs",
+                                span { class: "text-zinc-400", "别名" }
+                                span { class: "font-medium text-zinc-200", "{title_alias.clone()}" }
+                            }
+                            div { class: "flex justify-between gap-2 text-xs",
+                                span { class: "text-zinc-400", "展示名" }
+                                span { class: "font-medium text-zinc-200", if display.clone().is_empty() { "未填写" } else { "{display.clone()}" } }
+                            }
+                            div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "序号" }
                                 span { class: "font-medium text-zinc-200", "#{index + 1}" }
                             }
@@ -60,31 +94,50 @@ pub fn AliasCard(
                     },
                     1 => rsx! {
                         div { class: "space-y-2",
+                            p { class: "text-[11px] font-medium text-zinc-400", "按量 / 按次 双模式" }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "输入" }
+                                span { class: "text-zinc-400", "按量 · 输入" }
                                 span { class: "font-medium text-zinc-200", "{fmt_price(input_per_1k)} / 1k tokens" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "输出" }
+                                span { class: "text-zinc-400", "按量 · 输出" }
                                 span { class: "font-medium text-zinc-200", "{fmt_price(output_per_1k)} / 1k tokens" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "倍率" }
+                                span { class: "text-zinc-400", "按次 · 倍率" }
                                 span { class: "font-medium text-zinc-200", "×{multiplier}" }
                             }
                         }
                     },
                     2 => rsx! {
-                        div { class: "space-y-2",
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "倍率" }
-                                span { class: "font-medium text-zinc-200", "×{multiplier}" }
+                        div { class: "space-y-1.5",
+                            p { class: "text-[11px] text-zinc-400", "可用分组" }
+                            if shown_groups.is_empty() {
+                                span { class: "text-[11px] text-zinc-500", "无分组引用" }
+                            } else {
+                                div { class: "flex flex-wrap gap-1.5",
+                                    for (gname, gratio) in shown_groups {
+                                        span { class: "inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
+                                            "{gname}"
+                                            span { class: "text-[10px] font-mono opacity-70", "×{gratio:.1}" }
+                                        }
+                                    }
+                                    if overflow_groups > 0 {
+                                        span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-400",
+                                            "+{overflow_groups}"
+                                        }
+                                    }
+                                }
                             }
-                            span { class: "text-[11px] text-zinc-500", "分组可用性需结合分组白名单判断" }
                         }
                     },
                     3 => rsx! {
-                        span { class: "text-[11px] text-zinc-500", "暂无系统数据" }
+                        div { class: "space-y-2 text-xs",
+                            div { class: "flex justify-between gap-2",
+                                span { class: "text-zinc-400", "Key" }
+                                span { class: "font-mono text-zinc-200", "{short_k}" }
+                            }
+                        }
                     },
                     _ => rsx! {},
                 }

@@ -334,7 +334,7 @@ pub fn UsersPanel() -> Element {
                 } else {
                     if let Some(user) = filtered.first() {
                         div {
-                            class: "mb-4",
+                            class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             role: "region",
                             "aria-label": "新卡示例",
                             "data-testid": "user-card-prototype",
