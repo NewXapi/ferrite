@@ -1,24 +1,25 @@
-//! TopNavBar — 悬浮顶部 page-tab 胶囊（继承原 ConsolePanel header tab 语义）。
+//! TopNavBar — 顶部 page-tab 行（沿用原 TabItem 视觉契约：文字 + 激活项底部
+//! 0.5px 白色下划线），置于顶栏左上角，不再使用胶囊容器。
 //!
-//! Linear 风格：顶部居中悬浮 pill，横向滚动兜底（Manage 9 个 tab 在窄屏溢出）。
 //! 组件只渲染 tab 集；section 切换在桌面由 SectionRail、移动端由调用方在
 //! 顶栏 slot 里自行加横向 section 条。
 
 use dioxus::prelude::*;
 
-/// 胶囊容器：居中、悬浮、毛玻璃。
-const PILL_CLASS: &str = "flex max-w-full items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full border border-zinc-800/80 bg-zinc-900/90 px-2 py-1 shadow-lg shadow-black/20 backdrop-blur";
-
-/// 单个 tab 态 class（激活=浅底深字，默认=灰字 hover 提亮）。
+/// 单个 tab 态 class（激活=白字+底线下划线，默认=灰字 hover 提亮）。h-6 比 h-7 矮一档。
 fn tab_class(active: bool) -> &'static str {
     if active {
-        "relative flex h-7 shrink-0 items-center rounded-full bg-zinc-100 px-3 text-sm font-semibold text-zinc-900"
+        "relative flex h-6 shrink-0 items-center px-2 text-sm font-medium text-zinc-100"
     } else {
-        "relative flex h-7 shrink-0 items-center rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+        "relative flex h-6 shrink-0 items-center px-2 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-300"
     }
 }
 
-/// 顶部悬浮 page-tab 胶囊。
+/// 激活项底部下划线（对齐原 TabItem：inset-x-2 高 0.5 白条）。
+const UNDERLINE_CLASS: &str =
+    "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-zinc-100";
+
+/// 顶部 page-tab 行（左上角，无边框容器）。
 ///
 /// - `tabs`：当前 section 的页面 tab 文案。
 /// - `active`：激活 tab 索引。
@@ -34,7 +35,7 @@ pub fn TopNavBar(
 ) -> Element {
     rsx! {
         nav {
-            class: PILL_CLASS,
+            class: "flex max-w-full items-center gap-1 overflow-x-auto whitespace-nowrap",
             aria_label: "页面导航",
             for (i, label) in tabs.iter().enumerate() {
                 button {
@@ -43,6 +44,9 @@ pub fn TopNavBar(
                     aria_label: "{label}",
                     onclick: move |_| on_select.call(i),
                     "{label}"
+                    if active == i {
+                        span { class: UNDERLINE_CLASS }
+                    }
                 }
             }
         }

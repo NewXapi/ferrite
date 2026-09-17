@@ -29,9 +29,9 @@ pub fn AppShell(
             // 主轴列：rail 占 w-14，桌面侧移；移动端 rail 隐藏即全宽
             div {
                 class: "flex min-w-0 flex-1 flex-col",
-                // 顶部悬浮导航区（不随内容滚动）
+                // 顶部悬浮导航区（不随内容滚动；tab 行靠左上角）
                 div {
-                    class: "flex shrink-0 flex-col items-center gap-2 px-4 pt-3",
+                    class: "flex shrink-0 flex-col items-start gap-2 px-4 pt-3",
                     {top_nav}
                 }
                 // 滚动主内容

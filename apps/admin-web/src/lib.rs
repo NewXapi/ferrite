@@ -19,7 +19,7 @@ use page_users::UsersPanel;
 
 use client::TokenFuture;
 use serde::Deserialize;
-use ui::components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
+use ui::components::layout::{AppShell, SectionRail, StatusBar, TopNavBar};
 
 /// 401 静默刷新接线 (应用启动时由 main 调用一次):
 /// - refresher: 读存储的 refresh token → `POST /api/user/refresh` (后端轮换 access+refresh)
@@ -471,18 +471,6 @@ pub fn HomePage() -> Element {
     let active_tab = (dash_tab() as usize).min(labels.len() - 1) as u8;
     // rail 激活项 = 当前 section 在 SECTIONS 里的下标
     let section_idx = SECTIONS.iter().position(|s| *s == section()).unwrap_or(0);
-    // 状态栏占位条目(维护者拍板:不放真实数据,hover popover 后续接入)
-    let status_items = vec![
-        StatusItem {
-            label: "后端".into(),
-            hint: Some("dev".into()),
-        },
-        StatusItem {
-            label: "版本".into(),
-            hint: Some("v0.1".into()),
-        },
-    ];
-
     rsx! {
         div {
             class: "h-svh overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
@@ -493,6 +481,7 @@ pub fn HomePage() -> Element {
                         active_index: section_idx,
                         on_select: move |idx| section.set(SECTIONS[idx]),
                         user_name: logged_user(),
+                        on_logout: move |_| do_logout(),
                     }
                 },
                 top_nav: rsx! {
@@ -512,11 +501,9 @@ pub fn HomePage() -> Element {
                 },
                 status_bar: rsx! {
                     StatusBar {
-                        items: status_items,
+                        user_name: logged_user(),
                         is_light: is_light,
                         on_toggle_theme: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
-                        user_name: logged_user(),
-                        on_logout: move |_| do_logout(),
                     }
                 },
                 ConsolePanel {
