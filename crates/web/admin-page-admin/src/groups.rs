@@ -395,7 +395,7 @@ pub fn GroupsPage() -> Element {
                                 {
                                     let key = g.key.clone();
                                     let gn = g.name.clone();
-                                    let picked = selected.peek().iter().any(|k| *k == key);
+                                    let picked = selected.peek().contains(&key);
                                     let cls = if picked {
                                         "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
                                     } else {

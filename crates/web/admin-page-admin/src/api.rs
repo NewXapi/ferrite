@@ -296,7 +296,8 @@ pub async fn update_group_ratio_api(
     key: &str,
     ratio: f64,
 ) -> ApiResult<GroupDto> {
-    if !(ratio > 0.0) || !ratio.is_finite() {
+    // NaN 走 !is_finite 分支拦截, 这里不需要!(ratio>0.0) 取反写法
+    if ratio <= 0.0 || !ratio.is_finite() {
         return Err(ApiError::Business(format!(
             "invalid group ratio: {ratio} (must be finite and > 0)"
         )));
