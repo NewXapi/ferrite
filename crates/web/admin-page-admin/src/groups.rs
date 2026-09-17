@@ -5,17 +5,17 @@
 
 use dioxus::prelude::*;
 use serde_json::json;
-use ui::SegmentedCapsule;
 use ui::ActionButtonGroup;
 use ui::ActionSpec;
 use ui::ActionTone;
+use ui::SegmentedCapsule;
 
 use client::ApiClient;
 use contract::api::admin::{GroupDto, GroupUpsertRequest};
 
 use crate::api::{
-    create_group_api, delete_group_api, list_groups_api, set_group_status_api,
-    update_group_api, update_group_ratio_api,
+    create_group_api, delete_group_api, list_groups_api, set_group_status_api, update_group_api,
+    update_group_ratio_api,
 };
 
 /// 弹窗状态
@@ -190,9 +190,11 @@ pub fn GroupsPage() -> Element {
         }
     };
 
-    // 写操作助手工厂:返回独立闭包,交给卡片(删除/启停)。
-    // 启用/停用是局部状态变更 — 成功后就地更新本地 groups 里对应项的 status,
-    // 不触发整页重拉(reload),避免列表闪烁; 删除必须整页重拉(行消失)。
+    // 写操作助手工厂:返回独立闭包,交给卡片(删除/启停/倍率)。
+    // 启用/停用与倍率是局部状态变更 — 成功后就地更新本地 groups 里对应项
+    // (用 groups.update 原位改, 避免与批量路径整列表 set 互踩丢更新),
+    // 不触发整页重拉(reload),避免列表闪烁; 失败时除通知外追加 reload
+    // 触发整页重拉, 让 UI 与服务端真值重新同步; 删除必须整页重拉(行消失)。
     let make_write = || {
         let busy_sig = busy;
         let notice_sig = notice;
@@ -209,16 +211,12 @@ pub fn GroupsPage() -> Element {
                         let r = delete_group_api(&client, &key).await;
                         r.map(|_| serde_json::json!(true))
                     }
-                    WriteOp::ToggleStatus(s) => {
-                        set_group_status_api(&client, &key, s)
-                            .await
-                            .map(|_| serde_json::json!(true))
-                    }
-                    WriteOp::SetRatio(v) => {
-                        update_group_ratio_api(&client, &key, v)
-                            .await
-                            .map(|_| serde_json::json!(true))
-                    }
+                    WriteOp::ToggleStatus(s) => set_group_status_api(&client, &key, s)
+                        .await
+                        .map(|_| serde_json::json!(true)),
+                    WriteOp::SetRatio(v) => update_group_ratio_api(&client, &key, v)
+                        .await
+                        .map(|_| serde_json::json!(true)),
                 };
                 match res {
                     Ok(_) => {
@@ -229,55 +227,92 @@ pub fn GroupsPage() -> Element {
                                 r.set(r() + 1);
                             }
                             WriteOp::ToggleStatus(s) => {
-                                // 启停:就地更新本地 status, 不重拉, 无闪烁
-                                let mut list = g();
-                                if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
-                                    hit.status = s;
-                                }
-                                g.set(list);
+                                // 启停:就地更新本地 status, 不重拉, 无闪烁;
+                                // with_mut 原位改, 不整表 set, 避免与批量路径并发写互踩
+                                g.with_mut(|list| {
+                                    if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
+                                        hit.status = s;
+                                    }
+                                });
                             }
                             WriteOp::SetRatio(v) => {
                                 // 倍率:就地更新本地 ratio, 不重拉, 卡片即时反映
-                                let mut list = g();
-                                if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
-                                    hit.ratio = v;
-                                }
-                                g.set(list);
+                                g.with_mut(|list| {
+                                    if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
+                                        hit.ratio = v;
+                                    }
+                                });
                             }
                         }
                     }
-                    Err(e) => n.set(Some(format!("操作失败:{e}"))),
+                    Err(e) => {
+                        n.set(Some(format!("操作失败:{e}")));
+                        // 失败也要整页重拉: 本地列表可能已与服务端漂移(如并发
+                        // 写冲突/他人改动), 重拉一次与真值重新同步。删除成功
+                        // 分支已有重拉, 这里只在失败路径统一追加, 不重复。
+                        r.set(r() + 1);
+                    }
                 }
                 b.set(false);
             });
         }
     };
     let write_delete = make_write();
-    // 启用/停用与删除共用同一写助手工厂 (独立闭包,各自持有 busy/notice/reload 句柄)
     let write_toggle = make_write();
 
-    // 批量动作: 对选中集合逐个走独立写工厂实例 (避免消耗卡片用的 write_toggle)
-    let bulk_toggle = make_write();
-    let bulk_enable = move |_| {
-        let keys = selected();
-        let mut sel = selected;
-        spawn(async move {
-            for k in keys {
-                bulk_toggle(k, WriteOp::ToggleStatus(1));
+    // 批量动作执行闭包工厂: 参数为 target status (1=启用, 2=停用), 返回独立的
+    // onclick 闭包。不复用 make_write —— 那是逐条 fire-and-forget, 无错误反馈;
+    // 这里自包含地顺序 await 每个 key 的状态写回: 进入时快照选中集合(空则直接
+    // return), 成功者就地更新本地 groups 对应项(与单发路径同为 with_mut 原位改),
+    // 收集失败 key, 结束后一次性汇总通知, 最后无论成败清空选中。
+    let make_bulk_toggle = |target: i16| {
+        move |_| {
+            let keys = selected.peek().clone();
+            if keys.is_empty() {
+                return;
             }
-            sel.set(Vec::new());
-        });
+            let (mut g, mut n, mut sel) = (groups, notice, selected);
+            spawn(async move {
+                let client = ApiClient::shared().clone();
+                let mut ok = 0usize;
+                let mut failed: Vec<String> = Vec::new();
+                for k in &keys {
+                    match set_group_status_api(&client, k, target).await {
+                        Ok(_) => {
+                            ok += 1;
+                            g.with_mut(|list| {
+                                if let Some(hit) = list.iter_mut().find(|x| &x.key == k) {
+                                    hit.status = target;
+                                }
+                            });
+                        }
+                        Err(_) => failed.push(k.clone()),
+                    }
+                }
+                let msg = if failed.is_empty() {
+                    "批量操作成功".to_string()
+                } else {
+                    // 失败 key 截断到前 3 个, 更长以 … 结尾提示
+                    let shown = failed
+                        .iter()
+                        .take(3)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let more = if failed.len() > 3 { "…" } else { "" };
+                    format!(
+                        "批量操作：{ok} 成功，{} 失败（key: {shown}{more}）",
+                        failed.len()
+                    )
+                };
+                n.set(Some(msg));
+                sel.set(Vec::new());
+            });
+        }
     };
-    let bulk_disable = move |_| {
-        let keys = selected();
-        let mut sel = selected;
-        spawn(async move {
-            for k in keys {
-                bulk_toggle(k, WriteOp::ToggleStatus(2));
-            }
-            sel.set(Vec::new());
-        });
-    };
+    // 两个批量按钮各自持有独立执行闭包实例(工厂按 target 生成的两份)
+    let bulk_enable = make_bulk_toggle(1);
+    let bulk_disable = make_bulk_toggle(2);
 
     // 弹窗关闭并触发重拉
     let close_and_reload = move |_| {
@@ -654,8 +689,10 @@ fn GroupCard(
                             }
                         },
                         onpointermove: move |e| {
-                            // 仅调整态且按住主键时拖动预览; 静态态划过不动 (不吸附)
-                            if !show_thumb || e.trigger_button().is_none() {
+                            // 仅调整态且有按键按住时拖动预览; 静态态划过不动 (不吸附)。
+                            // 用 held_buttons 而非 trigger_button: pointermove 在触屏上
+                            // 无「触发键」, held_buttons 按住触摸时含 Primary, 兼容触屏拖动。
+                            if !show_thumb || e.held_buttons().is_empty() {
                                 return;
                             }
                             // 拖动: client_x 相对轨道 rect 换算比例 (w-full 响应式,
@@ -722,7 +759,7 @@ fn GroupCard(
                             label: "编辑".to_string(),
                             tone: ActionTone::Neutral,
                             disabled: false,
-                            testid: "edit-group".to_string(),
+                            testid: Some("edit-group".into()),
                         }];
                         // 启停位: 启用中→停用(默认组为禁用占位); 已停用→启用
                         if group.status == 1 {
@@ -730,14 +767,14 @@ fn GroupCard(
                                 label: "停用".to_string(),
                                 tone: if is_default { ActionTone::Disabled } else { ActionTone::Neutral },
                                 disabled: is_default,
-                                testid: "disable-group".to_string(),
+                                testid: Some("disable-group".into()),
                             });
                         } else {
                             acts.push(ActionSpec {
                                 label: "启用".to_string(),
                                 tone: ActionTone::Success,
                                 disabled: false,
-                                testid: "enable-group".to_string(),
+                                testid: Some("enable-group".into()),
                             });
                         }
                         // 删除位: 默认组为禁用占位「内置」
@@ -746,14 +783,14 @@ fn GroupCard(
                                 label: "内置".to_string(),
                                 tone: ActionTone::Disabled,
                                 disabled: true,
-                                testid: String::new(),
+                                testid: None,
                             });
                         } else {
                             acts.push(ActionSpec {
                                 label: "删除".to_string(),
                                 tone: ActionTone::Danger,
                                 disabled: false,
-                                testid: "delete-group".to_string(),
+                                testid: Some("delete-group".into()),
                             });
                         }
                         acts
@@ -810,7 +847,7 @@ fn GroupFormModal(
     whitelist: Signal<String>,
     // 映射别名候选 (后端 models 域列表的 name); 空 = 拉取失败/无候选, 只读回退。
     alias_options: Vec<String>,
-    // 当前分组已映射的别名名 (逗号分隔字符串, 提交时拆分回填)
+    // 映射别名草稿 (逗号分隔字符串; MVP 仅登记展示, 不随提交落库, 文案见 tab1)
     f_alias: Signal<String>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
@@ -839,7 +876,6 @@ fn GroupFormModal(
     let on_submit2 = on_submit;
     let group_key2 = group_key.clone();
     let whitelist2 = whitelist;
-    let alias2 = f_alias;
     let do_submit = move |_| {
         let key = group_key2.clone();
         let n = name.peek().trim().to_string();
@@ -849,7 +885,6 @@ fn GroupFormModal(
         let r = ratio.peek().trim().parse::<f64>().unwrap_or(1.0).max(0.0);
         let rm = remark.peek().clone();
         let wl = parse_whitelist_raw(&whitelist2.peek());
-        let _al = parse_whitelist_raw(&alias2.peek()); // 映射别名, 本 MVP 暂不落库(后端无对应列)
         let (mut sub, cb) = (submitting2, on_submit2);
         spawn(async move {
             sub.set(true);
