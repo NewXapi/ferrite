@@ -30,6 +30,12 @@ pub struct ModelView {
     pub is_vision: bool,
     pub is_tool: bool,
     pub status: i16,
+    /// 管理台展示用输入单价（每 1k tokens）；未定价 = 0（0018 默认值）。
+    pub input_per_1k: f64,
+    /// 管理台展示用输出单价（每 1k tokens）；未定价 = 0。
+    pub output_per_1k: f64,
+    /// 管理台展示用价格倍率；无加价 = 1.0。与 model_prices 结算口径无关。
+    pub multiplier: f64,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
 }
@@ -50,12 +56,23 @@ struct ModelRow {
     is_vision: bool,
     is_tool: bool,
     status: i16,
+    input_per_1k: f64,
+    output_per_1k: f64,
+    multiplier: f64,
     created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     updated_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
 }
 
 const COLS: &str = "key, name, owner, model_type, base_url, api_key, capabilities, \
-     speed, rating, usage_count, max_tokens, is_vision, is_tool, status, created_at, updated_at";
+     speed, rating, usage_count, max_tokens, is_vision, is_tool, status, \
+     input_per_1k, output_per_1k, multiplier, created_at, updated_at";
+
+/// 未定价默认值：与 0018 迁移的列 DEFAULT 一致（create 缺席时 resolve 到此值）。
+const DEFAULT_PRICE: f64 = 0.0;
+/// 无加价默认倍率：与 0018 迁移的列 DEFAULT 1.0 一致。
+const DEFAULT_MULTIPLIER: f64 = 1.0;
+/// 倍率上限：防止运营手滑打出天价倍率（如 100x）误定价。
+const MAX_MULTIPLIER: f64 = 100.0;
 
 fn row_to_view(r: ModelRow) -> ModelView {
     ModelView {
@@ -73,6 +90,9 @@ fn row_to_view(r: ModelRow) -> ModelView {
         is_vision: r.is_vision,
         is_tool: r.is_tool,
         status: r.status,
+        input_per_1k: r.input_per_1k,
+        output_per_1k: r.output_per_1k,
+        multiplier: r.multiplier,
         created_at: r.created_at,
         updated_at: r.updated_at,
     }
@@ -109,14 +129,31 @@ impl ModelService {
         max_tokens: i32,
         is_vision: bool,
         is_tool: bool,
+        input_per_1k: Option<f64>,
+        output_per_1k: Option<f64>,
+        multiplier: Option<f64>,
     ) -> Result<ModelView, AuthError> {
-        validate_model(name, owner, model_type, base_url, api_key)?;
+        validate_model(
+            name,
+            owner,
+            model_type,
+            base_url,
+            api_key,
+            input_per_1k,
+            output_per_1k,
+            multiplier,
+        )?;
+        // None = 未提供 → resolve 到 0018 列默认值；NOT NULL 列不能绑 NULL。
+        let input_per_1k = input_per_1k.unwrap_or(DEFAULT_PRICE);
+        let output_per_1k = output_per_1k.unwrap_or(DEFAULT_PRICE);
+        let multiplier = multiplier.unwrap_or(DEFAULT_MULTIPLIER);
         let key = Uuid::new_v4();
         let res = sqlx::query(
             r#"INSERT INTO api_models
                (key, name, owner, model_type, base_url, api_key, capabilities,
-                speed, rating, max_tokens, is_vision, is_tool)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
+                speed, rating, max_tokens, is_vision, is_tool,
+                input_per_1k, output_per_1k, multiplier)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)"#,
         )
         .bind(key)
         .bind(name.trim())
@@ -130,6 +167,9 @@ impl ModelService {
         .bind(max_tokens)
         .bind(is_vision)
         .bind(is_tool)
+        .bind(input_per_1k)
+        .bind(output_per_1k)
+        .bind(multiplier)
         .execute(&self.pool)
         .await;
         if let Err(sqlx::Error::Database(db)) = &res
@@ -227,6 +267,9 @@ impl ModelService {
         is_vision: Option<bool>,
         is_tool: Option<bool>,
         status: Option<i16>,
+        input_per_1k: Option<f64>,
+        output_per_1k: Option<f64>,
+        multiplier: Option<f64>,
     ) -> Result<ModelView, AuthError> {
         let existing = self.fetch(key).await?;
         let mn = name.unwrap_or(&existing.name);
@@ -234,7 +277,10 @@ impl ModelService {
         let mt = model_type.unwrap_or(&existing.model_type);
         let mu = base_url.unwrap_or(&existing.base_url);
         let mk = api_key.unwrap_or(&existing.api_key);
-        validate_model(mn, mo, mt, mu, mk)?;
+        // 定价三字段校验传入值本身（None = 不改，直接通过）：DB 侧只能写入
+        // 经本服务校验过的值，故 merged 值必然合法，无需像 name/api_key 那样
+        // 校验合并结果（那两者要防存量脏行导致任何更新都 400）。
+        validate_model(mn, mo, mt, mu, mk, input_per_1k, output_per_1k, multiplier)?;
 
         sqlx::query(
             r#"UPDATE api_models SET
@@ -244,6 +290,9 @@ impl ModelService {
                speed = COALESCE($8, speed), rating = COALESCE($9, rating),
                max_tokens = COALESCE($10, max_tokens), is_vision = COALESCE($11, is_vision),
                is_tool = COALESCE($12, is_tool), status = COALESCE($13, status),
+               input_per_1k = COALESCE($14, input_per_1k),
+               output_per_1k = COALESCE($15, output_per_1k),
+               multiplier = COALESCE($16, multiplier),
                updated_at = now() WHERE key = $1"#,
         )
         .bind(key)
@@ -259,6 +308,9 @@ impl ModelService {
         .bind(is_vision)
         .bind(is_tool)
         .bind(status)
+        .bind(input_per_1k)
+        .bind(output_per_1k)
+        .bind(multiplier)
         .execute(&self.pool)
         .await?;
 
@@ -299,12 +351,21 @@ impl ModelService {
     }
 }
 
-fn validate_model(
+/// 校验模型字段：身份字段（name/owner/model_type/base_url/api_key）必填合法，
+/// 定价三字段（Option，None = 未提供：create 走默认 / update 保持现值）。
+///
+/// 定价规则：必须有限（拒绝 NaN/Infinity）、非负（价格与倍率都不能为负）；
+/// `multiplier` 另设 [`MAX_MULTIPLIER`] 上限，防止运营手滑打出天价倍率。
+/// 错误返回 [`AuthError::BadRequest`]（HTTP 400）。
+pub fn validate_model(
     name: &str,
     owner: &str,
     model_type: &str,
     base_url: &str,
     api_key: &str,
+    input_per_1k: Option<f64>,
+    output_per_1k: Option<f64>,
+    multiplier: Option<f64>,
 ) -> Result<(), AuthError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 128 {
@@ -329,6 +390,33 @@ fn validate_model(
     }
     if api_key.trim().is_empty() {
         return Err(AuthError::BadRequest("api_key required".into()));
+    }
+    validate_price(input_per_1k, "input_per_1k")?;
+    validate_price(output_per_1k, "output_per_1k")?;
+    let Some(m) = multiplier else {
+        return Ok(());
+    };
+    if !m.is_finite() || m < 0.0 {
+        return Err(AuthError::BadRequest(
+            "multiplier must be finite and >= 0".into(),
+        ));
+    }
+    if m > MAX_MULTIPLIER {
+        return Err(AuthError::BadRequest(format!(
+            "multiplier must be <= {MAX_MULTIPLIER}"
+        )));
+    }
+    Ok(())
+}
+
+/// 单价校验：None 通过（未提供）；Some 必须有限且非负（NaN/Infinity/负值拒绝）。
+fn validate_price(v: Option<f64>, field: &str) -> Result<(), AuthError> {
+    if let Some(v) = v
+        && (!v.is_finite() || v < 0.0)
+    {
+        return Err(AuthError::BadRequest(format!(
+            "{field} must be finite and >= 0"
+        )));
     }
     Ok(())
 }
@@ -383,26 +471,35 @@ struct ListQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateModelRequest {
-    name: String,
-    owner: String,
+pub struct CreateModelRequest {
+    pub name: String,
+    pub owner: String,
     #[serde(default = "default_mt")]
-    model_type: String,
+    pub model_type: String,
     #[serde(default)]
-    base_url: String,
-    api_key: String,
+    pub base_url: String,
+    pub api_key: String,
     #[serde(default)]
-    capabilities: Value,
+    pub capabilities: Value,
     #[serde(default)]
-    speed: i32,
+    pub speed: i32,
     #[serde(default)]
-    rating: Value,
+    pub rating: Value,
     #[serde(default)]
-    max_tokens: i32,
+    pub max_tokens: i32,
     #[serde(default)]
-    is_vision: bool,
+    pub is_vision: bool,
     #[serde(default)]
-    is_tool: bool,
+    pub is_tool: bool,
+    /// 输入单价（每 1k tokens）；缺席 = 未定价（0）。
+    #[serde(default)]
+    pub input_per_1k: Option<f64>,
+    /// 输出单价（每 1k tokens）；缺席 = 未定价（0）。
+    #[serde(default)]
+    pub output_per_1k: Option<f64>,
+    /// 价格倍率；缺席 = 无加价（1.0）。
+    #[serde(default)]
+    pub multiplier: Option<f64>,
 }
 fn default_mt() -> String {
     "chat".into()
@@ -410,19 +507,25 @@ fn default_mt() -> String {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct UpdateModelRequest {
-    name: Option<String>,
-    owner: Option<String>,
-    model_type: Option<String>,
-    base_url: Option<String>,
-    api_key: Option<String>,
-    capabilities: Option<Value>,
-    speed: Option<i32>,
-    rating: Option<Value>,
-    max_tokens: Option<i32>,
-    is_vision: Option<bool>,
-    is_tool: Option<bool>,
-    status: Option<i16>,
+pub struct UpdateModelRequest {
+    pub name: Option<String>,
+    pub owner: Option<String>,
+    pub model_type: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub capabilities: Option<Value>,
+    pub speed: Option<i32>,
+    pub rating: Option<Value>,
+    pub max_tokens: Option<i32>,
+    pub is_vision: Option<bool>,
+    pub is_tool: Option<bool>,
+    pub status: Option<i16>,
+    /// 输入单价（每 1k tokens）；None = 保持现值（COALESCE，不置零）。
+    pub input_per_1k: Option<f64>,
+    /// 输出单价（每 1k tokens）；None = 保持现值。
+    pub output_per_1k: Option<f64>,
+    /// 价格倍率；None = 保持现值。
+    pub multiplier: Option<f64>,
 }
 
 async fn parse_key(key: &str) -> Result<Uuid, ErrResp> {
@@ -499,6 +602,9 @@ async fn create(
             req.max_tokens,
             req.is_vision,
             req.is_tool,
+            req.input_per_1k,
+            req.output_per_1k,
+            req.multiplier,
         )
         .await
         .map(|m| Json(json!(m)))
@@ -542,6 +648,9 @@ async fn update(
             req.is_vision,
             req.is_tool,
             req.status,
+            req.input_per_1k,
+            req.output_per_1k,
+            req.multiplier,
         )
         .await
         .map(|m| Json(json!(m)))
