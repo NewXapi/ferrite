@@ -3,7 +3,7 @@
 //! Provides typed REST API calls using `client::ApiClient` and `contract::api` DTOs
 //! for tokens, channels, groups, and model aliases.
 
-use client::{ApiClient, ApiResult};
+use client::{ApiClient, ApiError, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
 use contract::api::billing::AliasUpsertRequest;
 use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
@@ -240,6 +240,74 @@ pub async fn update_group_api(
     req: &GroupUpsertRequest,
 ) -> ApiResult<GroupDto> {
     client.put(&format!("/api/group/{key}"), req).await
+}
+
+/// 分组启停局部更新体 —— 仅携带 `status` 一个 key。
+///
+/// 后端 `UpdateGroupRequest` 的列语义是 COALESCE 缺席保持现值
+/// (admin-catalog groups.rs update),启停切换只写 status 列,其余字段
+/// 必须整体缺席,否则会把 name/whitelist 等列静默覆盖。单字段名对
+/// camelCase 重命名是 no-op,显式声明仅为与仓库其他请求体保持一致
+/// (wire 契约钉在 `tests/group_partial_update_body.rs`)。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetGroupStatusBody {
+    /// 目标状态:1=启用,2=停用(与后端 status 列枚举一致)。
+    pub status: i16,
+}
+
+/// 分组倍率局部更新体 —— 仅携带 `ratio` 一个 key。
+///
+/// 列语义同 [`SetGroupStatusBody`]:其余字段缺席 = 后端 COALESCE 保持现值。
+/// 后端只校验 ratio > 0 且有限,本结构体不做校验,非法值由
+/// [`update_group_ratio_api`] fail-fast 拦截。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateGroupRatioBody {
+    /// 计费倍率,必须 > 0 且有限(后端唯一校验,无上限)。
+    pub ratio: f64,
+}
+
+/// 真实调用: PUT /api/group/{key} (仅写 status 字段,启用/停用)。
+///
+/// 请求体为 [`SetGroupStatusBody`](只含 `status` 一个 key),其余字段缺席 =
+/// 后端 COALESCE 保持现值。后端拒绝 default 组停用 (400 "default group
+/// cannot be disabled");分组不存在 404、未登录 401 → `ApiError`。
+pub async fn set_group_status_api(
+    client: &ApiClient,
+    key: &str,
+    status: i16,
+) -> ApiResult<GroupDto> {
+    client
+        .put(&format!("/api/group/{key}"), &SetGroupStatusBody { status })
+        .await
+}
+
+/// 真实调用: PUT /api/group/{key} (仅写 ratio 字段, 倍率滑条拖动写回)。
+///
+/// 请求体为 [`UpdateGroupRatioBody`](只含 `ratio` 一个 key),其余字段缺席 =
+/// 后端 COALESCE 保持现值。后端只要求 ratio > 0 且有限;本函数 fail-fast:
+/// ratio ≤ 0 或非有限(NaN/±inf)时不发请求,直接返回
+/// [`ApiError::Business`](admin-client 无专用输入校验变体,取最贴近的业务
+/// 校验失败语义)。滑条域 0–2 已保证 > 0 (0 时钳到 0.05 步长),但 0.0 会被
+/// 后端拒, 故调用方需保证 >= 0.05。
+pub async fn update_group_ratio_api(
+    client: &ApiClient,
+    key: &str,
+    ratio: f64,
+) -> ApiResult<GroupDto> {
+    // NaN 走 !is_finite 分支拦截, 这里不需要!(ratio>0.0) 取反写法
+    if ratio <= 0.0 || !ratio.is_finite() {
+        return Err(ApiError::Business(format!(
+            "invalid group ratio: {ratio} (must be finite and > 0)"
+        )));
+    }
+    client
+        .put(
+            &format!("/api/group/{key}"),
+            &UpdateGroupRatioBody { ratio },
+        )
+        .await
 }
 
 /// 真实调用: DELETE /api/group/{key} (删除)

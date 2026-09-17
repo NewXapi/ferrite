@@ -32,6 +32,6 @@ page-account     = { package = "admin-page-account", path = "../../crates/web/ad
 page-overview    = { package = "admin-page-overview", path = "../../crates/web/admin-page-overview" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Window", "Location", "console"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "console", "Document", "Element"] }
 page-admin       = { package = "admin-page-admin", path = "../../crates/web/admin-page-admin" }
 page-users       = { package = "admin-page-users", path = "../../crates/web/admin-page-users" }

@@ -11,6 +11,7 @@
 - `dialog.rs` — 确认弹窗（Dialog）
 - `scroll_spy.rs` — 滚动监听导航（ScrollSpyNav）
 - `segmented.rs` — 分段胶囊选择器（SegmentedCapsule）
+- `action_buttons.rs` — 卡片底部操作按钮组（ActionButtonGroup, ActionSpec, ActionTone）
 - `components/` — 自研原语（button/input/badge/dropdown/sidebar/sheet/toast/select/switch/avatar/skeleton）。视觉基准：button/card/input 自 #192 起按 dsh（deepseek-harness）组件 CSS 改写（胶囊按钮、扁平卡片、focus outline），其余仍逐字对齐 shadcn new-york-v4；对照规格见 `todo/web-ui-reference/dsh-visual-spec.md`（仓库外参考区）
 
 ## 约定
