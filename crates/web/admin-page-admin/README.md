@@ -11,3 +11,7 @@
 - `src/pages.rs` — 管理页导航和各管理面板。
 - `src/state.rs` — 管理实体列表和编辑状态。
 
+## 路由入口
+
+管理区各页通过 `apps/admin-web/src/lib.rs` 的 Manage tab 标签数组进入，tab index 与面板匹配臂 `(Section::Manage, <index>)` 一一对应，`#<hash>` 同名映射走 `get_initial_route()`。货币页入口：管理区「货币」tab 或 `#currency` hash（Manage index 9）。UI 契约见 `specs/ui/currency.yaml`，可达性回归由 `tests/route_currency_wire.rs` 钉死。
+
