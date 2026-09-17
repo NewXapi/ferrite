@@ -22,10 +22,10 @@
 //! ## quota 口径
 //!
 //! 内部单位 500_000 = $1（同 [`crate::currency`]）；upsert 把请求的 f64
-//! 展示值 ×500_000 四舍五入入库。注意读回侧 [`SubscriptionDto::quota`] 走
-//! contract 的 `From<&SubscriptionPlanRecord>`（内部单位 as f64 直出），
-//! 写展示值/读内部单位的不对称在 contract 层（本 crate 只读使用，不改），
-//! 前端对接时需对齐——见 [`quota_display_to_internal`] 注释。
+//! 展示值 ×500_000 四舍五入入库（[`quota_display_to_internal`]），读回侧
+//! [`From<SubscriptionRow> for SubscriptionDto`] ÷500_000 还原展示值。
+//! 两侧对称，API 往返 quota 不漂移（contract 的 DTO 注释明说 quota 是
+//! 展示层口径）。
 
 use axum::{
     Router,
@@ -215,6 +215,10 @@ fn row_to_view(r: SubscriptionRow) -> SubscriptionView {
 /// `group = upgrade_group`、`maxPerUser = max_purchases`——与 contract 里
 /// `From<&SubscriptionPlanRecord> for SubscriptionDto` 逐字段一致；
 /// 区别只在本侧多带 `sort_order`（record 没有该字段）。
+///
+/// quota 往返自洽：写入侧 [`quota_display_to_internal`] 把展示值 ×500_000
+/// 入库，读回侧这里 ÷500_000 还原展示值（contract 的 DTO 注释明说 quota 是
+/// 展示层口径）。两侧对称，API 往返 quota 不漂移。
 impl From<SubscriptionRow> for SubscriptionDto {
     fn from(r: SubscriptionRow) -> Self {
         Self {
@@ -222,7 +226,7 @@ impl From<SubscriptionRow> for SubscriptionDto {
             name: r.name,
             description: None,
             price: r.price.parse().ok(),
-            quota: Some(r.quota as f64),
+            quota: Some(r.quota as f64 / UNITS_PER_DOLLAR),
             currency_price: None,
             payment_method: None,
             group: r.upgrade_group,
@@ -265,10 +269,8 @@ pub fn parse_price(price: &str) -> Result<f64, BillingErr> {
 /// 负值/非有限值拒绝：非法输入静默成 0 会让运营改出负额度套餐。溢出
 /// （超 i64 域）同样拒绝而非截断——截断会静默改写额度（风险点 2）。
 ///
-/// 口径不对称提示：本函数是**写入**侧（展示值 → 内部单位）；读回侧
-/// [`SubscriptionDto::quota`] 走 contract 的 record→DTO 映射（内部单位
-/// `as f64` 直出）。写展示值、读内部单位的不对称在 contract 层，本 crate
-/// 只读使用不改；前端对接需对齐。
+/// 与读回侧对称：[`From<SubscriptionRow> for SubscriptionDto`] 里 quota
+/// ÷500_000 还原展示值，API 往返不漂移。
 pub fn quota_display_to_internal(quota: f64) -> Result<i64, BillingErr> {
     if !quota.is_finite() || quota < 0.0 {
         return Err(BillingErr::BadRequest(format!(

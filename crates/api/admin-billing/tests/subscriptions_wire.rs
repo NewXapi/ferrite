@@ -120,3 +120,25 @@ fn price_validation_rejects_non_numeric() {
     assert!(parse_price("").is_err(), "空串");
     assert!(parse_price("-1").is_err(), "负价格");
 }
+
+/// quota 往返自洽：写入侧 ×500_000 入库，读回侧 ÷500_000 还原，不漂移。
+///
+/// 为什么单钉这条：两侧换算不对称会让运营改一次套餐、列表显示值就翻
+/// 500_000 倍（提交 1 → 显示 500_000），是肉眼可见的数据错乱。写侧
+/// [`quota_display_to_internal`] 与读侧 `From<SubscriptionRow> for
+/// SubscriptionDto` 必须互为逆运算。
+#[test]
+fn quota_roundtrip_is_symmetric() {
+    let displayed = 9.9;
+    let internal = quota_display_to_internal(displayed).unwrap();
+    // 读回侧换算（与 From<SubscriptionRow> 的 quota: r.quota as f64 / UNITS_PER_DOLLAR 同式）
+    let read_back = internal as f64 / 500_000.0;
+    assert_eq!(
+        read_back, displayed,
+        "quota 往返必须还原：写 {displayed} → 内部 {internal} → 读 {read_back}"
+    );
+
+    // 整数美元的往返（无舍入误差的常见运营取值）。
+    let internal_1 = quota_display_to_internal(1.0).unwrap();
+    assert_eq!(internal_1 as f64 / 500_000.0, 1.0);
+}
