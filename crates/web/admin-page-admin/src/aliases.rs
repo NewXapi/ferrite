@@ -2,10 +2,11 @@
 //!
 //! 数据接线(对齐 GroupsPage 模式,本地 signal 不触碰 EntityStore):
 //! - 列表:挂载/reload 时 `list_model_aliases_api` 拉 GET /api/models?size=100,
-//!   只映射 ModelView 的 key(写路径定位 UUID)与 name;价格/倍率字段后端无
-//!   对应列,展示为 0/1.0(见页面说明条)。
-//! - 编辑:`update_model_alias_api` PUT /api/models/{key},请求体只携带 name
-//!   (后端 models 域唯一与别名对应的列)。
+//!   映射 ModelView 的 key(写路径定位 UUID)、name 与定价三字段
+//!   (input_per_1k/output_per_1k/multiplier,后端 0018 起落库)。
+//! - 编辑:`update_model_alias_api` PUT /api/models/{key},请求体携带 name 与
+//!   定价三字段(后端 `UpdateModelRequest` COALESCE 合并写库);成功后用返回
+//!   view 按 key 就地刷新列表行,不整体重拉。
 //! - 删除:`delete_model_alias_api` DELETE /api/models/{key}。
 //! - 新建:后端 POST /api/models 的 CreateModelRequest 必填 owner 与 api_key,
 //!   表单没有这两个字段的来源 — 提交时诚实提示,不造数据、不假成功。
@@ -24,8 +25,9 @@ use crate::state::AliasRow;
 
 /// 别名列表项:后端 ModelView 的 key(UUID) + 页面展示行 + per-card 定价模式。
 /// key 不并入 AliasRow — AliasRow 被 entities.rs 结构体字面量构造,
-/// 本页独立持有 key 以定位 PUT/DELETE 路径;price_mode 是 UI 层本地状态,
-/// 后端 models 域无 pricing_mode 列,保存不写回。
+/// 本页独立持有 key 以定位 PUT/DELETE 路径;price_mode 是纯 UI 概念
+/// (后端 models 域无 pricing_mode 列),只驱动卡片/弹窗的展示口径,
+/// 保存时统一发三定价字段(见 `AliasFormModal` 的提交注释)。
 #[derive(Clone, PartialEq)]
 struct AliasItem {
     key: String,
@@ -69,7 +71,8 @@ pub fn AliasesPage() -> Element {
     let mut f_price_mode = use_signal(|| PriceMode::PerToken);
     // 弹窗活动 tab:0 基本 / 1 按量定价 / 2 按次定价
     let mut f_modal_tab = use_signal(|| 0usize);
-    // 按量/按次价格项的本地状态(后端无 pricing 列,纯 UI 占位;打开弹窗时重置默认值)
+    // 按量/按次价格项的本地状态(补充通道/按次单价后端无对应列,纯 UI 占位;
+    // 打开弹窗时重置默认值;输入价/输出价/倍率另走 f_input/f_output/f_mult,写库)
     let mut p_input = use_signal(|| "3".to_string());
     let mut p_output = use_signal(|| "15".to_string());
     let mut p_cache_read = use_signal(|| "0.3".to_string());
@@ -102,9 +105,9 @@ pub fn AliasesPage() -> Element {
                             row: AliasRow {
                                 alias: m.name,
                                 display: String::new(),
-                                input_per_1k: 0.0,
-                                output_per_1k: 0.0,
-                                multiplier: 1.0,
+                                input_per_1k: m.input_per_1k,
+                                output_per_1k: m.output_per_1k,
+                                multiplier: m.multiplier,
                             },
                             price_mode: PriceMode::PerToken,
                         })
@@ -219,7 +222,7 @@ pub fn AliasesPage() -> Element {
     };
 
     // 卡片面板上的定价 toggle:更新该 card 独立的定价模式(per-card,不共享),
-    // 写回 rows 里对应 item 的 price_mode;后端不落地,纯 UI 本地状态。
+    // 写回 rows 里对应 item 的 price_mode;后端无 pricing_mode 列,纯 UI 展示态。
     // `make_mode_handler` 每次返回独立 EventHandler,move 进 rsx 闭包。
     let make_mode_handler = |key: String| -> EventHandler<PriceMode> {
         let mut items_sig = rows;
@@ -254,7 +257,7 @@ pub fn AliasesPage() -> Element {
         });
     };
 
-    // 弹窗关闭:只关弹窗(价格/模式是 UI 本地态,保存仅写 name,无需整体重拉列表)
+    // 弹窗关闭:只关弹窗(编辑保存已按 key 就地刷新列表行,无需整体重拉)
     let close_modal = move |_| {
         modal_state.set(AliasModalState::Closed);
     };
@@ -271,9 +274,9 @@ pub fn AliasesPage() -> Element {
                     }
                 }
 
-                // 数据与写路径说明(后端 models 端点暂无计费字段)
+                // 数据与写路径说明
                 div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
-                    span { "别名来自真实 /api/models;编辑与删除已接后端;定价模式与价格配置为 UI 层本地状态,后端扩展 pricing 列前保存不写库;新建暂未开放(后端需要 owner/api_key 字段)" }
+                    span { "别名来自真实 /api/models;编辑/删除/定价(输入价·输出价·倍率)已接后端写库;定价模式与按次单价为 UI 层展示态(后端无对应列);新建暂未开放(后端需要 owner/api_key 字段)" }
                 }
                 // 1. 统计区
                 section { id: "aliases-sec-stats", class: "scroll-mt-8 space-y-3",
@@ -411,6 +414,7 @@ pub fn AliasesPage() -> Element {
                     c_cache_write_on,
                     c_completion_on,
                     notice,
+                    rows,
                     on_cancel: move |_| modal_state.set(AliasModalState::Closed),
                     on_submit: close_modal,
                 }
@@ -464,8 +468,8 @@ fn AliasCard(
     let overflow_groups = usable_groups.len().saturating_sub(4);
 
     // 定价:按量 = 输入 + 启用中的补充通道($/1M),按次 = 单项。卡片上放静态默认值
-    // 作展示,真实可编辑值在弹窗里(后端无 pricing 列,此处为 UI 占位)。
-    // 未启用的通道(开关关闭)不出现在卡片上。
+    // 作展示,真实可编辑值在弹窗里(补充通道价格后端无对应列,此处为 UI 占位;
+    // 输入价/输出价/倍率走真实写库路径)。未启用的通道(开关关闭)不出现在卡片上。
     let price_rows: Vec<(String, String)> = if price_mode == PriceMode::PerCall {
         vec![("单次调用".into(), "0.05".into())]
     } else {
@@ -607,6 +611,9 @@ fn AliasFormModal(
     c_cache_write_on: Signal<bool>,
     c_completion_on: Signal<bool>,
     notice: Signal<Option<String>>,
+    /// 页面列表 signal:保存成功后按返回 view 的 key 就地刷新该行
+    /// (以服务端落库值为准),签名与 EventHandler 一样 Copy,直接传入。
+    rows: Signal<Vec<AliasItem>>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
@@ -643,27 +650,52 @@ fn AliasFormModal(
         }
         let (mut sub, cb, mut note) = (submitting2, on_submit2, notice2);
         match key {
-            // 编辑:PUT /api/models/{key}。请求体只带 name — 后端 models 域
-            // 与别名页对应的列只有 name,display/价格/倍率/定价模式无对应列,
-            // 由后端 UpdateModelRequest(全 Option)忽略,不写库。定价字段为 UI 层
-            // 本地状态,后端落地时再扩展 models 域。
+            // 编辑:PUT /api/models/{key}。请求体携带 name + 定价三字段 —
+            // 后端 0018 起 UpdateModelRequest 已接三字段(全 Option,
+            // COALESCE 合并写库)。三字段从弹窗本地信号解析:非法/空值回退
+            // None(字段缺席 = 后端保持现值,不置零)。
+            // price_mode 是纯 UI 概念(后端无 pricing_mode 列),保存策略:
+            // 无论按量/按次,统一把 input/output/multiplier 三字段发后端,
+            // price_mode 只影响卡片与弹窗的展示口径,不参与写库 — 这样
+            // 按次定价的单次价格仍只存 UI(p_per_call 信号),而可落库的
+            // 定价不与模式耦合,避免后端存半截模式状态。
             Some(k) => {
                 spawn(async move {
                     sub.set(true);
                     let client = ApiClient::shared().clone();
                     let req = AliasUpsertRequest {
                         name,
+                        input_per_1k: parse_price(&input_rate),
+                        output_per_1k: parse_price(&output_rate),
+                        multiplier: parse_price(&multiplier),
                         ..Default::default()
                     };
-                    if let Err(e) = update_model_alias_api(&client, &k, &req).await {
-                        note.set(Some(format!("保存失败:{e}")));
+                    match update_model_alias_api(&client, &k, &req).await {
+                        // 成功:用返回 view 按 key 就地刷新列表行(以服务端
+                        // 落库值为准,不读本地信号,也不整体重拉避免列表闪骨架)。
+                        Ok(view) => {
+                            let mut items = rows().to_vec();
+                            if let Some(it) = items.iter_mut().find(|it| it.key == view.key) {
+                                it.row.alias = view.name;
+                                it.row.input_per_1k = view.input_per_1k;
+                                it.row.output_per_1k = view.output_per_1k;
+                                it.row.multiplier = view.multiplier;
+                                it.price_mode = price_mode();
+                            }
+                            rows.set(items);
+                            note.set(Some("已保存".to_string()));
+                        }
+                        Err(e) => note.set(Some(format!("保存失败:{e}"))),
                     }
                     sub.set(false);
-                    cb.call(()); // 关闭弹窗并重拉列表(以服务端为准)
+                    cb.call(()); // 关闭弹窗(列表行已就地刷新)
                 });
             }
-            // 新建:后端 CreateModelRequest 必填 owner 与 api_key,表单没有
-            // 这两个字段的来源 — 诚实拒绝,不造数据、不假成功。
+            // 新建:后端 CreateModelRequest 必填 owner 与 api_key(非 Option、
+            // 无 serde default,validate_model 也强制非空),弹窗表单只收
+            // name/展示名/倍率/价格,没有这两者的合法来源 — 诚实拒绝,
+            // 不造数据、不假成功。这是「给已有模型加别名」页面的已知缺口,
+            // 与定价写库无关(定价三字段已可通过编辑路径落库)。
             None => {
                 note.set(Some(
                     "新建未执行:后端创建模型需要 owner 与 api_key 字段,当前表单未提供".to_string(),
@@ -874,7 +906,7 @@ fn AliasFormModal(
                             }
                             span { class: "shrink-0 text-[11px] text-zinc-500", "USD/次" }
                         }
-                        p { class: "text-[11px] text-zinc-500", "后端落地前按次价格暂存于倍率字段,仅 UI 层生效。" }
+                        p { class: "text-[11px] text-zinc-500", "后端 models 域无按次计费列,按次价格仅 UI 层生效,不写库。" }
                     }
                 }
             }
@@ -900,8 +932,29 @@ fn AliasFormModal(
 
 // ============ 定价模式 toggle（共享组件,卡片与弹窗共用） ============
 
+/// 把弹窗定价输入框的字符串解析为 `AliasUpsertRequest` 的 Option<f64> 语义。
+///
+/// - 空串 / 无法解析 / 非有限(`"NaN"`、`"inf"` 能被 `f64::parse` 接收,
+///   但 serde_json 会把 NaN/±inf 序列化成 null)→ **None**:字段缺席,
+///   后端 `UpdateModelRequest` 走 COALESCE 保持现值,不置零;
+/// - 合法有限值(含负值与越界倍率)→ **Some** 原样发送,非法值由后端
+///   `validate_model` 400 拒绝并把错误透出到页面提示条——前端不静默吞、
+///   不本地钳制,避免用户以为已保存成功。
+///
+/// 因此「清空输入框保存」= 该列保持原值,是显式的缺席语义而非写零。
+fn parse_price(s: &Signal<String>) -> Option<f64> {
+    let raw = s.peek().trim().to_string();
+    if raw.is_empty() {
+        return None;
+    }
+    let n: f64 = raw.parse().ok()?;
+    n.is_finite().then_some(n)
+}
+
 /// 定价模式:按量(Token 计费) / 按次(按调用次数计费)。
-/// 后端 models 域暂无对应列,UI 层本地状态,保存路径见 AliasFormModal。
+/// 纯 UI 概念:后端 models 域无 pricing_mode 列,该枚举只驱动卡片/弹窗的
+/// 展示口径;保存时统一发 input/output/multiplier 三字段,见
+/// `AliasFormModal` 的提交注释。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PriceMode {
     PerToken,
@@ -912,7 +965,8 @@ pub enum PriceMode {
 ///
 /// - `compact`(默认 true):小号胶囊,用在卡片面板里(不占满,视觉克制)。
 /// - 非 compact:全宽,用在编辑弹窗「基本」tab 里。
-/// 后端 models 域暂无对应列,UI 层本地状态,保存路径见 AliasFormModal。
+/// 后端 models 域无 pricing_mode 列,模式仅影响展示,保存路径见
+/// `AliasFormModal` 的提交注释。
 #[component]
 pub fn PriceModeToggle(
     /// 当前激活模式

@@ -420,11 +420,20 @@ impl EntityStore {
             .collect();
         store.channels.write().extend(rows);
 
-        // 模型别名
+        // 模型别名(定价三字段对齐后端 0018 列;缺省容错见 ModelDto 字段注释)
         #[derive(Default, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct ModelDto {
             name: String,
+            /// 输入单价(每 1k tokens);后端 0018 起恒返回,未定价 = 0。
+            #[serde(default)]
+            input_per_1k: f64,
+            /// 输出单价(每 1k tokens);后端 0018 起恒返回,未定价 = 0。
+            #[serde(default)]
+            output_per_1k: f64,
+            /// 价格倍率;后端 0018 起恒返回,无加价 = 1.0。
+            #[serde(default = "default_hydrate_multiplier")]
+            multiplier: f64,
         }
         let r: Items<ModelDto> = match client.get("/api/models?size=100").await {
             Ok(r) => r,
@@ -439,9 +448,9 @@ impl EntityStore {
             .map(|m| AliasRow {
                 alias: m.name,
                 display: String::new(),
-                input_per_1k: 0.0,
-                output_per_1k: 0.0,
-                multiplier: 1.0,
+                input_per_1k: m.input_per_1k,
+                output_per_1k: m.output_per_1k,
+                multiplier: m.multiplier,
             })
             .collect();
         aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
@@ -458,6 +467,12 @@ impl EntityStore {
         };
         store.plans.write().extend(plans);
     }
+}
+
+/// `ModelDto.multiplier` 的反序列化缺省值 — 与后端 0018 迁移的列 DEFAULT 1.0
+/// 一致(无加价);仅在字段缺席时用,正常载荷恒带真实值。
+fn default_hydrate_multiplier() -> f64 {
+    1.0
 }
 
 /// hydrate 失败的可见化：浏览器 console.warn（wasm 下 std eprintln 不可见）。
