@@ -376,7 +376,6 @@ pub fn ChannelsPage() -> Element {
                     } else {
                         if let Some(channel) = filtered.first().cloned() {
                             {
-                                let edit_key = channel.key.clone();
                                 rsx! {
                                     div {
                                         class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
@@ -385,7 +384,6 @@ pub fn ChannelsPage() -> Element {
                                         "data-testid": "channel-card-prototype",
                                         PrototypeChannelCard {
                                             channel,
-                                            on_edit: move |_| open_edit(edit_key.clone()),
                                         }
                                     }
                                 }

@@ -35,22 +35,21 @@ fn short_key(key: &str) -> String {
 
 /// Renders a four-tab prototype card for an [`AdminUserDto`].
 ///
-/// The card presents the user's overview, groups, CNY quota (where `500_000`
-/// internal units equal `¥1`), and system metadata. `on_edit` receives the
-/// user key when the existing edit affordance is selected; it is an entry point
-/// only, so callers may attach an edit Popover without changing this card.
+/// The tabs follow the user edit modal's fields: 基本信息 (username / email /
+/// role), 分组与备注 (group chips and remark, or status when no remark
+/// field exists on the DTO), 额度 (CNY quota where `500_000` internal units
+/// equal `¥1`, progress, request count), and 系统 (shortened key, created
+/// time).
 #[component]
 pub fn UserCard(
     /// The administrative user DTO displayed by this card.
     user: AdminUserDto,
-    /// Callback invoked with the user key by the existing edit affordance.
-    on_edit: EventHandler<String>,
 ) -> Element {
     let mut tab = use_signal(|| 0usize);
-    let tabs = vec!["概览", "分组", "额度", "系统"];
+    let tabs = vec!["基本信息", "分组与备注", "额度", "系统"];
 
-    let user_status_str = if user.status == 1 { "启用" } else { "停用" }.to_string();
     let role_str = role_label(user.role).to_string();
+    let status_str = if user.status == 1 { "启用" } else { "停用" }.to_string();
     let short_k = short_key(&user.key);
 
     let used_pct = if user.quota > 0 {
@@ -66,8 +65,6 @@ pub fn UserCard(
             tabs: tabs,
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
-            show_edit: true,
-            on_edit: move |_| on_edit.call(user.key.clone()),
             testid: Some("user-card-new".to_string()),
 
             {
@@ -75,12 +72,12 @@ pub fn UserCard(
                     0 => rsx! {
                         div { class: "space-y-2.5",
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "邮箱" }
-                                span { class: "font-medium text-zinc-200 truncate", "{user.email}" }
+                                span { class: "text-zinc-400", "用户名" }
+                                span { class: "font-medium text-zinc-200 truncate", "{user.username}" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "状态" }
-                                span { class: "font-medium text-zinc-200", "{user_status_str}" }
+                                span { class: "text-zinc-400", "邮箱" }
+                                span { class: "font-medium text-zinc-200 truncate", "{user.email}" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "角色" }
@@ -89,15 +86,25 @@ pub fn UserCard(
                         }
                     },
                     1 => rsx! {
-                        div { class: "flex flex-wrap gap-1.5",
-                            for g in &user.groups {
-                                span {
-                                    class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
-                                    "{g}"
+                        // AdminUserDto 无 remark 字段，按规格回退展示 groups + status。
+                        div { class: "space-y-2.5",
+                            div { class: "space-y-1.5",
+                                p { class: "text-[11px] text-zinc-400", "分组" }
+                                div { class: "flex flex-wrap gap-1.5",
+                                    for g in &user.groups {
+                                        span {
+                                            class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
+                                            "{g}"
+                                        }
+                                    }
+                                    if user.groups.is_empty() {
+                                        span { class: "text-[11px] text-zinc-500", "无分组" }
+                                    }
                                 }
                             }
-                            if user.groups.is_empty() {
-                                span { class: "text-[11px] text-zinc-500", "无分组" }
+                            div { class: "flex justify-between gap-2 text-xs",
+                                span { class: "text-zinc-400", "状态" }
+                                span { class: "font-medium text-zinc-200", "{status_str}" }
                             }
                         }
                     },

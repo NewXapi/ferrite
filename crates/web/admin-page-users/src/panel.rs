@@ -340,7 +340,6 @@ pub fn UsersPanel() -> Element {
                             "data-testid": "user-card-prototype",
                             PrototypeUserCard {
                                 user: user.clone(),
-                                on_edit: open_edit,
                             }
                         }
                     }

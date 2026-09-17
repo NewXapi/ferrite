@@ -21,16 +21,15 @@ fn short_key(key: &str) -> String {
 
 /// Renders a read-only four-tab prototype card for a model alias.
 ///
-/// The tabs are overview, pricing, groups, and system. The overview identifies
-/// the alias, its display name, and position; pricing presents per-1k-token
-/// CNY unit prices plus the per-call multiplier with a mode label; groups
-/// lists the caller-computed usable groups (name + group ratio) as chips;
-/// system shows the full alias key, shortened char-safely. All tabs
-/// intentionally omit a bottom action row. The edit callback is only a future
-/// Popover integration point; this card does not edit or persist data.
+/// The tabs follow the alias edit modal's fields: 基本信息 (alias / display),
+/// 定价 (input and output CNY prices per 1k tokens plus the multiplier),
+/// 分组 (caller-computed usable groups as name + ratio chips, first four
+/// with an overflow counter, or "无分组引用" when empty), and 系统
+/// (shortened alias key). All tabs intentionally omit a bottom action row;
+/// this card does not edit or persist data.
 #[component]
 pub fn AliasCard(
-    /// Alias used as the card title and passed to `on_edit`.
+    /// Alias used as the card title.
     alias: String,
     /// Optional display name shown as the card subtitle when non-empty.
     display: String,
@@ -49,18 +48,14 @@ pub fn AliasCard(
     usable_groups: Vec<(String, f64)>,
     /// Backend alias key (UUID); displayed truncated on the system tab.
     alias_key: String,
-    /// Callback invoked with `alias` by the edit affordance; callers may later
-    /// connect it to an edit Popover.
-    on_edit: EventHandler<String>,
 ) -> Element {
     let mut tab = use_signal(|| 0usize);
-    let tabs = vec!["概览", "定价", "分组", "系统"];
+    let tabs = vec!["基本信息", "定价", "分组", "系统"];
 
     let shown_groups = usable_groups.iter().take(4).collect::<Vec<_>>();
     let overflow_groups = usable_groups.len().saturating_sub(4);
     let short_k = short_key(&alias_key);
-    // 卡片标题与编辑回调各持一份克隆,避免 `alias` 被 move 进回调闭包后
-    // 内容区仍借用而报错
+    // 卡片标题与内容区各持一份克隆,避免 `alias` 被 move 后仍被借用
     let title_alias = alias.clone();
 
     rsx! {
@@ -70,8 +65,6 @@ pub fn AliasCard(
             tabs: tabs,
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
-            show_edit: true,
-            on_edit: move |_| on_edit.call(alias.clone()),
             testid: Some("alias-card-new".to_string()),
 
             {
@@ -80,11 +73,11 @@ pub fn AliasCard(
                         div { class: "space-y-2.5",
                             div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "别名" }
-                                span { class: "font-medium text-zinc-200", "{title_alias.clone()}" }
+                                span { class: "font-medium text-zinc-200", "{title_alias}" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "展示名" }
-                                span { class: "font-medium text-zinc-200", if display.clone().is_empty() { "未填写" } else { "{display.clone()}" } }
+                                span { class: "font-medium text-zinc-200", if display.is_empty() { "未填写" } else { "{display}" } }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "序号" }
@@ -96,15 +89,15 @@ pub fn AliasCard(
                         div { class: "space-y-2",
                             p { class: "text-[11px] font-medium text-zinc-400", "按量 / 按次 双模式" }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "按量 · 输入" }
+                                span { class: "text-zinc-400", "输入" }
                                 span { class: "font-medium text-zinc-200", "{fmt_price(input_per_1k)} / 1k tokens" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "按量 · 输出" }
+                                span { class: "text-zinc-400", "输出" }
                                 span { class: "font-medium text-zinc-200", "{fmt_price(output_per_1k)} / 1k tokens" }
                             }
                             div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "按次 · 倍率" }
+                                span { class: "text-zinc-400", "倍率" }
                                 span { class: "font-medium text-zinc-200", "×{multiplier}" }
                             }
                         }

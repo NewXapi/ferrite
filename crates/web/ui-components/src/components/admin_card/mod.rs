@@ -1,7 +1,6 @@
 //! 管理页新卡片原型及其共享基元。
 //!
 //! 本模块提供只读内容页签与统一的卡片外壳，供各实体卡复用；它不会替换旧卡片。
-//! 编辑回调只是将来接入 Popover 的入口，目前不渲染 Popover 或其他编辑界面。
 
 /// 别名实体卡原型。
 pub mod aliases;
@@ -20,7 +19,7 @@ pub mod users;
 
 /// 供管理页展示别名摘要的卡片组件。
 pub use aliases::AliasCard;
-/// 提供标题、只读圆点页签和可选编辑入口的共享卡片组件。
+/// 提供标题与只读圆点页签的共享卡片组件。
 pub use card::AdminCard;
 /// 供管理页展示渠道摘要的卡片组件。
 pub use channels::ChannelCard;

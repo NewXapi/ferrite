@@ -480,7 +480,6 @@ pub fn GroupsPage() -> Element {
                     } else {
                         if let Some(group) = filtered.first().cloned() {
                             {
-                                let edit_key = group.key.clone();
                                 let is_default = group.name == "default";
                                 rsx! {
                                     div {
@@ -491,7 +490,6 @@ pub fn GroupsPage() -> Element {
                                         PrototypeGroupCard {
                                             group,
                                             is_default,
-                                            on_edit: move |_| open_edit(edit_key.clone()),
                                         }
                                     }
                                 }

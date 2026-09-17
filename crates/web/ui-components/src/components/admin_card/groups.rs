@@ -37,21 +37,20 @@ fn short_key(key: &str) -> String {
 
 /// Renders a four-tab prototype card for a [`GroupDto`].
 ///
-/// The card presents the group's overview, ratio, model whitelist, and system
-/// metadata. `is_default` labels the default group. `on_edit` preserves the
-/// existing edit entry point and may later be connected to an edit Popover;
-/// this card itself does not perform a write.
+/// The tabs follow the group edit modal's fields: 基本信息 (name / status /
+/// remark), 倍率与计费 (ratio with a 100-unit example price), 白名单 (model
+/// whitelist chips, or "全模型可用" when empty), and 系统 (shortened key,
+/// creation and update times). `is_default` labels the default group.
+/// This card itself does not perform a write.
 #[component]
 pub fn GroupCard(
     /// The group DTO displayed by this card.
     group: GroupDto,
     /// Whether this group is the default group.
     is_default: bool,
-    /// Callback invoked by the existing edit affordance.
-    on_edit: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| 0usize);
-    let tabs = vec!["概览", "倍率", "白名单", "系统"];
+    let tabs = vec!["基本信息", "倍率与计费", "白名单", "系统"];
 
     let group_status_str = if group.status == 1 {
         "启用"
@@ -75,14 +74,16 @@ pub fn GroupCard(
             tabs: tabs,
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
-            show_edit: true,
-            on_edit: move |_| on_edit.call(()),
             testid: Some("group-card-new".to_string()),
 
             {
                 match tab() {
                     0 => rsx! {
                         div { class: "space-y-2.5",
+                            div { class: "flex justify-between gap-2 text-xs",
+                                span { class: "text-zinc-400", "名称" }
+                                span { class: "font-medium text-zinc-200 truncate", "{group.name}" }
+                            }
                             div { class: "flex justify-between gap-2 text-xs",
                                 span { class: "text-zinc-400", "状态" }
                                 span { class: "font-medium text-zinc-200", "{group_status_str}" }
@@ -108,7 +109,7 @@ pub fn GroupCard(
                     2 => rsx! {
                         div { class: "space-y-1.5",
                             if whitelist.is_empty() {
-                                span { class: "text-[11px] text-zinc-500", "无白名单限制（全模型可用）" }
+                                span { class: "text-[11px] text-zinc-500", "全模型可用" }
                             } else {
                                 for m in &whitelist {
                                     span {

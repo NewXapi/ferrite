@@ -358,7 +358,6 @@ pub fn AliasesPage() -> Element {
                             {
                                 // 新卡示例仅消费当前筛选结果的首条真实数据；旧卡片网格与其写路径保持不变。
                                 let prototype_key = prototype_item.key.clone();
-                                let mut prototype_open_edit = open_edit;
                                 let prototype_alias = prototype_item.row.alias.clone();
                                 let prototype_display = prototype_item.row.display.clone();
                                 let prototype_input_per_1k = prototype_item.row.input_per_1k;
@@ -392,7 +391,6 @@ pub fn AliasesPage() -> Element {
                                             index: prototype_index,
                                             usable_groups: prototype_usable_groups,
                                             alias_key: prototype_key.clone(),
-                                            on_edit: move |_| prototype_open_edit(prototype_key.clone()),
                                         }
                                     }
                                 }

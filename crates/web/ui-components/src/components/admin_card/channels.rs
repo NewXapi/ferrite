@@ -18,22 +18,19 @@ fn mask_key(key: &str) -> String {
 
 /// Renders a four-tab prototype card for a [`ChannelDto`].
 ///
-/// The overview tab shows status (`1` = enabled, other values = disabled),
-/// address, test model, and remark; the key and model tabs show masked
-/// credentials and dispatch models; the system tab keeps priority, weight,
-/// groups, creation time, and update time. Empty `test_model`,
-/// `remark`, and `updated_at` values explicitly render as "未配置", "未填写",
-/// and "未记录". `on_edit` preserves the existing edit entry point, while all
-/// four tabs intentionally omit a bottom action row.
+/// The tabs follow the channel edit modal's fields: 基本信息 (name / type /
+/// status / base address), 密钥与模型 (key count, masked keys, and dispatch
+/// model chips), 调度 (priority, weight, groups, and test model, rendered as
+/// "未配置" when empty), and 系统 (remark shown as "未填写" when empty, plus
+/// creation and update times). All four tabs intentionally omit a bottom
+/// action row.
 #[component]
 pub fn ChannelCard(
     /// The channel DTO displayed by this card.
     channel: ChannelDto,
-    /// Callback invoked by the existing edit affordance.
-    on_edit: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| 0usize);
-    let tabs = vec!["概览", "密钥", "模型", "系统"];
+    let tabs = vec!["基本信息", "密钥与模型", "调度", "系统"];
 
     let channel_status_str = if channel.status == 1 {
         "启用"
@@ -87,8 +84,6 @@ pub fn ChannelCard(
             tabs: tabs,
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),
-            show_edit: true,
-            on_edit: move |_| on_edit.call(()),
             testid: Some("channel-card-new".to_string()),
 
             {
@@ -107,14 +102,6 @@ pub fn ChannelCard(
                                 span { class: "text-zinc-400", "地址" }
                                 span { class: "font-medium text-zinc-200 truncate", "{channel.base_url}" }
                             }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "测试模型" }
-                                span { class: "font-medium text-zinc-200 truncate", "{test_model}" }
-                            }
-                            div { class: "flex justify-between gap-2 text-xs",
-                                span { class: "text-zinc-400", "备注" }
-                                span { class: "font-medium text-zinc-200 truncate", "{remark}" }
-                            }
                         }
                     },
                     1 => rsx! {
@@ -129,23 +116,22 @@ pub fn ChannelCard(
                                     span { class: "font-mono text-zinc-200", "{mk}" }
                                 }
                             }
-                        }
-                    },
-                    2 => rsx! {
-                        div { class: "space-y-1.5",
-                            if dispatch_models.is_empty() {
-                                span { class: "text-[11px] text-zinc-500", "无调度模型" }
-                            } else {
-                                for m in &dispatch_models {
-                                    span {
-                                        class: "inline-flex rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300 mr-1.5 mb-1",
-                                        "{m}"
+                            div { class: "space-y-1.5",
+                                p { class: "text-[11px] text-zinc-400", "调度模型" }
+                                if dispatch_models.is_empty() {
+                                    span { class: "text-[11px] text-zinc-500", "无调度模型" }
+                                } else {
+                                    for m in &dispatch_models {
+                                        span {
+                                            class: "inline-flex rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300 mr-1.5 mb-1",
+                                            "{m}"
+                                        }
                                     }
                                 }
                             }
                         }
                     },
-                    3 => rsx! {
+                    2 => rsx! {
                         div { class: "space-y-2 text-xs",
                             div { class: "flex justify-between gap-2",
                                 span { class: "text-zinc-400", "优先级" }
@@ -158,6 +144,18 @@ pub fn ChannelCard(
                             div { class: "flex justify-between gap-2",
                                 span { class: "text-zinc-400", "分组" }
                                 span { class: "text-zinc-200", "{channel.groups.join(\", \")}" }
+                            }
+                            div { class: "flex justify-between gap-2",
+                                span { class: "text-zinc-400", "测试模型" }
+                                span { class: "text-zinc-200 truncate", "{test_model}" }
+                            }
+                        }
+                    },
+                    3 => rsx! {
+                        div { class: "space-y-2 text-xs",
+                            div { class: "flex justify-between gap-2",
+                                span { class: "text-zinc-400", "备注" }
+                                span { class: "text-zinc-200 truncate", "{remark}" }
                             }
                             div { class: "flex justify-between gap-2",
                                 span { class: "text-zinc-400", "创建" }
