@@ -521,7 +521,7 @@ pub fn IconChartBar(
             class: "{class}",
             "aria-hidden": "true",
             path { d: "M3 9v7m0 0h7m-7 0v3m7-3V9a3 3 0 0 1 6 0v7m-6 0h6" }
-            path { d: "M12 12h0.01" }
+            path { d: "M12 12h.01" }
         }
     }
 }
@@ -550,8 +550,9 @@ pub fn IconUser(
             "stroke-linejoin": "round",
             class: "{class}",
             "aria-hidden": "true",
-            path { d: "M19 21a7 7 0 1 0-9.15-2.06" }
-            path { d: "M19 21L9 11l-2 2" }
+            // 标准 user glyph：圆头 + 肩部弧（对齐 Lucide `user`，避免被读作「离开用户」）
+            path { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" }
+            circle { cx: "12", cy: "7", r: "4" }
         }
     }
 }

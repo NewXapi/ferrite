@@ -3,8 +3,11 @@
 //! 契约（维护者拍板）：不做任何背景/边框/阴影包装，左下角=用户头像+额度占位，
 //! 右下角=系统状态纯数字占位（CPU·MEM 顺序，含义走 title 悬停提示）；
 //! 真实数据后续通过 hover popover 注入（组件留 `StatusItem.hint` 槽位）。
+//! 用户下拉复用 crate 的 DropdownMenu（含外部点击/Escape 关闭，选中即关对齐 Radix 默认）。
 
 use dioxus::prelude::*;
+
+use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuSeparator};
 
 /// 底部状态条目：占位名称 + 可选 hint（popover 接入前的静态说明）。
 #[derive(Clone, PartialEq)]
@@ -19,13 +22,6 @@ pub struct StatusItem {
 fn avatar_chip_class() -> &'static str {
     "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-[9px] font-semibold text-zinc-200 hover:bg-zinc-600"
 }
-
-/// 用户下拉菜单 class。
-const USER_MENU_CLASS: &str = "absolute bottom-full left-0 z-50 mb-2 w-36 rounded-lg border border-zinc-800 bg-zinc-900 p-1 shadow-xl";
-
-/// 菜单项 class。
-const MENU_ITEM_CLASS: &str =
-    "block rounded-md px-2 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800";
 
 /// 底部细状态条（无背景，单行文字高度）。
 ///
@@ -46,7 +42,9 @@ pub fn StatusBar(
     #[props(default)]
     items: Vec<StatusItem>,
 ) -> Element {
-    let mut menu_open = use_signal(|| false);
+    // 外部关闭请求信号（「面板应关闭？」默认 false）：点选中项置 true，DropdownMenu 收关
+    let close_request = use_signal(|| false);
+    let mut close_signal = close_request.clone();
     rsx! {
         div {
             class: "flex w-full items-center justify-between py-0.5 text-[11px] text-zinc-500",
@@ -57,41 +55,40 @@ pub fn StatusBar(
                     Some(name) => rsx! {
                         div {
                             class: "relative",
-                            button {
-                                class: avatar_chip_class(),
-                                "data-testid": "status-user-menu-button",
-                                "aria-label": "用户菜单",
-                                "aria-haspopup": "menu",
-                                "aria-expanded": "{menu_open()}",
-                                title: "{name}",
-                                onclick: move |_| menu_open.toggle(),
-                                "{name.chars().next().unwrap_or('?')}"
-                            }
-                            if menu_open() {
-                                div {
-                                    class: USER_MENU_CLASS,
-                                    role: "menu",
-                                    "aria-label": "用户菜单",
-                                    a {
-                                        class: MENU_ITEM_CLASS,
-                                        "data-testid": "menu-account",
-                                        role: "menuitem",
-                                        href: "#account",
-                                        onclick: move |_| menu_open.set(false),
-                                        "账户资料"
-                                    }
-                                    div { class: "my-1 h-px bg-zinc-800" }
+                            DropdownMenu {
+                                trigger: rsx! {
                                     button {
-                                        class: "block w-full rounded-md px-2 py-1.5 text-left text-xs text-red-400 hover:bg-zinc-800 hover:text-red-300",
-                                        "data-testid": "logout",
-                                        role: "menuitem",
+                                        class: avatar_chip_class(),
+                                        "data-testid": "status-user-menu-button",
+                                        "aria-label": "用户菜单",
+                                        title: "{name}",
+                                        "{name.chars().next().unwrap_or('?')}"
+                                    }
+                                },
+                                content: rsx! {
+                                    DropdownMenuItem {
+                                        onclick: move |_| close_signal.set(true),
+                                        "data-testid": "menu-account",
+                                        // 锚点在 item 内：点击冒泡到 item（组件统一收关）后跳转
+                                        a {
+                                            class: "block",
+                                            href: "#account",
+                                            "账户资料"
+                                        }
+                                    }
+                                    DropdownMenuSeparator {}
+                                    DropdownMenuItem {
                                         onclick: move |_| {
-                                            menu_open.set(false);
+                                            close_signal.set(true);
                                             on_logout.call(());
                                         },
+                                        "data-testid": "logout",
+                                        "data-variant": "destructive",
                                         "退出登录"
                                     }
-                                }
+                                },
+                                content_class: Some("bottom-full left-0 mb-2 w-36".into()),
+                                close_signal: Some(close_request),
                             }
                         }
                         span { class: "text-zinc-500", "¥——.--" }
