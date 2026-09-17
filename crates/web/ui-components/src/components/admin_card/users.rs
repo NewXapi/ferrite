@@ -1,4 +1,4 @@
-use super::card::AdminCard;
+use super::card::{AdminCard, short_key};
 use contract::api::admin::AdminUserDto;
 use dioxus::prelude::*;
 
@@ -17,20 +17,6 @@ fn role_label(role: u16) -> &'static str {
         10 => "管理员",
         _ => "普通用户",
     }
-}
-
-/// Shortens a key by Unicode scalar value without splitting UTF-8 characters.
-fn short_key(key: &str) -> String {
-    const EDGE_CHARS: usize = 4;
-
-    let char_count = key.chars().count();
-    if char_count <= EDGE_CHARS * 2 {
-        return key.to_string();
-    }
-
-    let head: String = key.chars().take(EDGE_CHARS).collect();
-    let tail: String = key.chars().skip(char_count - EDGE_CHARS).collect();
-    format!("{head}…{tail}")
 }
 
 /// Renders a four-tab prototype card for an [`AdminUserDto`].

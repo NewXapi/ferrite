@@ -1,6 +1,6 @@
 //! 兑换码管理页:卡片式网格,对齐 GroupsPage / ChannelsPage / UsersPanel 规范。
 //! 数据来自真实后端 `/api/redemption`(列表 / 批量生成 / 停用)。
-//! 后端语义:DELETE 即停用 (status→2,无硬删、无重新启用);
+//! 后端语义:核销 (status→2)、DELETE 即停用 (status→3);无硬删、无重新启用;
 //! 明文码只在生成响应里出现一次,页面用弹窗展示。
 
 use dioxus::prelude::*;
@@ -94,8 +94,9 @@ pub fn RedemptionsPage() -> Element {
     let red_list = reds.read().clone();
     let total = red_list.len();
     let unused_count = red_list.iter().filter(|r| r.status == 1).count();
-    let used_count = red_list.iter().filter(|r| r.status == 3).count();
-    let disabled_count = red_list.iter().filter(|r| r.status == 2).count();
+    // 2=已核销 / 3=已停用(对齐后端 admin-billing/redeem.rs 写库口径)
+    let used_count = red_list.iter().filter(|r| r.status == 2).count();
+    let disabled_count = red_list.iter().filter(|r| r.status == 3).count();
 
     let total_quota: f64 = red_list.iter().map(|r| r.quota_cny).sum();
     let available_quota: f64 = red_list
@@ -131,10 +132,11 @@ pub fn RedemptionsPage() -> Element {
                 {
                     return false;
                 }
+                // tier 与 filter_options 一一对应:1=未使用 / 2=已核销 / 3=已停用
                 match tier {
                     1 => r.status == 1,
-                    2 => r.status == 3,
-                    3 => r.status == 2,
+                    2 => r.status == 2,
+                    3 => r.status == 3,
                     _ => true,
                 }
             })
@@ -371,6 +373,8 @@ fn RedemptionCard(
     let preview = item.code_preview.clone();
     let _ = preview;
 
+    // 状态语义对齐后端 admin-billing/redeem.rs 写库口径:
+    // 1=未使用 / 2=已核销(redeem 写入) / 3=已停用(disable 写入)。
     let (status_text, status_tone, bar_tone, bar_pct) = match item.status {
         1 => (
             "未使用",
@@ -379,13 +383,20 @@ fn RedemptionCard(
             100,
         ),
         2 => (
+            "已核销",
+            "border-zinc-700 bg-zinc-800/80 text-zinc-400",
+            "bg-zinc-700",
+            0,
+        ),
+        3 => (
             "已停用",
             "border-amber-500/30 bg-amber-500/20 text-amber-400",
             "bg-amber-500",
             40,
         ),
+        // 后端只写 1/2/3;异常值兜底按中性 zinc 展示,与 prototype 卡"未知状态"口径一致。
         _ => (
-            "已核销",
+            "未知状态",
             "border-zinc-700 bg-zinc-800/80 text-zinc-400",
             "bg-zinc-700",
             0,
@@ -475,17 +486,17 @@ fn RedemptionCard(
                     }
                 } else if item.status == 2 {
                     button {
-                        "data-testid": "disabled-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
-                        disabled: true,
-                        "已停用"
-                    }
-                } else {
-                    button {
                         "data-testid": "redeemed-redemption",
                         class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "已核销"
+                    }
+                } else {
+                    button {
+                        "data-testid": "disabled-redemption",
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        disabled: true,
+                        "已停用"
                     }
                 }
             }

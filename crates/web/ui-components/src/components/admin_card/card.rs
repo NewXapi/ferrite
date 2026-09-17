@@ -2,6 +2,23 @@ use dioxus::prelude::*;
 
 use super::dot_tab::DotTabBar;
 
+/// Shortens a key by Unicode scalar value without splitting UTF-8 characters.
+///
+/// Keeps at most `EDGE_CHARS * 2` (head…tail) characters so entity keys stay
+/// readable without wrapping; shared by all admin entity cards in this module.
+pub(crate) fn short_key(key: &str) -> String {
+    const EDGE_CHARS: usize = 4;
+
+    let char_count = key.chars().count();
+    if char_count <= EDGE_CHARS * 2 {
+        return key.to_string();
+    }
+
+    let head: String = key.chars().take(EDGE_CHARS).collect();
+    let tail: String = key.chars().skip(char_count - EDGE_CHARS).collect();
+    format!("{head}…{tail}")
+}
+
 /// 渲染管理页实体摘要的共享卡片外壳。
 ///
 /// `title` 和可选的 `subtitle` 用作卡片标题；`tabs` 是只读内容页签的标签，

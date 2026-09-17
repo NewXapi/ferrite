@@ -41,6 +41,22 @@ enum AliasModalState {
     Edit(String),
 }
 
+/// 计算「可用此别名的分组及其倍率」。
+///
+/// 后端 `model_whitelist` 是「分组内可用的模型名列表」;空白名单 = 该分组
+/// 可用全部模型。因此「可用此别名」= 白名单为空(默认全可用)或显式包含
+/// 该别名。原型新卡与旧卡片网格共用此判定,避免两处逻辑分叉。
+fn usable_groups_for(alias: &str, groups: &[GroupDto]) -> Vec<(String, f64)> {
+    groups
+        .iter()
+        .filter(|g| {
+            let names = parse_whitelist(&g.model_whitelist);
+            names.is_empty() || names.iter().any(|n| n.as_str() == alias)
+        })
+        .map(|g| (g.name.clone(), g.ratio))
+        .collect()
+}
+
 /// 别名管理页
 #[component]
 pub fn AliasesPage() -> Element {
@@ -364,18 +380,10 @@ pub fn AliasesPage() -> Element {
                                 let prototype_output_per_1k = prototype_item.row.output_per_1k;
                                 let prototype_multiplier = prototype_item.row.multiplier;
                                 let prototype_index = *prototype_index;
-                                // 分组可用性:白名单为空(全可用)或显式包含该别名,复用旧卡同一判定
-                                let p_alias_name = prototype_item.row.alias.clone();
-                                let prototype_usable_groups: Vec<(String, f64)> = groups
-                                    .read()
-                                    .iter()
-                                    .filter(|g| {
-                                        let names = parse_whitelist(&g.model_whitelist);
-                                        names.is_empty()
-                                            || names.iter().any(|n| n == &p_alias_name)
-                                    })
-                                    .map(|g| (g.name.clone(), g.ratio))
-                                    .collect();
+                                // 分组可用性:白名单为空(全可用)或显式包含该别名,
+                                // 与旧卡片网格共用 usable_groups_for 判定。
+                                let prototype_usable_groups =
+                                    usable_groups_for(&prototype_alias, &groups.read());
                                 rsx! {
                                     div {
                                         class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
@@ -488,18 +496,8 @@ fn AliasCard(
         alias.display.clone()
     };
 
-    // 分组倍率标签:展示可用此别名的分组及其倍率。
-    // 后端 model_whitelist 为「分组内可用的模型名列表」;空白名单 = 该分组可用全部模型。
-    // 因此「可用此别名」= whitelist 为空(默认全可用) 或 显式包含该别名。
-    let alias_name = alias.alias.clone();
-    let usable_groups: Vec<(String, f64)> = groups
-        .iter()
-        .filter(|g| {
-            let names = parse_whitelist(&g.model_whitelist);
-            names.is_empty() || names.iter().any(|n| n == &alias_name)
-        })
-        .map(|g| (g.name.clone(), g.ratio))
-        .collect();
+    // 分组倍率标签:展示可用此别名的分组及其倍率(白名单语义见 usable_groups_for)。
+    let usable_groups = usable_groups_for(&alias.alias, &groups);
     // 卡片空间有限,最多展示 4 个分组标签,超出折叠
     let shown_groups = usable_groups.iter().take(4).collect::<Vec<_>>();
     let overflow_groups = usable_groups.len().saturating_sub(4);
