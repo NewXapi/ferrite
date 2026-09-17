@@ -100,7 +100,11 @@ impl SubscriptionService {
         }
         // price 是 TEXT 列存 NUMERIC 语义：parse 失败/非有限/负值都说明调用方
         // 传了脏数据，返 BadRequest 而非把垃圾字符串写进库（风险点 3）。
-        let price = parse_price(&req.price)?;
+        // 存 trim 后的**原字符串**而非 f64 的 to_string()：f64 回写会引入
+        // 浮点漂移（如 "19.99" → 19.989999999999998），TEXT 列保原字面量最精确。
+        // parse 的返回值只用于校验（非法即 BadRequest），入库用原字面量。
+        let _price = parse_price(&req.price)?;
+        let price_str = req.price.trim();
         // quota f64 展示口径 → i64 内部单位（×500_000 四舍五入，风险点 2）。
         let quota = quota_display_to_internal(req.quota)?;
 
@@ -129,7 +133,7 @@ impl SubscriptionService {
         ))
         .bind(Uuid::new_v4())
         .bind(name)
-        .bind(price.to_string())
+        .bind(price_str)
         .bind(currency)
         .bind(duration_days)
         .bind(quota)
