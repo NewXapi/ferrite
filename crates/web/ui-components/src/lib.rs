@@ -29,14 +29,19 @@ pub use action_buttons::{ActionButtonGroup, ActionSpec, ActionTone};
 pub use auth_modal::{AuthModal, UserBadge};
 pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
+<<<<<<< HEAD
 pub use components::admin_card::{
     AdminCard, AliasCard, ChannelCard, DotTabBar, GroupCard, RedemptionCard, UserCard,
 };
+=======
+pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
+>>>>>>> c212410 (feat(web): Linear-style three-zone layout shell in ui-components)
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
 pub use dialog::Dialog;
 pub use feedback::{Avatar, EmptyState, IconButton, Loading};
 pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};
+pub use icons::{IconChartBar, IconLogOut, IconUser};
 pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
 pub use session::{

@@ -19,6 +19,7 @@ use page_users::UsersPanel;
 
 use client::TokenFuture;
 use serde::Deserialize;
+use ui::components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
 
 /// 401 静默刷新接线 (应用启动时由 main 调用一次):
 /// - refresher: 读存储的 refresh token → `POST /api/user/refresh` (后端轮换 access+refresh)
@@ -341,48 +342,6 @@ pub fn ConsolePanel(header: Element, children: Element) -> Element {
     }
 }
 
-/// 顶栏用户菜单：点击用户名展开下拉,含「账户资料」与「退出登录」。
-#[component]
-fn UserMenu(name: String, on_logout: EventHandler<()>) -> Element {
-    let mut open = use_signal(|| false);
-    rsx! {
-        div {
-            class: "relative",
-            button {
-                class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
-                "data-testid": "user-menu-button",
-                "aria-haspopup": "menu",
-                "aria-expanded": "{open()}",
-                onclick: move |_| open.toggle(),
-                "{name}"
-            }
-            if open() {
-                div {
-                    class: "absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/95 py-1 text-left shadow-xl shadow-black/40 backdrop-blur",
-                    role: "menu",
-                    "aria-label": "用户菜单",
-                    a {
-                        class: "block px-4 py-2.5 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
-                        "data-testid": "menu-account",
-                        role: "menuitem",
-                        href: "#account",
-                        onclick: move |_| open.set(false),
-                        "账户资料"
-                    }
-                    div { class: "my-1 h-px bg-zinc-800" }
-                    button {
-                        class: "block w-full text-left px-4 py-2.5 text-sm text-red-400 transition-colors hover:bg-zinc-800 hover:text-red-300",
-                        "data-testid": "logout",
-                        role: "menuitem",
-                        onclick: move |_| { open.set(false); on_logout.call(()); },
-                        "退出登录"
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn get_initial_route() -> (Section, u8) {
     if let Some(w) = web_sys::window()
         && let Ok(loc) = w.location().hash()
@@ -510,77 +469,58 @@ pub fn HomePage() -> Element {
     };
     // 越界的 dash_tab clamp 到当前 section 的末位 tab,保证选中态与内容一致
     let active_tab = (dash_tab() as usize).min(labels.len() - 1) as u8;
-    let panel_header = {
-        let labels = labels.clone();
-        let tab_count = labels.len() as i32;
-        rsx! {
-            div {
-                class: "flex h-full min-w-0 overflow-x-auto whitespace-nowrap",
-                onwheel: move |e: WheelEvent| {
-                    e.prevent_default();
-                    use dioxus::html::geometry::WheelDelta;
-                    let dy = match e.delta() {
-                        WheelDelta::Pixels(v) => v.y,
-                        WheelDelta::Lines(v) => v.y,
-                        WheelDelta::Pages(v) => v.y,
-                    };
-                    let next = (dash_tab() as i32 + if dy > 0.0 { 1 } else { -1 }).rem_euclid(tab_count);
-                    dash_tab.set(next as u8);
-                },
-                for (i, label) in labels.iter().enumerate() {
-                    TabItem {
-                        key: "{i}",
-                        label: label.clone(),
-                        active: active_tab as usize == i,
-                        onclick: move |_| dash_tab.set(i as u8),
-                    }
-                }
-            }
-        }
-    };
+    // rail 激活项 = 当前 section 在 SECTIONS 里的下标
+    let section_idx = SECTIONS.iter().position(|s| *s == section()).unwrap_or(0);
+    // 状态栏占位条目(维护者拍板:不放真实数据,hover popover 后续接入)
+    let status_items = vec![
+        StatusItem {
+            label: "后端".into(),
+            hint: Some("dev".into()),
+        },
+        StatusItem {
+            label: "版本".into(),
+            hint: Some("v0.1".into()),
+        },
+    ];
 
     rsx! {
         div {
-            class: "flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
+            class: "h-svh overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
             class: if is_light { "light" } else { "" },
-            header {
-                class: "fixed top-4 left-1/2 z-30 hidden w-max -translate-x-1/2 md:block",
-                div { class: "flex items-center gap-5 rounded-full border border-zinc-800/80 bg-zinc-900/90 px-5 py-2.5 shadow-lg shadow-black/20",
-                    div { class: "flex items-center gap-1.5",
-                        span { class: "text-lg font-semibold tracking-tight text-zinc-100", "Ferrite" }
-                        span { class: "hidden sm:inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500", "admin" }
+            AppShell {
+                rail: rsx! {
+                    SectionRail {
+                        active_index: section_idx,
+                        on_select: move |idx| section.set(SECTIONS[idx]),
+                        user_name: logged_user(),
                     }
-                    TopNavMeter { active: section(), on_select: move |s| section.set(s) }
-                    button {
-                        class: "rounded-full px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
-                        onclick: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
-                        if is_light { "Dark" } else { "Light" }
-                    }
-                    if let Some(name) = logged_user() {
-                        UserMenu { name, on_logout: move |_| do_logout() }
-                    } else {
-                        a {
-                            class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
-                            href: "#signup",
-                            "登录"
+                },
+                top_nav: rsx! {
+                    // 移动端 rail 隐藏 → section 横条作为替代入口(对齐"手机上下横栏"决定)
+                    div {
+                        class: "flex w-full justify-center md:hidden",
+                        div {
+                            class: "flex items-center rounded-full border border-zinc-800/80 bg-zinc-900/90 px-2 py-1 shadow-lg shadow-black/20 backdrop-blur",
+                            TopNavMeter { active: section(), on_select: move |s| section.set(s) }
                         }
                     }
-                }
-            }
-            main { class: "flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
-                div { class: "mb-4 flex items-center justify-between lg:hidden",
-                    span { class: "text-base font-semibold", "Ferrite · 控制台" }
-                    // 登录态入口只在桌面 fixed header (UserMenu), 移动行不再重复展示
-                    if logged_user().is_none() {
-                        a {
-                            class: "rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-900 inline-flex items-center justify-center",
-                            href: "#signup",
-                            "登录"
-                        }
+                    TopNavBar {
+                        tabs: labels.clone(),
+                        active: active_tab as usize,
+                        on_select: move |i| dash_tab.set(i as u8),
                     }
-                }
+                },
+                status_bar: rsx! {
+                    StatusBar {
+                        items: status_items,
+                        is_light: is_light,
+                        on_toggle_theme: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
+                        user_name: logged_user(),
+                        on_logout: move |_| do_logout(),
+                    }
+                },
                 ConsolePanel {
-                    header: panel_header,
+                    header: rsx! { span { class: "text-xs font-medium text-zinc-500", "Ferrite · admin" } },
                     match (section(), active_tab) {
                         (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
                         (Section::Dashboard, 1) => rsx! { ModelsPanel {} },

@@ -20,8 +20,13 @@ pub mod showcase;
 // 排行榜条目卡（feat/overview-ui #204）
 pub mod rank_board;
 
+<<<<<<< HEAD
 // 管理台统计卡（收敛 groups/users/keys/usage_logs 四处重复定义）
 pub mod stat_card;
 
 // 管理面板专用卡牌组件（feat/admin-card-kit）
 pub mod admin_card;
+=======
+// 布局原语（feat/layout）
+pub mod layout;
+>>>>>>> c212410 (feat(web): Linear-style three-zone layout shell in ui-components)
