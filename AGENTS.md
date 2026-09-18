@@ -126,7 +126,7 @@ crates/web/<prefix-feature>/
 
 ---
 
-## 命令节流（cpulimit）
+## CLI COMMAND 跟 CPU 节流（cpulimit）
 
 - CPU 密集型命令必须套 `cpulimit -l 65 -i --`：编译、测试、装包类
   （`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等），
@@ -234,7 +234,7 @@ crates/web/<prefix-feature>/
 ## PR 开发流程（硬性门禁）
 
 > 要开 PR 干活，或要派子代理分担任务时 → 读 **`.agent/rules/pr-workflow.md`**
-> （完整的八个阶段：准备 → 摸清范围 → 拆任务 → 开发审查循环 → 测试 → 工具审查 →
+> （完整的九个阶段：准备 → 摸清范围 → 拆任务 → 开发审查循环 → 测试 → 工具审查 →
 > 冒烟验证 → 清理 → 汇报；以及下面这些门禁的完整说明）。
 
 你是**主控** agent：编排任务、派子代理执行、审查子代理产出，**不要亲自把核心实现写完**。

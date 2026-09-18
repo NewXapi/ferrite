@@ -54,7 +54,8 @@ gate pre-push      # 推送前的完整检查
 
 - **FAIL**：直接拒绝创建。必须逐条修掉再重试。
 - **WARN**：不拒绝，但每条都说明缺什么（比如"缺 type label"、"建议也挂某个标签"、"缺 `Fixes #` 关联"）。
-  能补就补（用 `gh pr edit --label` 或 `gh issue edit --label`），补不了的要在 PR 正文里写明理由。
+  能补就补（用 `gh pr edit --label` 或 `gh issue edit --label`），补不了的要在 PR 正文里写明理由——
+  理由写在 PR 正文对应的段落里（如 `## Issue` 段末尾加一句"未关联 issue 的原因：…"）。
 
 创建前可以先跑预检：
 
@@ -80,14 +81,21 @@ gate pr             # PR 预检
 ## Checklist      检查清单
 ```
 
-另外：标题和正文都要用中文写内容；标题不得包含中文（会被拦）。
+另外：**PR 标题必须是纯英文**（如 `fix(metering): ...`）；正文里的小节标题（`## What` 等）也必须是英文，
+但正文内容用中文写。「标题不得包含中文」指的是 PR 标题那行，不是正文内容。
 
 ### 3.4 规则文档在哪
 
-- `.githooks/GATE_HANDBOOK.md`：完整手册——三层检查（结构层 / 语义层 / LLM 层）、16 条规则的作用和严重程度。
+- `.githooks/GATE_HANDBOOK.md`：完整手册。三层检查的意思：
+  **l1 结构层**（文件放哪、有没有写文档这类格式检查）、
+  **l2 语义层**（依赖方向、命名这类代码语义检查）、
+  **l3 LLM 层**（用大模型判断的深层问题，只在合并时跑）。
+  共 16 条规则，每条标了触发时机和严重程度。
 - `.githooks/spec/SPEC_OVERVIEW.md`：规则对照清单（新增或修改规则后必须同步更新这个文件）。
 - `.githooks/spec/github_pr_gates.yaml`、`.githooks/spec/checklist_pr_*.yaml`：GitHub 相关的具体规则。
-- 手动跑某个检查：`gate check <规则名> --sla l1`
+- 手动跑某个检查：先看 `SPEC_OVERVIEW.md` 找规则名（如 `rust_todo_needs_issue`），
+  再跑 `gate check <规则名> --sla l1`。
+- `gate` 命令装在 `~/.local/bin/gate`（已在 PATH 里）；钩子脚本在 `.githooks/hooks/`。
 
 ### 3.5 代码里的占位符要求
 

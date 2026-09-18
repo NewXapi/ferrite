@@ -22,9 +22,17 @@
 ## 二、维护者希望做什么事
 
 - **所有测试在 CI 跑**，本地只验证"能不能编译"。
-- **CI 全绿才算通过**，CI 没跑完不许合并。
+- **CI 全绿是必要条件**（CI 没跑完不许合并），但记住：**绿不等于所有断言都验过**——
+  下面的三个失效模式都会造成假绿。所以绿之后，还要按本文 §3.3–3.5 的判据自查一遍。
 - **测试必须真的在执行**：新增测试后要确认 CI 日志里能看到它在跑、能看到断言数量。做不到这一点，就等于没写测试。
-- 因为 CI 没有数据库，凡是依赖数据库的测试，**必须在文件头注释里写明"CI 不验证此断言"**，并在本地手动验证过。
+- 因为 CI 没有数据库，凡是依赖数据库的测试：**文件头加注释「CI 不验证此断言」**，
+  并且**在本地对着真库（`uf-local-postgres` 的 5433 端口，`ferrite_e2e` 库）手动验证过**。注释写法示例：
+
+  ```rust
+  // ⚠️ CI 不验证此断言（CI 无 postgres）。本地验证：
+  //   FERRITE_E2E_DATABASE_URL=postgres://ferrite:ferrite@127.0.0.1:5433/ferrite_e2e \
+  //   cargo test -p tests-e2e --test <文件名>
+  ```
 
 ---
 
@@ -36,7 +44,7 @@
 |---|---|---|
 | 验证代码能编译 | `cargo check -p <crate>` | 本地**唯一**常规验证方式，必须套 `cpulimit -l 65 -i --` |
 | 调试单个失败用例 | `cargo test -p <crate> -- <测试名>` | 仅用于调试，不能替代 CI 验收；测试要能在 3 秒内跑完 |
-| 预览 CI 会跑哪些包 | `bash scripts/ci-affected.sh --base newxapi/main --dry-run` | 提 PR 前可以看，不影响任何东西 |
+| 预览 CI 会跑哪些包 | `bash scripts/ci-affected.sh --base newxapi/main --dry-run` | 提 PR 前可以看，不影响任何东西。`newxapi/main` 是上游主分支的名字（本仓的 remote 叫 `newxapi`，主分支叫 `main`），直接照抄即可 |
 | 跑全量测试 | **禁止** | `cargo test --all`、整个 workspace 编译会耗尽本机内存导致假死 |
 
 ### 3.2 CI 怎么决定跑哪些包

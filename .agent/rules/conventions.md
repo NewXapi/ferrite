@@ -25,8 +25,12 @@
 
 - 交互元素都要加 `data-testid`，值用元素的 `name` 属性值。
 - 容器元素要加 `role` 和 `aria-label`。
-- 每个页面写一份契约文件 `specs/ui/<页面名>.yaml`，列出 role、name、testid、action。
+- 每个页面写一份契约文件，位置是**该页面所在 crate 里的** `specs/ui/<页面名>.yaml`
+  （例如 `crates/web/admin-page-admin/specs/ui/aliases.yaml`），列出 role、name、testid、action。
+  现成的例子：`crates/web/admin-page-admin/specs/ui/` 下有 5 份，照着写。
 - PR 的冒烟验证用 `tab.ariaSnapshot()` 检查 role、name、testid 是否正确。
+  这是 Playwright 的 API：`tab` 是会话工具 `browser` 打开的页签对象，
+  用法示例在 `.agent/skills/ui-validation/SKILL.md` 里有完整代码。
 - 截图只作为辅助手段（看视觉风格和品牌效果），失败的时候附上截图。
 
 **禁区**：只用截图肉眼判断、用 class 选择器定位元素、没写 ui-spec 文件就直接提 PR。
@@ -42,11 +46,13 @@
 
 ### 调查与审查代码
 
-- **调查代码**：先用 `code-review-graph update` 建立增量图谱，再通过图谱查调用关系和整体结构。
+- **调查代码**：先用 `code-review-graph update` 建立增量图谱（命令在 `~/.local/bin/`，已在 PATH，
+  图谱数据存在仓库根的 `.code-review-graph/` 目录），再通过图谱查调用关系和整体结构。
   不要直接逐个文件翻（本地没有 LSP，查调用方只能靠图谱）。
 - **审查代码**分两层：
   1. 结构层：`code-review-graph detect-changes`，看改动的影响面。
-  2. 规范层：`ocr review`，按文件或模块分批跑，**禁止一次性把整个仓库喂进去**（会触发限流）。
+  2. 规范层：`ocr review`（`ocr` 装在 `/usr/bin/ocr`，用法 `ocr --help` 可查），
+     按文件或模块分批跑，**禁止一次性把整个仓库喂进去**（会触发限流）。
 
 **重要区分**：`OCR` 是图片文字识别；本文说的 `ocr` 命令是**代码审查工具**（OpenCodeReview）。
 在审查语境下提到 ocr，指的是后者。
