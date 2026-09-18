@@ -2,7 +2,7 @@
 //! 全部为无 runtime、无网络的纯函数,直接对 `crate::channels` 的
 //! `pub` 函数做断言,验证 wire 前的数据形状。
 
-use admin_page_admin::channels::{filter_channels, parse_group_input, parse_keys_input};
+use admin_page_admin::tab_page_channels::{filter_channels, parse_group_input, parse_keys_input};
 use contract::api::admin::ChannelDto;
 
 fn dto(

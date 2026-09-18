@@ -4,12 +4,14 @@
 //! `admin-observe/gateway_health.rs`)。响应**只含有记录的渠道**——
 //! 正常态是空数组,不是错误。
 //!
+//! 本文件只留面板外壳:状态 (拉取/错误/刷新) + 轮询拉取 + 四态分支;
+//! 单行渲染 (渠道名 / 模型 Badge / 三态 Badge / 倒计时) 见
+//! [`super::row::GatewayHealthRow`],三态语义色见
+//! [`super::shared`]。
+//!
 //! 渲染约定(仓库铁律):
 //! - 卡片面板模式,禁 `<table>`:`rounded-xl border bg-card divide-y`
 //!   容器 + `flex flex-wrap` 行;
-//! - 每行:渠道名 (channelName,缺省 channelKey 前 8 位) + 模型 Badge
-//!   + 三态 Badge (cooling=红 / slow_start=黄 / ok=绿,禁 emoji)
-//!   + 冷却剩余秒 + lastCoolingOutcome 小字;
 //! - 三态:loading=skeleton、error=柔和红边卡、empty=虚线占位卡;
 //! - 轮询:挂载即拉一次;仅当存在 cooling / slow_start 条目时按 5s
 //!   间隔继续轮询,全 ok 或空时停止 (防无意义轮询)。
@@ -23,60 +25,11 @@ use gloo_timers::future::TimeoutFuture;
 use client::fetch_gateway_health;
 use client::{ApiClient, GatewayHealthItem, HealthItemState};
 
+use super::row::GatewayHealthRow;
+use super::shared::{TONE_COOLING, TONE_OK, TONE_SLOW_START};
+
 /// 轮询间隔 (仅存在 cooling / slow_start 条目时)。
 const POLL_INTERVAL_MS: u32 = 5000;
-
-/// 三态 Badge 语义色 (shadcn dashboard 既有 token 风格,禁 emoji):
-/// cooling=红系 / slow_start=黄系 / ok=绿系。
-const TONE_COOLING: &str = "border-red-500/30 bg-red-500/15 text-red-300";
-const TONE_SLOW_START: &str = "border-amber-500/30 bg-amber-500/15 text-amber-300";
-const TONE_OK: &str = "border-emerald-500/30 bg-emerald-500/15 text-emerald-400";
-
-/// 渠道名回退:channelName 缺省显示 channelKey 前 8 位。
-fn display_name(item: &GatewayHealthItem) -> String {
-    if let Some(name) = item.channel_name.as_deref()
-        && !name.is_empty()
-    {
-        return name.to_string();
-    }
-    item.channel_key
-        .as_deref()
-        .map(|k| k.chars().take(8).collect())
-        .unwrap_or_else(|| {
-            format!(
-                "未同步渠道 ({}…)",
-                item.unit_key.chars().take(6).collect::<String>()
-            )
-        })
-}
-
-/// 剩余冷却秒 (冷却中才显示倒计时数字;非冷却 = 0 不展示)。
-fn remaining_seconds(item: &GatewayHealthItem) -> Option<u64> {
-    if item.state == HealthItemState::Cooling && item.remaining_cooldown_ms > 0 {
-        Some(item.remaining_cooldown_ms / 1000)
-    } else {
-        None
-    }
-}
-
-/// 模型徽标文案:publicModel 缺省回退 unitKey 末段。
-fn model_label(item: &GatewayHealthItem) -> String {
-    item.public_model.clone().unwrap_or_else(|| {
-        item.unit_key
-            .rsplit_once(':')
-            .map(|(_, m)| m.to_string())
-            .unwrap_or_else(|| "未知模型".to_string())
-    })
-}
-
-/// 三态 Badge 语义色 (match 而非 if-chain,类型收敛为 `&'static str`)。
-fn state_tone(state: HealthItemState) -> &'static str {
-    match state {
-        HealthItemState::Cooling => TONE_COOLING,
-        HealthItemState::SlowStart => TONE_SLOW_START,
-        HealthItemState::Ok => TONE_OK,
-    }
-}
 
 /// 网关渠道健康面板。
 ///
@@ -87,6 +40,9 @@ fn state_tone(state: HealthItemState) -> &'static str {
 /// 直接 move 进 `spawn` 块,无闭包自续),全 ok / 空时循环 break 停止。
 /// 「刷新」「重试」按钮自增 `reload` 重启循环,避免网络抖动摘掉
 /// 冷却中的渠道。
+///
+/// 数据态逐项渲染 [`GatewayHealthRow`];loading / error / empty 三态
+/// 留在本面板,不进行组件拆分。
 ///
 /// # 用法
 /// ```ignore
@@ -168,11 +124,11 @@ pub fn GatewayHealthPanel() -> Element {
                     }
                 }
                 div { class: "flex flex-wrap items-center gap-1.5 text-[11px]",
-                    span { class: "rounded-full border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-red-300",
+                    span { class: "rounded-full border px-2 py-0.5 {TONE_COOLING}",
                         "冷却 {cooling_count}" }
-                    span { class: "rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-amber-300",
+                    span { class: "rounded-full border px-2 py-0.5 {TONE_SLOW_START}",
                         "慢启动 {slow_count}" }
-                    span { class: "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-emerald-400",
+                    span { class: "rounded-full border px-2 py-0.5 {TONE_OK}",
                         "正常 {ok_count}" }
                     button {
                         class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
@@ -221,36 +177,8 @@ pub fn GatewayHealthPanel() -> Element {
                 } else {
                     for item in list {
                         {
-                            let name = display_name(&item);
-                            let model = model_label(&item);
-                            let tone = state_tone(item.state);
-                            let state_text = item.state.label().to_string();
-                            let remaining = remaining_seconds(&item);
-                            let outcome = item.last_cooling_outcome.clone();
                             rsx! {
-                                div {
-                                    key: "{item.unit_key}",
-                                    class: "flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 first:pt-1 last:pb-1",
-                                    "data-testid": "gateway-health-row",
-                                    // 渠道名 (channelName,缺省 channelKey 前 8 位)
-                                    span { class: "min-w-0 truncate text-sm font-medium text-zinc-100",
-                                        title: "{item.unit_key}", "{name}" }
-                                    // 模型 Badge
-                                    span { class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
-                                        "{model}" }
-                                    // 三态 Badge (cooling=红 / slow_start=黄 / ok=绿)
-                                    span { class: "rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}",
-                                        "{state_text}" }
-                                    // 冷却中才显示倒计时秒
-                                    if let Some(sec) = remaining {
-                                        span { class: "font-mono text-xs text-red-300",
-                                            "余 {sec}s" }
-                                    }
-                                    // lastCoolingOutcome (有则小字)
-                                    if let Some(o) = outcome {
-                                        span { class: "text-[11px] text-zinc-500", "{o}" }
-                                    }
-                                }
+                                GatewayHealthRow { key: "{item.unit_key}", item }
                             }
                         }
                     }
