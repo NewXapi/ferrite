@@ -15,8 +15,9 @@ use contract::api::usage::{UsageLogDto, UsageStatDto};
 
 use crate::api;
 use crate::usage_support::{
-    RANGE_7D, RANGE_30D, RANGE_TODAY, fmt_num, fmt_quota, fmt_time, fmt_time_full, range_bounds,
+    RANGE_7D, RANGE_30D, RANGE_TODAY, fmt_num, fmt_quota, fmt_time, range_bounds,
 };
+use crate::tab_page_usage_logs::{LogCard, LogDetailModal};
 
 const FILTER_ALL: &str = "全部";
 const LABEL_TODAY: &str = "今天";
@@ -276,131 +277,6 @@ pub fn UsageLogsPanel() -> Element {
                     on_close: move |_| detail.set(None),
                 }
             }
-        }
-    }
-}
-
-/// 日志卡片:模型色点 + 时间 + Tokens/耗时/消耗摘要,点击打开详情弹窗。
-#[component]
-fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element {
-    let time_str = fmt_time(&log.created_at);
-    let model_color = match log.model_name.as_str() {
-        "gpt-4o" | "gpt-4o-mini" => "bg-emerald-400",
-        "claude-3.5-sonnet" | "claude-3-haiku" => "bg-purple-400",
-        "deepseek-r1" => "bg-blue-400",
-        "qwen2.5-72b" => "bg-orange-400",
-        _ => "bg-zinc-400",
-    };
-    let tokens_pair = format!(
-        "{} / {}",
-        fmt_num(log.prompt_tokens as i64),
-        fmt_num(log.completion_tokens as i64)
-    );
-    let timing_str = if log.use_time_ms > 0 {
-        format!("{:.1}s", log.use_time_ms as f64 / 1000.0)
-    } else {
-        "—".to_string()
-    };
-    let cost_str = fmt_quota(log.quota);
-
-    rsx! {
-        button {
-            class: "w-full cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-left transition-colors hover:border-zinc-500 hover:bg-zinc-900",
-            onclick: move |_| on_open.call(log.clone()),
-
-            // 头部:模型 + 消耗
-            div { class: "flex items-center gap-2",
-                span { class: "h-2.5 w-2.5 shrink-0 rounded-full {model_color}" }
-                span { class: "truncate font-mono text-sm text-zinc-200", "{log.model_name}" }
-            }
-            div { class: "mt-2 flex items-baseline justify-between gap-2",
-                span { class: "font-mono text-xs text-zinc-500", "{time_str}" }
-                span { class: "shrink-0 font-medium tabular-nums text-sm text-emerald-400", "{cost_str}" }
-            }
-
-            // 摘要两行:Tokens、耗时
-            div { class: "mt-3 space-y-1.5 text-xs",
-                div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-500", "Tokens" }
-                    span { class: "whitespace-nowrap font-medium tabular-nums text-zinc-200",
-                        "{tokens_pair}"
-                    }
-                }
-                div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-500", "耗时" }
-                    span { class: "whitespace-nowrap tabular-nums text-zinc-400", "{timing_str}" }
-                }
-            }
-        }
-    }
-}
-
-/// 日志详情弹窗:居中模态,手机近全宽;点遮罩或 × 关闭。
-#[component]
-fn LogDetailModal(log: UsageLogDto, on_close: EventHandler<()>) -> Element {
-    let time_str = fmt_time_full(&log.created_at);
-    let tokens_pair = format!(
-        "{} / {}",
-        fmt_num(log.prompt_tokens as i64),
-        fmt_num(log.completion_tokens as i64)
-    );
-    let timing_str = if log.use_time_ms > 0 {
-        format!("{:.1}s", log.use_time_ms as f64 / 1000.0)
-    } else {
-        "—".to_string()
-    };
-    let tps_str = if log.use_time_ms > 0 && log.completion_tokens > 0 {
-        format!(
-            "{:.0} t/s",
-            log.completion_tokens as f64 / (log.use_time_ms as f64 / 1000.0)
-        )
-    } else {
-        "—".to_string()
-    };
-    let cost_str = fmt_quota(log.quota);
-
-    rsx! {
-        div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
-            onclick: move |_| on_close.call(()),
-            div {
-                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
-                onclick: move |e| e.stop_propagation(),
-
-                div { class: "mb-4 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-zinc-100", "日志详情" }
-                    button {
-                        class: "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
-                        onclick: move |_| on_close.call(()),
-                        "aria-label": "关闭",
-                        "✕"
-                    }
-                }
-
-                div { class: "space-y-2.5 text-sm",
-                    DetailRow { label: "模型", value: log.model_name.clone() }
-                    DetailRow { label: "时间", value: time_str }
-                    DetailRow { label: "密钥", value: log.token_name.clone() }
-                    DetailRow { label: "渠道", value: log.channel_name.clone() }
-                    DetailRow { label: "Tokens(提示/补全)", value: tokens_pair }
-                    DetailRow { label: "耗时", value: timing_str }
-                    DetailRow { label: "速度", value: tps_str }
-                    DetailRow { label: "消耗(估)", value: cost_str }
-                    DetailRow { label: "流式", value: if log.is_stream { "是".to_string() } else { "否".to_string() } }
-                    DetailRow { label: "IP", value: log.ip.clone() }
-                    DetailRow { label: "请求 ID", value: log.request_id.clone() }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn DetailRow(label: &'static str, value: String) -> Element {
-    rsx! {
-        div { class: "flex justify-between gap-2",
-            span { class: "shrink-0 text-zinc-500", "{label}" }
-            span { class: "min-w-0 break-all text-right font-mono text-zinc-200", "{value}" }
         }
     }
 }
