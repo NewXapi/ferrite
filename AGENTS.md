@@ -6,7 +6,7 @@
 2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
 3. 读自己功能 crate 的 `README.md`，按文件实现列表工作，按其验收命令验证后提交 conventional commit。
 
-本文件按阅读优先级排布：开工动作 → 开发方式 → 域边界 → 参考知识 → 安全约定 → 编排摘要 → 硬约束。过程性剧本已抽离到 `.agent/`（`pr-workflow.md` / `testing-ci.md` / `gates.md`），本文件留摘要与指针；`.agent/skills/` 仍是 omp 项目 skill 发现目录，勿混淆。
+本文件按阅读优先级排布：开工动作 → 开发方式 → 域边界 → 参考知识 → 安全约定 → 硬约束。**过程性内容已全部抽到 `.agent/`**（三区：`playbook/` 规则与流程 / `tasks/` 任务书 / `skills/` omp 自动加载），本文件只留硬约束与**触发条件指针**——遇到什么事读哪份文档，见下方各节「→ 读」行；目录约定见 `.agent/README.md`。
 
 ## 开发方式
 
@@ -98,71 +98,57 @@ crates/web/<prefix-feature>/
 
 - CPU-heavy 命令必须套 `cpulimit -l 65 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
+// DONE(2026-09-18): 原 TODO「把大部分内容收进文档，留简略内容 + 触发条件」→ 已抽到 `.agent/playbook/dev-env.md`（四段式），本节只留触发条件与红线。
+
 ### 本机 dev 服务与进程卫生（硬约束）
 
-启动手册（后端/数据库/前端，实操验证过的命令与坑）：`.agent/dev-env.md`。
+**→ 读**：起后端 / 数据库 / 前端，或遇到 500「Connection refused」、卡片 404 但 curl 200、构建卡死、dx 不重建、`Failed to find binary package` → `.agent/playbook/dev-env.md`（含实测过的命令、症状表、九个坑）。
 
-- **多会话的后端/DB 分两种情况**：
-  1. **共享（默认）**：所有 `.wt/` 会话的前端代理都指向 `127.0.0.1:3211`（`dev-backend.sh` 注释原文），共用同一 dev DB（`uf-local-postgres/ferrite_smoke`）。生命周期只走 `dev-backend.sh` / `just dev-backend`；`db-seed` 幂等可重灌；**`db-reset` 清的是全体会话共享的数据，跑之前必须报备**。
-  2. **隔离（独立校验）**：校验需要独占种子数据 / 破坏性迁移时，起独立实例——`FERRITE_DEV_LISTEN=127.0.0.1:<port> scripts/dev-backend.sh start` + 本 worktree 的 `config/config.toml`（gitignored、各 worktree 独立）DSN 指向另一个库（新建库/容器后用 just 变量覆盖调用，如 `just PG_DB=<你的库> db-seed`，见 justfile「PG 连接参数」注）。**严禁停共享 3211 后端、严禁对共享库跑 db-reset**。
-
-- **长跑服务禁止用 `nohup ... &` 在 Bash 工具调用里启动**：工具调用结束会回收整个进程组，服务静默死亡（典型症状：页面 500 "Connection refused"、dx 日志消失）。dx serve / 共享后端一律用会话的持久后台任务机制启动，启动后必须 `ss -ltn` 验证端口在监听再交付。
-- **禁止宽匹配 `pkill -f cargo` / `pkill -f rustc` 清进程**：多会话并行时这些是别人正在跑的构建（cpulimit 节流下进程任意瞬间都是 T 态，**T 态 ≠ 死进程**），误杀会让对方会话卡在 cargo 全局锁上、构建假死。清理前必须 `readlink /proc/<pid>/cwd` 确认归属；只处理无主残留。
-- **共享 dev 后端（127.0.0.1:3211）生命周期只走 `scripts/dev-backend.sh`**（start / update / stop / status，或 `just dev-backend <args>`）：发现 404/502 先 `just dev-check` 或 `dev-backend.sh status` 判断死活，重启对前端透明（登录态不丢）。
-- **「用户侧报错但 curl / 无缓存浏览器实测全 200」→ 先怀疑浏览器 HTTP 缓存重放**：IAB 有独立缓存，代理误配期毒化的错误响应会被本地重放且**不出网**（dx 代理日志 grep 该路径查无请求 = 实锤）。诊断顺序：dx 日志 → IAB 内直接导航该 API URL 看渲染。服务端无法驱逐已毒化条目（只能用户清缓存/重启 webview）；后端 `/api`、`/tavern` 已加 `Cache-Control: no-store` 防复发。
-- **dev 起停/种子/体检一律走 `justfile` 配方**，命令清单与使用场景见 `justfile` 顶部「使用场景速查」、疑难处置见其末尾「疑难问题 → 推荐处理」块：`just dev-check`（环境体检）、`just dev-backend start|update|stop|status`（共享后端）、`just db-seed` / `just db-reset`（dev 种子）、`just verify`（fmt-check + clippy + check 全套）。开工前先 `just dev-check` 一条命令自检环境，别再手工拼这些命令。
-- **免登录调试前端（`debug-auto-login` feature，默认关）**：admin-web 编译期 dev 专用自动登录——无 token 且不在 `#login`/`#signup`/`#auth` 时静默登录 dev 种子账号 `admin_dev`（仅 dev 种子，生产构建不含此 feature），401 清会话后先尝试自动重登。开启：`just dev-web <port> debug` 或 `dx serve --features debug-auto-login`；要手动调登录页直接打开 `#login`（auth hash 不触发）；彻底关闭用不带 debug 的构建（`just dev-web <port>`）。主动「退出登录」不被自动重登顶掉。
+- **多会话后端/DB 分两种情况**：**共享（默认）**——所有 `.wt/` 会话前端代理指向 `127.0.0.1:3211`，共用 dev DB `uf-local-postgres/ferrite_smoke`，生命周期只走 `dev-backend.sh`；**隔离（独立校验）**——`FERRITE_DEV_LISTEN=127.0.0.1:<port>` 起独立端口 + 本 worktree 的 `config/config.toml` 指向另一库。**红线：严禁停共享 3211、严禁对共享库跑 `db-reset`（清全体数据，跑前报备）。**
+- **长跑服务禁止用 `nohup ... &`**：工具调用结束回收进程组 → 服务静默死。用会话的持久后台任务机制起，起后 `ss -ltn` 验证端口再交付。
+- **禁止宽匹配 `pkill -f cargo` / `pkill -f rustc`**：那是别的会话在跑的构建（**T 态 ≠ 死进程**）。清理前 `readlink /proc/<pid>/cwd` 认归属，只动无主残留。
+- **dev 起停/种子/体检一律走 `justfile` 配方**（`just dev-check` / `dev-backend` / `db-seed` / `db-reset` / `verify`）；开工前先 `just dev-check` 自检。**免登录调试**：`just dev-web <port> debug`（自动登录 dev 种子 `admin_dev`，打开 `#login` 仍可手动调登录页）。
 
 ### 测试分层与 CI 驱动原则（摘要）
 
-- 本地只做 `cargo check -p <crate>`（编译验证）与极小的单用例调试（3 秒内跑完的 `cargo test -p <crate> -- <test_name>`）；一切 `cargo test` 交给 PR 的 CI 按 `git diff` 动态选包。本地内存常年 <2GB，**严禁**本地 `cargo test --all` / 全 workspace 构建（会假死）。
-- 「通过」= CI 全绿；CI 未全绿不得 closeout / merge。本地 clippy 必须与 CI 同版本（改动前 `rustup update stable`）。
-- 细则、动态选包原理与提 PR 前预览：读 `.agent/testing-ci.md`。
+**→ 读**：决定本地跑什么 / 理解 CI 选包 / **确认新写的测试是否真在跑** → `.agent/playbook/testing-ci.md`。
+
+- 本地只做 `cargo check -p <crate>` 与极小单例调试（≤3s）；一切 `cargo test` 交 PR 的 CI 按 `git diff` 动态选包。
+  本机常年 <2GB 内存，**严禁**本地 `cargo test --all` / 全 workspace 构建（会假死）。
+- 「通过」= CI 全绿；CI 未全绿不得 closeout / merge。本地 clippy 须与 CI 同版本（`rustup update stable`）。
+- ⚠️ **三个静默失效模式**（新增测试前必看 `testing-ci.md` §3.3-3.5）：feature-gated 测试 CI 不开启该 feature（`running 0 tests` 但全绿）、e2e 无 PG 时 30s 超时跳过仍记 passed、`#[ignore]` 在 CI 中永不运行（仓库现有 61 个）。
 
 ### gate（`.githooks/`，摘要）
 
-- 钩子拦截信息必须逐条读完再修根因：禁止 `--no-verify`、禁止截断后忽略；FAIL 必须清零，WARN 说明理由可放行。
-- 占位/TODO 一律 `todo!("TODO(#<number>): ...")`、`unimplemented!(...)`；TODO 注释必须带 issue 号。
-- `gh` 操作在创建时即走 gate 校验：FAIL 直接拦截，WARN 逐条处理；操作前先跑预检，不截断输出。细则与 GitHub 侧校验清单：读 `.agent/gates.md`。
-- `.githooks/` 结构与规则总览：读 `.githooks/GATE_HANDBOOK.md`（三层 SLA + 16 条规则表，一手文档）；规则对照清单在 `.githooks/spec/SPEC_OVERVIEW.md`。
+**→ 读**：提交/推送被拦、`gh` 操作被拒、要查规则 → `.agent/playbook/gates.md`；
+规则总览在 `.githooks/GATE_HANDBOOK.md`（三层 SLA + 16 条规则表），对照清单在 `.githooks/spec/SPEC_OVERVIEW.md`。
 
-### UI 验证约定（Dioxus web）
+- 拦截信息**逐条读完再修根因**：禁止 `--no-verify`、禁止截断后忽略；**FAIL 必须清零**，WARN 说明理由可放行。
+- `gh` 操作在**创建时**即走校验：FAIL 直接拦截（逐条修到清零），WARN 逐条处理（能补就补）；操作前先跑预检，**完整读输出不截断**。
+- 占位/TODO 一律 `todo!("TODO(#<issue>): ...")` 或 `unimplemented!(...)`；TODO 注释必须带 issue 号。
 
-详见项目级 skill `.agent/skills/ui-validation/SKILL.md`（共享 OMP `ui-validate` skill）：
+### 代码约定（UI / Rust / 调查审查工具）
 
-- 交互元素加 `data-testid`（用 `name` 属性值）；容器加 `role` + `aria-label`
-- PR smoke 用 `tab.ariaSnapshot()` 验证 role+name+testid
-- 截图仅作辅助（视觉风格/品牌），失败时附带
+**→ 读**：写 UI（Dioxus）、写 Rust 公共 API、调查或审查代码 → `.agent/playbook/conventions.md`。
 
-禁区：只用截图肉眼判断、用 class 选择器、不写 ui-spec.yaml 直接 PR。
-
-### Rust 编码风格
-
-- 函数命名讲究动宾结构，见名知目的：`parse_channel_config` 而不是 `do_config`；类型/结构体名说清角色。
-- 公共 API 必须写 rust doc（`///`）：用途、参数语义、错误情况、示例；模块头写 `//!` 说明职责。写注释是交付的一部分，不是可选装饰。
-- OCR 是**截图工具**（图片识别）；`ocr` 命令是**代码审查工具**（OpenCodeReview）。审查语境下说的是后者，别混淆。
-
-### 调查与审查工具
-
-- 调查代码先用 `code-review-graph update` 建增量图谱，再查调用关系与全局结构；不要直接逐文件翻。
-- 审查两层：先 `code-review-graph detect-changes`（结构层 CRG），再 `ocr review`（规范层）。ocr 是 LLM 审查，必须按文件/模块分批跑，禁止一次性全 repo 喂入（限流）。
+- **UI 验证**：交互元素加 `data-testid`（取 `name` 属性值），容器加 `role` + `aria-label`；每页 `specs/ui/<page>.yaml` 契约；PR smoke 用 `tab.ariaSnapshot()`。禁区：只靠截图肉眼判断、用 class 选择器、不写 ui-spec 直接 PR。细节在 `.agent/skills/ui-validation/SKILL.md`。
+- **Rust**：函数名动宾结构见名知目的（`parse_channel_config` 不是 `do_config`）；公共 API 必须写 `///` rust doc（用途/参数/错误/示例），模块头 `//!`。无 doc = 不完整交付。
+- **调查/审查**：先 `code-review-graph update` 建图谱再查调用关系，不逐文件翻；审查两层——CRG（结构）+ `ocr review`（规范，按模块分批，禁止全 repo 一次喂）。**OCR 是截图工具，`ocr` 命令是代码审查工具**，别混。
 
 ## PR 开发流程（主控 / 子代理编排）
 
+**→ 读**：开 PR / 派子代理编排开发前必读 `.agent/playbook/pr-workflow.md`（八阶段剧本 setup → … → report，含按阶段阅读索引）；派任务给 agent 用 `.agent/tasks/`（任务书模板，见 `tasks/README.md`）。
+
 你是主控 agent：编排任务、派子代理执行、审查子代理产出，**不要亲自把核心实现写完**。
 
-### 硬性门禁
+### 硬性门禁（摘要，详版在 playbook）
 
-- **PR-only**：一切工作面以 PR 登记（见上「开发方式」）；禁止新建 GitHub issue、禁止改 epic 结构（挂/摘 sub-issue）。仅当用户 prompt 明确要求建 issue 时，先报备标题与 done when，批准后才建。
-- **工作目录门禁**：所有子代理必须在 `.wt/<branch>` 工作；子代理 prompt 必须写明**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`）与所属分支，限定其只在该目录内读写、编译、提交；禁止在仓库根目录或其他 worktree 落文件。
-- **任务量门禁**：单个子任务 ≤ 5 个文件、单一主题、单一修改范围；能按文件 / 范围 / 主题 / 调用链 / 测试拆就拆，不把半个模块丢给一个子代理。
-- **登记处**：suspect area 与风险点写进 PR body 对应字段（不进 done when）；子任务以 checkbox 形式登记到 PR body 任务清单，完成勾回。
-- 每轮「审查 + 修复」写 **一条** PR comment（含修复 commit SHA）；smoke 验证再单独写 **一条** comment，说明验证手段与结果。两种留言可能多次出现。
-- 不绕过 `.githooks/` 拦截门，不绕过 `hooks/merge --dry-run` 的预检。
-
-### 八阶段工作流程
-
-开 PR / 派子代理编排开发前必读 `.agent/pr-workflow.md`（setup → scope → break down → dev/audit → test → tool review → smoke → tidy → report）；`.agent/` 文档的按阶段阅读索引（哪个阶段读哪个文件）在 `pr-workflow.md` 文件头；`todo` / goal 登记与 PR body 任务清单全程同步。
+- **PR-only**：一切工作面以 PR 登记；禁止新建 GitHub issue、禁止改 epic 结构。仅当用户 prompt 明确要求建 issue 时，先报备标题与 done when，批准后才建。
+- **工作目录门禁**：子代理必须在 `.wt/<branch>` 工作；prompt 写**全局绝对路径**与所属分支，禁止在仓库根或其他 worktree 落文件。
+- **任务量门禁**：单个子任务 ≤ 5 个文件、单一主题、单一修改范围。
+- **登记处**：suspect area 写进 PR body；子任务 checkbox 登记进 PR body 清单。每轮「审查+修复」一条 comment，smoke 单独一条。
+- 不绕过 `.githooks/` 拦截门，不绕过 `hooks/merge --dry-run` 预检。
+- `todo` / goal 登记与 PR body 任务清单全程同步；`base_sha` 记牢，CRG / review 用 `--base <base_sha>`。
 
 ## 目标约束
 
