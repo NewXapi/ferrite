@@ -6,7 +6,6 @@
 
 use contract::api::token::{TokenDto, UpdateTokenRequest};
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::api;
 use crate::usage_support::{date_input_to_rfc3339, rfc3339_to_date_input};
@@ -24,9 +23,8 @@ pub fn EditKeyModal(
     let mut quota = use_signal(|| token.quota.to_string());
     // 过期时间 prefill: RFC3339 → UTC 日期段 (与提交方向同口径, 见 usage_support);
     // None (永不过期) 显示空 = 保持不变
-    let mut expiry = use_signal(|| {
-        rfc3339_to_date_input(token.expires_at.as_deref().unwrap_or(""))
-    });
+    let mut expiry =
+        use_signal(|| rfc3339_to_date_input(token.expires_at.as_deref().unwrap_or("")));
     let mut busy = use_signal(|| false);
     let mut err = use_signal(String::new);
 

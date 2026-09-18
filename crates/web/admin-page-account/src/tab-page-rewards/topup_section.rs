@@ -1,9 +1,8 @@
 //! 充值开单 / 兑换码充值区
 
 use dioxus::prelude::*;
-use gloo_timers::future::TimeoutFuture;
 
-use crate::api::{self, OpenTopupRequest, RedeemRequest, TopupOrderView, WalletView};
+use crate::api::{self, OpenTopupRequest, RedeemRequest, WalletView};
 use crate::usage_support::{fmt_num, fmt_quota};
 
 /// 拉取钱包 (GET /api/user/wallet) 并写回三个 Signal。

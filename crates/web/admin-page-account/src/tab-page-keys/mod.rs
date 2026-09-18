@@ -8,10 +8,10 @@ pub mod new_key_form;
 pub mod panel;
 pub mod profile_item;
 
-pub use panel::KeysPanel;
 pub use created_key_view::CreatedKeyView;
 pub use delete_key_modal::DeleteKeyModal;
 pub use edit_key_modal::EditKeyModal;
 pub use key_card::KeyCard;
 pub use new_key_form::NewKeyForm;
+pub use panel::KeysPanel;
 pub use profile_item::ProfileItem;

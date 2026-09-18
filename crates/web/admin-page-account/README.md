@@ -2,13 +2,17 @@
 
 ## 文件
 
-- `src/lib.rs` — 导出 KeysPanel、UsageLogsPanel、RewardsPanel。
+- `src/lib.rs` — 导出 KeysPanel、UsageLogsPanel、RewardsPanel、SessionsPanel、SettingsPanel 与 `api` 模块。
 - `src/api.rs` — 账户页数据来源:全部 `*_api` 真实调用 (走 `client::ApiClient`),覆盖密钥 / 用量 / 用户信息 / 会话 / 设置 / 钱包 / 拉人统计 / 充值开单。
-- `src/keys.rs` — 用户 API Key 创建、编辑 (分组/额度/无限额度/过期时间)、列举、删除和状态切换;个人资料区与统计卡。
-- `src/sessions.rs` — 会话面板:列表 / 吊销 / 吊销其它设备,当前设备吊销带确认弹窗。
-- `src/usage_logs.rs` — 用量日志筛选与分页。
 - `src/usage_support.rs` — 呈现层纯函数共用库:时间窗换算、$ 额度格式化 (`QUOTA_PER_USD=500_000≈$1`)、UA 归纳 (`summarize_ua`)、短 ID (`short_key`)、日期 ↔ RFC3339 (UTC 口径)。
-- `src/rewards.rs` — 奖励面板:钱包 / 拉人统计 / 兑换码 / 充值开单。
+
+一个 tab = 一个 `tab-page-*` 目录 (目录名带 `tab-page-` 前缀、`#[path]` 声明;目录内文件不带前缀,见各 `mod.rs` 拆分约定):
+
+- `src/tab-page-keys/` — 密钥·资料:KeyCard / 新建弹窗 / 编辑弹窗 / 删除确认 / 统计卡。
+- `src/tab-page-sessions/` — 会话面板:列表 / 吊销 / 吊销其它设备,当前设备带确认弹窗。
+- `src/tab-page-usage-logs/` — 用量日志筛选与分页。
+- `src/tab-page-settings/` — 用户设置。
+- `src/tab-page-rewards/` — 奖励面板:钱包 / 拉人统计 / 充值开单 / 兑换码 / 最近充值记录 (`RechargesSection`)。
 - `tests/` — `edit_token_wire` (编辑密钥 wire 形状 + 日期换算) / `keys_display` (短 ID / 进度百分比) / `sessions_format` (UA 归纳 / 分钟时间) / `invite_link` / `rewards_wire` / `rewards_lists_wire` / `usage_format` / `wire_shapes`。
 
 ## 密钥·资料呈现口径 (#206)

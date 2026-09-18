@@ -4,7 +4,7 @@
 
 use contract::api::token::{CreateTokenRequest, CreateTokenResult};
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::components::button::{Button, ButtonVariant};
 
 use crate::api;
 
