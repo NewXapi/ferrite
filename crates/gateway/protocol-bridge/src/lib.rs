@@ -24,6 +24,7 @@ pub mod adaptor;
 pub mod claude;
 pub mod error_mapping;
 pub mod format_codec;
+pub mod gemini;
 pub mod ir;
 pub mod openai;
 pub mod responses;
