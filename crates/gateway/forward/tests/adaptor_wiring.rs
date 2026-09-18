@@ -349,3 +349,40 @@ data: {\"type\":\"message_stop\"}\n\n",
         "不得把 Claude 事件原样漏给 OpenAI 客户端，实际: {text}"
     );
 }
+
+// SSE 规范不要求流以空行结尾：上游最后一帧没跟空行就断开时，该帧不得被丢掉。
+// 丢的往往是收尾帧，客户端会一直等或判定流异常。
+#[tokio::test]
+async fn unterminated_trailing_frame_is_not_dropped() {
+    // 注意结尾：最后一帧的 data 行后**没有**空行分隔符。
+    let upstream_sse = Bytes::from_static(
+        b"data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: upstream_sse,
+        content_type: "text/event-stream",
+    };
+
+    let mut task = mk_task(true, ProtocolKind::Anthropic, "openai");
+    task.path = "/v1/messages".to_string();
+
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("流式转发应成功");
+
+    let body = drain(forwarded).await;
+    let text = String::from_utf8_lossy(&body);
+
+    // 尾部那帧的 finish_reason 必须体现在出站事件里（Claude 侧是 message_delta 的 stop_reason）。
+    assert!(
+        text.contains("\"stop_reason\":\"end_turn\""),
+        "尾部未终结帧不得被丢弃，实际: {text}"
+    );
+}
