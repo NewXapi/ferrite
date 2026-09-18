@@ -44,7 +44,7 @@ pub fn StatusBar(
 ) -> Element {
     // 外部关闭请求信号（「面板应关闭？」默认 false）：点选中项置 true，DropdownMenu 收关
     let close_request = use_signal(|| false);
-    let mut close_signal = close_request.clone();
+    let mut close_signal = close_request;
     rsx! {
         div {
             class: "flex w-full items-center justify-between py-0.5 text-[11px] text-zinc-500",

@@ -170,7 +170,7 @@ pub fn DropdownMenu(
     // 语义=「面板应关闭？」，默认 false（不请求关闭），变更到 true 才生效。
     // 实现为轻量轮询（同 scroll_spy 的收尾模式），避免引入新依赖。
     if let Some(close) = &close_signal {
-        let close_clone = close.clone();
+        let close_clone = *close;
         use_hook(move || {
             spawn(async move {
                 let mut last = close_clone();
