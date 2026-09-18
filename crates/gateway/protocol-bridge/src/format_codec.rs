@@ -113,14 +113,12 @@ impl FormatRegistry {
         if self.is_passthrough(src, dst) {
             return Ok(body);
         }
-        let src_codec = self.resolve(src).ok_or(AdaptorError::NotRegistered {
-            from: src,
-            to: dst,
-        })?;
-        let dst_codec = self.resolve(dst).ok_or(AdaptorError::NotRegistered {
-            from: src,
-            to: dst,
-        })?;
+        let src_codec = self
+            .resolve(src)
+            .ok_or(AdaptorError::NotRegistered { from: src, to: dst })?;
+        let dst_codec = self
+            .resolve(dst)
+            .ok_or(AdaptorError::NotRegistered { from: src, to: dst })?;
         let ir = src_codec.decode_request(body)?;
         dst_codec.encode_request(&ir)
     }
@@ -136,14 +134,12 @@ impl FormatRegistry {
         if self.is_passthrough(src, dst) {
             return Ok(body);
         }
-        let src_codec = self.resolve(src).ok_or(AdaptorError::NotRegistered {
-            from: src,
-            to: dst,
-        })?;
-        let dst_codec = self.resolve(dst).ok_or(AdaptorError::NotRegistered {
-            from: src,
-            to: dst,
-        })?;
+        let src_codec = self
+            .resolve(src)
+            .ok_or(AdaptorError::NotRegistered { from: src, to: dst })?;
+        let dst_codec = self
+            .resolve(dst)
+            .ok_or(AdaptorError::NotRegistered { from: src, to: dst })?;
         let ir = src_codec.decode_response(body)?;
         dst_codec.encode_response(&ir)
     }

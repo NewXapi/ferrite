@@ -109,7 +109,10 @@ fn ir_image_block_dispatches_to_image_variant() {
     let raw = r#"{"type":"image","media_type":"image/png","data":"AAAB"}"#;
     let block: ContentBlock = serde_json::from_str(raw).expect("deserialize");
     match block {
-        ContentBlock::Image { ref media_type, ref data } => {
+        ContentBlock::Image {
+            ref media_type,
+            ref data,
+        } => {
             assert_eq!(media_type, "image/png");
             assert_eq!(data, "AAAB");
         }

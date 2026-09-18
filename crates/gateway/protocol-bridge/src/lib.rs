@@ -21,15 +21,17 @@
 //! | `contract::error::NormalizedError` | 跨 crate 单一错误协议 |
 
 pub mod adaptor;
-pub mod format_codec;
+pub mod claude;
 pub mod error_mapping;
+pub mod format_codec;
 pub mod ir;
+pub mod openai;
 pub mod sse;
 pub mod stage;
 
 pub use adaptor::{AdaptorRegistry, Codec, Protocol};
-pub use format_codec::{FormatCodec, FormatRegistry, StreamEncoder};
 pub use error_mapping::map_error;
+pub use format_codec::{FormatCodec, FormatRegistry, StreamEncoder};
 pub use ir::{
     ContentBlock, LlmRequest, LlmResponse, Message, Role, SamplingParams, StopReason, StreamEvent,
     TextBlock, ToolChoice, ToolDef, Usage,

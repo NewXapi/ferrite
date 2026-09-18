@@ -36,7 +36,10 @@ impl FakeCodec {
     }
 
     fn record(&self, what: &str) {
-        self.calls.lock().unwrap().push(format!("{}::{what}", self.tag()));
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("{}::{what}", self.tag()));
     }
 }
 
@@ -47,9 +50,11 @@ impl FormatCodec for FakeCodec {
 
     fn decode_request(&self, body: Bytes) -> Result<LlmRequest, AdaptorError> {
         self.record("decode_request");
-        let v: Value = serde_json::from_slice(&body)
-            .map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
-        Ok(mk_request(v.get("model").and_then(Value::as_str).unwrap_or("")))
+        let v: Value =
+            serde_json::from_slice(&body).map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+        Ok(mk_request(
+            v.get("model").and_then(Value::as_str).unwrap_or(""),
+        ))
     }
 
     fn encode_request(&self, req: &LlmRequest) -> Result<Bytes, AdaptorError> {
@@ -65,8 +70,8 @@ impl FormatCodec for FakeCodec {
 
     fn decode_response(&self, body: Bytes) -> Result<LlmResponse, AdaptorError> {
         self.record("decode_response");
-        let v: Value = serde_json::from_slice(&body)
-            .map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+        let v: Value =
+            serde_json::from_slice(&body).map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
         Ok(LlmResponse {
             id: v
                 .get("id")
