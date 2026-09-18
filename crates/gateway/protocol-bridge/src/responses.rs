@@ -49,8 +49,8 @@ impl FormatCodec for ResponsesCodec {
 
     /// Responses 请求体 → IR。
     fn decode_request(&self, body: Bytes) -> Result<LlmRequest, AdaptorError> {
-        let v: Value = serde_json::from_slice(&body)
-            .map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+        let v: Value =
+            serde_json::from_slice(&body).map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
         let obj = v.as_object().ok_or_else(|| {
             AdaptorError::DecodeFailed("responses request body is not an object".into())
         })?;
@@ -77,9 +77,9 @@ impl FormatCodec for ResponsesCodec {
             Some(Value::Array(parts)) => parts
                 .iter()
                 .filter_map(|p| {
-                    p.get("text")
-                        .and_then(Value::as_str)
-                        .map(|t| TextBlock { text: t.to_string() })
+                    p.get("text").and_then(Value::as_str).map(|t| TextBlock {
+                        text: t.to_string(),
+                    })
                 })
                 .collect(),
             _ => Vec::new(),
@@ -211,8 +211,8 @@ impl FormatCodec for ResponsesCodec {
 
     /// Responses 非流式响应体 → IR。
     fn decode_response(&self, body: Bytes) -> Result<LlmResponse, AdaptorError> {
-        let v: Value = serde_json::from_slice(&body)
-            .map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
+        let v: Value =
+            serde_json::from_slice(&body).map_err(|e| AdaptorError::DecodeFailed(e.to_string()))?;
 
         let mut outputs = Vec::new();
         let mut has_tool_call = false;
@@ -230,7 +230,9 @@ impl FormatCodec for ResponsesCodec {
                                         .and_then(Value::as_str)
                                         .is_none_or(|k| k == "output_text" || k == "text")
                                 {
-                                    outputs.push(ContentBlock::Text { text: t.to_string() });
+                                    outputs.push(ContentBlock::Text {
+                                        text: t.to_string(),
+                                    });
                                 }
                             }
                         }
@@ -552,7 +554,9 @@ fn decode_input_item(item: &Value, out: &mut Vec<Message>) {
                         // input_text / output_text / text 都算文本。
                         p.get("text")
                             .and_then(Value::as_str)
-                            .map(|t| ContentBlock::Text { text: t.to_string() })
+                            .map(|t| ContentBlock::Text {
+                                text: t.to_string(),
+                            })
                     })
                     .collect(),
                 _ => Vec::new(),
@@ -603,14 +607,8 @@ fn encode_input_item(m: &Message) -> Value {
 fn decode_usage(usage: Option<&Value>) -> Usage {
     let u = usage.unwrap_or(&Value::Null);
     Usage {
-        prompt_tokens: u
-            .get("input_tokens")
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-        completion_tokens: u
-            .get("output_tokens")
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
+        prompt_tokens: u.get("input_tokens").and_then(Value::as_u64).unwrap_or(0),
+        completion_tokens: u.get("output_tokens").and_then(Value::as_u64).unwrap_or(0),
         cached_tokens: u
             .get("input_tokens_details")
             .and_then(|d| d.get("cached_tokens"))

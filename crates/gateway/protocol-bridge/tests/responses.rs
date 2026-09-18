@@ -239,7 +239,9 @@ fn responses_decode_response_parses_function_call_arguments() {
         .outputs
         .iter()
         .find_map(|b| match b {
-            ContentBlock::ToolUse { id, name, input } => Some((id.clone(), name.clone(), input.clone())),
+            ContentBlock::ToolUse { id, name, input } => {
+                Some((id.clone(), name.clone(), input.clone()))
+            }
             _ => None,
         })
         .expect("function_call 应成为 ToolUse");
@@ -364,8 +366,14 @@ fn responses_encoder_emits_lifecycle_prelude_before_text() {
     let item_added = item_added.unwrap_or_else(|| panic!("缺 output_item.added，实际: {kinds:?}"));
     let delta = delta.unwrap_or_else(|| panic!("缺 output_text.delta，实际: {kinds:?}"));
 
-    assert!(created < item_added, "created 必须早于 item.added，实际: {kinds:?}");
-    assert!(item_added < delta, "item.added 必须早于文本 delta，实际: {kinds:?}");
+    assert!(
+        created < item_added,
+        "created 必须早于 item.added，实际: {kinds:?}"
+    );
+    assert!(
+        item_added < delta,
+        "item.added 必须早于文本 delta，实际: {kinds:?}"
+    );
 
     // created 只发一次。
     let mut all = out;
@@ -443,7 +451,9 @@ fn responses_encoder_emits_tool_lifecycle() {
     // 收尾：参数 done + completed，且 completed 的 output 里 arguments 是完整的。
     let kinds = event_kinds(&out);
     assert!(
-        kinds.iter().any(|k| k == "response.function_call_arguments.done"),
+        kinds
+            .iter()
+            .any(|k| k == "response.function_call_arguments.done"),
         "tool 参数要有 done 帧，实际: {kinds:?}"
     );
     let completed = pairs
@@ -528,7 +538,9 @@ fn responses_encoder_error_is_terminal() {
 
     let after = enc.finish().expect("finish");
     assert!(
-        !event_kinds(&after).iter().any(|k| k == "response.completed"),
+        !event_kinds(&after)
+            .iter()
+            .any(|k| k == "response.completed"),
         "失败后不得再报 completed，实际: {after:?}"
     );
 }
