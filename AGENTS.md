@@ -6,7 +6,7 @@
 2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
 3. 读自己功能 crate 的 `README.md`，按文件实现列表工作，按其验收命令验证后提交 conventional commit。
 
-本文件按阅读优先级排布：开工动作 → 开发方式 → 域边界 → 参考知识 → 安全约定 → 编排流程 → 硬约束。
+本文件按阅读优先级排布：开工动作 → 开发方式 → 域边界 → 参考知识 → 安全约定 → 编排摘要 → 硬约束。过程性剧本已抽离到 `.agent/`（`pr-workflow.md` / `testing-ci.md` / `gates.md`），本文件留摘要与指针；`.agent/skills/` 仍是 omp 项目 skill 发现目录，勿混淆。
 
 ## 开发方式
 
@@ -105,47 +105,17 @@ crates/web/<prefix-feature>/
 - **dev 起停/种子/体检一律走 `justfile` 配方**，命令清单与使用场景见 `justfile` 顶部「使用场景速查」、疑难处置见其末尾「疑难问题 → 推荐处理」块：`just dev-check`（环境体检）、`just dev-backend start|update|stop|status`（共享后端）、`just db-seed` / `just db-reset`（dev 种子）、`just verify`（fmt-check + clippy + check 全套）。开工前先 `just dev-check` 一条命令自检环境，别再手工拼这些命令。
 - **免登录调试前端（`debug-auto-login` feature，默认关）**：admin-web 编译期 dev 专用自动登录——无 token 且不在 `#login`/`#signup`/`#auth` 时静默登录 dev 种子账号 `admin_dev`（仅 dev 种子，生产构建不含此 feature），401 清会话后先尝试自动重登。开启：`just dev-web <port> debug` 或 `dx serve --features debug-auto-login`；要手动调登录页直接打开 `#login`（auth hash 不触发）；彻底关闭用不带 debug 的构建（`just dev-web <port>`）。主动「退出登录」不被自动重登顶掉。
 
-### 测试分层与 CI 驱动原则
+### 测试分层与 CI 驱动原则（摘要）
 
-- **所有测试放 CI**：`cargo test` 一律在 CI 上跑，本地只跑 `cargo check -p <crate>` 验证编译通过。
-- **严禁本地滥跑全量与重型测试**：本地开发机常年可用内存不足 2GB，本地编译或测试多 crate 极易耗尽内存导致机器假死。禁止本地执行 `cargo test --all` 或全 workspace 构建。
-- 只有当改动的核心逻辑有单体单测且能在 3 秒内跑完时，才允许本地单跑：`cargo test -p <crate> -- <test_name>`。仅用于调试，不作为验收手段。
-- **CI 测试全部 green 才算通过**，CI 未跑完前不得 closeout / merge。
-- **本地 clippy 必须与 CI 同版本**：CI 用 `dtolnay/rust-toolchain@stable`。版本落后时本地跑绿仍会被 CI 的新 lint 拦下（实测 1.94 vs 1.98 差 `unnecessary_sort_by`、`result_large_err`）。改动前先 `rustup update stable`，否则只能靠 CI 往返试错。
+- 本地只做 `cargo check -p <crate>`（编译验证）与极小的单用例调试（3 秒内跑完的 `cargo test -p <crate> -- <test_name>`）；一切 `cargo test` 交给 PR 的 CI 按 `git diff` 动态选包。本地内存常年 <2GB，**严禁**本地 `cargo test --all` / 全 workspace 构建（会假死）。
+- 「通过」= CI 全绿；CI 未全绿不得 closeout / merge。本地 clippy 必须与 CI 同版本（改动前 `rustup update stable`）。
+- 细则、动态选包原理与提 PR 前预览：读 `.agent/testing-ci.md`。
 
-#### CI 调度规则（`scripts/ci-affected.sh`）
+### gate（`.githooks/`，摘要）
 
-PR 跑动态范围，合并到 main 跑全量兜底：
-
-| 触发 | 行为 |
-|---|---|
-| PR | 按 `git diff` 的 path scope 选包 + 反向依赖闭包 |
-| push main | `cargo build --all-targets` + `cargo test --all` |
-| 两者恒定 | `cargo fmt --all --check`、`cargo clippy --all-targets -- -D warnings` |
-
-动态选包分两步：先用路径前缀匹配得到直接改动的包（seed），再沿 workspace 内部依赖图（`cargo metadata` 里带 `path` 的依赖）反向 BFS，补齐所有依赖它的下游包。
-
-反向闭包是必需的，不是优化：改 `crates/api/tavern-storage` 若只跑该包，会漏掉 `api` 与 `tests-e2e`——它们依赖它，编译能过但测试断言可能已破。实测该改动的真实影响面是 11 个包。
-
-前端 crate（`crates/web/*`、`apps/{admin-web,tavern-web}`）走 wasm32 check，其余走 native check；有 `tests/*.rs` 的包额外跑 `cargo test -p`；纯文档改动秒级跳过。
-
-只有影响面无法从依赖图推导的改动才升级为全量：`Cargo.toml`、`Cargo.lock`、`rust-toolchain.toml`、`.github/*`、`scripts/*`。`crates/contract` **不在此列**——它是普通 workspace 成员，闭包能精确算出受影响的 33 个包，比全量 53 个更准。
-
-提 PR 前可本地预览选包结果：
-
-```sh
-bash scripts/ci-affected.sh --base newxapi/main --dry-run
-```
-
-### gate（`.githooks/`）
-
-- pre-commit / pre-push / merge 的拦截信息必须逐条读完再修根因；禁止 `--no-verify`、禁止 `| head -5` 之类截断后忽略。FAIL 条目（`checklist.*` / `WS-*` 格式）必须清零，WARN 说明理由后可放行。
-- **gate 会对 GitHub 侧做规范校验**：`gh` 操作（建 issue / 建 PR / 关 issue）在**创建时**就走 gate 校验（issue 必填 heading、PR 标题/body 结构、label 完整性、`Fixes #` 关联等），并输出 `FAIL` / `WARN` 行。
-  - `FAIL` 行会**直接拦截**该 gh 操作（建 PR 返回"闸门: 校验 FAIL，拒绝创建"）；必须逐条修到 FAIL 清零再重试，不能只看到报错就放弃或绕过。
-  - `WARN` 行不拦截但**不要忽略**：每条都说明缺什么（如"缺 type label"、"关键词建议也挂某 label"、"缺 `Fixes #`"）。能补的就补（label 用 `gh pr edit --label` / `gh issue edit --label`），不能补的在 PR body 写明理由。
-  - 创建前先跑 `gate check` 对应清单或 `gate issue` / `gate pr` 预检，**不要等 push 才撞墙**；`head` / `tail` / `grep -v` 这类过滤会吞掉部分提示行，看 gate 输出时务必**完整**读，不要截断。
-- gate 会检查 GitHub 侧规范（issue 关联、PR 结构、label 完整性、CRG 审查记录，见 `.githooks/spec/github_pr_gates.yaml` 与 `checklist_pr_*.yaml`）；`gh` 操作前先跑对应检查，不要等 push 才发现。
-- 占位用 Rust 原生宏：未实现的函数/trait 写 `todo!("TODO(#<issue>): 说明")` 或 `unimplemented!(...)`；TODO/FIXME 注释必须带 issue 号（`TODO(#123): ...`），这是 `rust_todo_needs_issue` 检查项。
+- 钩子拦截信息必须逐条读完再修根因：禁止 `--no-verify`、禁止截断后忽略；FAIL 必须清零，WARN 说明理由可放行。
+- 占位/TODO 一律 `todo!("TODO(#<issue>): ...")`、`unimplemented!(...)`；TODO 注释必须带 issue 号。
+- `gh` 操作在创建时即走 gate 校验：FAIL 直接拦截，WARN 逐条处理；操作前先跑预检，不截断输出。细则与 GitHub 侧校验清单：读 `.agent/gates.md`。
 
 ### UI 验证约定（Dioxus web）
 
@@ -182,78 +152,9 @@ bash scripts/ci-affected.sh --base newxapi/main --dry-run
 - 每轮「审查 + 修复」写 **一条** PR comment（含修复 commit SHA）；smoke 验证再单独写 **一条** comment，说明验证手段与结果。两种留言可能多次出现。
 - 不绕过 `.githooks/` 拦截门，不绕过 `hooks/merge --dry-run` 的预检。
 
-### workflow（按阶段执行）
+### 八阶段剧本
 
-#### 0. setup
-
-- 从目标 base 拉 `<branch>`，工作树放 `.wt/<branch>`；不在仓库根目录改。
-- 开 draft PR：conventional title，body 含目标 / 范围 / 任务清单 checklist / 验收命令。
-- 开工前查最近 24h 内相关在跑 PR / 会话；工作面重叠时停下问用户。
-- 用 `todo` / `goal` slash command 登记开发目标与阶段，主控和子代理全程对照确认，偏航即纠正；PR body 任务清单与之同步。
-- 记录 `base_sha`，后续 CRG / diff review 用 `--base <base_sha>`，不要写死 `main`。
-
-#### 1. scope
-
-- 跑一次 `code-review-graph update` / 取图谱。
-- 修改导出符号前必须查引用（用 codegraph 图谱查调用方，本地没有 LSP）。
-- 找到本次要动的模块、调用方、被调用方、相邻边界。
-- 输出：suspect area（写进 PR body）、风险点、可能波及的文件清单。
-
-#### 2. break down
-
-- 先按文件拆；同文件内再按修改范围拆；仍然太大就按主题 / 调用链 / 测试拆。
-- 每个子任务必须写清：全局绝对路径 cwd、允许修改的文件、禁止触碰的文件、goal、非目标、验收命令（哪条命令跑通 = 完成）。
-- **开发必须带测试**：新功能/修复的同一 PR 里补测试，尽可能覆盖完整场景（正常路径、边界、错误输入、并发/重入）；当前无法覆盖的场景用占位宏 `todo!("TODO(#N): 场景说明")` 显式声明纰漏。测试代码同样要写注释：说明测的是什么行为、为什么是这个预期。
-- 不相信子代理会自动完成：每个子任务都要有主控可复验的 diff 边界和验收证据。
-- 子任务太大、文件边界不清、或需要跨模块协调 → 继续拆；禁止"一个子代理干完半个模块"。
-- 子任务登记到 PR body 任务清单，方便后续 closeout 勾回。
-
-#### 3. dev → audit
-
-```
-loop1:
-  dev   → 派子代理按划分任务做，最多并行 2 个互不冲突子任务；同文件 / 同模块写入必须串行
-  audit → 子代理完成后，主控（你）独立校验：
-          - 跑子代理提供的验收命令（真跑，不只看输出）
-          - diff 看改动是否只落在声明的文件
-          - 检查 root cause、调用方、边界输入
-          - 必要时再派一个校验子代理做交叉 confirm
-失败 → 重拆或回 dev
-```
-
-#### 4. test
-
-- 全部子任务通过 audit 后，本地仅运行极小范围的类型检查（`cargo check -p <crate>`，CPU-heavy 必须套 `cpulimit -l 65 -i --`）。
-- **尽可能不要在本地运行 `cargo test`**：所有集成测试、多 crate 联调与重型测试一律推送到 PR 分支，交给 GitHub CI 依据 `git diff` 动态按需执行。
-- **重型测试**（>2 min、需要容器 / 网络 / 大数据）放 CI；CI 未跑完前不得 closeout / merge。
-- **CI 驱动闭环**：以 GitHub CI 运行报告为准；CI 未全部跑绿前不得 closeout / merge。
-- 若 CI 报错失败 → 提取云端失败日志回 loop1，把失败当作新子任务进行精准修复。
-- 本地调试单个失败用例：`cargo test -p <crate> -- <test_name>`（仅调试，不替代 CI 验收）。
-
-#### 5. tool review
-
-- 先 CRG（结构层）：`code-review-graph detect-changes --base <base_sha>`。
-- 再 ocr（规范层）：`ocr review --from <base_sha> --to <ref>`（OpenCodeReview 代码审查，非截图 OCR）；**按模块、按 PR diff 分块喂**，不要一次性 send all（限流）。
-- 发现 bug / problem → 回 loop1 修复 → 重新 review，直到干净。
-- 每轮（review + fix）→ 1 条 PR comment（含每轮发现、修复 commit、验证命令）。
-
-#### 6. smoke
-
-- 真实用户路径跑一遍：CLI 命令 / 真实 URL / 真实进程；UI 截图或 OCR 对比。
-- 发现问题 → 更新 PR 任务清单 → 回 loop1 做二次修复。
-- 通过 → 在 PR 写一条「smoke 验证通过 / 用的方法 / 结果」comment。
-
-#### 7. tidy
-
-- **gate 复检**：跑 `gate pre-commit` / `gate pre-push` 全量规范检查，作为 tidy 的第一道清单；FAIL 清零再进下面各项。
-- **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么加 `.gitignore`、要么用 `gio trash` 移入回收站（严禁 `rm` 或 `git clean` 永久删除）。
-- **code**：测试代码没放 `tests/` 的挪过去；`cargo fmt` / `prettier` / 项目对应 formatter 跑一遍；无调试 log、commented-out code、调试 surrogate；rust doc 与实现不一致的更新掉；formatter 如修改文件，必须重跑最小验收命令、tool review、smoke，并更新 PR comment。
-- **docs**：同步改动的代码注释、`AGENTS.md` / `README.md` / `docs/` 里过期的段落，引用跟新增要一致。
-
-#### 8. report
-
-- report: 改了哪些文件、跑了哪些测试、CRG / ocr / smoke 的结果、PR 链接、剩余风险。
-- **收尾报备**：列出本会话新建/修改的全部 PR；有未报备的新建即违规。
+开 PR / 派子代理编排开发前必读 `.agent/pr-workflow.md`（setup → scope → break down → dev/audit → test → tool review → smoke → tidy → report）；`todo` / goal 登记与 PR body 任务清单全程同步。
 
 ## 目标约束
 
