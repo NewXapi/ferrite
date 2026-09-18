@@ -63,13 +63,9 @@ jobs:
         run: |
           VER="${{ steps.ver.outputs.version }}"
           TAG="gateway-v${VER}"
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TARGET="$TAG"          # tag 推送：release 挂该 tag
-          else
-            TARGET="${{ github.sha }}"  # 手动：release 挂当前 commit，并把 tag 指过去
-          fi
+          # notes 用纯文本：双引号里出现反引号会被 bash 当命令替换执行（首跑事故）
           {
-            echo "gateway v${VER} — 无头数据面，`config/config.toml` 驱动，无数据库、无前端。"
+            echo "gateway v${VER} — 无头数据面，config/config.toml 驱动，无数据库、无前端。"
             echo ""
             echo "linux x86_64 · release 性能编译（lto=fat / codegen-units=1 / strip）+ upx --best --lzma。"
             echo ""
@@ -84,13 +80,21 @@ jobs:
           } > notes.md
 
           if [ "${{ github.event_name }}" = "push" ]; then
-            # tag 已存在：直接在其上建 release（幂等：已存在则补 notes + 附件）
-            gh release create "$TAG" --title "gateway v${VER}" --target "$TARGET" --notes-file notes.md \
-              2>/dev/null || { gh release edit "$TAG" --notes-file notes.md; }
+            # tag 推送：tag 已存在，release 直接挂该 tag。
+            # --target 只吃 commit SHA，传 tag 名会导致 create 失败（首跑事故），这里不传。
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release edit "$TAG" --notes-file notes.md   # 幂等：release 已存在只补 notes
+            else
+              gh release create "$TAG" --title "gateway v${VER}" --notes-file notes.md
+            fi
           else
+            # 手动 dispatch：把 tag 指到当前 commit 再建 release
             git tag -f "$TAG" && git push -f origin "$TAG"
-            gh release create "$TAG" --title "gateway v${VER}" --target "$TARGET" --notes-file notes.md \
-              2>/dev/null || { gh release edit "$TAG" --notes-file notes.md; }
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release edit "$TAG" --notes-file notes.md
+            else
+              gh release create "$TAG" --title "gateway v${VER}" --target "${{ github.sha }}" --notes-file notes.md
+            fi
           fi
           cp config/config.toml.example gateway-config.toml.example
           gh release upload "$TAG" target/release/gateway gateway-config.toml.example --clobber
