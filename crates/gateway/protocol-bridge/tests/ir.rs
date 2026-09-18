@@ -25,6 +25,10 @@ fn full_request() -> LlmRequest {
                 },
                 ContentBlock::Thinking { text: "hmm".into() },
                 ContentBlock::Refusal { text: "no".into() },
+                ContentBlock::Image {
+                    media_type: "image/png".into(),
+                    data: "AAAB".into(),
+                },
                 // 未知 block 类型：逃逸口必须原样吞下并吐回
                 ContentBlock::Unknown {
                     raw: json!({"type": "brand_new_block", "foo": "bar"}),
@@ -77,7 +81,7 @@ fn ir_unknown_top_level_fields_survive_via_extra() {
 }
 
 // 3. 未知 block 类型进 Unknown：解析端遇到没建过模的 type 时，整个对象落 raw，
-//    序列化时原样吐出（不重新打 tag）。多模态块就是经这条路无损通过的。
+//    序列化时原样吐出（不重新打 tag）。audio/file 等仍未建模的多模态块就是经这条路无损通过的。
 #[test]
 fn ir_unknown_block_type_falls_into_unknown() {
     let raw = r#"{"type":"brand_new_block","foo":"bar"}"#;
@@ -94,6 +98,31 @@ fn ir_unknown_block_type_falls_into_unknown() {
     let again: Value =
         serde_json::from_str(&serde_json::to_string(&block).expect("serialize")).expect("re-parse");
     assert_eq!(again, json!({"type": "brand_new_block", "foo": "bar"}));
+}
+
+// 3b. 已建模的 image block 必须分派到 Image 变体，而不是静默落 Unknown。
+//     防的 bug：给 ContentBlock 加了 Image 变体，却忘了在反序列化的已知类型分派列表里
+//     加 "image" —— 结果图片仍整体落 raw，编译器不报错、round-trip 也不报错
+//     （Unknown 同样无损），但下游 codec 再也无法把它认成图片，跨格式图片转换静默退化。
+#[test]
+fn ir_image_block_dispatches_to_image_variant() {
+    let raw = r#"{"type":"image","media_type":"image/png","data":"AAAB"}"#;
+    let block: ContentBlock = serde_json::from_str(raw).expect("deserialize");
+    match block {
+        ContentBlock::Image { ref media_type, ref data } => {
+            assert_eq!(media_type, "image/png");
+            assert_eq!(data, "AAAB");
+        }
+        other => panic!("expected Image, got {other:?}"),
+    }
+
+    // 序列化必须回到固定的 tagged 形状（字段顺序无关，语义等价即可）
+    let again: Value =
+        serde_json::from_str(&serde_json::to_string(&block).expect("serialize")).expect("re-parse");
+    assert_eq!(
+        again,
+        json!({"type": "image", "media_type": "image/png", "data": "AAAB"})
+    );
 }
 
 // 4. skip_serializing_if 生效：空集合不应产出噪声键。

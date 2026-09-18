@@ -6,6 +6,8 @@
 //! ## 职责
 //!
 //! - [`adaptor`] — 厂商适配器注册表：Codec trait（请求/响应字节转换）+ 厂商实现
+//! - [`format_codec`] — 单格式双向 codec：`FormatCodec`（本格式 ↔ IR）+ 两跳注册表
+//!   `FormatRegistry`（WP2-WP5 的新 codec 落点，旧 `Codec` 接线保持不变直到 WP6）
 //! - [`sse`] — SSE 帧扫描（事件边界 / keepalive / 终止），源自原 protocol crate
 //! - [`error_mapping`] — `contract::error::NormalizedError` → 各协议错误形状
 //! - [`stage`] — pipeline Stage 4：把上游响应经适配器转为客户端协议
@@ -19,12 +21,14 @@
 //! | `contract::error::NormalizedError` | 跨 crate 单一错误协议 |
 
 pub mod adaptor;
+pub mod format_codec;
 pub mod error_mapping;
 pub mod ir;
 pub mod sse;
 pub mod stage;
 
 pub use adaptor::{AdaptorRegistry, Codec, Protocol};
+pub use format_codec::{FormatCodec, FormatRegistry, StreamEncoder};
 pub use error_mapping::map_error;
 pub use ir::{
     ContentBlock, LlmRequest, LlmResponse, Message, Role, SamplingParams, StopReason, StreamEvent,

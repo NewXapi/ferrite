@@ -17,6 +17,10 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Protocol {
     OpenAi,
+    /// OpenAI Responses API (`/v1/responses`) —— 与 Chat Completions 是两种响应形状,
+    /// 对齐 `gateway_pipeline::ctx::ProtocolKind::OpenAIResp`。旧 `Codec` 路径不认它,
+    /// 由 WP5 的 `FormatCodec` 实现启用、WP6 接线。
+    OpenAIResp,
     Claude,
     Gemini,
     /// 其它厂商先透传 (零转换), 转换器按需增补。

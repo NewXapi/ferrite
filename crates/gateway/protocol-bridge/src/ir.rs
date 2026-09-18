@@ -10,7 +10,8 @@
 //! - 未知顶层/嵌套字段经 [`LlmRequest::extra`] / [`ToolDef::extra`] / [`SamplingParams::extra`]
 //!   （`#[serde(flatten)]`）保留。
 //!
-//! 多模态（image/audio/file）不建模，一律落 [`ContentBlock::Unknown`]。
+//! 图片（[`ContentBlock::Image`](ContentBlock::Image)）已建模；audio/file 等其余多模态块
+//! 仍不建模，一律落 [`ContentBlock::Unknown`]。
 
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap};
@@ -54,6 +55,13 @@ pub enum ContentBlock {
     },
     Refusal {
         text: String,
+    },
+    /// 图片内容块。`data` 是 **base64 负载**（不含 `data:<mime>;base64,` 前缀），
+    /// `media_type` 形如 `image/png`。远程 http(s) URL 无法用该形状表达 —— 那类输入
+    /// 仍走 [`Self::Unknown`]，由 codec 自行决定是否降级。
+    Image {
+        media_type: String,
+        data: String,
     },
     /// 未知 block 类型的逃逸口：`raw` 保留原始 JSON 整体，round-trip 无损。
     Unknown {
@@ -101,6 +109,13 @@ impl Serialize for ContentBlock {
                 m.serialize_entry("text", text)?;
                 m.end()
             }
+            ContentBlock::Image { media_type, data } => {
+                let mut m = serializer.serialize_map(None)?;
+                m.serialize_entry("type", "image")?;
+                m.serialize_entry("media_type", media_type)?;
+                m.serialize_entry("data", data)?;
+                m.end()
+            }
             // 逃逸口：原样吐出，不重新打 tag —— 保证未知类型 round-trip 无损。
             ContentBlock::Unknown { raw } => raw.serialize(serializer),
         }
@@ -131,6 +146,10 @@ impl<'de> Deserialize<'de> for ContentBlock {
             Refusal {
                 text: String,
             },
+            Image {
+                media_type: String,
+                data: String,
+            },
         }
 
         impl From<Known> for ContentBlock {
@@ -147,6 +166,7 @@ impl<'de> Deserialize<'de> for ContentBlock {
                     },
                     Known::Thinking { text } => ContentBlock::Thinking { text },
                     Known::Refusal { text } => ContentBlock::Refusal { text },
+                    Known::Image { media_type, data } => ContentBlock::Image { media_type, data },
                 }
             }
         }
@@ -155,7 +175,7 @@ impl<'de> Deserialize<'de> for ContentBlock {
         // 未知 type 直接整体落 Unknown，零拷贝转交。
         let value = Value::deserialize(deserializer)?;
         match value.get("type").and_then(Value::as_str) {
-            Some("text" | "tool_use" | "tool_result" | "thinking" | "refusal") => {
+            Some("text" | "tool_use" | "tool_result" | "thinking" | "refusal" | "image") => {
                 Known::deserialize(value)
                     .map(Into::into)
                     .map_err(de::Error::custom)
