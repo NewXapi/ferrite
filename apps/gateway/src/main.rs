@@ -41,6 +41,9 @@ async fn main() -> ExitCode {
                             cooldown_threshold = config.dispatch.cooldown_threshold,
                             priced_models = config.metering.prices.len(),
                             max_attempts = config.retry.max_attempts,
+                            channels = config.channels.len(),
+                            keys = config.keys.len(),
+                            route_units = config.channels.iter().map(|c| c.models.len()).sum::<usize>(),
                             "reload complete",
                         );
                     }
