@@ -17,7 +17,7 @@ use gateway_gate::quota::QuotaGate;
 use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
 use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::AdaptorRegistry;
+use gateway_protocol_bridge::adaptor::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 use gateway_proxy::ProxyManager;
 use metering::pricing::{ConfigPriceTable, PriceTable};
@@ -36,7 +36,7 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
         cooldown_max_seconds: cfg.dispatch.cooldown_max_seconds,
         ..HealthSetting::default()
     }));
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let adaptors = Arc::new(FormatRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());
     let proxies = Arc::new(ProxyManager::new());
     proxies.install(build_proxy_snapshot(&cfg.proxy_nodes));

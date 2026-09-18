@@ -21,7 +21,7 @@ use dispatch::retry::{AttemptOutcome, run_retry_loop};
 use dispatch::{Dispatch, DispatchError, FailureClass, RetryPolicy};
 use gateway_pipeline::ctx::{BodySource, SelectedRoute, UpstreamResponse};
 use gateway_pipeline::{PipeStream, RequestCtx, Stage, StageError, StageOutcome};
-use gateway_protocol_bridge::adaptor::AdaptorRegistry;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_proxy::ProxyManager;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -31,8 +31,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 pub struct ForwardStage {
     egress: Arc<dyn crate::egress::Egress>,
     timeouts: crate::egress::Timeouts,
-    /// 厂商协议注册表；空 = 透传。
-    adaptors: Arc<AdaptorRegistry>,
+    /// 单格式协议注册表（`FormatRegistry`）：请求/响应双向转换共用同一份 codec。
+    formats: Arc<FormatRegistry>,
     /// 生产路径注入；`None` 时使用 `egress`（测试 mock）。
     proxies: Option<Arc<ProxyManager>>,
     /// `with_retry` 注入的调度器：`Some` 时 handle 驱动完整重试循环并忽略
@@ -136,11 +136,11 @@ struct AttemptError {
 
 impl ForwardStage {
     /// 使用注入的 [`crate::egress::Egress`]（测试或无代理池）。
-    pub fn new(egress: Arc<dyn crate::egress::Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
+    pub fn new(egress: Arc<dyn crate::egress::Egress>, formats: Arc<FormatRegistry>) -> Self {
         Self {
             egress,
             timeouts: crate::egress::Timeouts::default(),
-            adaptors,
+            formats,
             proxies: None,
             dispatch: None,
             retry_policy: RetryPolicy::default(),
@@ -206,6 +206,7 @@ impl ForwardStage {
         path: String,
         body: Bytes,
         stream: bool,
+        inbound_format: gateway_pipeline::ctx::ProtocolKind,
     ) -> ForwardTask {
         ForwardTask {
             candidate: candidate.clone(),
@@ -215,6 +216,8 @@ impl ForwardStage {
             stream,
             provider_type: candidate.provider_type.clone(),
             extra_headers: crate::adapter::extra_headers_from_settings(&candidate.settings),
+            // 客户端说的协议：请求方向据此 decode、响应方向据此 encode。
+            inbound_format,
         }
     }
 
@@ -223,7 +226,7 @@ impl ForwardStage {
             return crate::pipeline::forward_once(
                 task,
                 &*self.egress,
-                &self.adaptors,
+                &self.formats,
                 &self.timeouts,
             )
             .await
@@ -242,10 +245,10 @@ impl ForwardStage {
                 Arc::new(AdapterDialer(adapter)),
                 Duration::from_secs(5),
             );
-            crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await
+            crate::pipeline::forward_once(task, &egress, &self.formats, &self.timeouts).await
         } else if let Some(client) = lease.reqwest_client() {
             let egress = ReqwestEgress::with_client((*client).clone(), Duration::from_secs(5));
-            crate::pipeline::forward_once(task, &egress, &self.adaptors, &self.timeouts).await
+            crate::pipeline::forward_once(task, &egress, &self.formats, &self.timeouts).await
         } else {
             proxies.feedback(node_id, 502, false);
             return Err(AttemptError {
@@ -333,7 +336,13 @@ impl Stage for ForwardStage {
                 )));
             }
         };
-        let task = Self::build_task(&candidate, ctx.request.path.clone(), body, stream);
+        let task = Self::build_task(
+            &candidate,
+            ctx.request.path.clone(),
+            body,
+            stream,
+            ctx.request.inbound_protocol,
+        );
 
         // 失败观测事件的计时起点（单次模式）：含并发闸等待与上游请求，
         // 成功路径的 duration_ms 由响应侧统计，这里只补失败路径。
@@ -397,6 +406,8 @@ impl ForwardStage {
             }
         };
         let path = ctx.request.path.clone();
+        // 入站协议在闭包外先取出：闭包 move 走 `path` 后 ctx 不可再借。
+        let inbound_format = ctx.request.inbound_protocol;
 
         // 获胜尝试的 Forwarded 与最近一次失败, 短临界区 std Mutex (不跨 await 持锁)。
         let result_slot: Arc<Mutex<Option<crate::Forwarded>>> = Arc::new(Mutex::new(None));
@@ -418,7 +429,8 @@ impl ForwardStage {
             &self.retry_policy,
             move |g, m, exclude| dsel.select(g, m, exclude),
             move |candidate| {
-                let task = Self::build_task(candidate, path.clone(), body.clone(), stream);
+                let task =
+                    Self::build_task(candidate, path.clone(), body.clone(), stream, inbound_format);
                 let slot = Arc::clone(&slot);
                 let eslot = Arc::clone(&eslot);
                 async move {

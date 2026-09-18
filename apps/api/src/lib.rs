@@ -44,7 +44,7 @@ use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
 use gateway_gate::snapshot::IpPolicy;
 use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::AdaptorRegistry;
+use gateway_protocol_bridge::adaptor::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 
 /// ForwardStage 全局并发闸容量（v2 挂载）：整体并发上限，不分渠道——
@@ -147,7 +147,7 @@ async fn assemble(
             arc_swap::ArcSwap::from_pointee(gateway_gate::graylist::GrayListState::default()),
         )));
 
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let adaptors = Arc::new(FormatRegistry::with_defaults());
 
     // 出口接线：生产接代理池（租约 Client 优先），测试保持 mock egress 直通。
     let forward_stage = ForwardStage::new(egress, adaptors.clone());

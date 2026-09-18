@@ -21,6 +21,10 @@ pub struct SseScanner {
     saw_done: bool,
     /// 行数计数。
     line_count: u64,
+    /// 当前帧内累积的 `data:` 负载（多行以换行连接，符合 SSE 规范）。
+    frame_data: Vec<String>,
+    /// 已凑齐（遇到空行分隔符）的完整帧负载队列。
+    ready_frames: Vec<String>,
 }
 
 impl SseScanner {
@@ -54,6 +58,11 @@ impl SseScanner {
             };
 
             if line.is_empty() {
+                // 空行 = 帧分隔符：把累积的 data 负载封成一个完整帧。
+                if !self.frame_data.is_empty() {
+                    self.ready_frames.push(self.frame_data.join("\n"));
+                    self.frame_data.clear();
+                }
                 continue;
             }
 
@@ -85,10 +94,25 @@ impl SseScanner {
                 if rest.windows(7).any(|w| w == b"\"usage\"") {
                     events.push(SseEvent::Usage);
                 }
+
+                // 逐字保真的前提下额外留一份负载副本，供协议转换消费。
+                self.frame_data
+                    .push(String::from_utf8_lossy(rest).into_owned());
             }
         }
 
         (chunk.clone(), events)
+    }
+
+    /// 取出目前已凑齐的完整帧负载（`data:` 行的内容，多行以 `\n` 连接）。
+    ///
+    /// 用于跨格式转换：调用方拿到的是**完整帧**，不必自己处理跨 chunk 的半行——
+    /// 这正是旧 `ClaudeCodec::adapt_response` 用「chunk 内有无 `data:` 行」猜
+    /// 边界、把半行当 JSON 解析失败后静默丢弃的病根。
+    ///
+    /// 取走后队列清空；未遇到空行分隔符的尾部数据留在内部，等下一块补齐。
+    pub fn take_data_frames(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.ready_frames)
     }
 
     /// 上游断开: 报告终止原因。
