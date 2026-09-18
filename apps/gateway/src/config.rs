@@ -21,6 +21,9 @@ use std::collections::{HashMap, HashSet};
 /// 调度健康参数；字段名对齐 `dispatch::health::HealthSetting`。
 #[derive(Debug, Deserialize, Clone)]
 pub struct DispatchConfig {
+    /// 健康检查总开关；false = 不记账不冷却（全量直通）。
+    #[serde(default = "default_health_enabled")]
+    pub enabled: bool,
     /// 连续失败达此数进入冷却。
     #[serde(default = "default_cooldown_threshold")]
     pub cooldown_threshold: u32,
@@ -30,14 +33,39 @@ pub struct DispatchConfig {
     /// 冷却最大时长（秒）；连续冷却时长递增到此上限。
     #[serde(default = "default_cooldown_max_seconds")]
     pub cooldown_max_seconds: u64,
+    /// 同层冷却渠道最大弹射占比（%）；防止一层全被同时弹光。
+    #[serde(default = "default_cooldown_max_ejection_percent")]
+    pub cooldown_max_ejection_percent: u8,
+    /// 冷却时长递增因子（连败时 base × factor^streak）。
+    #[serde(default = "default_cooldown_alpha")]
+    pub cooldown_alpha: f64,
+    /// 冷却激活达此数 → 该模型在渠道上禁用（软禁用，需热重载恢复）。
+    #[serde(default = "default_cooldown_disable_streak")]
+    pub cooldown_disable_streak: u32,
+    /// EWMA 平滑系数（0-1，越大新观测权重越高）。
+    #[serde(default = "default_ewma_alpha")]
+    pub alpha: f64,
+    /// 健康分下限（EWMA 不会低于它，保留微弱复活机会）。
+    #[serde(default = "default_min_score")]
+    pub min_score: f64,
+    /// EWMA 可信前的最小请求数（新渠道信任期）。
+    #[serde(default = "default_min_requests")]
+    pub min_requests: u32,
 }
 
 impl Default for DispatchConfig {
     fn default() -> Self {
         Self {
+            enabled: default_health_enabled(),
             cooldown_threshold: default_cooldown_threshold(),
             cooldown_base_seconds: default_cooldown_base_seconds(),
             cooldown_max_seconds: default_cooldown_max_seconds(),
+            cooldown_max_ejection_percent: default_cooldown_max_ejection_percent(),
+            cooldown_alpha: default_cooldown_alpha(),
+            cooldown_disable_streak: default_cooldown_disable_streak(),
+            alpha: default_ewma_alpha(),
+            min_score: default_min_score(),
+            min_requests: default_min_requests(),
         }
     }
 }
@@ -50,6 +78,27 @@ fn default_cooldown_base_seconds() -> u64 {
 }
 fn default_cooldown_max_seconds() -> u64 {
     60
+}
+fn default_health_enabled() -> bool {
+    true
+}
+fn default_cooldown_max_ejection_percent() -> u8 {
+    50
+}
+fn default_cooldown_alpha() -> f64 {
+    0.3
+}
+fn default_cooldown_disable_streak() -> u32 {
+    3
+}
+fn default_ewma_alpha() -> f64 {
+    0.3
+}
+fn default_min_score() -> f64 {
+    0.05
+}
+fn default_min_requests() -> u32 {
+    5
 }
 
 /// 计量配置；`prices` 为空 = 不计费（本地单机默认）。

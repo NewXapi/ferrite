@@ -31,10 +31,16 @@ use std::sync::Arc;
 /// 不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。
 pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let health = Arc::new(MemoryHealthTable::with_config(HealthSetting {
+        enabled: cfg.dispatch.enabled,
         cooldown_threshold: cfg.dispatch.cooldown_threshold,
         cooldown_base_seconds: cfg.dispatch.cooldown_base_seconds,
         cooldown_max_seconds: cfg.dispatch.cooldown_max_seconds,
-        ..HealthSetting::default()
+        cooldown_max_ejection_percent: cfg.dispatch.cooldown_max_ejection_percent,
+        cooldown_alpha: cfg.dispatch.cooldown_alpha,
+        cooldown_disable_streak: cfg.dispatch.cooldown_disable_streak,
+        alpha: cfg.dispatch.alpha,
+        min_score: cfg.dispatch.min_score,
+        min_requests: cfg.dispatch.min_requests,
     }));
     let adaptors = Arc::new(AdaptorRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());

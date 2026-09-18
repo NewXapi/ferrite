@@ -30,6 +30,15 @@ fn empty_config_uses_defaults() {
     assert_eq!(cfg.dispatch.cooldown_threshold, 5);
     assert_eq!(cfg.dispatch.cooldown_base_seconds, 10);
     assert_eq!(cfg.dispatch.cooldown_max_seconds, 60);
+    // 透出的健康参数默认值 = dispatch::health::HealthSetting::default()，
+    // 两处必须同步改（build_app 逐字段接线，没有 ..Default() 兜底）。
+    assert!(cfg.dispatch.enabled);
+    assert_eq!(cfg.dispatch.cooldown_max_ejection_percent, 50);
+    assert!((cfg.dispatch.cooldown_alpha - 0.3).abs() < f64::EPSILON);
+    assert_eq!(cfg.dispatch.cooldown_disable_streak, 3);
+    assert!((cfg.dispatch.alpha - 0.3).abs() < f64::EPSILON);
+    assert!((cfg.dispatch.min_score - 0.05).abs() < f64::EPSILON);
+    assert_eq!(cfg.dispatch.min_requests, 5);
     assert_eq!(cfg.retry.max_attempts, 3);
     assert!(cfg.metering.prices.is_empty());
     assert!(cfg.proxy_nodes.is_empty());
