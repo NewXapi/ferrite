@@ -2,17 +2,19 @@
 //! (手机 1 栏 / 平板 3 栏 / 桌面 5 栏)。交互对齐 new-api 对应功能区:
 //! 渠道的状态速览/编辑/调度/批量,别名的计费,订阅与兑换码的生成与审计。
 //!
-//! 数据走 `state::EntityStore`(分组/渠道/别名/套餐由 `hydrate()` 从真实后端
-//! 灌入);订阅页的增删改直接调 `crate::api` 的 `/api/subscriptions` 端点,
-//! 成功后按返回视图就地刷新 store。
+//! 数据由各面板自己拉取（本地 signal + `use_effect`，同 CurrencyPage/AliasesPage
+//! 范式）;订阅页的增删改直接调 `crate::api` 的 `/api/subscriptions` 端点,
+//! 成功后 reload 重拉全表（后端按 sort_order 排序，本地插入无法保证位次）。
 //!
 //! 布局约定(与项目 gate-checklist 一致):
 //! - 桌面端面板间用「分隔线 + 独占行」表达从属关系,不占标签页;
 //! - 交互控件以原生为主(select / number input / checkbox),自定义件必须带状态语义;
 //! - 反馈一致:确认用「已保存/已生成/已测速」文字,危险操作用红色。
 
-use crate::api::{delete_subscription_api, upsert_subscription_api};
-use crate::state::{EntityStore, PlanRow, map_subscription_view};
+use crate::api::{
+    delete_subscription_api, list_groups_api, list_subscriptions_api, upsert_subscription_api,
+};
+use crate::state::{PlanRow, map_subscription_view};
 use client::ApiClient;
 use contract::api::billing::SubscriptionUpsertRequest;
 use dioxus::prelude::*;
@@ -95,8 +97,8 @@ pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
 
 /// 订阅管理: 单栏卡牌展示 (web/平板/手机均为 1 栏) + 两 Tab 编辑弹窗。
 ///
-/// 数据走真实后端 `/api/subscriptions`：列表由 `EntityStore::hydrate` 在
-/// 应用启动时灌入 `store.plans`；增/删/改由本页直接调 `crate::api` 的订阅
+/// 数据走真实后端 `/api/subscriptions`：列表由本页 `use_effect` 在
+/// 本页 `use_effect` 拉取进本地 signal；增/删/改由本页直接调 `crate::api` 的订阅
 /// 端点，成功后用返回的视图按 **key** 就地刷新 plans signal（响应式 UI
 /// 立即更新），失败显示错误条。后端按 name upsert（同名保存即更新该行，
 /// 改名 = 新建一行），故写回不依赖列表下标，一律按返回的 key 定位。
@@ -109,13 +111,44 @@ pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
 /// 四态渲染（loading / error / empty / data）对齐 CurrencyPage 惯例：
 /// - loading：写请求在途的「同步中」指示 + 弹窗保存按钮禁用；
 /// - error：写请求失败的红条（`action_err`）；
-/// - empty：store.plans 为空时的空态提示；
-/// - data：卡牌列表（列表本身的启动加载态由 EntityStore::hydrate 承载）。
+/// - empty：列表为空时的空态提示；
+/// - data：卡牌列表（列表本身的启动加载态由下面的 use_effect 拉取承担）。
 #[component]
 pub fn SubscriptionsPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let mut plans = store.plans;
-    let groups = store.groups;
+    // 列表数据走本地 signal（同 CurrencyPage/AliasesPage 范式）：
+    // EntityStore 的 hydrate 灌入的是一次性实例，上下文 store 无人填充，
+    // 订阅页读 store.plans 会永远空——列表必须自己拉。
+    let mut plans = use_signal(Vec::<PlanRow>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    // 写回成功后 +1 触发重拉：后端按 sort_order 排序，本地插入无法保证位次。
+    let mut reload = use_signal(|| 0u32);
+    // 「升级分组」下拉候选项（真实分组名）。
+    let mut group_names = use_signal(Vec::<String>::new);
+
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            // 分组名先拉（快、小）：失败不阻塞套餐列表，下拉退化到只有「不升级」。
+            match list_groups_api(&client).await {
+                Ok(gs) => group_names.set(gs.into_iter().map(|g| g.name).collect()),
+                Err(_) => group_names.set(Vec::new()),
+            }
+            match list_subscriptions_api(&client).await {
+                Ok(items) => {
+                    plans.set(items.into_iter().map(map_subscription_view).collect());
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
 
     let mut show_modal = use_signal(|| false);
     let mut modal_tab = use_signal(|| 0u8);
@@ -245,7 +278,7 @@ pub fn SubscriptionsPage() -> Element {
         let editing = editing_idx();
 
         let client = ApiClient::shared().clone();
-        let mut plans = plans;
+        let mut reload = reload;
         saving.set(true);
         action_err.set(None);
         ok_msg.set(None);
@@ -261,17 +294,7 @@ pub fn SubscriptionsPage() -> Element {
                 enabled: Some(enabled),
             };
             match upsert_subscription_api(&client, &req).await {
-                Ok(view) => {
-                    let row = map_subscription_view(view);
-                    let mut w = plans.write();
-                    // 按 key 定位：已存在（同名更新）→ 原地替换；
-                    // 新 key（新建或改名）→ 插到列表头；列表顺序最终以
-                    // hydrate 的后端 sort_order 排序为准。
-                    if let Some(pos) = w.iter().position(|r| r.key == row.key) {
-                        w[pos] = row;
-                    } else {
-                        w.insert(0, row);
-                    }
+                Ok(_) => {
                     saving.set(false);
                     ok_msg.set(Some(if editing.is_some() {
                         "套餐已更新".into()
@@ -279,6 +302,8 @@ pub fn SubscriptionsPage() -> Element {
                         "套餐已创建".into()
                     }));
                     show_modal.set(false);
+                    // 重拉全表：后端按 sort_order 排序，本地插入无法保证位次。
+                    reload += 1;
                 }
                 Err(e) => {
                     saving.set(false);
@@ -331,8 +356,23 @@ pub fn SubscriptionsPage() -> Element {
                 }
             }
 
+            // ---- loading：首次/重拉在途（与写请求的 saving 指示区分开） ----
+            if loading() {
+                div { class: "rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center text-sm text-zinc-500",
+                    "data-testid": "subscriptions-loading",
+                    "正在加载订阅套餐…"
+                }
+            }
+            // ---- error：列表拉取失败（与写请求的 action_err 红条区分开） ----
+            if let Some(e) = err() {
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                    "data-testid": "subscriptions-load-error",
+                    "加载失败：{e}"
+                }
+            }
+
             // ---- empty / data ----
-            if plans.read().is_empty() {
+            if !loading() && plans.read().is_empty() {
                 div { class: "rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500",
                     "data-testid": "subscriptions-empty",
                     "还没有订阅套餐。点击右上角「新建套餐」创建第一个。"
@@ -413,18 +453,10 @@ pub fn SubscriptionsPage() -> Element {
                                                     // clone 再进 async：事件处理闭包必须是 FnMut，
                                                     // 直接 move 会让它退化成 FnOnce（E0525）。
                                                     let req = toggle_req.clone();
+                                                    let mut reload = reload;
                                                     spawn(async move {
                                                         match upsert_subscription_api(&client, &req).await {
-                                                            Ok(view) => {
-                                                                let row = map_subscription_view(view);
-                                                                let mut w = plans.write();
-                                                                // 启停不改 name，key 不变 → 原地替换。
-                                                                if let Some(pos) =
-                                                                    w.iter().position(|r| r.key == row.key)
-                                                                {
-                                                                    w[pos] = row;
-                                                                }
-                                                            }
+                                                            Ok(_) => reload += 1,
                                                             Err(e) => action_err.set(Some(e.to_string())),
                                                         }
                                                     });
@@ -444,13 +476,12 @@ pub fn SubscriptionsPage() -> Element {
                                                     action_err.set(None);
                                                     ok_msg.set(None);
                                                     let key = del_key.clone();
+                                                    let mut reload = reload;
                                                     spawn(async move {
                                                         match delete_subscription_api(&client, &key).await {
                                                             Ok(()) => {
-                                                                // 按 key 移除（不依赖下标，
-                                                                // 避免并发写时 i 已漂移）。
-                                                                plans.write().retain(|r| r.key != key);
                                                                 ok_msg.set(Some("套餐已删除".into()));
+                                                                reload += 1;
                                                             }
                                                             Err(e) => action_err.set(Some(e.to_string())),
                                                         }
@@ -638,8 +669,8 @@ pub fn SubscriptionsPage() -> Element {
                                     value: "{f_group()}",
                                     onchange: move |e| f_group.set(e.value()),
                                     option { value: "不升级", "不升级" }
-                                    for g in groups.read().iter() {
-                                        option { value: "{g.name}", "{g.name}" }
+                                    for g in group_names.read().iter() {
+                                        option { value: "{g}", "{g}" }
                                     }
                                 }
                                 p { class: "text-[11px] text-zinc-500", "购买该套餐后升级到该分组；「不升级」表示不改变分组" }
