@@ -429,8 +429,13 @@ impl ForwardStage {
             &self.retry_policy,
             move |g, m, exclude| dsel.select(g, m, exclude),
             move |candidate| {
-                let task =
-                    Self::build_task(candidate, path.clone(), body.clone(), stream, inbound_format);
+                let task = Self::build_task(
+                    candidate,
+                    path.clone(),
+                    body.clone(),
+                    stream,
+                    inbound_format,
+                );
                 let slot = Arc::clone(&slot);
                 let eslot = Arc::clone(&eslot);
                 async move {

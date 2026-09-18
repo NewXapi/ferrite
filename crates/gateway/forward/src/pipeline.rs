@@ -29,6 +29,7 @@ use contract::error::NormalizedError;
 use gateway_protocol_bridge::adaptor::Protocol;
 use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::sse::SseScanner;
+use std::future::Future;
 use std::sync::Arc;
 
 /// 合并后的请求头 (adapter 鉴权 + 渠道覆盖 + 客户端已过滤头)。
@@ -106,13 +107,20 @@ pub async fn forward_once(
         let same_format = inbound == upstream_format;
 
         let mapped = futures_util::stream::unfold(
-            (resp.into_body_stream(), SseScanner::default(), encoder, decoder),
+            (
+                resp.into_body_stream(),
+                SseScanner::default(),
+                encoder,
+                decoder,
+            ),
             move |(mut upstream, mut scanner, mut encoder, decoder)| async move {
                 use futures_util::StreamExt;
                 loop {
                     let chunk = match upstream.next().await {
                         Some(Ok(c)) => c,
-                        Some(Err(e)) => return Some((Err(e), (upstream, scanner, encoder, decoder))),
+                        Some(Err(e)) => {
+                            return Some((Err(e), (upstream, scanner, encoder, decoder)));
+                        }
                         None => {
                             // 上游流结束：让 encoder 补收尾帧（block 关闭 / [DONE]）。
                             if let Some(enc) = encoder.as_mut() {
@@ -121,7 +129,7 @@ pub async fn forward_once(
                                         let out = frames.concat();
                                         // finish 已吐完，置空避免重复收尾。
                                         return Some((
-                                            Ok::<Bytes, std::io::Error>(out),
+                                            Ok::<Bytes, std::io::Error>(Bytes::from(out)),
                                             (upstream, scanner, None, decoder),
                                         ));
                                     }
@@ -182,7 +190,10 @@ pub async fn forward_once(
                         // 该 chunk 只含无内容事件（如 message_start），继续读下一块。
                         continue;
                     }
-                    return Some((Ok(out.concat()), (upstream, scanner, encoder, decoder)));
+                    return Some((
+                        Ok(Bytes::from(out.concat())),
+                        (upstream, scanner, encoder, decoder),
+                    ));
                 }
             },
         );
@@ -230,5 +241,95 @@ fn protocol_bridge_error(
         retryable,
         channel_scoped: false,
         message: e.to_string(),
+    }
+}
+
+/// 管道执行 trait — apps/gateway 用 reqwest 实现。
+pub trait Pipeline: Send + Sync {
+    /// 执行一次转发尝试。不重试 (重试是 dispatch::retry 的事)。
+    fn execute(
+        &self,
+        task: &ForwardTask,
+        timeouts: &crate::egress::Timeouts,
+    ) -> impl Future<Output = Result<crate::Forwarded, NormalizedError>> + Send;
+}
+
+/// 默认 reqwest 管道 — 持有 `Egress` 实例。
+///
+/// ponytail: 未来 apps/gateway 可以传入自定义 Egress (代理池/限速 Client);
+/// 当前一个全局 client 已足够。
+#[derive(Clone)]
+pub struct ReqwestPipeline {
+    egress: Arc<dyn Egress>,
+    /// 单格式协议注册表; 空 = 透传 (同格式不转换)。
+    formats: Arc<FormatRegistry>,
+}
+
+impl std::fmt::Debug for ReqwestPipeline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReqwestPipeline").finish_non_exhaustive()
+    }
+}
+
+impl ReqwestPipeline {
+    pub fn new(egress: Arc<dyn Egress>, formats: Arc<FormatRegistry>) -> Self {
+        Self { egress, formats }
+    }
+}
+
+impl Pipeline for ReqwestPipeline {
+    async fn execute(
+        &self,
+        task: &ForwardTask,
+        timeouts: &crate::egress::Timeouts,
+    ) -> Result<crate::Forwarded, NormalizedError> {
+        forward_once(task, self.egress.as_ref(), &self.formats, timeouts).await
+    }
+}
+
+/// 请求体预扫描 — metering 估算 prompt token 的输入挂点。
+///
+/// 在请求方向转换之后、发送之前调用一次（转换后的体才是上游真实体）。
+///
+/// 当前 V1 范围: 透传语义, 不解析 (metering 接口未定型)。
+/// TODO(#334): 与 metering::estimate_prompt_tokens 对接。
+pub fn capture_prompt_body(body: &bytes::Bytes) -> bytes::Bytes {
+    body.clone()
+}
+
+/// 把请求体的 `model` 改写为上游真名。
+///
+/// 路由单元把公开别名 (`gpt-4`) 映射到上游真名 (`gpt-4-0613`); 客户端发的是
+/// 别名, 上游只认真名, 所以发送前必须改这一个字段。
+///
+/// 原样返回 (零拷贝 clone, 不重新序列化) 的情况:
+/// - `upstream_model` 为空 —— 没有目标真名;
+/// - 请求体非 JSON 或顶层不是对象 —— 没有可靠的改写位置;
+/// - 没有 `model` 字段 —— 不是聊天类请求;
+/// - `model` 已经等于真名 —— 无需改写, 且必须保持字节保真 (透传语义)。
+pub fn rewrite_upstream_model(body: &bytes::Bytes, upstream_model: &str) -> bytes::Bytes {
+    if upstream_model.is_empty() {
+        return body.clone();
+    }
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return body.clone();
+    };
+    let Some(obj) = json.as_object_mut() else {
+        return body.clone();
+    };
+    // 已经是真名 (含"公开名 == 真名"的常见情形) → 不动字节, 保住透传保真。
+    match obj.get("model").and_then(|v| v.as_str()) {
+        Some(current) if current == upstream_model => return body.clone(),
+        Some(_) => {}
+        // 无 model 字段 = 非聊天类请求, 不凭空插入。
+        None => return body.clone(),
+    }
+    obj.insert(
+        "model".to_string(),
+        serde_json::Value::String(upstream_model.to_string()),
+    );
+    match serde_json::to_vec(&json) {
+        Ok(v) => bytes::Bytes::from(v),
+        Err(_) => body.clone(),
     }
 }

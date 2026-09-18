@@ -35,13 +35,7 @@ impl Egress for MockEgress {
         _headers: &'a [(String, String)],
         body: Bytes,
         _timeouts: &'a Timeouts,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<ForwardedResponse, NormalizedError>>
-                + Send
-                + 'a,
-        >,
-    > {
+    ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
         *self.captured_body.lock() = Some(body.clone());
         let payload = self.response.clone();
         let ct = self.content_type;
@@ -81,7 +75,9 @@ fn mk_task(stream: bool, inbound: ProtocolKind, provider_type: &str) -> ForwardT
         path: "/v1/chat/completions".to_string(),
         headers: vec![],
         // 公开名与上游真名一致：别名改写是 no-op，本文件测的只是格式转换。
-        body: Bytes::from_static(b"{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}"),
+        body: Bytes::from_static(
+            b"{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}",
+        ),
         stream,
         provider_type: provider_type.into(),
         extra_headers: vec![],
