@@ -180,8 +180,10 @@ pub async fn forward_once(
                     // 再交给 encoder 编成入站格式的帧。
                     let (_passthrough, _events) = scanner.push(&chunk);
                     // 上游已显式终止：让 encoder 别再补终止帧（两个 [DONE] 是两次流终止）。
-                    if scanner.saw_done() {
-                        encoder.as_mut().map(|e| e.mark_done());
+                    if scanner.saw_done()
+                        && let Some(e) = encoder.as_mut()
+                    {
+                        e.mark_done();
                     }
                     let frames = scanner.take_data_frames();
                     if frames.is_empty() {
