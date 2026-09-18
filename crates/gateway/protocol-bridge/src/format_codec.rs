@@ -1,9 +1,7 @@
-//! 单格式双向 codec —— 两跳转换抽象（WP1）。
+//! 单格式双向 codec —— 两跳转换抽象。
 //!
-//! 旧 [`adaptor::Codec`] 是 `(source, target)` 的**有向直转**：N 种格式互转需要
-//! N×(N-1) 个 codec（ferrite 现状是每对方向各写一个 `ClaudeCodec`/`GeminiCodec`）。
-//! 本模块改为**单格式** codec：每个格式只与本模块的 provider-neutral IR（[`ir`]）
-//! 互转，注册表把 `src → dst` 拆成恒定两跳 `src.decode → IR → dst.encode`。
+//! 每个格式只与本 crate 的 provider-neutral IR（[`ir`]）互转，注册表把
+//! `src → dst` 拆成恒定两跳 `src.decode → IR → dst.encode`。
 //! 加一个格式 = 实现一个 trait，复杂度从 N×M 降到 N+M。
 //!
 //! ## decode 无状态 / encode 有状态
@@ -18,10 +16,6 @@
 //! 帧切分不在 codec 内：`decode_event` 只吃一个完整 SSE 帧的 data 负载，
 //! 跨 chunk 行重组由 pipeline 层的共享扫描器（见 [`sse`]）负责。
 //!
-//! WP1 只落地抽象与注册表；内置 codec 由 WP2-WP5 实现，旧 [`adaptor::Codec`]
-//! 路径保持原样接线（迁移策略 A′）。
-//!
-//! [`adaptor::Codec`]: crate::adaptor::Codec
 //! [`ir`]: crate::ir
 //! [`sse`]: crate::sse
 
