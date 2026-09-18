@@ -2,6 +2,8 @@
 
 > 从 `AGENTS.md` 抽离的八阶段编排剧本。硬性门禁摘要保留在根 `AGENTS.md`「PR 开发流程」节；开 PR / 派子代理编排开发前必须读本文。
 
+> **按阶段阅读索引**：先读完本文（八阶段剧本）；stage 4 进 `.agent/testing-ci.md`；stage 7 与任何 `gh` 操作进 `.agent/gates.md`（被 gate 拦截要查规则：`.githooks/GATE_HANDBOOK.md` → `.githooks/spec/SPEC_OVERVIEW.md`）。起 dev 环境不在 `.agent/` 里——见 `justfile` 顶部「使用场景速查」与 AGENTS.md「本机 dev 服务」节。
+
 你是主控 agent：编排任务、派子代理执行、审查子代理产出，**不要亲自把核心实现写完**。
 
 ## 硬性门禁
@@ -60,6 +62,7 @@ loop1:
 - **CI 驱动闭环**：以 GitHub CI 运行报告为准；CI 未全部跑绿前不得 closeout / merge。
 - 若 CI 报错失败 → 提取云端失败日志回 loop1，把失败当作新子任务进行精准修复。
 - 本地调试单个失败用例：`cargo test -p <crate> -- <test_name>`（仅调试，不替代 CI 验收）。
+- 细节：测试分层与 CI 动态选包见 `.agent/testing-ci.md`（提 PR 前可 `bash scripts/ci-affected.sh --dry-run` 预览选包）。
 
 ### 5. tool review
 
@@ -80,6 +83,7 @@ loop1:
 - **file/dir**：检查分支目录里有没有跟本次开发无关的杂物（旧脚本、临时文件、废弃产物），要么加 `.gitignore`、要么用 `gio trash` 移入回收站（严禁 `rm` 或 `git clean` 永久删除）。
 - **code**：测试代码没放 `tests/` 的挪过去；`cargo fmt` / `prettier` / 项目对应 formatter 跑一遍；无调试 log、commented-out code、调试 surrogate；rust doc 与实现不一致的更新掉；formatter 如修改文件，必须重跑最小验收命令、tool review、smoke，并更新 PR comment。
 - **docs**：同步改动的代码注释、`AGENTS.md` / `README.md` / `docs/` 里过期的段落，引用跟新增要一致。
+- 细节：gate 操作与 GitHub 侧校验见 `.agent/gates.md`。
 
 ### 8. report
 

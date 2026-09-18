@@ -99,7 +99,6 @@ crates/web/<prefix-feature>/
 - CPU-heavy 命令必须套 `cpulimit -l 65 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
 ### 本机 dev 服务与进程卫生（硬约束）
-// DONE(2026-09-18): 原 TODO「多会话连接同一后端/DB + 单独校验要隔离，分两种情况」→ 补在下方。
 
 - **多会话的后端/DB 分两种情况**：
   1. **共享（默认）**：所有 `.wt/` 会话的前端代理都指向 `127.0.0.1:3211`（`dev-backend.sh` 注释原文），共用同一 dev DB（`uf-local-postgres/ferrite_smoke`）。生命周期只走 `dev-backend.sh` / `just dev-backend`；`db-seed` 幂等可重灌；**`db-reset` 清的是全体会话共享的数据，跑之前必须报备**。
@@ -118,11 +117,10 @@ crates/web/<prefix-feature>/
 - 「通过」= CI 全绿；CI 未全绿不得 closeout / merge。本地 clippy 必须与 CI 同版本（改动前 `rustup update stable`）。
 - 细则、动态选包原理与提 PR 前预览：读 `.agent/testing-ci.md`。
 
-// DONE(2026-09-18): 原 TODO「补充 .githooks 的文档」→ 已落到下方 gate 节的文档指针 + `.agent/gates.md`「文档位置」节。
 ### gate（`.githooks/`，摘要）
 
 - 钩子拦截信息必须逐条读完再修根因：禁止 `--no-verify`、禁止截断后忽略；FAIL 必须清零，WARN 说明理由可放行。
-- 占位/TODO 一律 `todo!("TODO(#<issue>): ...")`、`unimplemented!(...)`；TODO 注释必须带 issue 号。
+- 占位/TODO 一律 `todo!("TODO(#<number>): ...")`、`unimplemented!(...)`；TODO 注释必须带 issue 号。
 - `gh` 操作在创建时即走 gate 校验：FAIL 直接拦截，WARN 逐条处理；操作前先跑预检，不截断输出。细则与 GitHub 侧校验清单：读 `.agent/gates.md`。
 - `.githooks/` 结构与规则总览：读 `.githooks/GATE_HANDBOOK.md`（三层 SLA + 16 条规则表，一手文档）；规则对照清单在 `.githooks/spec/SPEC_OVERVIEW.md`。
 
@@ -162,7 +160,7 @@ crates/web/<prefix-feature>/
 
 ### 八阶段工作流程
 
-开 PR / 派子代理编排开发前必读 `.agent/pr-workflow.md`（setup → scope → break down → dev/audit → test → tool review → smoke → tidy → report）；`todo` / goal 登记与 PR body 任务清单全程同步。
+开 PR / 派子代理编排开发前必读 `.agent/pr-workflow.md`（setup → scope → break down → dev/audit → test → tool review → smoke → tidy → report）；`.agent/` 文档的按阶段阅读索引（哪个阶段读哪个文件）在 `pr-workflow.md` 文件头；`todo` / goal 登记与 PR body 任务清单全程同步。
 
 ## 目标约束
 
