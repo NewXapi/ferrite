@@ -483,9 +483,6 @@ impl FormatCodec for ResponsesCodec {
             _ => Vec::new(),
         };
 
-        if out.is_empty() {
-            out = Vec::new();
-        }
         Ok(out)
     }
 
@@ -874,7 +871,11 @@ impl StreamEncoder for ResponsesStreamEncoder {
             StreamEvent::TextDelta { text, .. } => {
                 let mut out = self.ensure_text_item();
                 self.text.push_str(text);
-                let index = self.text_index.unwrap_or(0);
+                // ensure_text_item 刚刚保证了 Some——若为 None 是编码器内部不变量被破坏，
+                // 用 expect 显式暴露而不是静默落到 index 0 撞工具项的序号。
+                let index = self
+                    .text_index
+                    .expect("ensure_text_item must set text_index");
                 out.push(Self::frame(
                     "response.output_text.delta",
                     &json!({
