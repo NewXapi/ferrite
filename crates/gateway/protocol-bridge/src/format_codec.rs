@@ -85,11 +85,24 @@ pub struct FormatRegistry {
 }
 
 impl FormatRegistry {
-    /// 空注册表。内置 codec 由 WP2-WP5 的 `with_defaults()` 装载。
+    /// 空注册表。
     pub fn new() -> Self {
         Self {
             codecs: HashMap::new(),
         }
+    }
+
+    /// 装载内置的四格式 codec。
+    ///
+    /// 这是生产接线用的入口：任取两种格式互转都能走通两跳，不必为每对格式各写
+    /// 一个方向的转换器。
+    pub fn with_defaults() -> Self {
+        let mut r = Self::new();
+        r.register(Arc::new(crate::openai::OpenAiCodec::new()));
+        r.register(Arc::new(crate::claude::ClaudeCodec::new()));
+        r.register(Arc::new(crate::gemini::GeminiCodec::new()));
+        r.register(Arc::new(crate::responses::ResponsesCodec::new()));
+        r
     }
 
     /// 注册一个单格式 codec；同 `format()` 的旧注册被覆盖。
@@ -152,6 +165,6 @@ impl FormatRegistry {
 
 impl Default for FormatRegistry {
     fn default() -> Self {
-        Self::new()
+        Self::with_defaults()
     }
 }
