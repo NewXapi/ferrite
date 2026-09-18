@@ -10,6 +10,9 @@ use ui::ActionSpec;
 use ui::ActionTone;
 use ui::GroupCard as PrototypeGroupCard;
 use ui::SegmentedCapsule;
+// 统计卡收敛到 ui-components 后改为 re-export：crate 内 channels/aliases/system/
+// redemptions 仍走 `crate::groups::StatCard`，引用路径不变。
+pub(crate) use ui::StatCard;
 
 use client::ApiClient;
 use contract::api::admin::{GroupDto, GroupUpsertRequest};
@@ -561,16 +564,6 @@ pub fn GroupsPage() -> Element {
 }
 
 // ============ 组件 ============
-
-#[component]
-pub(crate) fn StatCard(value: String, label: &'static str) -> Element {
-    rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
-            p { class: "text-xl font-semibold tracking-tight text-white", "{value}" }
-            p { class: "mt-0.5 text-xs text-zinc-500", "{label}" }
-        }
-    }
-}
 
 #[component]
 pub(crate) fn Badge(text: String, tone: &'static str) -> Element {

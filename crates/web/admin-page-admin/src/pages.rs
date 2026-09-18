@@ -2,14 +2,21 @@
 //! (手机 1 栏 / 平板 3 栏 / 桌面 5 栏)。交互对齐 new-api 对应功能区:
 //! 渠道的状态速览/编辑/调度/批量,别名的计费,订阅与兑换码的生成与审计。
 //!
-//! 数据全走 `state::EntityStore`(mock);接 API 时把初始值换成请求结果即可。
+//! 数据由各面板自己拉取（本地 signal + `use_effect`，同 CurrencyPage/AliasesPage
+//! 范式）;订阅页的增删改直接调 `crate::api` 的 `/api/subscriptions` 端点,
+//! 成功后 reload 重拉全表（后端按 sort_order 排序，本地插入无法保证位次）。
 //!
 //! 布局约定(与项目 gate-checklist 一致):
 //! - 桌面端面板间用「分隔线 + 独占行」表达从属关系,不占标签页;
 //! - 交互控件以原生为主(select / number input / checkbox),自定义件必须带状态语义;
 //! - 反馈一致:确认用「已保存/已生成/已测速」文字,危险操作用红色。
 
-use crate::state::{EntityStore, PlanRow};
+use crate::api::{
+    delete_subscription_api, list_groups_api, list_subscriptions_api, upsert_subscription_api,
+};
+use crate::state::{PlanRow, map_subscription_view};
+use client::ApiClient;
+use contract::api::billing::SubscriptionUpsertRequest;
 use dioxus::prelude::*;
 
 // ============ 页面骨架 ============
@@ -88,254 +95,426 @@ pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
 
 // ============ 订阅页 ============
 
-/// 订阅管理: 单栏卡牌展示 (web/平板/手机均为 1 栏) + 多 Tab 编辑弹窗 (对齐 new-api 订阅配置)
+/// 订阅管理: 单栏卡牌展示 (web/平板/手机均为 1 栏) + 两 Tab 编辑弹窗。
+///
+/// 数据走真实后端 `/api/subscriptions`：列表由本页 `use_effect` 在
+/// 本页 `use_effect` 拉取进本地 signal；增/删/改由本页直接调 `crate::api` 的订阅
+/// 端点，成功后用返回的视图按 **key** 就地刷新 plans signal（响应式 UI
+/// 立即更新），失败显示错误条。后端按 name upsert（同名保存即更新该行，
+/// 改名 = 新建一行），故写回不依赖列表下标，一律按返回的 key 定位。
+///
+/// 弹窗字段即后端 `SubscriptionUpsertRequest` 的 8 个入参
+/// （name/price/currency/durationDays/quota/upgradeGroup/maxPurchases/
+/// enabled）；后端表不存的字段（副标题、第三方支付 ID、重置周期等）不进
+/// 表单——填了存不下、刷新就丢，是误导性 UI。
+///
+/// 四态渲染（loading / error / empty / data）对齐 CurrencyPage 惯例：
+/// - loading：写请求在途的「同步中」指示 + 弹窗保存按钮禁用；
+/// - error：写请求失败的红条（`action_err`）；
+/// - empty：列表为空时的空态提示；
+/// - data：卡牌列表（列表本身的启动加载态由下面的 use_effect 拉取承担）。
 #[component]
 pub fn SubscriptionsPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let mut plans = store.plans;
-    let groups = store.groups;
+    // 列表数据走本地 signal（同 CurrencyPage/AliasesPage 范式）：
+    // EntityStore 的 hydrate 灌入的是一次性实例，上下文 store 无人填充，
+    // 订阅页读 store.plans 会永远空——列表必须自己拉。
+    let mut plans = use_signal(Vec::<PlanRow>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    // 写回成功后 +1 触发重拉：后端按 sort_order 排序，本地插入无法保证位次。
+    // 注意：外层绑定不 mutate——写路径里 `let mut reload = reload;` 各自拷贝
+    // 出可变副本（Signal 是 Copy），外层只需只读。
+    let reload = use_signal(|| 0u32);
+    // 「升级分组」下拉候选项（真实分组名）。
+    let mut group_names = use_signal(Vec::<String>::new);
+
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            // 分组名先拉（快、小）：失败不阻塞套餐列表，下拉退化到只有「不升级」。
+            match list_groups_api(&client).await {
+                Ok(gs) => group_names.set(gs.into_iter().map(|g| g.name).collect()),
+                Err(_) => group_names.set(Vec::new()),
+            }
+            match list_subscriptions_api(&client).await {
+                Ok(items) => {
+                    plans.set(items.into_iter().map(map_subscription_view).collect());
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
 
     let mut show_modal = use_signal(|| false);
     let mut modal_tab = use_signal(|| 0u8);
     let mut editing_idx = use_signal(|| None::<usize>);
 
-    // 基本信息表单字段
-    let mut f_id = use_signal(|| 0u32);
+    // 写反馈三信号（loading / error / ok）
+    let mut saving = use_signal(|| false);
+    let mut action_err = use_signal(|| None::<String>);
+    let mut ok_msg = use_signal(|| None::<String>);
+
+    // ---- Tab 0 基本信息：名称 / 价格 / 币种 / 额度 ----
     let mut f_title = use_signal(String::new);
-    let mut f_subtitle = use_signal(String::new);
     let mut f_price = use_signal(|| "0".to_string());
+    let mut f_currency = use_signal(|| "CNY".to_string());
     let mut f_quota = use_signal(|| "0".to_string());
-    let mut f_currency_price = use_signal(|| "0".to_string());
-    let mut f_payment_method = use_signal(|| "仅扣菌种".to_string());
+    // ---- Tab 1 规则与周期：启用 / 有效期天数 / 升级分组 / 限购 ----
+    let mut f_duration = use_signal(|| "30".to_string());
     let mut f_group = use_signal(|| "不升级".to_string());
-    let mut f_downgrade_group = use_signal(|| "降级到购买前分组".to_string());
     let mut f_limit = use_signal(|| "0".to_string());
-    let mut f_sort = use_signal(|| "0".to_string());
-
-    // 规则与周期字段
     let mut f_enabled = use_signal(|| true);
-    let mut f_allow_redeem = use_signal(|| true);
-    let mut f_allow_wallet = use_signal(|| true);
-    let mut f_period_val = use_signal(|| "1".to_string());
-    let mut f_period_unit = use_signal(|| "个月".to_string());
-    let mut f_reset_cycle = use_signal(|| "不重置".to_string());
 
-    // 第三方支付字段
-    let mut f_stripe_id = use_signal(String::new);
-    let mut f_creem_id = use_signal(String::new);
-    let mut f_waffo_id = use_signal(String::new);
+    /// 以某行现有值重建 upsert 请求体（启停切换用）：后端按 name 定位行
+    /// 并整体回写这些列，返回更新后的视图。price 取规范字符串形式。
+    fn rebuild_req(p: &PlanRow, enabled: bool) -> SubscriptionUpsertRequest {
+        SubscriptionUpsertRequest {
+            name: p.title.clone(),
+            price: format!("{}", p.price),
+            currency: p.currency.clone(),
+            // duration_days 后端要求 >= 1；防御非法存量行（0 天）。
+            duration_days: p.period_val.max(1),
+            // quota 已是展示口径，原样回传（后端入库侧自己 ×500_000）。
+            quota: p.quota,
+            upgrade_group: if p.group.is_empty() || p.group == "不升级" {
+                None
+            } else {
+                Some(p.group.clone())
+            },
+            // 0 = 不限 → None（后端 max_purchases 列可空）。
+            max_purchases: if p.max_per_user > 0 {
+                Some(p.max_per_user)
+            } else {
+                None
+            },
+            enabled: Some(enabled),
+        }
+    }
 
     let mut open_edit = move |i: usize| {
         let p = plans.read()[i].clone();
-        f_id.set(p.id);
         f_title.set(p.title);
-        f_subtitle.set(p.subtitle);
         f_price.set(format!("{}", p.price));
+        f_currency.set(p.currency);
         f_quota.set(format!("{}", p.quota));
-        f_currency_price.set(format!("{}", p.currency_price));
-        f_payment_method.set(p.payment_method);
-        f_group.set(p.group);
-        f_downgrade_group.set(p.downgrade_group);
+        f_duration.set(format!("{}", p.period_val.max(1)));
+        f_group.set(if p.group.is_empty() {
+            "不升级".into()
+        } else {
+            p.group
+        });
         f_limit.set(format!("{}", p.max_per_user));
-        f_sort.set(format!("{}", p.sort_order));
         f_enabled.set(p.enabled);
-        f_allow_redeem.set(p.allow_redeem);
-        f_allow_wallet.set(p.allow_wallet);
-        f_period_val.set(format!("{}", p.period_val));
-        f_period_unit.set(p.period_unit);
-        f_reset_cycle.set(p.reset_cycle);
-        f_stripe_id.set(p.stripe_price_id);
-        f_creem_id.set(p.creem_product_id);
-        f_waffo_id.set(p.waffo_product_id);
         editing_idx.set(Some(i));
+        action_err.set(None);
+        ok_msg.set(None);
         modal_tab.set(0);
         show_modal.set(true);
     };
 
     let open_new = move |_| {
-        let next_id = plans.read().iter().map(|p| p.id).max().unwrap_or(0) + 1;
-        f_id.set(next_id);
         f_title.set(String::new());
-        f_subtitle.set(String::new());
-        f_price.set("0".to_string());
-        f_quota.set("0".to_string());
-        f_currency_price.set("0".to_string());
-        f_payment_method.set("仅扣菌种".to_string());
-        f_group.set("不升级".to_string());
-        f_downgrade_group.set("降级到购买前分组".to_string());
-        f_limit.set("0".to_string());
-        f_sort.set("0".to_string());
+        f_price.set("0".into());
+        f_currency.set("CNY".into());
+        f_quota.set("0".into());
+        f_duration.set("30".into());
+        f_group.set("不升级".into());
+        f_limit.set("0".into());
         f_enabled.set(true);
-        f_allow_redeem.set(true);
-        f_allow_wallet.set(true);
-        f_period_val.set("1".to_string());
-        f_period_unit.set("个月".to_string());
-        f_reset_cycle.set("不重置".to_string());
-        f_stripe_id.set(String::new());
-        f_creem_id.set(String::new());
-        f_waffo_id.set(String::new());
         editing_idx.set(None);
+        action_err.set(None);
+        ok_msg.set(None);
         modal_tab.set(0);
         show_modal.set(true);
     };
 
     let commit = move |_| {
-        let t = f_title.peek().trim().to_string();
-        if t.is_empty() {
+        let name = f_title().trim().to_string();
+        if name.is_empty() {
+            action_err.set(Some("套餐名称必填".into()));
             return;
         }
-        let row = PlanRow {
-            id: f_id(),
-            title: t,
-            subtitle: f_subtitle.peek().trim().to_string(),
-            price: f_price.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
-            quota: f_quota.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
-            currency_price: f_currency_price
-                .peek()
-                .trim()
-                .parse::<f64>()
-                .unwrap_or(0.0)
-                .max(0.0),
-            payment_method: f_payment_method(),
-            group: f_group(),
-            downgrade_group: f_downgrade_group(),
-            period_val: f_period_val
-                .peek()
-                .trim()
-                .parse::<u32>()
-                .unwrap_or(1)
-                .max(1),
-            period_unit: f_period_unit(),
-            reset_cycle: f_reset_cycle(),
-            priority: 0,
-            enabled: f_enabled(),
-            allow_redeem: f_allow_redeem(),
-            allow_wallet: f_allow_wallet(),
-            max_per_user: f_limit.peek().trim().parse::<u32>().unwrap_or(0),
-            sort_order: f_sort.peek().trim().parse::<i32>().unwrap_or(0),
-            stripe_price_id: f_stripe_id.peek().trim().to_string(),
-            creem_product_id: f_creem_id.peek().trim().to_string(),
-            waffo_product_id: f_waffo_id.peek().trim().to_string(),
-        };
-        match *editing_idx.peek() {
-            Some(i) => {
-                plans.write()[i] = row;
+        let currency = f_currency();
+        let price = f_price().trim().to_string();
+        // 后端拒绝 duration_days == 0：非法/空输入钳到 1 而不是发 0 挨 400。
+        let duration_days = f_duration()
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|&d| d >= 1)
+            .unwrap_or(1);
+        // quota 展示口径直传；空串 = 0（无额度套餐），但显式非法值（非数字/负数）
+        // 必须报错而非静默存 0——否则用户拿到「已创建」成功提示却存了错数据。
+        let quota = {
+            let raw = f_quota().to_string();
+            let raw = raw.trim();
+            if raw.is_empty() {
+                0.0
+            } else {
+                match raw.parse::<f64>() {
+                    Ok(q) if q.is_finite() && q >= 0.0 => q,
+                    _ => {
+                        action_err.set(Some("额度必须是数字且不小于 0".into()));
+                        return;
+                    }
+                }
             }
-            None => plans.write().insert(0, row),
-        }
-        show_modal.set(false);
+        };
+        let upgrade_group = {
+            let g = f_group();
+            if g.is_empty() || g == "不升级" {
+                None
+            } else {
+                Some(g)
+            }
+        };
+        let max_purchases = f_limit().trim().parse::<u32>().ok().filter(|&n| n > 0);
+        let enabled = f_enabled();
+        let editing = editing_idx();
+
+        let client = ApiClient::shared().clone();
+        let mut reload = reload;
+        saving.set(true);
+        action_err.set(None);
+        ok_msg.set(None);
+        spawn(async move {
+            let req = SubscriptionUpsertRequest {
+                name,
+                price,
+                currency,
+                duration_days,
+                quota,
+                upgrade_group,
+                max_purchases,
+                enabled: Some(enabled),
+            };
+            match upsert_subscription_api(&client, &req).await {
+                Ok(_) => {
+                    saving.set(false);
+                    ok_msg.set(Some(if editing.is_some() {
+                        "套餐已更新".into()
+                    } else {
+                        "套餐已创建".into()
+                    }));
+                    show_modal.set(false);
+                    // 重拉全表：后端按 sort_order 排序，本地插入无法保证位次。
+                    reload += 1;
+                }
+                Err(e) => {
+                    saving.set(false);
+                    action_err.set(Some(e.to_string()));
+                }
+            }
+        });
     };
 
     rsx! {
         div { class: "flex flex-col gap-4 w-full",
-            // 诚实横幅: 订阅套餐后端暂未实现
-            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-400",
-                span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 font-bold text-zinc-300", "i" }
-                span { "订阅套餐后端暂未实现——此页暂无真实数据,以下为本地演示态" }
+            role: "region",
+            "aria-label": "订阅套餐管理",
+            "data-testid": "subscriptions-page",
+
+            // ---- error：写请求（upsert / delete）失败的红条 ----
+            if let Some(e) = action_err() {
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                    "data-testid": "subscriptions-action-error",
+                    "{e}"
+                }
             }
+            // ---- ok：写成功反馈（点击后立即可见，列表也已同步刷新） ----
+            if let Some(m) = ok_msg() {
+                div { class: "rounded-xl border border-emerald-800 bg-emerald-950/40 p-3 text-sm text-emerald-300",
+                    "data-testid": "subscriptions-action-ok",
+                    "{m}"
+                }
+            }
+            // ---- loading：写请求在途（保存中…，弹窗保存按钮同时禁用） ----
+            if saving() {
+                div { class: "rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
+                    "data-testid": "subscriptions-saving",
+                    "正在与后端同步…"
+                }
+            }
+
             // 顶部栏: 提示横幅 + 新建按钮
             div { class: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3",
                 div { class: "flex items-center gap-2 text-xs text-amber-300",
                     span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/20 font-bold", "ℹ" }
-                    span { "Stripe / Creem 需在第三方平台创建商品并填入 ID" }
+                    span { "套餐按名称去重：同名保存即更新现有套餐，改名会新建一行" }
                 }
                 button {
                     class: "flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-amber-300 shadow-sm",
+                    "data-testid": "subscriptions-new",
                     onclick: open_new,
                     span { class: "text-sm", "+" }
                     "新建套餐"
                 }
             }
 
-            // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
-            div { class: "flex flex-col gap-3",
-                for (i, p) in plans.read().iter().enumerate() {
-                    {
-                        let title_txt = p.title.clone();
-                        let sub_txt = p.subtitle.clone();
-                        let price_str = format!("${:.2}", p.price);
-                        let quota_str = if p.quota <= 0.0 { "无限制".to_string() } else { format!("{}", p.quota) };
-                        let period_str = format!("{} {}", p.period_val, p.period_unit);
-                        rsx! {
-                            div {
-                                key: "{p.id}",
-                                class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/90 shadow-md",
+            // ---- loading：首次/重拉在途（与写请求的 saving 指示区分开） ----
+            if loading() {
+                div { class: "rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center text-sm text-zinc-500",
+                    "data-testid": "subscriptions-loading",
+                    "正在加载订阅套餐…"
+                }
+            }
+            // ---- error：列表拉取失败（与写请求的 action_err 红条区分开） ----
+            if let Some(e) = err() {
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                    "data-testid": "subscriptions-load-error",
+                    "加载失败：{e}"
+                }
+            }
 
-                                // 卡片头部行: ID + 标题 + 状态/分组徽标 + 操作按钮
-                                div { class: "flex flex-wrap items-start justify-between gap-2.5",
-                                    div { class: "flex items-center gap-2.5 min-w-0 flex-1",
-                                        span { class: "shrink-0 rounded-md border border-zinc-700/80 bg-zinc-800 px-2 py-0.5 text-xs font-mono font-bold text-zinc-300",
-                                            "#{p.id}"
+            // ---- empty / data ----
+            if !loading() && plans.read().is_empty() {
+                div { class: "rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500",
+                    "data-testid": "subscriptions-empty",
+                    "还没有订阅套餐。点击右上角「新建套餐」创建第一个。"
+                }
+            } else {
+                // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
+                div { class: "flex flex-col gap-3",
+                    "data-testid": "subscriptions-list",
+                    for (i, p) in plans.read().iter().enumerate() {
+                        {
+                            // 预构建每行所需 owned 值：onclick 闭包在 rsx 构造
+                            // 之后才触发，那时 plans.read() 的借用 guard 已释放，
+                            // 闭包只能捕获 owned 数据（同 ChannelsPage 惯例）。
+                            let title_txt = p.title.clone();
+                            let price_sym = if p.currency == "USD" { "$" } else { "¥" };
+                            let price_str = format!("{price_sym}{:.2}", p.price);
+                            // 后端无 new-api 数字 id 列（恒 None）：徽标改用 UUID
+                            // 前缀，保证每行有稳定可辨识的标识（hover 见完整 key）。
+                            let badge_txt = p
+                                .id
+                                .map(|n| format!("#{n}"))
+                                .unwrap_or_else(|| p.key.chars().take(8).collect());
+                            let period_str = format!("{} 天", p.period_val);
+                            let quota_str = if p.quota <= 0.0 {
+                                "无限制".to_string()
+                            } else {
+                                format!("{}", p.quota)
+                            };
+                            let group_txt = if p.group.is_empty() {
+                                "不升级".to_string()
+                            } else {
+                                p.group.clone()
+                            };
+                            let limit_txt = if p.max_per_user > 0 {
+                                format!("{}", p.max_per_user)
+                            } else {
+                                "不限".to_string()
+                            };
+                            let cur_enabled = p.enabled;
+                            let edit_idx = i;
+                            let row_key = p.key.clone();
+                            let del_key = p.key.clone();
+                            let edit_id = format!("subscriptions-edit-{}", p.key);
+                            let del_id = format!("subscriptions-delete-{}", p.key);
+                            // 启停 = 以同一 name 重建 upsert 体（enabled 取反）：
+                            // 后端按 name 定位行整体回写，返回更新后的视图。
+                            let toggle_req = rebuild_req(p, !cur_enabled);
+                            rsx! {
+                                div {
+                                    key: "{row_key}",
+                                    class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/90 shadow-md",
+
+                                    // 卡片头部行: 标识 + 标题 + 状态/分组徽标 + 操作按钮
+                                    div { class: "flex flex-wrap items-start justify-between gap-2.5",
+                                        div { class: "flex items-center gap-2.5 min-w-0 flex-1",
+                                            span { class: "shrink-0 rounded-md border border-zinc-700/80 bg-zinc-800 px-2 py-0.5 text-xs font-mono font-bold text-zinc-300",
+                                                title: "{row_key}",
+                                                "{badge_txt}"
+                                            }
+                                            h3 { class: "truncate text-base font-bold text-zinc-100", "{title_txt}" }
+                                            span {
+                                                class: if p.enabled { "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400" } else { "rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500" },
+                                                if p.enabled { "启用" } else { "禁用" }
+                                            }
+                                            if !p.group.is_empty() && p.group != "不升级" {
+                                                span { class: "rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-400 uppercase",
+                                                    "分组: {p.group}"
+                                                }
+                                            }
                                         }
-                                        h3 { class: "truncate text-base font-bold text-zinc-100", "{title_txt}" }
-                                        span {
-                                            class: if p.enabled { "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400" } else { "rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500" },
-                                            if p.enabled { "启用" } else { "禁用" }
-                                        }
-                                        if !p.group.is_empty() && p.group != "不升级" {
-                                            span { class: "rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-400 uppercase",
-                                                "分组: {p.group}"
+                                        div { class: "flex items-center gap-2 shrink-0",
+                                            ToggleSwitch {
+                                                on: cur_enabled,
+                                                on_toggle: move |_| {
+                                                    let client = ApiClient::shared().clone();
+                                                    action_err.set(None);
+                                                    ok_msg.set(None);
+                                                    // clone 再进 async：事件处理闭包必须是 FnMut，
+                                                    // 直接 move 会让它退化成 FnOnce（E0525）。
+                                                    let req = toggle_req.clone();
+                                                    let mut reload = reload;
+                                                    spawn(async move {
+                                                        match upsert_subscription_api(&client, &req).await {
+                                                            Ok(_) => reload += 1,
+                                                            Err(e) => action_err.set(Some(e.to_string())),
+                                                        }
+                                                    });
+                                                },
+                                            }
+                                            button {
+                                                class: "rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 transition-colors hover:bg-zinc-700 hover:text-white",
+                                                "data-testid": edit_id,
+                                                onclick: move |_| open_edit(edit_idx),
+                                                "编辑"
+                                            }
+                                            button {
+                                                class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300",
+                                                "data-testid": del_id,
+                                                onclick: move |_| {
+                                                    let client = ApiClient::shared().clone();
+                                                    action_err.set(None);
+                                                    ok_msg.set(None);
+                                                    let key = del_key.clone();
+                                                    let mut reload = reload;
+                                                    spawn(async move {
+                                                        match delete_subscription_api(&client, &key).await {
+                                                            Ok(()) => {
+                                                                ok_msg.set(Some("套餐已删除".into()));
+                                                                reload += 1;
+                                                            }
+                                                            Err(e) => action_err.set(Some(e.to_string())),
+                                                        }
+                                                    });
+                                                },
+                                                "✕"
                                             }
                                         }
                                     }
-                                    div { class: "flex items-center gap-2 shrink-0",
-                                        ToggleSwitch {
-                                            on: p.enabled,
-                                            on_toggle: move |_| {
-                                                let mut w = plans.write();
-                                                w[i].enabled = !w[i].enabled;
-                                            },
-                                        }
-                                        button {
-                                            class: "rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 transition-colors hover:bg-zinc-700 hover:text-white",
-                                            onclick: move |_| open_edit(i),
-                                            "编辑"
-                                        }
-                                        button {
-                                            class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300",
-                                            onclick: move |_| { plans.write().remove(i); },
-                                            "✕"
-                                        }
-                                    }
-                                }
 
-                                // 副标题
-                                if !sub_txt.is_empty() {
-                                    p { class: "mt-1.5 text-xs text-zinc-400 leading-relaxed", "{sub_txt}" }
-                                }
-
-                                // 关键指标条 (对标 Image #5 字段)
-                                div { class: "mt-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3 border-t border-zinc-800/70 text-xs",
-                                    div {
-                                        span { class: "text-[11px] text-zinc-500 block", "价格" }
-                                        span { class: "font-mono font-bold text-sm text-emerald-400", "{price_str}" }
-                                    }
-                                    div {
-                                        span { class: "text-[11px] text-zinc-500 block", "有效期" }
-                                        span { class: "font-medium text-zinc-200", "{period_str}" }
-                                    }
-                                    div {
-                                        span { class: "text-[11px] text-zinc-500 block", "套餐额度" }
-                                        span { class: "font-mono font-semibold text-amber-300", "{quota_str}" }
-                                    }
-                                    div {
-                                        span { class: "text-[11px] text-zinc-500 block", "站内支付 / 渠道" }
-                                        span { class: "text-zinc-300 font-medium", "{p.payment_method}" }
-                                    }
-                                    div {
-                                        span { class: "text-[11px] text-zinc-500 block", "额度重置" }
-                                        span { class: "text-zinc-400", "{p.reset_cycle}" }
-                                    }
-                                }
-
-                                // 第三方配置徽标展示
-                                if !p.stripe_price_id.is_empty() || !p.creem_product_id.is_empty() {
-                                    div { class: "mt-2.5 flex flex-wrap gap-2 text-[10px] text-zinc-500 font-mono",
-                                        if !p.stripe_price_id.is_empty() {
-                                            span { class: "rounded bg-zinc-950 px-1.5 py-0.5 border border-zinc-800", "Stripe: {p.stripe_price_id}" }
+                                    // 关键指标条 — 只展示后端实际返回的字段
+                                    div { class: "mt-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3 border-t border-zinc-800/70 text-xs",
+                                        div {
+                                            span { class: "text-[11px] text-zinc-500 block", "价格" }
+                                            span { class: "font-mono font-bold text-sm text-emerald-400", "{price_str}" }
                                         }
-                                        if !p.creem_product_id.is_empty() {
-                                            span { class: "rounded bg-zinc-950 px-1.5 py-0.5 border border-zinc-800", "Creem: {p.creem_product_id}" }
+                                        div {
+                                            span { class: "text-[11px] text-zinc-500 block", "有效期" }
+                                            span { class: "font-medium text-zinc-200", "{period_str}" }
+                                        }
+                                        div {
+                                            span { class: "text-[11px] text-zinc-500 block", "套餐额度" }
+                                            span { class: "font-mono font-semibold text-amber-300", "{quota_str}" }
+                                        }
+                                        div {
+                                            span { class: "text-[11px] text-zinc-500 block", "升级分组" }
+                                            span { class: "text-zinc-300 font-medium", "{group_txt}" }
+                                        }
+                                        div {
+                                            span { class: "text-[11px] text-zinc-500 block", "限购" }
+                                            span { class: "text-zinc-400", "{limit_txt}" }
                                         }
                                     }
                                 }
@@ -361,7 +540,13 @@ pub fn SubscriptionsPage() -> Element {
                             h3 { class: "text-lg font-bold text-zinc-100",
                                 if editing_idx().is_some() { "更新套餐信息" } else { "新建订阅套餐" }
                             }
-                            p { class: "mt-0.5 text-xs text-zinc-400", "修改现有订阅套餐的配置" }
+                            p { class: "mt-0.5 text-xs text-zinc-400",
+                                if editing_idx().is_some() {
+                                    "保存即按名称更新现有套餐"
+                                } else {
+                                    "新建后可在列表中启停、编辑或删除"
+                                }
+                            }
                         }
                         button {
                             class: "rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors",
@@ -370,7 +555,15 @@ pub fn SubscriptionsPage() -> Element {
                         }
                     }
 
-                    // 弹窗内部 Tab 切换条
+                    // 写请求失败提示（名称必填 / 后端 400 校验失败）
+                    if let Some(e) = action_err() {
+                        div { class: "rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                            "data-testid": "subscriptions-form-error",
+                            "{e}"
+                        }
+                    }
+
+                    // 弹窗内部 Tab 切换条（两个 Tab：字段即后端入参，见组件文档）
                     div { class: "flex items-center gap-2 border-b border-zinc-800 pb-2 text-xs",
                         button {
                             class: if modal_tab() == 0 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
@@ -382,238 +575,107 @@ pub fn SubscriptionsPage() -> Element {
                             onclick: move |_| modal_tab.set(1),
                             "规则与周期"
                         }
-                        button {
-                            class: if modal_tab() == 2 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
-                            onclick: move |_| modal_tab.set(2),
-                            "第三方支付配置"
-                        }
                     }
 
-                    // ---- Tab 0: 基本信息 (Image #6) ----
+                    // ---- Tab 0: 基本信息 ----
                     if modal_tab() == 0 {
                         div { class: "space-y-4 pt-1",
                             label { class: "block space-y-1",
                                 span { class: "text-xs font-medium text-zinc-300", "套餐标题" }
                                 input {
                                     class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                    "data-testid": "subscriptions-form-title",
                                     value: "{f_title()}",
-                                    placeholder: "例如：开拓的封赏",
+                                    placeholder: "例如：月度会员",
                                     oninput: move |e| f_title.set(e.value()),
                                 }
+                                p { class: "text-[11px] text-zinc-500", "名称唯一：同名保存会更新已有套餐，而非新建" }
                             }
-                            label { class: "block space-y-1",
-                                span { class: "text-xs font-medium text-zinc-300", "套餐副标题" }
-                                input {
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                    value: "{f_subtitle()}",
-                                    placeholder: "向你们致敬，向外开拓的勇士们！",
-                                    oninput: move |e| f_subtitle.set(e.value()),
-                                }
-                            }
-                            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
+                            div { class: "grid grid-cols-1 sm:grid-cols-3 gap-4",
                                 label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "套餐价格 ($)" }
+                                    span { class: "text-xs font-medium text-zinc-300", "套餐价格" }
                                     input {
                                         r#type: "number",
+                                        step: "0.01",
                                         class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                        "data-testid": "subscriptions-form-price",
                                         value: "{f_price()}",
                                         oninput: move |e| f_price.set(e.value()),
                                     }
-                                    p { class: "text-[11px] text-zinc-500", "用户购买该套餐需支付的金额，具体币种由支付渠道决定" }
+                                    p { class: "text-[11px] text-zinc-500", "用户购买该套餐需支付的金额" }
                                 }
                                 label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "额度 (点)" }
+                                    span { class: "text-xs font-medium text-zinc-300", "计价币种" }
+                                    select {
+                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                        "data-testid": "subscriptions-form-currency",
+                                        value: "{f_currency()}",
+                                        onchange: move |e| f_currency.set(e.value()),
+                                        option { value: "CNY", "CNY（¥）" }
+                                        option { value: "USD", "USD（$）" }
+                                    }
+                                    p { class: "text-[11px] text-zinc-500", "决定列表价格符号；后端要求非空" }
+                                }
+                                label { class: "block space-y-1",
+                                    span { class: "text-xs font-medium text-zinc-300", "套餐额度" }
                                     input {
                                         r#type: "number",
+                                        step: "0.01",
                                         class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                        "data-testid": "subscriptions-form-quota",
                                         value: "{f_quota()}",
                                         oninput: move |e| f_quota.set(e.value()),
                                     }
-                                    p { class: "text-[11px] text-zinc-500", "套餐包含的总额度，每个计费周期可用；0 表示不限量" }
-                                }
-                            }
-                            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
-                                label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "套餐价格（菌种）" }
-                                    input {
-                                        r#type: "number",
-                                        step: "0.1",
-                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                        value: "{f_currency_price()}",
-                                        oninput: move |e| f_currency_price.set(e.value()),
-                                    }
-                                    p { class: "text-[11px] text-zinc-500", "最小单位 0.1。仅当支付方式包含它时才生效。" }
-                                }
-                                label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "站内支付方式" }
-                                    select {
-                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                        value: "{f_payment_method()}",
-                                        oninput: move |e| f_payment_method.set(e.value()),
-                                        option { value: "仅扣菌种", "仅扣菌种" }
-                                        option { value: "允许余额兑换", "允许余额兑换" }
-                                        option { value: "无限制", "无限制" }
-                                    }
-                                    p { class: "text-[11px] text-zinc-500", "只影响站内货币，不影响第三方支付渠道。" }
-                                }
-                            }
-                            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
-                                label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "升级分组" }
-                                    select {
-                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                        value: "{f_group()}",
-                                        oninput: move |e| f_group.set(e.value()),
-                                        option { value: "不升级", "不升级" }
-                                        for g in groups.read().iter() {
-                                            option { value: "{g.name}", "{g.name}" }
-                                        }
-                                    }
-                                }
-                                label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "降级分组" }
-                                    select {
-                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                        value: "{f_downgrade_group()}",
-                                        oninput: move |e| f_downgrade_group.set(e.value()),
-                                        option { value: "降级到购买前分组", "降级到购买前分组" }
-                                        option { value: "默认分组", "默认分组" }
-                                    }
-                                    p { class: "text-[11px] text-zinc-500", "订阅过期后降级到该分组" }
-                                }
-                            }
-                            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
-                                label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "限购" }
-                                    input {
-                                        r#type: "number",
-                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                        value: "{f_limit()}",
-                                        oninput: move |e| f_limit.set(e.value()),
-                                    }
-                                    p { class: "text-[11px] text-zinc-500", "0 表示不限" }
-                                }
-                                label { class: "block space-y-1",
-                                    span { class: "text-xs font-medium text-zinc-300", "排序" }
-                                    input {
-                                        r#type: "number",
-                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                        value: "{f_sort()}",
-                                        oninput: move |e| f_sort.set(e.value()),
-                                    }
+                                    p { class: "text-[11px] text-zinc-500", "套餐包含的总额度；0 表示不限量" }
                                 }
                             }
                         }
                     }
 
-                    // ---- Tab 1: 规则与周期 (Image #7) ----
+                    // ---- Tab 1: 规则与周期 ----
                     if modal_tab() == 1 {
                         div { class: "space-y-4 pt-1",
                             div { class: "flex items-center justify-between py-2 border-b border-zinc-800/80",
                                 span { class: "text-sm text-zinc-200 font-medium", "启用状态" }
                                 ToggleSwitch { on: f_enabled(), on_toggle: move |_| f_enabled.set(!f_enabled()) }
                             }
-                            div { class: "flex items-center justify-between py-2 border-b border-zinc-800/80",
-                                span { class: "text-sm text-zinc-200 font-medium", "允许余额兑换" }
-                                ToggleSwitch { on: f_allow_redeem(), on_toggle: move |_| f_allow_redeem.set(!f_allow_redeem()) }
-                            }
-                            div { class: "flex items-center justify-between py-2 border-b border-zinc-800/80",
-                                span { class: "text-sm text-zinc-200 font-medium", "额度用尽后允许使用钱包余额" }
-                                ToggleSwitch { on: f_allow_wallet(), on_toggle: move |_| f_allow_wallet.set(!f_allow_wallet()) }
-                            }
-
-                            // 有效期设置
-                            div { class: "pt-2 space-y-2",
-                                h4 { class: "text-xs font-semibold text-amber-400 flex items-center gap-1.5", "有效期设置" }
-                                div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
-                                    label { class: "block space-y-1",
-                                        span { class: "text-xs text-zinc-400", "有效期数值" }
-                                        input {
-                                            r#type: "number",
-                                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                            value: "{f_period_val()}",
-                                            oninput: move |e| f_period_val.set(e.value()),
-                                        }
+                            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2",
+                                label { class: "block space-y-1",
+                                    span { class: "text-xs text-zinc-400", "有效期（天）" }
+                                    input {
+                                        r#type: "number",
+                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                        "data-testid": "subscriptions-form-duration",
+                                        value: "{f_duration()}",
+                                        oninput: move |e| f_duration.set(e.value()),
                                     }
-                                    label { class: "block space-y-1",
-                                        span { class: "text-xs text-zinc-400", "有效期单位" }
-                                        select {
-                                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                            value: "{f_period_unit()}",
-                                            oninput: move |e| f_period_unit.set(e.value()),
-                                            option { value: "小时", "小时" }
-                                            option { value: "天", "天" }
-                                            option { value: "个月", "个月" }
-                                            option { value: "年", "年" }
-                                            option { value: "秒", "秒" }
-                                        }
-                                    }
+                                    p { class: "text-[11px] text-zinc-500", "后端按天存储有效期；至少 1 天" }
                                 }
-                            }
-
-                            // 额度重置
-                            div { class: "pt-2 space-y-2",
-                                h4 { class: "text-xs font-semibold text-emerald-400 flex items-center gap-1.5", "额度重置" }
-                                div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
-                                    label { class: "block space-y-1",
-                                        span { class: "text-xs text-zinc-400", "重置周期" }
-                                        select {
-                                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
-                                            value: "{f_reset_cycle()}",
-                                            oninput: move |e| f_reset_cycle.set(e.value()),
-                                            option { value: "不重置", "不重置" }
-                                            option { value: "每天", "每天" }
-                                            option { value: "每周", "每周" }
-                                            option { value: "每月", "每月" }
-                                            option { value: "自定义", "自定义" }
-                                        }
+                                label { class: "block space-y-1",
+                                    span { class: "text-xs text-zinc-400", "限购数量" }
+                                    input {
+                                        r#type: "number",
+                                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                        "data-testid": "subscriptions-form-limit",
+                                        value: "{f_limit()}",
+                                        oninput: move |e| f_limit.set(e.value()),
                                     }
-                                    label { class: "block space-y-1",
-                                        span { class: "text-xs text-zinc-400", "自定义秒数" }
-                                        input {
-                                            r#type: "number",
-                                            disabled: f_reset_cycle() != "自定义",
-                                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 disabled:opacity-40 focus:border-zinc-500 outline-none",
-                                            value: "0",
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ---- Tab 2: 第三方支付配置 (Image #8) ----
-                    if modal_tab() == 2 {
-                        div { class: "space-y-4 pt-1",
-                            div { class: "rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 leading-relaxed",
-                                "使用此套餐的标题和价格，在已保存的店铺中创建 Pancake 产品。需要先在支付设置中完整配置 Waffo Pancake。"
-                            }
-                            label { class: "block space-y-1",
-                                span { class: "text-xs font-medium text-zinc-300", "Stripe Price ID" }
-                                input {
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 font-mono focus:border-zinc-500 outline-none",
-                                    value: "{f_stripe_id()}",
-                                    placeholder: "price_1M...",
-                                    oninput: move |e| f_stripe_id.set(e.value()),
+                                    p { class: "text-[11px] text-zinc-500", "单个用户可购买的次数；0 表示不限" }
                                 }
                             }
                             label { class: "block space-y-1",
-                                span { class: "text-xs font-medium text-zinc-300", "Creem Product ID" }
-                                input {
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 font-mono focus:border-zinc-500 outline-none",
-                                    value: "{f_creem_id()}",
-                                    placeholder: "prod_...",
-                                    oninput: move |e| f_creem_id.set(e.value()),
+                                span { class: "text-xs text-zinc-400", "升级分组" }
+                                select {
+                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
+                                    "data-testid": "subscriptions-form-group",
+                                    value: "{f_group()}",
+                                    onchange: move |e| f_group.set(e.value()),
+                                    option { value: "不升级", "不升级" }
+                                    for g in group_names.read().iter() {
+                                        option { value: "{g}", "{g}" }
+                                    }
                                 }
-                            }
-                            label { class: "block space-y-1",
-                                span { class: "text-xs font-medium text-zinc-300", "Waffo Pancake Product ID" }
-                                input {
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 font-mono focus:border-zinc-500 outline-none",
-                                    value: "{f_waffo_id()}",
-                                    placeholder: "选择产品或输入 ID",
-                                    oninput: move |e| f_waffo_id.set(e.value()),
-                                }
+                                p { class: "text-[11px] text-zinc-500", "购买该套餐后升级到该分组；「不升级」表示不改变分组" }
                             }
                         }
                     }
@@ -626,9 +688,11 @@ pub fn SubscriptionsPage() -> Element {
                             "关闭"
                         }
                         button {
-                            class: "rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300 transition-colors shadow-lg shadow-amber-500/10",
+                            class: "rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300 transition-colors shadow-lg shadow-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed",
+                            "data-testid": "subscriptions-form-submit",
+                            disabled: saving(),
                             onclick: commit,
-                            "保存更改"
+                            if saving() { "保存中…" } else { "保存更改" }
                         }
                     }
                 }

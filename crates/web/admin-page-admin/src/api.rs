@@ -5,7 +5,7 @@
 
 use client::{ApiClient, ApiError, ApiResult};
 use contract::api::admin::{ChannelDto, ChannelUpsertRequest, GroupDto, GroupUpsertRequest};
-use contract::api::billing::AliasUpsertRequest;
+use contract::api::billing::{AliasUpsertRequest, SubscriptionUpsertRequest};
 use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto, UpdateTokenRequest};
 
 // ---------------------------------------------------------------------------
@@ -321,13 +321,31 @@ pub async fn delete_group_api(client: &ApiClient, key: &str) -> ApiResult<serde_
 
 /// models 域列表项视图 — 对齐 admin-catalog `ModelView`(camelCase)。
 ///
-/// 别名页只需要两个字段:`key`(UUID,PUT/DELETE 路径定位符)与
-/// `name`(对外别名)。价格/倍率在后端 models 域没有对应列,不在此映射。
+/// `key`(UUID,PUT/DELETE 路径定位符)与 `name`(对外别名)是必填项;
+/// 价格/倍率三字段后端 0018 起已落库(api_models 的 input_per_1k/
+/// output_per_1k/multiplier 列,`ModelView` 恒返回非 Option f64),
+/// 前端用于 hydrate 真实定价与保存后就地刷新列表行。三字段带 serde
+/// default 容错:旧后端或缺失列的载荷按 0/0/1.0 解码,不整体解码失败。
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelAliasView {
     pub key: String,
     pub name: String,
+    /// 输入单价(每 1k tokens);后端 0018 列,未定价 = 0。
+    #[serde(default)]
+    pub input_per_1k: f64,
+    /// 输出单价(每 1k tokens);后端 0018 列,未定价 = 0。
+    #[serde(default)]
+    pub output_per_1k: f64,
+    /// 价格倍率;后端 0018 列,无加价 = 1.0。与 model_prices 结算口径无关。
+    #[serde(default = "default_alias_multiplier")]
+    pub multiplier: f64,
+}
+
+/// `ModelAliasView.multiplier` 的反序列化缺省值 — 与后端 0018 迁移的列
+/// DEFAULT 1.0 一致(无加价);仅在字段缺席时用,正常载荷恒带真实值。
+fn default_alias_multiplier() -> f64 {
+    1.0
 }
 
 /// 后端列表端点统一包装 `{"items":[...]}`（别名侧；与 ModelItems 区分元素类型）。
@@ -348,19 +366,21 @@ pub async fn list_model_aliases_api(client: &ApiClient) -> ApiResult<Vec<ModelAl
 
 /// 真实调用: PUT /api/models/{key} (更新;`key` 为 ModelView.key 的 UUID)。
 ///
-/// 请求体复用 contract `AliasUpsertRequest`:其中与后端 models 域对应的仅
-/// `name`(对外别名);display_name/价格/倍率字段后端无对应列,序列化为 null
-/// 后被 `UpdateModelRequest`(全 Option + 未知字段忽略)读成 None,不会写库。
+/// 请求体复用 contract `AliasUpsertRequest`:后端 0018 起 `UpdateModelRequest`
+/// 已接 `input_per_1k`/`output_per_1k`/`multiplier`(全 Option,COALESCE
+/// 合并),故页面把本地定价信号随 `name` 一并发送即写库;`display_name`/
+/// `status` 后端 models 域无对应列,序列化为 null 被反序列化层忽略,不会写库。
 /// 注意:后端更新是「COALESCE 合并 → validate_model 整体校验 merged 值」两步 —
-/// name-only 语义仍成立(页面只有 maskedKey,无法也不应回传真实凭据),但若该行
-/// 存量 api_key 为空(无效数据,如绕过 create 校验的种子行),合并后校验不过,
-/// 任何更新都会 400,须先修复存量数据。响应为 `ModelView`,页面只关心成败,
-/// 此处解成原始 Value。
+/// 页面只发定价三字段 + name,不回传 owner/api_key(页面只有 maskedKey,
+/// 回传即毁凭据),但若该行存量 api_key 为空(无效数据,如绕过 create 校验的
+/// 种子行),合并后校验不过,任何更新都会 400,须先修复存量数据。
+/// 响应为后端 `ModelView`,解成 [`ModelAliasView`] 供页面按 key 就地刷新
+/// 列表行(以服务端落库值为准,不读本地信号)。
 pub async fn update_model_alias_api(
     client: &ApiClient,
     key: &str,
     req: &AliasUpsertRequest,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<ModelAliasView> {
     client.put(&format!("/api/models/{key}"), req).await
 }
 
@@ -521,4 +541,114 @@ pub async fn upsert_currency_api(
 ) -> ApiResult<CurrencyView> {
     let r: CurrencyResp = client.post("/api/currency", req).await?;
     Ok(r.currency)
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions (admin-billing /api/subscriptions)
+// ---------------------------------------------------------------------------
+
+/// 订阅套餐响应视图 — 与后端 `admin_billing::subscriptions::SubscriptionView`
+/// 的 JSON 形状逐字段一致:在 new-api 形状的 `SubscriptionDto` 之上 flatten
+/// `key` / `currency` / `createdAt` / `updatedAt`,全部 camelCase。
+///
+/// 前端**不能** `use` 后端服务层类型(`admin-page-admin` 不依赖 `admin-billing`),
+/// 这里按 JSON 输出形状重声明一份(风险点:两端形状漂移由
+/// `tests/subscriptions_wire.rs` 的解码断言钉死)。
+///
+/// 字段口径:`SubscriptionDto` 的字段后端只填表里有的列(name/price/quota/
+/// group/periodVal/periodUnit/maxPerUser/enabled/sortOrder),其余恒为 None
+/// ——前端统一按 Option 处理,`None` 映射为展示默认值(见
+/// [`crate::state::map_subscription_view`])。`key` 是 UUID 字符串,
+/// `DELETE /api/subscriptions/{key}` 的定位符。
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionView {
+    /// 行 key(UUID)——DELETE 路径定位符;后端总是返回。
+    #[serde(default)]
+    pub key: String,
+    /// new-api 口径的数字 id;ferrite 侧无对应列,后端恒返回 None。
+    pub id: Option<u32>,
+    pub name: String,
+    pub description: Option<String>,
+    /// 价格(NUMERIC 语义,后端以字符串入库,JSON 里是数字)。
+    pub price: Option<f64>,
+    /// 套餐额度——**展示口径**:后端入库 ×500_000、读回 ÷500_000,
+    /// 前端拿到的已是展示值,不得再做换算。
+    pub quota: Option<f64>,
+    pub currency_price: Option<f64>,
+    pub payment_method: Option<String>,
+    /// 升级分组(后端 upgrade_group 列)。
+    pub group: Option<String>,
+    pub downgrade_group: Option<String>,
+    /// 有效期数值(后端 duration_days)。
+    pub period_val: Option<u32>,
+    /// 有效期单位——后端恒为 "days"(duration_days 直映)。
+    pub period_unit: Option<String>,
+    pub reset_cycle: Option<String>,
+    pub priority: Option<u32>,
+    pub enabled: Option<bool>,
+    pub allow_redeem: Option<bool>,
+    pub allow_wallet: Option<bool>,
+    /// 限购(后端 max_purchases);None/0 = 不限。
+    pub max_per_user: Option<u32>,
+    pub sort_order: Option<u32>,
+    pub stripe_price_id: Option<String>,
+    pub creem_product_id: Option<String>,
+    pub waffo_product_id: Option<String>,
+    /// 计价货币("CNY" | "USD"),决定价格展示符号。
+    #[serde(default)]
+    pub currency: String,
+    /// 建立时间(RFC3339)。
+    #[serde(default)]
+    pub created_at: String,
+    /// 最后修改时间(RFC3339)。
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// GET /api/subscriptions 响应包装 `{"items":[..],"total":n}`(total 未消费)。
+#[derive(Debug, Default, serde::Deserialize)]
+struct SubscriptionItems {
+    #[serde(default)]
+    items: Vec<SubscriptionView>,
+}
+
+/// POST /api/subscriptions 响应包装 `{"subscription": SubscriptionView}`。
+#[derive(Debug, Default, serde::Deserialize)]
+struct SubscriptionResp {
+    #[serde(default)]
+    subscription: SubscriptionView,
+}
+
+/// 真实调用: GET /api/subscriptions (套餐列表;后端按 sort_order 升序)。
+///
+/// 错误情况:未登录(401)、非 admin(403)、后端不可达 → `ApiError`
+/// (hydrate 侧容忍 401 保持空列表)。
+pub async fn list_subscriptions_api(client: &ApiClient) -> ApiResult<Vec<SubscriptionView>> {
+    let r: SubscriptionItems = client.get("/api/subscriptions").await?;
+    Ok(r.items)
+}
+
+/// 真实调用: POST /api/subscriptions (新增/更新套餐)。
+///
+/// 后端按 **name** upsert(`ON CONFLICT (name) DO UPDATE`):同名提交即更新
+/// 该行(返回更新后的视图),否则插入新行(key 由后端生成)。校验:name 与
+/// currency 非空、`duration_days ≥ 1`、price 可 parse 成有限非负数字、
+/// quota 有限非负——非法输入 400,不会静默落库。
+pub async fn upsert_subscription_api(
+    client: &ApiClient,
+    req: &SubscriptionUpsertRequest,
+) -> ApiResult<SubscriptionView> {
+    let r: SubscriptionResp = client.post("/api/subscriptions", req).await?;
+    Ok(r.subscription)
+}
+
+/// 真实调用: DELETE /api/subscriptions/{key} (删除套餐;key 为 UUID)。
+///
+/// 错误情况:key 非 UUID(400)、套餐不存在(404)→ `ApiError`。
+pub async fn delete_subscription_api(client: &ApiClient, key: &str) -> ApiResult<()> {
+    client
+        .delete::<serde_json::Value>(&format!("/api/subscriptions/{key}"))
+        .await?;
+    Ok(())
 }
