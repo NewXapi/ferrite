@@ -2,7 +2,12 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// wasm32-unknown-unknown 上 std::time::Instant::now() 直接 panic("time not
+// implemented on this platform"), 会把 auth RefCell 的 borrow guard 炸在作用域
+// 内永不释放, 后续 set_token 全部 "already borrowed" 二连 panic。web_time 在
+// wasm 上用 Performance.now(), native 上 re-export std, drop-in 无损替换。
+use web_time::Instant;
 
 /// Future produced by the refresher: `Some(new access token)` on success.
 pub type TokenFuture = Pin<Box<dyn Future<Output = Option<String>>>>;

@@ -25,3 +25,6 @@ pub mod stat_card;
 
 // 管理面板专用卡牌组件（feat/admin-card-kit）
 pub mod admin_card;
+
+// 布局原语（feat/layout）
+pub mod layout;

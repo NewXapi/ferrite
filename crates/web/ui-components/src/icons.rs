@@ -495,3 +495,95 @@ pub fn IconArrowRight(
         }
     }
 }
+
+/// 柱状图：总览/仪表盘导航入口。
+///
+/// `size` 为像素尺寸（默认 16），`class` 为附加样式类。
+#[component]
+pub fn IconChartBar(
+    /// 像素尺寸（默认 16）。
+    #[props(default = 16)]
+    size: u16,
+    /// 附加 class（尺寸/颜色微调用）。
+    #[props(default = String::new())]
+    class: String,
+) -> Element {
+    rsx! {
+        svg {
+            "viewBox": "0 0 24 24",
+            width: "{size}",
+            height: "{size}",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            class: "{class}",
+            "aria-hidden": "true",
+            path { d: "M3 9v7m0 0h7m-7 0v3m7-3V9a3 3 0 0 1 6 0v7m-6 0h6" }
+            path { d: "M12 12h.01" }
+        }
+    }
+}
+
+/// 用户图标：账户导航入口。
+///
+/// `size` 为像素尺寸（默认 16），`class` 为附加样式类。
+#[component]
+pub fn IconUser(
+    /// 像素尺寸（默认 16）。
+    #[props(default = 16)]
+    size: u16,
+    /// 附加 class（尺寸/颜色微调用）。
+    #[props(default = String::new())]
+    class: String,
+) -> Element {
+    rsx! {
+        svg {
+            "viewBox": "0 0 24 24",
+            width: "{size}",
+            height: "{size}",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            class: "{class}",
+            "aria-hidden": "true",
+            // 标准 user glyph：圆头 + 肩部弧（对齐 Lucide `user`，避免被读作「离开用户」）
+            path { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" }
+            circle { cx: "12", cy: "7", r: "4" }
+        }
+    }
+}
+
+/// 退出登录图标：侧栏 account footer / 下拉菜单。
+///
+/// `size` 为像素尺寸（默认 16），`class` 为附加样式类。
+#[component]
+pub fn IconLogOut(
+    /// 像素尺寸（默认 16）。
+    #[props(default = 16)]
+    size: u16,
+    /// 附加 class（尺寸/颜色微调用）。
+    #[props(default = String::new())]
+    class: String,
+) -> Element {
+    rsx! {
+        svg {
+            "viewBox": "0 0 24 24",
+            width: "{size}",
+            height: "{size}",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            class: "{class}",
+            "aria-hidden": "true",
+            path { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" }
+            path { d: "m14 6 6 6-6 6" }
+            path { d: "M9 5v14" }
+        }
+    }
+}

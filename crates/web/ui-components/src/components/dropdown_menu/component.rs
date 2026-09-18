@@ -89,7 +89,7 @@ fn with_class(attributes: Vec<Attribute>, extra: &str) -> Vec<Attribute> {
 pub fn DropdownMenu(
     /// 触发器插槽：一般传我们的 `Button`；插槽内的点击统一由本组件切换开合。
     trigger: Element,
-    /// 面板内容插槽：一般由 DropdownMenuItem / DropdownMenuLabel / DropdownMenuSeparator 组成。
+    /// 面板内容插槽：一般由 DropdownMenuItem / DropdownMenuItem / DropdownMenuLabel / DropdownMenuSeparator 组成。
     content: Element,
     /// 追加到 Content 面板 class 之后的调用方 class（定位、宽度等，如 `top-full left-0 w-56`）。
     #[props(default)]
@@ -97,6 +97,11 @@ pub fn DropdownMenu(
     /// 透传到根包裹 div 的属性；勿传 `id`（根 id 由组件分配，外点判断依赖它）。
     #[props(extends = GlobalAttributes)]
     attributes: Vec<Attribute>,
+    /// 可选的外部关闭请求信号（「面板应关闭？」）：默认 false；调用方在内容内
+    /// （如 `DropdownMenuItem` 的 onclick）置 true 即请求收关面板。未提供时面板只由
+    /// trigger 切换与外点/Escape 收关（默认不变）。
+    #[props(default)]
+    close_signal: Option<Signal<bool>>,
 ) -> Element {
     let mut open = use_signal(|| false);
 
@@ -161,10 +166,35 @@ pub fn DropdownMenu(
         _ => format!("absolute {content_base}"),
     };
 
+    // 外部关闭信号（可选）：内容（item）侧写入 true 即请求收关面板；
+    // 语义=「面板应关闭？」，默认 false（不请求关闭），变更到 true 才生效。
+    // 实现为轻量轮询（同 scroll_spy 的收尾模式），避免引入新依赖。
+    if let Some(close) = &close_signal {
+        let close_clone = *close;
+        use_hook(move || {
+            spawn(async move {
+                let mut last = close_clone();
+                loop {
+                    let now = close_clone();
+                    if now && !last {
+                        // 变更到 true：请求关闭（开合主权仍在 trigger，这里只收不重开）
+                        open.set(false);
+                    }
+                    last = now;
+                    // 让出一次防止连续忙轮询（纯 std，无新依赖；wasm 单线程
+                    // 协作调度，Ready 立即返回但每次调用经过 spawn 调度器）
+                    std::future::poll_fn(|_| std::task::Poll::Ready(())).await;
+                }
+            });
+        });
+    }
+
     rsx! {
         div {
             "data-slot": "dropdown-menu",
             "data-state": if open() { "open" } else { "closed" },
+            // display:contents 让根 div 融入父级 flex 行（trigger/content 各自成行项目）
+            display: "contents",
             // Escape 关闭：焦点在触发按钮/面板内按键可关（Radix 默认行为的自研等价）。
             onkeydown: move |event: KeyboardEvent| {
                 if event.key() == Key::Escape {
