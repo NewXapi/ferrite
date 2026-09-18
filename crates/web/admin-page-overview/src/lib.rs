@@ -2,14 +2,17 @@
 //! 数据经 `api` 取用,面板不直接持有 mock。
 
 pub mod api;
-mod leaderboard;
-mod models;
-mod overview;
 
-pub use leaderboard::LeaderboardPanel;
-pub use leaderboard::insights;
-pub use models::ModelsPanel;
-pub use overview::OverviewPanel;
+mod shared;
 
-pub mod errors;
-pub mod health;
+#[path = "tab-page-leaderboard/mod.rs"]
+pub mod tab_page_leaderboard;
+#[path = "tab-page-models/mod.rs"]
+pub mod tab_page_models;
+#[path = "tab-page-overview/mod.rs"]
+pub mod tab_page_overview;
+
+pub use tab_page_leaderboard::LeaderboardPanel;
+pub use tab_page_leaderboard::insights;
+pub use tab_page_models::ModelsPanel;
+pub use tab_page_overview::OverviewPanel;

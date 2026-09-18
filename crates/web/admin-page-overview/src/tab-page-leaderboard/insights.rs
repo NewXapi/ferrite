@@ -16,7 +16,7 @@ use dioxus::prelude::*;
 use crate::api::{UsageTopRow, share_text};
 use client::{ApiClient, ApiResult};
 
-use super::fmt_raw;
+use crate::shared::fmt_raw;
 
 // ---- 上一等长窗 ----
 

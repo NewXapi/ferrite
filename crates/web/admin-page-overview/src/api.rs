@@ -540,7 +540,7 @@ pub fn window_caption(timeframe: &str) -> &'static str {
 pub const TIP_MAX_ROWS: usize = 10;
 
 /// 「+N more」折叠行的系列色块颜色：中性 zinc（聚合多系列，不再专属某个模型色），
-/// 取 [`crate::overview`] 模型调色板的 zinc 档 #a1a1aa 同值。
+/// 取 [`crate::tab_page_overview`] 模型调色板的 zinc 档 #a1a1aa 同值。
 pub const TIP_MORE_COLOR: &str = "#a1a1aa";
 
 /// 趋势图整列分解悬浮卡的内容：Total 合计 + 排序/折叠后的展示行。
