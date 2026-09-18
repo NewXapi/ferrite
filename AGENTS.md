@@ -17,9 +17,9 @@
   3. gate 有 `checklist_no_nested_worktree` 护栏（pre-commit/pre-push/merge 扫描 `.wt` 下 mindepth≥2 的 `.wt` 目录与深层 `.git` stub），命中即 FAIL。
   4. 子代理一律用维护者在 prompt 里给的**全局绝对路径**（如 `/home/hathaway/projects/ferrite/.wt/<name>/`），禁止相对路径推导。
 
-## `.wt/` 工作目录保护（硬约束）
+## `.wt/` 工作目录（硬约束）
 
-`.wt/<name>/` 是开发工作目录，也是其他会话的代码容器。**任何会话严禁在未经确认的情况下删除整个 `.wt/` 目录或他人 worktree 分支目录。** 违规删除 = 丢失他人整个开发会话，等同于删库。
+`.wt/<name>/` 是开发工作目录，是每个独立的开发隔离环境。**任何会话严禁在未经确认的情况下删除整个 `.wt/` 目录或他人 worktree 分支目录。** 违规删除 = 丢失他人整个开发会话，等同于删库。
 
 - 只能删除**自己负责的 PR 对应的 worktree 目录**，且必须满足全部条件：
   1. PR 已 squash merge 到 upstream main；
@@ -27,6 +27,7 @@
   3. 删除前 `git worktree list` 确认目标目录对应当前会话分支，不影响其他 worktree。
 - 合并流程结束时：通过 `git worktree remove <自己目录>` + `gh pr merge --delete-branch` 正常释放，严禁使用 `rm -rf .wt/`、`rm -rf .wt/*` 或 `git clean` 进行任何批量/暴力删除。
 - 发现 `.wt/` 目录意外丢失时，立即告知维护者并尝试用 `git worktree prune` + `git checkout -b <branch> <merge-commit>` 恢复。
+
 ## 域目录并发与越界
 
 - `crates/<domain>/` 是高内聚的开发单元：一个会话接手某域目录即**独占**它——其他会话不会来干扰，它也**不准越界**改动其他域目录下的任何 crate。
@@ -43,8 +44,8 @@ crates/web/<prefix-feature>/
 
 | 术语 | 位置 | 含义 |
 |---|---|---|
-| **后端大域** | `crates/api/` | 全部后端服务平铺大容器，包含 `auth`（通用账号中心）、`admin-*`（管理服务）、`tavern-*`（酒馆服务）。 |
-| **前端大域** | `crates/web/` | 全部前端组件与界面平铺大容器，包含 `ui-components`（跨端通用组件）、`admin-page-*`、`tavern-page-*`。 |
+| **后端域** | `crates/api/` | 全部后端服务平铺大容器，包含 `auth`（通用账号中心）、`admin-*`（管理服务）、`tavern-*`（酒馆服务）。 |
+| **前端域** | `crates/web/` | 全部前端组件与界面平铺大容器，包含 `ui-components`（跨端通用组件）、`admin-page-*`、`tavern-page-*`。 |
 | **共享契约** | `crates/contract/` | 跨端共享的独立数据传输对象 (DTO) 与纯协议错误定义。 |
 | **网关与执行** | `crates/gateway/`、`crates/harness/` | 渠道调度转发引擎与 Agent 运行时。 |
 | **功能 crate** | `crates/<domain>/<name>/` | 独立 Cargo Library Crate，各自拥有独立的 `Cargo.toml`、`src/lib.rs` 与 `tests/`。 |
@@ -59,6 +60,7 @@ crates/web/<prefix-feature>/
 - `apps/admin-web` 组装 `crates/web/admin-page-*` 与 `ui-components`。
 - `apps/tavern-web` 组装 `crates/web/tavern-page-*` 与 `ui-components`。
 - 每个功能 crate 都有独立的 `Cargo.toml`、`src/lib.rs` 与 workspace member。
+
 ## 多会话文件所有权
 
 - 会话所有权以域目录为边界（见上「域目录并发与越界」）；`crates/contract/` 是唯一跨域共享点。
@@ -97,6 +99,11 @@ crates/web/<prefix-feature>/
 - CPU-heavy 命令必须套 `cpulimit -l 65 -i --`：编译、测试、装包类（`cargo build` / `cargo test` / `cargo clippy`、`npm` / `bun` 等）以及子代理产出的编译/测试/运行验证，一律不许裸跑；`git`、`grep`、文件读写等轻量命令不需要。
 
 ### 本机 dev 服务与进程卫生（硬约束）
+// DONE(2026-09-18): 原 TODO「多会话连接同一后端/DB + 单独校验要隔离，分两种情况」→ 补在下方。
+
+- **多会话的后端/DB 分两种情况**：
+  1. **共享（默认）**：所有 `.wt/` 会话的前端代理都指向 `127.0.0.1:3211`（`dev-backend.sh` 注释原文），共用同一 dev DB（`uf-local-postgres/ferrite_smoke`）。生命周期只走 `dev-backend.sh` / `just dev-backend`；`db-seed` 幂等可重灌；**`db-reset` 清的是全体会话共享的数据，跑之前必须报备**。
+  2. **隔离（独立校验）**：校验需要独占种子数据 / 破坏性迁移时，起独立实例——`FERRITE_DEV_LISTEN=127.0.0.1:<port> scripts/dev-backend.sh start` + 本 worktree 的 `config/config.toml`（gitignored、各 worktree 独立）DSN 指向另一个库（新建库/容器后用 just 变量覆盖调用，如 `just PG_DB=<你的库> db-seed`，见 justfile「PG 连接参数」注）。**严禁停共享 3211 后端、严禁对共享库跑 db-reset**。
 
 - **长跑服务禁止用 `nohup ... &` 在 Bash 工具调用里启动**：工具调用结束会回收整个进程组，服务静默死亡（典型症状：页面 500 "Connection refused"、dx 日志消失）。dx serve / 共享后端一律用会话的持久后台任务机制启动，启动后必须 `ss -ltn` 验证端口在监听再交付。
 - **禁止宽匹配 `pkill -f cargo` / `pkill -f rustc` 清进程**：多会话并行时这些是别人正在跑的构建（cpulimit 节流下进程任意瞬间都是 T 态，**T 态 ≠ 死进程**），误杀会让对方会话卡在 cargo 全局锁上、构建假死。清理前必须 `readlink /proc/<pid>/cwd` 确认归属；只处理无主残留。
@@ -111,18 +118,19 @@ crates/web/<prefix-feature>/
 - 「通过」= CI 全绿；CI 未全绿不得 closeout / merge。本地 clippy 必须与 CI 同版本（改动前 `rustup update stable`）。
 - 细则、动态选包原理与提 PR 前预览：读 `.agent/testing-ci.md`。
 
+// DONE(2026-09-18): 原 TODO「补充 .githooks 的文档」→ 已落到下方 gate 节的文档指针 + `.agent/gates.md`「文档位置」节。
 ### gate（`.githooks/`，摘要）
 
 - 钩子拦截信息必须逐条读完再修根因：禁止 `--no-verify`、禁止截断后忽略；FAIL 必须清零，WARN 说明理由可放行。
 - 占位/TODO 一律 `todo!("TODO(#<issue>): ...")`、`unimplemented!(...)`；TODO 注释必须带 issue 号。
 - `gh` 操作在创建时即走 gate 校验：FAIL 直接拦截，WARN 逐条处理；操作前先跑预检，不截断输出。细则与 GitHub 侧校验清单：读 `.agent/gates.md`。
+- `.githooks/` 结构与规则总览：读 `.githooks/GATE_HANDBOOK.md`（三层 SLA + 16 条规则表，一手文档）；规则对照清单在 `.githooks/spec/SPEC_OVERVIEW.md`。
 
 ### UI 验证约定（Dioxus web）
 
 详见项目级 skill `.agent/skills/ui-validation/SKILL.md`（共享 OMP `ui-validate` skill）：
 
 - 交互元素加 `data-testid`（用 `name` 属性值）；容器加 `role` + `aria-label`
-- 每页一个 `specs/ui/<page>.yaml` 契约，列出 role/name/testid/action
 - PR smoke 用 `tab.ariaSnapshot()` 验证 role+name+testid
 - 截图仅作辅助（视觉风格/品牌），失败时附带
 
@@ -152,7 +160,7 @@ crates/web/<prefix-feature>/
 - 每轮「审查 + 修复」写 **一条** PR comment（含修复 commit SHA）；smoke 验证再单独写 **一条** comment，说明验证手段与结果。两种留言可能多次出现。
 - 不绕过 `.githooks/` 拦截门，不绕过 `hooks/merge --dry-run` 的预检。
 
-### 八阶段剧本
+### 八阶段工作流程
 
 开 PR / 派子代理编排开发前必读 `.agent/pr-workflow.md`（setup → scope → break down → dev/audit → test → tool review → smoke → tidy → report）；`todo` / goal 登记与 PR body 任务清单全程同步。
 

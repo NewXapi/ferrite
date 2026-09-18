@@ -15,3 +15,8 @@
   - `WARN` 行不拦截但**不要忽略**：每条都说明缺什么（如「缺 type label」、「关键词建议也挂某 label」、「缺 `Fixes #`」）。能补的就补（label 用 `gh pr edit --label` / `gh issue edit --label`），不能补的在 PR body 写明理由。
   - 创建前先跑 `gate check` 对应清单或 `gate issue` / `gate pr` 预检，**不要等 push 才撞墙**；`head` / `tail` / `grep -v` 这类过滤会吞掉部分提示行，看 gate 输出时务必**完整**读，不要截断。
 - gate 会检查 GitHub 侧规范（issue 关联、PR 结构、label 完整性、CRG 审查记录，见 `.githooks/spec/github_pr_gates.yaml` 与 `checklist_pr_*.yaml`）；`gh` 操作前先跑对应检查，不要等 push 才发现。
+
+## 文档位置
+
+- `.githooks/GATE_HANDBOOK.md`：gate 一手总览——三层 SLA（l1 结构 / l2 语义 / l3 LLM）、16 条规则表（触发点 + 严重度）、加规则只改 yaml 不改二进制的约定。
+- `.githooks/spec/SPEC_OVERVIEW.md`：规则对照清单（新增/修改规则后必须同步更新该文件）；手动跑 `gate check [names...] --sla {l1|l2|l3} [--json]`。
