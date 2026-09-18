@@ -115,6 +115,20 @@ impl SseScanner {
         std::mem::take(&mut self.ready_frames)
     }
 
+    /// 取出尾部未终结的帧（流已结束，不会再有补齐的机会）。
+    ///
+    /// 上游若最后一帧没跟空行就断开（SSE 规范不要求结尾必须有空行），该帧会一直
+    /// 留在 `frame_data` 里；不 flush 就会丢掉最后一帧——对流式转换而言可能是整个
+    /// 响应的收尾帧（`message_delta` / `finish_reason`）。
+    pub fn flush_pending_frame(&mut self) -> Vec<String> {
+        if self.frame_data.is_empty() {
+            return Vec::new();
+        }
+        let pending = self.frame_data.join("\n");
+        self.frame_data.clear();
+        vec![pending]
+    }
+
     /// 上游断开: 报告终止原因。
     pub fn finish(self) -> SseEnd {
         if self.saw_done {

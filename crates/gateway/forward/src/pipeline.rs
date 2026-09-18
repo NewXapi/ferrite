@@ -122,7 +122,32 @@ pub async fn forward_once(
                             return Some((Err(e), (upstream, scanner, encoder, decoder)));
                         }
                         None => {
-                            // 上游流结束：让 encoder 补收尾帧（block 关闭 / [DONE]）。
+                            // 上游流结束：先把尾部未终结的帧吐出来（上游最后一帧可能
+                            // 没跟空行就断开），再让 encoder 补收尾帧。
+                            let mut tail_frames = scanner.flush_pending_frame();
+                            if !tail_frames.is_empty() {
+                                let mut out = Vec::new();
+                                for frame in tail_frames.drain(..) {
+                                    for ev in decode_events(decoder.as_deref(), &frame) {
+                                        if let Some(enc) = encoder.as_mut()
+                                            && let Ok(bytes) = enc.encode_event(&ev)
+                                        {
+                                            out.extend(bytes);
+                                        }
+                                    }
+                                }
+                                if let Some(enc) = encoder.as_mut()
+                                    && let Ok(mut bytes) = enc.finish()
+                                {
+                                    out.append(&mut bytes);
+                                }
+                                // 收尾帧已随尾部一并吐出，置空 encoder 防重复收尾。
+                                return Some((
+                                    Ok::<Bytes, std::io::Error>(Bytes::from(out.concat())),
+                                    (upstream, scanner, None, decoder),
+                                ));
+                            }
+
                             if let Some(enc) = encoder.as_mut() {
                                 match enc.finish() {
                                     Ok(frames) if !frames.is_empty() => {
@@ -162,16 +187,7 @@ pub async fn forward_once(
 
                     let mut out = Vec::new();
                     for frame in frames {
-                        let events = match decoder.as_ref() {
-                            Some(d) => match d.decode_event(&frame) {
-                                Ok(evs) => evs,
-                                // 单帧解码失败不该断整条流（SSE 里存在非 JSON 控制帧），
-                                // 跳过该帧继续。
-                                Err(_) => continue,
-                            },
-                            None => continue,
-                        };
-                        for ev in events {
+                        for ev in decode_events(decoder.as_deref(), &frame) {
                             if let Some(enc) = encoder.as_mut() {
                                 match enc.encode_event(&ev) {
                                     Ok(bytes) => out.extend(bytes),
@@ -241,6 +257,22 @@ fn protocol_bridge_error(
         retryable,
         channel_scoped: false,
         message: e.to_string(),
+    }
+}
+
+/// 把一帧 `data:` 负载解码成 IR 事件。
+///
+/// 单帧解码失败返回空列表而不是错误：SSE 流里存在非 JSON 控制帧，一帧解析不了
+/// 不该断掉整条流（旧实现在这里会把半行当 JSON 解析失败后**静默丢弃**，
+/// 但那时它连帧边界都没找准；现在边界由 [`SseScanner`] 保证，这里的跳过只针对
+/// 真正的合法非内容帧）。
+fn decode_events(
+    decoder: Option<&dyn gateway_protocol_bridge::format_codec::FormatCodec>,
+    frame: &str,
+) -> Vec<gateway_protocol_bridge::ir::StreamEvent> {
+    match decoder {
+        Some(d) => d.decode_event(frame).unwrap_or_default(),
+        None => Vec::new(),
     }
 }
 
