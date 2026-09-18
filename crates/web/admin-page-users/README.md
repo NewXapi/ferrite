@@ -2,10 +2,19 @@
 
 ## 文件
 
-- `src/lib.rs` — 导出 UsersPanel。
+- `src/lib.rs` — 导出 UsersPanel;一个 tab = 一个 `tab-page-*` 目录。
 - `src/api.rs` — 用户列表 / 用户编辑 / 用户创建 / 分组列表 API 薄壳。
 - `src/data.rs` — 展示格式化助手(额度换算、日期截断、key 截断、百分比)。
-- `src/panel.rs` — 用户管理卡片网格、筛选、编辑/新建弹窗、充值弹窗。
+- `src/tab-page-users/` — 用户管理 tab,目录内文件不带前缀:
+  - `panel.rs` — 状态 + 拉取 effect + 统计 / 筛选 / 卡片网格三区组合。
+  - `user_card.rs` — 单张用户卡(徽标行、额度进度条、计数行、操作区)。
+  - `badge.rs` — 分组 / 角色 / 状态共用的胶囊徽标。
+  - `modal.rs` — 弹窗外壳与输入框样式(表单弹窗与充值弹窗共用)。
+  - `user_form.rs` — 新建 / 编辑弹窗,含弹窗内三个真实页签。
+  - `group_chips.rs` — 生效分组多选 chips(列表经 context 注入)。
+  - `role_chips.rs` — 角色权限单选 chips。
+  - `topup_form.rs` — 额度充值弹窗。
+  - `labels.rs` — 跨组件共用的文案常量。
 - `tests/api_shapes.rs` — 筛选标签约定 + 创建请求 wire 形状。
 - `tests/format.rs` — 格式化助手不变量。
 
