@@ -282,9 +282,20 @@ data: [DONE]\n\n",
         !text.contains("chat.completion.chunk"),
         "不得把 OpenAI chunk 原样漏给 Claude 客户端，实际: {text}"
     );
-    assert!(
-        text.contains("pong"),
-        "文本内容必须完整搬过去（po+ng），实际: {text}"
+
+    // 文本按 Claude 的 delta 语义分散在各帧里：把 `text_delta` 的 text 拼起来，
+    // 拼出的必须是完整原文。直接 grep "pong" 会误判——两个 delta（po / ng）之间
+    // 隔着帧边界，字节流里并不相邻。
+    let deltas: String = text
+        .lines()
+        .filter_map(|l| l.strip_prefix("data: "))
+        .filter_map(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+        .filter(|v| v["type"] == "content_block_delta")
+        .filter_map(|v| v["delta"]["text"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        deltas, "pong",
+        "各 delta 拼起来必须是完整文本，实际: {deltas:?}"
     );
 }
 
