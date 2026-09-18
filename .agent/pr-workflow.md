@@ -2,7 +2,7 @@
 
 > 从 `AGENTS.md` 抽离的八阶段编排剧本。硬性门禁摘要保留在根 `AGENTS.md`「PR 开发流程」节；开 PR / 派子代理编排开发前必须读本文。
 
-> **按阶段阅读索引**：先读完本文（八阶段剧本）；stage 4 进 `.agent/testing-ci.md`；stage 7 与任何 `gh` 操作进 `.agent/gates.md`（被 gate 拦截要查规则：`.githooks/GATE_HANDBOOK.md` → `.githooks/spec/SPEC_OVERVIEW.md`）。起 dev 环境不在 `.agent/` 里——见 `justfile` 顶部「使用场景速查」与 AGENTS.md「本机 dev 服务」节。
+> **按阶段阅读索引**：先读完本文（八阶段剧本）；stage 4 进 `.agent/testing-ci.md`；stage 7 与任何 `gh` 操作进 `.agent/gates.md`（被 gate 拦截要查规则：`.githooks/GATE_HANDBOOK.md` → `.githooks/spec/SPEC_OVERVIEW.md`）。起 dev 环境读 `.agent/dev-env.md`（justfile 速查仍有效，本文件含实操验证过的命令与坑）。
 
 你是主控 agent：编排任务、派子代理执行、审查子代理产出，**不要亲自把核心实现写完**。
 

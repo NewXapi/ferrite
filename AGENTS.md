@@ -100,6 +100,8 @@ crates/web/<prefix-feature>/
 
 ### 本机 dev 服务与进程卫生（硬约束）
 
+启动手册（后端/数据库/前端，实操验证过的命令与坑）：`.agent/dev-env.md`。
+
 - **多会话的后端/DB 分两种情况**：
   1. **共享（默认）**：所有 `.wt/` 会话的前端代理都指向 `127.0.0.1:3211`（`dev-backend.sh` 注释原文），共用同一 dev DB（`uf-local-postgres/ferrite_smoke`）。生命周期只走 `dev-backend.sh` / `just dev-backend`；`db-seed` 幂等可重灌；**`db-reset` 清的是全体会话共享的数据，跑之前必须报备**。
   2. **隔离（独立校验）**：校验需要独占种子数据 / 破坏性迁移时，起独立实例——`FERRITE_DEV_LISTEN=127.0.0.1:<port> scripts/dev-backend.sh start` + 本 worktree 的 `config/config.toml`（gitignored、各 worktree 独立）DSN 指向另一个库（新建库/容器后用 just 变量覆盖调用，如 `just PG_DB=<你的库> db-seed`，见 justfile「PG 连接参数」注）。**严禁停共享 3211 后端、严禁对共享库跑 db-reset**。
