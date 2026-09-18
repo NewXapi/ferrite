@@ -55,7 +55,9 @@ COMMENT ON COLUMN subscription_plans.max_purchases IS '每用户可购次数上�
 
 -- 示例套餐：免费体验 30 天 + $1 额度（quota 500_000 = 500_000 内部单位）。
 -- key 固定不随机，方便排查；ON CONFLICT (name) DO NOTHING 使重跑迁移幂等。
+-- key 须是合规的 8-4-4-4-12 hex：早先末段写成 0000000017（10 位）会被 PG
+-- 拒成 "invalid input syntax for type uuid"，迁移 17 整体失败、后端起不来。
 INSERT INTO subscription_plans
     (key, name, price, currency, duration_days, quota, upgrade_group, max_purchases, enabled, sort_order)
-VALUES ('e0f30000-0000-4b17-8f3f-0000000017', '免费体验', '0', 'CNY', 30, 500000, NULL, 1, true, 0)
+VALUES ('e0f30000-0000-4b17-8f3f-000000000017', '免费体验', '0', 'CNY', 30, 500000, NULL, 1, true, 0)
 ON CONFLICT (name) DO NOTHING;
