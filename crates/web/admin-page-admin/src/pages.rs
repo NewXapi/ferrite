@@ -122,7 +122,9 @@ pub fn SubscriptionsPage() -> Element {
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
     // 写回成功后 +1 触发重拉：后端按 sort_order 排序，本地插入无法保证位次。
-    let mut reload = use_signal(|| 0u32);
+    // 注意：外层绑定不 mutate——写路径里 `let mut reload = reload;` 各自拷贝
+    // 出可变副本（Signal 是 Copy），外层只需只读。
+    let reload = use_signal(|| 0u32);
     // 「升级分组」下拉候选项（真实分组名）。
     let mut group_names = use_signal(Vec::<String>::new);
 

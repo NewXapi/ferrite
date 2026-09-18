@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 use ui::StatCard;
+use ui::UserCard as PrototypeUserCard;
 
 use client::ApiClient;
 use contract::api::admin::{AdminUserDto, ManageUserRequest};
@@ -333,6 +334,17 @@ pub fn UsersPanel() -> Element {
                         p { class: "text-zinc-400", "没有匹配的用户" }
                     }
                 } else {
+                    if let Some(user) = filtered.first() {
+                        div {
+                            class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                            role: "region",
+                            "aria-label": "新卡示例",
+                            "data-testid": "user-card-prototype",
+                            PrototypeUserCard {
+                                user: user.clone(),
+                            }
+                        }
+                    }
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                         for user in filtered {
                             UserCard {

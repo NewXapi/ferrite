@@ -102,6 +102,9 @@ dev-backend *args:
 #     账号 admin_dev (401 清会话后也会先自动重登); 打开 #login/#signup/#auth 仍可
 #     手动调试登录页, 主动「退出登录」不会被自动重登顶掉。彻底关闭用普通档重新起。
 #   全部 --watch false (仓库已知 dx watch 重建卡死)。
+#   ⚠️ 改了依赖 crate（ui-components 等）后页面没变：dx 不会自动重编 wasm，
+#      必须 `kill <dx pid> && just dev-web <port>`（或 `just dev-web <port> debug`）重启，
+#      浏览器再强刷一次；仅 touch src 文件不会触发结构变更的重建。
 dev-web port="8090" mode="":
     #!/usr/bin/env bash
     # 锚定 justfile 所在目录（= 仓库根），使配方可从任意 cwd 调用

@@ -8,6 +8,7 @@ use serde_json::json;
 use ui::ActionButtonGroup;
 use ui::ActionSpec;
 use ui::ActionTone;
+use ui::GroupCard as PrototypeGroupCard;
 use ui::SegmentedCapsule;
 // 统计卡收敛到 ui-components 后改为 re-export：crate 内 channels/aliases/system/
 // redemptions 仍走 `crate::groups::StatCard`，引用路径不变。
@@ -480,6 +481,23 @@ pub fn GroupsPage() -> Element {
                             p { class: "text-zinc-400", "没有匹配的分组" }
                         }
                     } else {
+                        if let Some(group) = filtered.first().cloned() {
+                            {
+                                let is_default = group.name == "default";
+                                rsx! {
+                                    div {
+                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                                        role: "region",
+                                        "aria-label": "新卡示例",
+                                        "data-testid": "group-card-prototype",
+                                        PrototypeGroupCard {
+                                            group,
+                                            is_default,
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             "data-testid": "groups-list",
                             for g in filtered {

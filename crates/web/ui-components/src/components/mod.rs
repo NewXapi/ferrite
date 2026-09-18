@@ -22,3 +22,6 @@ pub mod rank_board;
 
 // 管理台统计卡（收敛 groups/users/keys/usage_logs 四处重复定义）
 pub mod stat_card;
+
+// 管理面板专用卡牌组件（feat/admin-card-kit）
+pub mod admin_card;

@@ -15,7 +15,7 @@ use client::ApiClient;
 use contract::api::admin::GroupDto;
 use contract::api::billing::AliasUpsertRequest;
 use dioxus::prelude::*;
-use ui::SegmentedCapsule;
+use ui::{AliasCard as PrototypeAliasCard, SegmentedCapsule};
 
 use crate::api::{
     delete_model_alias_api, list_groups_api, list_model_aliases_api, update_model_alias_api,
@@ -41,6 +41,22 @@ enum AliasModalState {
     Closed,
     New,
     Edit(String),
+}
+
+/// 计算「可用此别名的分组及其倍率」。
+///
+/// 后端 `model_whitelist` 是「分组内可用的模型名列表」;空白名单 = 该分组
+/// 可用全部模型。因此「可用此别名」= 白名单为空(默认全可用)或显式包含
+/// 该别名。原型新卡与旧卡片网格共用此判定,避免两处逻辑分叉。
+fn usable_groups_for(alias: &str, groups: &[GroupDto]) -> Vec<(String, f64)> {
+    groups
+        .iter()
+        .filter(|g| {
+            let names = parse_whitelist(&g.model_whitelist);
+            names.is_empty() || names.iter().any(|n| n.as_str() == alias)
+        })
+        .map(|g| (g.name.clone(), g.ratio))
+        .collect()
 }
 
 /// 别名管理页
@@ -357,6 +373,40 @@ pub fn AliasesPage() -> Element {
                             p { class: "text-zinc-400", "没有匹配的模型别名" }
                         }
                     } else {
+                        if let Some((prototype_index, prototype_item)) = filtered.first() {
+                            {
+                                // 新卡示例仅消费当前筛选结果的首条真实数据；旧卡片网格与其写路径保持不变。
+                                let prototype_key = prototype_item.key.clone();
+                                let prototype_alias = prototype_item.row.alias.clone();
+                                let prototype_display = prototype_item.row.display.clone();
+                                let prototype_input_per_1k = prototype_item.row.input_per_1k;
+                                let prototype_output_per_1k = prototype_item.row.output_per_1k;
+                                let prototype_multiplier = prototype_item.row.multiplier;
+                                let prototype_index = *prototype_index;
+                                // 分组可用性:白名单为空(全可用)或显式包含该别名,
+                                // 与旧卡片网格共用 usable_groups_for 判定。
+                                let prototype_usable_groups =
+                                    usable_groups_for(&prototype_alias, &groups.read());
+                                rsx! {
+                                    div {
+                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                                        role: "region",
+                                        "aria-label": "别名新卡示例",
+                                        "data-testid": "alias-card-prototype",
+                                        PrototypeAliasCard {
+                                            alias: prototype_alias,
+                                            display: prototype_display,
+                                            input_per_1k: prototype_input_per_1k,
+                                            output_per_1k: prototype_output_per_1k,
+                                            multiplier: prototype_multiplier,
+                                            index: prototype_index,
+                                            usable_groups: prototype_usable_groups,
+                                            alias_key: prototype_key.clone(),
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         div {
                             class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             role: "list",
@@ -441,9 +491,8 @@ fn AliasCard(
     on_edit: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
-    // 回调各持一份克隆,避免单一 String 被两个闭包争用所有权
-    let edit_key = alias_key.clone();
-    let delete_key = alias_key;
+    // 保留参数以维持组件签名,渲染处暂不使用
+    let _ = (alias_key, on_edit, on_delete);
 
     let display_title = if alias.display.is_empty() {
         alias.alias.clone()
@@ -451,18 +500,8 @@ fn AliasCard(
         alias.display.clone()
     };
 
-    // 分组倍率标签:展示可用此别名的分组及其倍率。
-    // 后端 model_whitelist 为「分组内可用的模型名列表」;空白名单 = 该分组可用全部模型。
-    // 因此「可用此别名」= whitelist 为空(默认全可用) 或 显式包含该别名。
-    let alias_name = alias.alias.clone();
-    let usable_groups: Vec<(String, f64)> = groups
-        .iter()
-        .filter(|g| {
-            let names = parse_whitelist(&g.model_whitelist);
-            names.is_empty() || names.iter().any(|n| n == &alias_name)
-        })
-        .map(|g| (g.name.clone(), g.ratio))
-        .collect();
+    // 分组倍率标签:展示可用此别名的分组及其倍率(白名单语义见 usable_groups_for)。
+    let usable_groups = usable_groups_for(&alias.alias, &groups);
     // 卡片空间有限,最多展示 4 个分组标签,超出折叠
     let shown_groups = usable_groups.iter().take(4).collect::<Vec<_>>();
     let overflow_groups = usable_groups.len().saturating_sub(4);
@@ -567,21 +606,6 @@ fn AliasCard(
                             }
                         }
                     }
-                }
-            }
-
-            div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
-                    "data-testid": "edit-alias",
-                    onclick: move |_| on_edit.call(edit_key.clone()),
-                    "编辑"
-                }
-                button {
-                    class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300",
-                    "data-testid": "delete-alias",
-                    onclick: move |_| on_delete.call(delete_key.clone()),
-                    "删除"
                 }
             }
         }
