@@ -20,9 +20,14 @@
 
 pub mod adaptor;
 pub mod error_mapping;
+pub mod ir;
 pub mod sse;
 pub mod stage;
 
 pub use adaptor::{AdaptorRegistry, Codec, Protocol};
 pub use error_mapping::map_error;
+pub use ir::{
+    ContentBlock, LlmRequest, LlmResponse, Message, Role, SamplingParams, StopReason, StreamEvent,
+    TextBlock, ToolChoice, ToolDef, Usage,
+};
 pub use stage::ProtocolBridgeStage;
