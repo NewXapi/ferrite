@@ -26,6 +26,7 @@ pub mod error_mapping;
 pub mod format_codec;
 pub mod ir;
 pub mod openai;
+pub mod responses;
 pub mod sse;
 pub mod stage;
 
