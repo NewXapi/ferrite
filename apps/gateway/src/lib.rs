@@ -17,7 +17,7 @@ use gateway_gate::quota::QuotaGate;
 use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
 use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::FormatRegistry;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 use gateway_proxy::ProxyManager;
 use metering::pricing::{ConfigPriceTable, PriceTable};

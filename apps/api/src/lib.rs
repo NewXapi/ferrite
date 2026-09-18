@@ -44,7 +44,7 @@ use gateway_gate::ratelimit::{RateLimitGate, RateLimiter};
 use gateway_gate::snapshot::IpPolicy;
 use gateway_gate::state::StateGate;
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::FormatRegistry;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 
 /// ForwardStage 全局并发闸容量（v2 挂载）：整体并发上限，不分渠道——

@@ -10,7 +10,7 @@ use forward::stage::ForwardStage;
 use gateway_pipeline::TokenInfo;
 use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, StreamedAccum};
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::FormatRegistry;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 use gateway_proxy::manager::ProxyManager;
 use gateway_proxy::node::ProxyScheme;
