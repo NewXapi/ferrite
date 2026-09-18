@@ -3,8 +3,11 @@ name: Release gateway (versioned)
 # 正式版发布 —— 区别于 release-test.yml 的滚动 test-latest（无版本号、覆盖同一 tag）。
 # 触发：push `gateway-vX.Y.Z` 即构建 + 发布同 tag 的正式版 release。
 #   （域名前缀 tag，避免 monorepo 里 web/api 后续发版与裸 vX.Y.Z 撞车。）
-# 版本号从 tag 名剥离 `gateway-v` 前缀；编译用 [profile.release]
-#   （lto=fat / codegen-units=1 / strip，已是性能+体积最优），再 upx --best --lzma。
+# 版本号 = 计数式（维护者拍板，非标准 SemVer 档位）：
+#   X 恒 0；Y = 自 0.0.0 起 gateway 域 (crates/gateway + apps/gateway) 的 feat 累计数；
+#   Z = fix 累计数。每版重数累计值，不做增量。commit 主题前缀即统计源。
+# 编译用 [profile.release]（lto=fat / codegen-units=1 / strip，已是性能+体积最优），
+#   再 upx --best --lzma。
 # 产物：gateway 无头二进制（config/config.toml 驱动、无数据库）+ config 模板。
 on:
   push:
