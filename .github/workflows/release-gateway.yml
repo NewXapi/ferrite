@@ -1,0 +1,96 @@
+name: Release gateway (versioned)
+
+# 正式版发布 —— 区别于 release-test.yml 的滚动 test-latest（无版本号、覆盖同一 tag）。
+# 触发：push `gateway-vX.Y.Z` 即构建 + 发布同 tag 的正式版 release。
+#   （域名前缀 tag，避免 monorepo 里 web/api 后续发版与裸 vX.Y.Z 撞车。）
+# 版本号从 tag 名剥离 `gateway-v` 前缀；编译用 [profile.release]
+#   （lto=fat / codegen-units=1 / strip，已是性能+体积最优），再 upx --best --lzma。
+# 产物：gateway 无头二进制（config/config.toml 驱动、无数据库）+ config 模板。
+on:
+  push:
+    tags:
+      - "gateway-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "语义版本号，如 0.1.0（留空则从最近 gateway-v* tag 推断）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build + UPX + publish (linux x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Resolve version (tag 名 / dispatch 输入)
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#gateway-v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            VER="${{ inputs.version }}"
+          else
+            VER="$(git describe --tags --match 'gateway-v*' --abbrev=0 2>/dev/null | sed 's/^gateway-v//')"
+            [ -z "$VER" ] && VER="0.1.0"
+          fi
+          VER="${VER#v}"   # 容错：输入带 v 前缀
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "==> releasing gateway v${VER} (commit ${GITHUB_SHA})"
+
+      - name: Install upx
+        run: sudo apt-get update && sudo apt-get install -y upx-ucl
+
+      - name: Build release (lto=fat / codegen-units=1 / strip)
+        run: cargo build --release -p gateway
+
+      - name: UPX compress
+        run: upx --best --lzma target/release/gateway
+
+      - name: Show size
+        run: ls -lh target/release/gateway
+
+      - name: Publish versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          TAG="gateway-v${VER}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TARGET="$TAG"          # tag 推送：release 挂该 tag
+          else
+            TARGET="${{ github.sha }}"  # 手动：release 挂当前 commit，并把 tag 指过去
+          fi
+          {
+            echo "gateway v${VER} — 无头数据面，`config/config.toml` 驱动，无数据库、无前端。"
+            echo ""
+            echo "linux x86_64 · release 性能编译（lto=fat / codegen-units=1 / strip）+ upx --best --lzma。"
+            echo ""
+            echo "commit: ${GITHUB_SHA}"
+            echo ""
+            echo "用法："
+            echo '```sh'
+            echo 'chmod +x ./gateway'
+            echo 'mkdir -p config && cp gateway-config.toml.example config/config.toml  # 按需改'
+            echo './gateway   # cwd 须有 config/config.toml；SIGHUP 热重载'
+            echo '```'
+          } > notes.md
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # tag 已存在：直接在其上建 release（幂等：已存在则补 notes + 附件）
+            gh release create "$TAG" --title "gateway v${VER}" --target "$TARGET" --notes-file notes.md \
+              2>/dev/null || { gh release edit "$TAG" --notes-file notes.md; }
+          else
+            git tag -f "$TAG" && git push -f origin "$TAG"
+            gh release create "$TAG" --title "gateway v${VER}" --target "$TARGET" --notes-file notes.md \
+              2>/dev/null || { gh release edit "$TAG" --notes-file notes.md; }
+          fi
+          cp config/config.toml.example gateway-config.toml.example
+          gh release upload "$TAG" target/release/gateway gateway-config.toml.example --clobber
