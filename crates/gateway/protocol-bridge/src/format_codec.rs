@@ -68,6 +68,13 @@ pub trait StreamEncoder: Send {
     fn encode_event(&mut self, ev: &StreamEvent) -> Result<Vec<Bytes>, AdaptorError>;
     /// 流结束：吐出暂存的收尾帧。
     fn finish(&mut self) -> Result<Vec<Bytes>, AdaptorError>;
+
+    /// 上游已显式发过终止信号（OpenAI 的 `[DONE]` / Claude 的 `message_stop`）。
+    ///
+    /// 调用方看到原始终止帧时调用；之后 `finish()` 不得再补一个——否则客户端
+    /// 会收到两次流终止（OpenAI 客户端对重复 `[DONE]` 的行为未定义，实测多余帧
+    /// 会污染逐字保真断言）。默认无操作：不认识终止帧语义的格式本就不该补帧。
+    fn mark_done(&mut self) {}
 }
 
 /// 单格式注册表：`Protocol → Arc<dyn FormatCodec>`（不再有 pair 表）。

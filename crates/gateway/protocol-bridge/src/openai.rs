@@ -825,6 +825,12 @@ impl StreamEncoder for OpenAiStreamEncoder {
         self.finished = true;
         Ok(vec![Self::done_frame()])
     }
+
+    /// 标记上游已发过 [DONE]：调用方（pipeline 层的帧扫描）看到 [DONE] 时调用，
+    /// 让 `finish()` 不再补发第二个——OpenAI 客户端会把两个 [DONE] 当两次流终止。
+    pub fn mark_done(&mut self) {
+        self.finished = true;
+    }
 }
 
 impl OpenAiStreamEncoder {

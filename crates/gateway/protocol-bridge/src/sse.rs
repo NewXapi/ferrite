@@ -129,6 +129,14 @@ impl SseScanner {
         vec![pending]
     }
 
+    /// 上游是否已显式发过 `[DONE]`。
+    ///
+    /// 跨格式转换用：目标格式编码器据此决定 `finish()` 是否还要补终止帧
+    /// （上游已发过就不能再补，否则客户端收到两次流终止）。
+    pub fn saw_done(&self) -> bool {
+        self.saw_done
+    }
+
     /// 上游断开: 报告终止原因。
     pub fn finish(self) -> SseEnd {
         if self.saw_done {

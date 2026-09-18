@@ -179,6 +179,10 @@ pub async fn forward_once(
                     // 跨格式：扫描器重组成完整行，逐帧 `data:` 负载解码成 IR 事件，
                     // 再交给 encoder 编成入站格式的帧。
                     let (_passthrough, _events) = scanner.push(&chunk);
+                    // 上游已显式终止：让 encoder 别再补终止帧（两个 [DONE] 是两次流终止）。
+                    if scanner.saw_done() {
+                        encoder.as_mut().map(|e| e.mark_done());
+                    }
                     let frames = scanner.take_data_frames();
                     if frames.is_empty() {
                         // 半帧（跨 chunk 的行还没凑齐）：本块无可产出，继续读。
