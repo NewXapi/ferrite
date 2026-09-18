@@ -204,13 +204,17 @@ impl ForwardStage {
     fn build_task(
         candidate: &SelectedRoute,
         path: String,
+        client_headers: Vec<(String, String)>,
         body: Bytes,
         stream: bool,
     ) -> ForwardTask {
         ForwardTask {
             candidate: candidate.clone(),
             path,
-            headers: vec![],
+            // 客户端头经 sanitize（剥 hop-by-hop/凭据/冲突）后随转发走：
+            // 缺了它 Content-Type 不会到达上游，new-api 类网关按 form 解析
+            // JSON body → model 恒空 → 400。
+            headers: crate::adapter::sanitize_client_headers(&client_headers),
             body,
             stream,
             provider_type: candidate.provider_type.clone(),
@@ -333,7 +337,13 @@ impl Stage for ForwardStage {
                 )));
             }
         };
-        let task = Self::build_task(&candidate, ctx.request.path.clone(), body, stream);
+        let task = Self::build_task(
+            &candidate,
+            ctx.request.path.clone(),
+            crate::adapter::header_map_to_vec(&ctx.request.headers),
+            body,
+            stream,
+        );
 
         // 失败观测事件的计时起点（单次模式）：含并发闸等待与上游请求，
         // 成功路径的 duration_ms 由响应侧统计，这里只补失败路径。
@@ -404,6 +414,12 @@ impl ForwardStage {
         // 失败观测需要 ctx 的归因字段：循环期间共享借用 ctx（循环 future
         // 结束即释放），之后 commit_forwarded 才能继续用 &mut ctx。
         let ctx_ref: &RequestCtx = ctx;
+        // 客户端头在循环外 sanitize + 快照一份：尝试闭包 move 捕获（ctx 此时
+        // 被 ctx_ref 借用，闭包内不能碰 ctx）。
+        let client_headers =
+            crate::adapter::sanitize_client_headers(&crate::adapter::header_map_to_vec(
+                &ctx.request.headers,
+            ));
 
         let dsel = Arc::clone(&dispatch);
         let drep = Arc::clone(&dispatch);
@@ -418,7 +434,13 @@ impl ForwardStage {
             &self.retry_policy,
             move |g, m, exclude| dsel.select(g, m, exclude),
             move |candidate| {
-                let task = Self::build_task(candidate, path.clone(), body.clone(), stream);
+                let task = Self::build_task(
+                    candidate,
+                    path.clone(),
+                    client_headers.clone(),
+                    body.clone(),
+                    stream,
+                );
                 let slot = Arc::clone(&slot);
                 let eslot = Arc::clone(&eslot);
                 async move {

@@ -111,6 +111,19 @@ pub fn prepare(
         extra_headers,
     }
 }
+/// `http::HeaderMap` → `Vec<(String, String)>`（客户端头进入转发管道的统一入口）。
+///
+/// 非 visible-ASCII 的值跳过（reqwest 也发不出去），避免半截头混进上游请求。
+pub fn header_map_to_vec(headers: &http::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            let v = value.to_str().ok()?;
+            Some((name.as_str().to_string(), v.to_string()))
+        })
+        .collect()
+}
+
 /// 头过滤 — 剥离 hop-by-hop/凭据/冲突头 (new-api api_request.go 规则)。
 /// - 永远剥离 (HTTP/1.1 RFC 7230 §6.1 hop-by-hop): `connection`, `keep-alive`,
 ///   `transfer-encoding`, `upgrade`, `proxy-*`
