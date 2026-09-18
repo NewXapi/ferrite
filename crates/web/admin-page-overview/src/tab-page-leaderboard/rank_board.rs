@@ -5,6 +5,7 @@
 
 use dioxus::prelude::*;
 
+use super::shared::RANK_FOOTNOTE;
 use crate::api::{UsageTopRow, fmt_usd, growth_of, share_text};
 use crate::shared::{MODEL_COLORS, fmt_raw};
 use ui::components::rank_board::{RankBoard, RankRowMeta, RankRowView};
@@ -45,6 +46,13 @@ impl RankMetric {
 /// 呈现全部委托 ui-components 的 [`ui::components::rank_board::RankBoard`]
 /// (维护者要求三张口径榜抽象为共享组件复用);本层只做口径排序/取前 10/份额分母
 /// 与字段格式化(业务换算不进共享组件)。
+///
+/// - 是什么:三张口径榜(Tokens / Calls / Quota)共用的单卡,差异只在排序键与
+///   展示格式,故用 [`RankMetric`] 枚举注入(不用函数指针:component 宏为 props
+///   生成 PartialEq,函数指针比较不可靠)。
+/// - 数据流通:入参 `rows` 为后端整批聚合行(不截前 10),份额分母与最大值都
+///   在本层算;对外只把整形好的 `RankRowView` 交给共享组件。
+/// - 样式:卡面全部委托共享组件;脚注固定为增长率/份额的口径说明。
 #[component]
 pub fn RankCard(
     title: &'static str,
@@ -96,7 +104,7 @@ pub fn RankCard(
             subtitle: subtitle.to_string(),
             testid: testid.to_string(),
             rows: view_rows,
-            footnote: "增长率为 tokens 环比(上一等长窗);份额为行值占当榜合计".to_string(),
+            footnote: RANK_FOOTNOTE.to_string(),
         }
     }
 }

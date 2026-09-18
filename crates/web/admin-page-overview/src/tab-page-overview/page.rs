@@ -1,17 +1,36 @@
 //! 总览 tab 页面层:状态 + 拉取 effect + 组件组合(无渲染细节)。
+//!
+//! - 是什么:总览页根组件,四个区块(趋势 / 渠道健康 / 错误 / 统计 + 双榜)的组合者。
+//! - 负责什么:持有全部取数 signal 与两个 `use_effect`,把后端行整形为视图结构。
+//! - 交互逻辑:时间窗 `timeframe` 变化即重拉趋势 + 两个 Top 榜 + sparkline 源;
+//!   汇总 / 健康 / 错误各自独立 effect 独立拉取,失败互不影响。
+//! - 样式:根容器 `flex flex-col gap-3 p-4 md:gap-4 md:p-6`;双榜
+//!   `grid-cols-1 md:grid-cols-2`。
+//! - 由哪些小组件组成:`TrendPanel`、`ChannelHealth`、`ErrorsPanel`、
+//!   `StatsSection`、两张 `TopListCard`。
+//! - 数据流通:对外只读后端(`/api/dashboard`、`/api/log/trend`、`/api/log/top`);
+//!   对内把 DTO 派生为 `StatCardView` / `TopRowFE` 交给子组件。
 
 use dioxus::prelude::*;
 
 use client::ApiClient;
 use contract::api::usage::DashboardSummaryDto;
 
-use super::stats::{QuotaRemainingCard, StatCard};
-use super::top_lists::{TopRowFE, TopRowItem};
+use super::shared::{
+    LBL_CHANNELS, LBL_GROUPS, LBL_QUOTA_TODAY, LBL_REQUESTS_TODAY, LBL_TOKENS, LBL_USERS,
+    QuotaView, StatCardView, TESTID_TOP_MODELS_TOTAL, TESTID_TOP_USERS_TOTAL, TOP_MODELS_TITLE,
+    TOP_MODELS_UNIT, TOP_USERS_TITLE, TOP_USERS_UNIT,
+};
+use super::stats::StatsSection;
+use super::top_lists::{TopListCard, TopRowFE};
 use super::trend::TrendPanel;
-use ui::components::card::{Card, CardContent, CardHeader};
 
 use crate::api::{self, TrendBucketFE};
 use crate::shared::fmt_raw;
+
+/// 两张带 sparkline 的卡各自的 SVG 渐变 id(与标签一一对应,避免 url(#id) 串线)。
+const SPARK_GRADIENT_REQUESTS: &str = "sparkline-requests";
+const SPARK_GRADIENT_QUOTA: &str = "sparkline-quota";
 
 /// Layout convention (共享给所有面板组件, 详见仓库 README.md):
 ///   页面网格  `grid-cols-1 md:grid-cols-3 lg:grid-cols-5`  —— 手机 1 栏 / 平板 3 栏 / Web 5 栏。
@@ -149,21 +168,32 @@ pub fn OverviewPanel() -> Element {
     let stats_opt: Option<Vec<(String, &'static str)>> =
         effective_summary.as_ref().map(dashboard_stats);
     // 统计卡四元组:值 / 标签 / sparkline 序列(仅今日两卡) / SVG 渐变 id。
-    // 在 rsx! 之外整形——宏体内 let 不支持任意绑定,for 循环的元组解构才支持。
     // 仅「今日请求 / 今日额度」两张卡带 12 点迷你面积线;
     // 空序列(拉数失败或窗口无数据)由 Sparkline 渲染等高占位。
-    let stat_cards: Vec<(String, &'static str, Option<Vec<f64>>, &'static str)> = stats_opt
+    let stat_cards: Vec<StatCardView> = stats_opt
         .iter()
         .flatten()
         .map(|(value, label)| {
-            let (spark, gid) = match *label {
-                "今日请求" => (Some(spark_calls()), "sparkline-requests"),
-                "今日额度" => (Some(spark_tokens()), "sparkline-quota"),
-                _ => (None, ""),
+            let (spark, gid) = if *label == LBL_REQUESTS_TODAY {
+                (Some(spark_calls()), SPARK_GRADIENT_REQUESTS)
+            } else if *label == LBL_QUOTA_TODAY {
+                (Some(spark_tokens()), SPARK_GRADIENT_QUOTA)
+            } else {
+                (None, "")
             };
-            (value.clone(), *label, spark, gid)
+            StatCardView {
+                value: value.clone(),
+                label,
+                sparkline: spark,
+                gradient_id: gid,
+            }
         })
         .collect();
+    // 第 7 张卡(额度余量)只在拿到 effective_summary 时渲染
+    let quota: Option<QuotaView> = effective_summary.map(|d| QuotaView {
+        remaining: d.quota_remaining,
+        today: d.quota_today,
+    });
     // 数据新鲜度: asOf 的本地时间直接亮在统计卡区头部;解析失败不显示(诚实降级)。
     let as_of_time = summary()
         .as_ref()
@@ -187,99 +217,32 @@ pub fn OverviewPanel() -> Element {
             super::errors::ErrorsPanel {}
 
             // 实时汇总统计卡(数据来自真实后端 /api/dashboard)
-            div { class: "space-y-3",
-                div { class: "flex items-center justify-between",
-                    h2 { class: "text-lg font-medium text-foreground", "总览统计" }
-                    div { class: "flex items-center gap-3",
-                        // asOf 本地时间裸值(维护者要求:不写「数据截至」字样);
-                        // 拉取失败时 summary 为 None,时间位自然隐藏(中性占位)。
-                        if let Some(t) = as_of_time {
-                            span {
-                                class: "text-xs font-mono tabular-nums text-muted-foreground",
-                                "data-testid": "overview-as-of",
-                                "{t}"
-                            }
-                        }
-                    }
-                }
-                section { "data-testid": "overview-stats",
-                    class: "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5",
-                    if loading() {
-                        div { class: "col-span-full rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-muted-foreground", "正在加载统计…" }
-                        }
-                    } else {
-                        for (value, label, sparkline, gradient_id) in stat_cards {
-                            StatCard { value, label, sparkline, gradient_id }
-                        }
-                        // 第 7 张卡:额度余量 + runway 可用天数(W1 后端已供 quotaRemaining);
-                        // 拉取失败时 effective_summary 为全零 DTO,$0.00 + 「无近期消耗」灰点。
-                        if let Some(d) = effective_summary {
-                            QuotaRemainingCard { remaining: d.quota_remaining, today: d.quota_today }
-                        }
-                    }
-                }
+            StatsSection {
+                loading: loading(),
+                cards: stat_cards,
+                quota,
+                as_of: as_of_time,
             }
 
             // Top 10 breakdowns —— 真实 /api/log/top 聚合
-            // 面板卡挂 hoverable（维护者要求悬停边框变亮的动态全站回归）;
-            // 调用方 py-0!/gap-0!/px-4!/py-3!/p-4!/pb-3! 覆盖 Card 基串的
-            // py-6/gap-6/px-6, 尾缀 ! 确保压过 Tailwind 同属性工具类, 保留原紧凑条头布局。
+            // 面板卡挂 hoverable（维护者要求悬停边框变亮的动态全站回归）
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-2 lg:gap-4",
-                // Top 10 Models
-                Card {
-                    hoverable: true,
-                    class: "gap-0! overflow-hidden py-0!",
-                    CardHeader {
-                        class: "border-b border-border/50 px-4! py-3!",
-                        div { class: "flex items-center justify-between gap-3",
-                            h3 { class: "text-sm font-medium text-foreground", "消耗前十模型" }
-                            div { class: "text-right", "data-testid": "top-models-total",
-                                p { class: "text-sm font-semibold font-mono tabular-nums text-foreground", "{fmt_raw(top_models_total())}" }
-                                p { class: "text-[10px] text-muted-foreground", "tokens 合计" }
-                            }
-                        }
-                    }
-                    CardContent {
-                        class: "flex-1 space-y-3 p-4! pb-3!",
-                        if top_models().is_empty() {
-                            p { class: "py-6 text-center text-xs text-muted-foreground", "该时间窗内暂无调用" }
-                        }
-                        for (i, row) in top_models().iter().enumerate() {
-                            TopRowItem { index: i, name: row.name.clone(), amount: row.amount.clone(), growth: row.growth.clone(), share: row.share.clone() }
-                        }
-                        p { class: "pt-1 text-[10px] leading-4 text-muted-foreground/60",
-                            "份额为该行占前 10 名合计的比例 · 增长环比上一等长窗口 tokens"
-                        }
-                    }
+                // Top 10 Models(合计口径 tokens)
+                TopListCard {
+                    title: TOP_MODELS_TITLE,
+                    total_text: fmt_raw(top_models_total()),
+                    total_label: TOP_MODELS_UNIT,
+                    total_testid: TESTID_TOP_MODELS_TOTAL,
+                    rows: top_models(),
                 }
 
-                // Top 10 Users
-                Card {
-                    hoverable: true,
-                    class: "gap-0! overflow-hidden py-0!",
-                    CardHeader {
-                        class: "border-b border-border/50 px-4! py-3!",
-                        div { class: "flex items-center justify-between gap-3",
-                            h3 { class: "text-sm font-medium text-foreground", "消耗前十用户" }
-                            div { class: "text-right", "data-testid": "top-users-total",
-                                p { class: "text-sm font-semibold font-mono tabular-nums text-foreground", "{api::fmt_usd(top_users_total())}" }
-                                p { class: "text-[10px] text-muted-foreground", "$ 合计" }
-                            }
-                        }
-                    }
-                    CardContent {
-                        class: "flex-1 space-y-3 p-4! pb-3!",
-                        if top_users().is_empty() {
-                            p { class: "py-6 text-center text-xs text-muted-foreground", "该时间窗内暂无调用" }
-                        }
-                        for (i, row) in top_users().iter().enumerate() {
-                            TopRowItem { index: i, name: row.name.clone(), amount: row.amount.clone(), growth: row.growth.clone(), share: row.share.clone() }
-                        }
-                        p { class: "pt-1 text-[10px] leading-4 text-muted-foreground/60",
-                            "份额为该行占前 10 名合计的比例 · 增长环比上一等长窗口 tokens"
-                        }
-                    }
+                // Top 10 Users(合计口径 $)
+                TopListCard {
+                    title: TOP_USERS_TITLE,
+                    total_text: api::fmt_usd(top_users_total()),
+                    total_label: TOP_USERS_UNIT,
+                    total_testid: TESTID_TOP_USERS_TOTAL,
+                    rows: top_users(),
                 }
             }
 
@@ -294,11 +257,11 @@ pub fn OverviewPanel() -> Element {
 /// 今日额度按 `fmt_usd` 折算 $ 展示(500_000 = $1),与 Top10 用户榜同口径。
 fn dashboard_stats(d: &DashboardSummaryDto) -> Vec<(String, &'static str)> {
     vec![
-        (d.users.to_string(), "总用户"),
-        (d.channels_enabled.to_string(), "启用渠道"),
-        (d.tokens.to_string(), "令牌"),
-        (d.groups.to_string(), "分组"),
-        (d.requests_today.to_string(), "今日请求"),
-        (api::fmt_usd(d.quota_today), "今日额度"),
+        (d.users.to_string(), LBL_USERS),
+        (d.channels_enabled.to_string(), LBL_CHANNELS),
+        (d.tokens.to_string(), LBL_TOKENS),
+        (d.groups.to_string(), LBL_GROUPS),
+        (d.requests_today.to_string(), LBL_REQUESTS_TODAY),
+        (api::fmt_usd(d.quota_today), LBL_QUOTA_TODAY),
     ]
 }

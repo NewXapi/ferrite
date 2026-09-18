@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use super::cards::{MiniRadarCard, PosterImageCard};
 use super::charts::{GroupQuotaCard, ModelDistributionCard, PerformanceLatencyCard};
 use super::data::{MODELS, ModelStat, composite};
+use super::shared::{DEMO_COUNT_HEAD, DEMO_COUNT_TAIL, DEMO_TITLE};
 
 /// 模型实力榜(演示)区块: 头牌翻牌卡 + 立绘海报卡阵列 + 汇总图表, 全部由 data 层演示数值推导。
 /// 排序口径与恢复前版本一致: 按六维综合分降序。
@@ -17,14 +18,14 @@ pub fn DemoBoard() -> Element {
     ranked.sort_by(|a, b| composite(b).partial_cmp(&composite(a)).unwrap());
 
     rsx! {
-        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": "模型实力榜",
+        section { "data-testid": "leaderboard-demo", role: "region", "aria-label": DEMO_TITLE,
             class: "flex flex-col gap-6 md:gap-8",
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
-                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "模型实力榜" }
+                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "{DEMO_TITLE}" }
                 }
                 span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
-                    "共收录 {ranked.len()} 款主流模型"
+                    "{DEMO_COUNT_HEAD}{ranked.len()}{DEMO_COUNT_TAIL}"
                 }
             }
             // 头牌翻牌卡: 综合分前五, 立绘交替斜角

@@ -2,9 +2,13 @@
 
 use dioxus::prelude::*;
 
+use super::card::ModelCard;
+use super::shared::{
+    BTN_RETRY, MODELS_COUNT_HEAD, MODELS_COUNT_TAIL, MODELS_EMPTY, MODELS_EMPTY_HINT, MODELS_ERR,
+    MODELS_LOADING, MODELS_TITLE,
+};
 use client::ApiClient;
 
-use super::card::ModelCard;
 use crate::api::{self, ModelCardView};
 
 /// 模型页入口: 卡网格(页头 + ModelCard), 数据经 [`api::list_models_api`] 取自
@@ -47,29 +51,29 @@ pub fn ModelsPanel() -> Element {
         div { class: "space-y-4",
             "data-testid": "models-panel",
             role: "region",
-            "aria-label": "模型",
+            "aria-label": MODELS_TITLE,
             div { class: "flex items-baseline justify-between",
-                h2 { class: "text-base font-semibold text-zinc-100", "模型" }
-                span { class: "text-xs text-zinc-600", "共 {total} 个" }
+                h2 { class: "text-base font-semibold text-zinc-100", "{MODELS_TITLE}" }
+                span { class: "text-xs text-zinc-600", "{MODELS_COUNT_HEAD}{total}{MODELS_COUNT_TAIL}" }
             }
             if let Some(e) = err {
                 div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                    p { class: "text-sm text-red-300", "加载模型列表失败" }
+                    p { class: "text-sm text-red-300", "{MODELS_ERR}" }
                     p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                     button {
                         class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent",
                         onclick: move |_| reload.set(reload() + 1),
-                        "重试"
+                        "{BTN_RETRY}"
                     }
                 }
             } else if loading {
                 div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                    p { class: "text-muted-foreground", "正在加载模型列表…" }
+                    p { class: "text-muted-foreground", "{MODELS_LOADING}" }
                 }
             } else if list.is_empty() {
                 div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                    p { class: "text-muted-foreground", "暂无模型" }
-                    p { class: "mt-1 text-xs text-muted-foreground/70", "/api/models 返回空列表 —— 配置模型后这里会展示真实卡片" }
+                    p { class: "text-muted-foreground", "{MODELS_EMPTY}" }
+                    p { class: "mt-1 text-xs text-muted-foreground/70", "{MODELS_EMPTY_HINT}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5",

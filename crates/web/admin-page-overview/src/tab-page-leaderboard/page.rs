@@ -1,5 +1,15 @@
 //! 排行榜 tab 页面层:状态 + 拉取 effect + 区块组合(不含渲染细节)。
 //!
+//! - 是什么:排行榜页根组件,三个区块(演示实力榜 / 厂商份额 / 真实用量榜)的组合者。
+//! - 负责什么:持有榜单与升降速两组取数 signal,把后端行交给子区块。
+//! - 交互逻辑:进面板自动拉一次;时间窗切换与「重试」按钮驱动重拉(`reload`
+//!   计数);刷新按钮已删(8090 预览反馈②)。本面板错误红盒保留重试。
+//! - 样式:根容器 `flex flex-col gap-6 p-4 md:gap-8 md:p-6`;三张口径榜
+//!   `grid-cols-1 xl:grid-cols-3 gap-6`,与下方升降速双卡间距 `mt-6`。
+//! - 由哪些小组件组成:`DemoBoard`、`VendorShareCard`、`UsageToolbar`、
+//!   三张 `RankCard`、`MoversCards`。
+//! - 数据流通:对外只读 `GET /api/log/top?by=model`(当前窗 10 行 + 两窗各 20 行)。
+//!
 //! - 模型实力榜(演示):[`super::demo_board`] 组合 [`super::cards`] / [`super::charts`],
 //!   数值来自 [`super::data`] 演示层,待真实源就绪后替换。
 //! - 真实用量榜:数据来自真实 `GET /api/log/top?by=model`(按模型聚合的消费日志),
@@ -12,13 +22,19 @@ use super::insights::{
     MoversCards, MoversState, VendorShareCard, previous_window_start, top_usage_between,
 };
 use super::rank_board::{RankCard, RankMetric};
+use super::shared::{
+    BTN_RETRY, RANK_CALLS_SUBTITLE, RANK_CALLS_TITLE, RANK_QUOTA_SUBTITLE, RANK_QUOTA_TITLE,
+    RANK_TOKENS_SUBTITLE, RANK_TOKENS_TITLE, USAGE_EMPTY, USAGE_EMPTY_HINT, USAGE_ERR,
+    USAGE_LOADING,
+};
+use super::toolbar::UsageToolbar;
 use crate::api::{UsageTopRow, top_usage_api, window_start};
 
 /// 模型用量排行榜: 真实 /api/log/top(by=model) 聚合 + 演示实力榜区块。
 /// 时间窗与总览页同口径(今天=24h / 本周=7d / 本月=30d / 今年=365d)。
 #[component]
 pub fn LeaderboardPanel() -> Element {
-    let mut timeframe = use_signal(|| "本月");
+    let timeframe = use_signal(|| "本月");
     let mut rows = use_signal(Vec::<UsageTopRow>::new);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
@@ -65,7 +81,6 @@ pub fn LeaderboardPanel() -> Element {
     let data = rows();
     let is_loading = loading();
     let error = err();
-    let tf = timeframe();
 
     rsx! {
         div { class: "flex flex-col gap-6 p-4 md:gap-8 md:p-6",
@@ -77,66 +92,49 @@ pub fn LeaderboardPanel() -> Element {
 
             // 区块二: 真实用量榜(真实 /api/log/top 聚合, #154 接线原样保留)。
             // 时间窗 tab 与标题同行(8090 预览反馈④);介绍语只留一行口径说明。
-            div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
-                div {
-                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "真实用量榜" }
-                    p { class: "mt-1 text-xs text-zinc-400", "后端消费日志聚合 · 窗口内 {data.len()} 个模型有调用" }
-                }
-                div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
-                    for t in ["今天", "本周", "本月", "今年"] {
-                        button {
-                            key: "{t}",
-                            "data-testid": "leaderboard-timeframe-{t}",
-                            class: "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                            class: if tf == t { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
-                            onclick: move |_| timeframe.set(t),
-                            "{t}"
-                        }
-                    }
-                }
-            }
+            UsageToolbar { timeframe, model_count: data.len() }
 
             section { "data-testid": "leaderboard-usage", role: "region", "aria-label": "模型用量排行",
                 if let Some(e) = error {
                     div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                        p { class: "text-sm text-red-300", "加载排行数据失败" }
+                        p { class: "text-sm text-red-300", "{USAGE_ERR}" }
                         p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                         button {
                             class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                             "data-testid": "retry-leaderboard",
                             onclick: move |_| reload.set(reload() + 1),
-                            "重试"
+                            "{BTN_RETRY}"
                         }
                     }
                 } else if is_loading {
                     div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "正在加载排行数据…" }
+                        p { class: "text-zinc-400", "{USAGE_LOADING}" }
                     }
                 } else if data.is_empty() {
                     div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "该时间窗内暂无调用数据" }
-                        p { class: "mt-1 text-xs text-zinc-600", "发起一次 /v1 调用后这里会展示真实用量排行" }
+                        p { class: "text-zinc-400", "{USAGE_EMPTY}" }
+                        p { class: "mt-1 text-xs text-zinc-600", "{USAGE_EMPTY_HINT}" }
                     }
                 } else {
                     // 三卡间距 gap-6(8090 预览反馈④),卡片 p-5 保持
                     div { class: "grid grid-cols-1 gap-6 xl:grid-cols-3 pt-2",
                         RankCard {
-                            title: "Token 消耗 Top",
-                            subtitle: "窗口内 prompt + completion tokens 合计",
+                            title: RANK_TOKENS_TITLE,
+                            subtitle: RANK_TOKENS_SUBTITLE,
                             testid: "leaderboard-tokens",
                             metric: RankMetric::Tokens,
                             rows: data.clone(),
                         }
                         RankCard {
-                            title: "调用次数 Top",
-                            subtitle: "窗口内消费请求数",
+                            title: RANK_CALLS_TITLE,
+                            subtitle: RANK_CALLS_SUBTITLE,
                             testid: "leaderboard-calls",
                             metric: RankMetric::Calls,
                             rows: data.clone(),
                         }
                         RankCard {
-                            title: "费用消耗 Top",
-                            subtitle: "窗口内计费额度(500000 = $1)",
+                            title: RANK_QUOTA_TITLE,
+                            subtitle: RANK_QUOTA_SUBTITLE,
                             testid: "leaderboard-quota",
                             metric: RankMetric::Quota,
                             rows: data,
