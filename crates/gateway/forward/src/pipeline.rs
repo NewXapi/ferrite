@@ -100,11 +100,22 @@ pub async fn forward_once(
 
     // 响应方向：上游格式 → 入站格式。流式逐帧转换，非流式整体转换。
     if task.stream {
+        // 同格式 = 零转换透传：完全不建 encoder（客户端与渠道说同一协议时不该被
+        // 重写字节，也不该在流尾补终止帧——上游的 [DONE] 已经原样透传了，再补一个
+        // 就是两次流终止，e2e 的逐字保真断言实锤过这个坑）。
+        if inbound == upstream_format {
+            let mapped = resp.into_body_stream();
+            return Ok(crate::Forwarded {
+                status,
+                body: Box::pin(mapped),
+                content_type,
+            });
+        }
+
         // 每条流一个 encoder（`&mut self` 持有 block 边界与 tool 碎片状态），
         // 必须与本次请求同生共死——复用会串状态。
         let encoder = formats.resolve(inbound).map(|c| c.stream_encoder());
         let decoder = formats.resolve(upstream_format);
-        let same_format = inbound == upstream_format;
 
         let mapped = futures_util::stream::unfold(
             (
@@ -170,11 +181,6 @@ pub async fn forward_once(
                             return None;
                         }
                     };
-
-                    // 同格式 = 零转换透传（客户端与渠道说同一种协议时不该被重写字节）。
-                    if same_format {
-                        return Some((Ok(chunk), (upstream, scanner, encoder, decoder)));
-                    }
 
                     // 跨格式：扫描器重组成完整行，逐帧 `data:` 负载解码成 IR 事件，
                     // 再交给 encoder 编成入站格式的帧。
