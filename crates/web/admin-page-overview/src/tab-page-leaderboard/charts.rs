@@ -4,11 +4,14 @@
 use dioxus::prelude::*;
 
 use super::data::MODELS;
+use super::shared::{
+    CHART_CIRCUIT_BREAKER, CHART_CIRCUIT_ON, CHART_DIST_SUBTITLE, CHART_DIST_TITLE,
+    CHART_GROUP_BADGE, CHART_GROUP_SUBTITLE, CHART_GROUP_TITLE, CHART_P50, CHART_P90,
+    CHART_REQ_MID, CHART_ROUTE_PRIORITY, CHART_ROUTE_WEIGHT, CHART_SLA_BADGE, CHART_SLA_SUBTITLE,
+    CHART_SLA_TITLE, CHART_SUCCESS, CHART_TPS,
+};
 
-const MODEL_COLORS: [&str; 10] = [
-    "#3b82f6", "#c4b5fd", "#a78bfa", "#facc15", "#fb8500", "#34d399", "#22d3ee", "#f472b6",
-    "#a3e635", "#a1a1aa",
-];
+use crate::shared::MODEL_COLORS;
 
 /// 模型用量与成本占比分布 (参考 new-api consumption-distribution & sub2api ModelDistribution)
 #[component]
@@ -20,9 +23,9 @@ pub fn ModelDistributionCard() -> Element {
             div { class: "flex items-center justify-between gap-3",
                 div {
                     h3 { class: "text-sm font-semibold text-zinc-100",
-                        "模型用量与成本占比"
+                        "{CHART_DIST_TITLE}"
                                             }
-                    p { class: "text-[11px] text-zinc-500", "Token 消耗分布与费用占比" }
+                    p { class: "text-[11px] text-zinc-500", "{CHART_DIST_SUBTITLE}" }
                 }
             }
 
@@ -58,7 +61,7 @@ pub fn ModelDistributionCard() -> Element {
                                     span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
                                     div { class: "min-w-0",
                                         p { class: "truncate text-xs font-medium text-zinc-200 group-hover:text-white", "{m.name}" }
-                                        p { class: "text-[10px] text-zinc-500", "{m.daily_req / 1e3:.0}K 次请求 · 上下文 {m.ctx:.0}K" }
+                                        p { class: "text-[10px] text-zinc-500", "{m.daily_req / 1e3:.0}{CHART_REQ_MID}{m.ctx:.0}K" }
                                     }
                                 }
                                 div { class: "text-right shrink-0 pl-2",
@@ -82,32 +85,32 @@ pub fn PerformanceLatencyCard() -> Element {
             div { class: "flex items-center justify-between",
                 div {
                     h3 { class: "text-sm font-semibold text-zinc-100",
-                        "网关响应与 SLA 性能矩阵"
+                        "{CHART_SLA_TITLE}"
                                             }
-                    p { class: "text-[11px] text-zinc-500", "端到端 P50 延迟、吞吐与高可用" }
+                    p { class: "text-[11px] text-zinc-500", "{CHART_SLA_SUBTITLE}" }
                 }
                 div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400",
                     span { class: "h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" }
-                    "SLA 99.94%"
+                    "{CHART_SLA_BADGE}"
                 }
             }
 
             // 4 项关键健康指标
             div { class: "grid grid-cols-2 gap-2.5",
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "P50 均值延迟" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_P50}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "820 ms" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "P90 尾部延迟" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_P90}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "1,450 ms" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "峰值吞吐 TPS" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_TPS}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "4,210 tok/s" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "平均成功率" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_SUCCESS}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-emerald-400", "99.86%" }
                 }
             }
@@ -156,12 +159,12 @@ pub fn GroupQuotaCard() -> Element {
             div { class: "flex items-center justify-between",
                 div {
                     h3 { class: "text-sm font-semibold text-zinc-100",
-                        "分组配额与倍率分布"
+                        "{CHART_GROUP_TITLE}"
                                             }
-                    p { class: "text-[11px] text-zinc-500", "租户路由分组及倍率消耗" }
+                    p { class: "text-[11px] text-zinc-500", "{CHART_GROUP_SUBTITLE}" }
                 }
                 span { class: "rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400",
-                    "4 个活跃分组"
+                    "{CHART_GROUP_BADGE}"
                 }
             }
 
@@ -184,8 +187,8 @@ pub fn GroupQuotaCard() -> Element {
             }
 
             div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 text-xs text-zinc-400 space-y-1",
-                div { class: "flex justify-between", span { "默认路由权重:" } span { class: "text-zinc-200 font-mono font-medium", "Priority 优先" } }
-                div { class: "flex justify-between", span { "自动降级熔断:" } span { class: "text-emerald-400 font-mono font-medium", "已开启" } }
+                div { class: "flex justify-between", span { "{CHART_ROUTE_WEIGHT}" } span { class: "text-zinc-200 font-mono font-medium", "{CHART_ROUTE_PRIORITY}" } }
+                div { class: "flex justify-between", span { "{CHART_CIRCUIT_BREAKER}" } span { class: "text-emerald-400 font-mono font-medium", "{CHART_CIRCUIT_ON}" } }
             }
         }
     }
