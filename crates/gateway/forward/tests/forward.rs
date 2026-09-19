@@ -5,6 +5,8 @@ use forward::ForwardTask;
 use forward::adapter::{prepare, sanitize_client_headers};
 use forward::egress::{Egress, ReqwestEgress, Timeouts};
 use forward::stream::{AbortGuard, SseContext, finish, pipe_chunk};
+use gateway_protocol_bridge::FormatRegistry;
+use std::sync::Arc;
 use std::time::Duration;
 
 use contract::records::{RouteUnitRecord, SyncMeta};
@@ -347,6 +349,90 @@ fn forward_task_is_cloneable() {
 /// `model` 必须是真名，否则上游报 model not found。
 /// 回归：smoke 发现别名映射未生效，上游收到的仍是公开别名。
 /// resolve_upstream_model 决定 Gemini 路径里的 model: 渠道映射优先, 缺省回落客户端。
+/// 真实 HTTP 回环: Claude 客户端 (打 /v1/messages) 命中 OpenAI 渠道时,
+/// 上游必须收到 /v1/chat/completions —— 这是本 PR 修的 bug 的可观测复现。
+///
+/// forward_once 全链路 (prepare 真实拼 URL → reqwest 真发 → 响应转回入站格式),
+/// mock 上游只回最简 Chat 完成体; 转换失败会直接让测试红。
+#[tokio::test]
+async fn forward_once_routes_claude_client_to_openai_endpoint() {
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    // 单次 mock 上游: 抓请求行, 回最简非流式 Chat 响应。
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let (req_path_tx, req_path_rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let n = stream.read(&mut buf).expect("read");
+        let req = String::from_utf8_lossy(&buf[..n]);
+        // 请求行第一段: "POST /v1/chat/completions HTTP/1.1"
+        let path = req
+            .lines()
+            .next()
+            .and_then(|l| l.split_whitespace().nth(1))
+            .unwrap_or_default()
+            .to_string();
+        let _ = req_path_tx.send(path);
+        let body = serde_json::json!({
+            "id":"chatcmpl-1","object":"chat.completion","created":0,
+            "model":"m","choices":[{"index":0,"message":{
+                "role":"assistant","content":"hi"},"finish_reason":"stop"}],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+        });
+        let bytes = body.to_string();
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+             content-length: {}\r\nconnection: close\r\n\r\n{}",
+            bytes.len(),
+            bytes
+        );
+        use std::io::Write;
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+    });
+
+    // Claude 客户端形状的请求体 + 客户端路径 /v1/messages。
+    let client_body = Bytes::from(
+        serde_json::json!({
+            "model":"m","max_tokens":16,
+            "messages":[{"role":"user","content":"hi"}]
+        })
+        .to_string(),
+    );
+    let task = ForwardTask {
+        candidate: candidate("openai"),
+        path: "/v1/messages".to_string(),
+        headers: vec![("accept".to_string(), "application/json".to_string())],
+        body: client_body,
+        stream: false,
+        provider_type: "openai".to_string(),
+        extra_headers: vec![],
+        inbound_format: ProtocolKind::Anthropic,
+    };
+    // candidate() 的 base_url 指向 example; 换成本地 mock 上游。
+    let mut task = task;
+    task.candidate.base_url = format!("http://127.0.0.1:{port}");
+
+    let egress = ReqwestEgress::new();
+    let formats = Arc::new(FormatRegistry::with_defaults());
+    let timeouts = Timeouts::default();
+
+    let forwarded = forward::pipeline::forward_once(&task, &egress, &formats, &timeouts)
+        .await
+        .expect("forward must succeed");
+
+    assert_eq!(forwarded.status, 200);
+    // 核心断言: 上游收到的路径是 OpenAI 端点, 不是客户端的 /v1/messages。
+    assert_eq!(
+        req_path_rx.recv().expect("upstream saw a request"),
+        "/v1/chat/completions",
+        "Claude 客户端打 OpenAI 渠道必须落到 chat/completions 端点"
+    );
+}
+
 /// model 直接进 URL 路径段, 客户端可发任意串 — 非法值必须被拒, 不能改写上游路径。
 #[test]
 fn resolve_upstream_model_rejects_unsafe_for_url() {
