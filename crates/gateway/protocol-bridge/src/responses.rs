@@ -380,7 +380,7 @@ impl FormatCodec for ResponsesCodec {
             return Ok(Vec::new());
         };
 
-        let mut out = match kind {
+        let out = match kind {
             "response.created" => {
                 let resp = v.get("response").cloned().unwrap_or(json!({}));
                 vec![StreamEvent::MessageStart {
