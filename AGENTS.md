@@ -218,8 +218,9 @@ crates/web/<prefix-feature>/
 > **`.agent/rules/conventions.md`**。
 
 - **UI 验证**：交互元素加 `data-testid`（值取 `name` 属性），容器加 `role` + `aria-label`；
-  每页一份 `specs/ui/<页面>.yaml` 契约；PR 冒烟验证用 `tab.ariaSnapshot()`。
-  禁区：只靠截图肉眼判断、用 class 选择器、不写 ui-spec 文件直接提 PR。
+  PR 冒烟验证用 `tab.ariaSnapshot()` 做 role / name / data-testid 结构化断言
+  （纯 agent 约定，gate 不强制——`specs/ui/` 契约文件从未被 gate 引用，已删除）。
+  禁区：只靠截图肉眼判断、用 class 选择器、绕过 ariaSnapshot 直接提 PR。
   详细操作在 `.agent/skills/ui-validation/SKILL.md`。
 - **Rust**：函数名用动宾结构、见名知目的（`parse_channel_config` 而不是 `do_config`）；
   公共 API 必须写 `///` rust doc（用途、参数、错误、示例），模块头写 `//!`。
