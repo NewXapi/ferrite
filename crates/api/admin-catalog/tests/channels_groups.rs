@@ -52,7 +52,8 @@ async fn channel_crud_flow() {
             0,
             0,
             None,
-            ""
+            "",
+            serde_json::json!({}),
         )
         .await,
         Err(auth::AuthError::BadRequest(_))
@@ -69,7 +70,8 @@ async fn channel_crud_flow() {
             0,
             0,
             None,
-            ""
+            "",
+            serde_json::json!({}),
         )
         .await,
         Err(auth::AuthError::BadRequest(_))
@@ -88,6 +90,7 @@ async fn channel_crud_flow() {
             5,
             Some("gpt-4o".into()),
             "",
+            serde_json::json!({}),
         )
         .await
         .expect("create");
@@ -107,7 +110,8 @@ async fn channel_crud_flow() {
             0,
             0,
             None,
-            ""
+            "",
+            serde_json::json!({}),
         )
         .await,
         Err(auth::AuthError::Conflict(_))
@@ -136,6 +140,7 @@ async fn channel_crud_flow() {
             None,
             Some("r"),
             Some(2),
+            None,
         )
         .await
         .unwrap();
