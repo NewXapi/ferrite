@@ -70,6 +70,11 @@ pub fn SubscriptionFormModal(
     /// 保存按钮点击出口(页面侧组装请求体并调后端)
     on_commit: EventHandler<()>,
 ) -> Element {
+    // 关闭态不渲染遮罩：否则固定层会永久盖住页面（main 的 if show_modal() 守卫，
+    // 拆分时不能丢）
+    if !show_modal() {
+        return rsx! {};
+    }
     rsx! {
         div {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm",
