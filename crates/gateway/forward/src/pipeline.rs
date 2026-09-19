@@ -361,7 +361,7 @@ pub fn capture_prompt_body(body: &bytes::Bytes) -> bytes::Bytes {
 ///
 /// 渠道映射优先 (`upstream_model` 非空); 缺省时回落客户端发的 model
 /// (与 [`rewrite_upstream_model`] 的零改写情形保持一致, 见该函数注释)。
-fn resolve_upstream_model(body: &Bytes, upstream_model: &str) -> String {
+pub fn resolve_upstream_model(body: &Bytes, upstream_model: &str) -> String {
     if !upstream_model.is_empty() {
         return upstream_model.to_string();
     }

@@ -346,6 +346,24 @@ fn forward_task_is_cloneable() {
 /// 上游只认真名：路由单元把 `gpt-4` 映射到 `gpt-4-0613` 时，发出去的体里
 /// `model` 必须是真名，否则上游报 model not found。
 /// 回归：smoke 发现别名映射未生效，上游收到的仍是公开别名。
+/// resolve_upstream_model 决定 Gemini 路径里的 model: 渠道映射优先, 缺省回落客户端。
+#[test]
+fn resolve_upstream_model_prefers_channel_mapping() {
+    use forward::pipeline::resolve_upstream_model;
+    let body = Bytes::from(r#"{"model":"gpt-4","messages":[]}"#);
+    // 渠道有真名映射 → 用真名, 客户端别名作废。
+    assert_eq!(resolve_upstream_model(&body, "gpt-4-0613"), "gpt-4-0613");
+    // 无映射 (空串) → 回落客户端发的 model。
+    assert_eq!(resolve_upstream_model(&body, ""), "gpt-4");
+    // 无映射且体非 JSON → 空, 由 build_url 退回客户端 path。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"not json".as_ref()), ""),
+        ""
+    );
+    // 无 model 字段 → 空。
+    assert_eq!(resolve_upstream_model(&Bytes::from(r#"{"foo":1}"#), ""), "");
+}
+
 #[test]
 fn rewrite_upstream_model_replaces_alias() {
     let body =
