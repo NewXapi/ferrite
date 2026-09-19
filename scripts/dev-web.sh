@@ -48,7 +48,18 @@ ensure_aino() {
     cli=$(ls "$HOME"/.npm/_npx/*/node_modules/@ainotation/mcp/dist/cli.mjs 2>/dev/null | head -1)
     [ -n "$cli" ] || { echo "⚠️  ainotation CLI 未找到(先 npx --yes @ainotation/mcp@beta --help 预热)，本次不接标注"; return 1; }
 
-    # service: 健康则复用，否则守护拉起
+    # service: 健康则复用，否则守护拉起(失败时按 SKILL.md 排障表 repair 后重试一次)
+    start_service() {
+        nohup node "$cli" service >>/tmp/aino-service.log 2>&1 &
+        echo $! >/tmp/aino-service.pid
+        for _ in $(seq 1 15); do
+            [ -f "$HOME/.ainotation/service/connection.json" ] && break
+            sleep 1
+        done
+        AINO_URL=$(jq -r .url "$HOME/.ainotation/service/connection.json" 2>/dev/null || true)
+        [ -n "$AINO_URL" ] && curl -sf -m 3 "$AINO_URL/control/health" \
+            -H "Authorization: Bearer $(jq -r .token "$HOME/.ainotation/service/connection.json")" >/dev/null 2>&1
+    }
     if [ -f "$HOME/.ainotation/service/connection.json" ]; then
         AINO_URL=$(jq -r .url "$HOME/.ainotation/service/connection.json")
         if curl -sf -m 3 "$AINO_URL/control/health" \
@@ -59,13 +70,12 @@ ensure_aino() {
         fi
     fi
     if [ -z "$AINO_URL" ]; then
-        nohup node "$cli" service >>/tmp/aino-service.log 2>&1 &
-        echo $! >/tmp/aino-service.pid
-        for _ in $(seq 1 15); do
-            [ -f "$HOME/.ainotation/service/connection.json" ] && break
-            sleep 1
-        done
-        AINO_URL=$(jq -r .url "$HOME/.ainotation/service/connection.json" 2>/dev/null || true)
+        start_service || true
+        if [ -z "$AINO_URL" ]; then
+            # 典型因: 旧实例残留无主 coordinator socket, 报 already locked —— repair 后重试一次
+            node "$cli" repair --json >/dev/null 2>&1 || true
+            start_service || true
+        fi
         [ -n "$AINO_URL" ] || { echo "⚠️  service 启动失败(见 /tmp/aino-service.log)，本次不接标注"; return 1; }
         echo "ainotation service ✓ $AINO_URL (pid $(cat /tmp/aino-service.pid))"
     fi
