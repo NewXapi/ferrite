@@ -215,6 +215,7 @@ fn forward_task_is_cloneable() {
         stream: false,
         provider_type: "openai".to_string(),
         extra_headers: vec![],
+        inbound_format: gateway_pipeline::ctx::ProtocolKind::OpenAI,
     };
     let clone = task.clone();
     assert_eq!(clone.path, task.path);

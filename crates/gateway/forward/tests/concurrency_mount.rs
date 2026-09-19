@@ -207,7 +207,7 @@ async fn single_mode_concurrency_limit_rejects_third_request() {
     // 在 forward_task 之前的 try_acquire 被拒 → StageError 携带 rate_limited
     // 429 语义；被拒请求不发上游（egress 调用数 == 2）。
     let egress = Arc::new(DelayedEgress::new(Duration::from_millis(200)));
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let stage = Arc::new(ForwardStage::new(egress.clone(), adaptors).with_concurrency(2));
     let results = run_three(stage, candidate("c1")).await;
 
@@ -237,7 +237,7 @@ async fn retry_mode_concurrency_limit_exhausts_budget_with_429() {
     // attempt 的 acquire 都失败（全局信号量换候选也满）→ RetriesExhausted →
     // 终态 Upstream 错误透传最后暂存错误的 429 状态码与并发闸消息。
     let egress = Arc::new(DelayedEgress::new(Duration::from_millis(200)));
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let dispatch = Arc::new(SingleDispatch {
         candidate: candidate("c1"),
     });
@@ -269,7 +269,7 @@ async fn retry_mode_concurrency_limit_exhausts_budget_with_429() {
 async fn concurrency_headroom_allows_all_requests() {
     // 槽位(4)多于并发数(3)：acquire 全部成功，无拒绝路径介入。
     let egress = Arc::new(DelayedEgress::new(Duration::from_millis(100)));
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let dispatch = Arc::new(SingleDispatch {
         candidate: candidate("c1"),
     });
@@ -294,7 +294,7 @@ async fn without_concurrency_mount_behaviour_unchanged() {
     // with_concurrency 未调用：acquire 直接跳过，3 个并发全部成功——
     // 既有测试/生产路径（builder 未调时）零破坏的直接证据。
     let egress = Arc::new(DelayedEgress::new(Duration::from_millis(100)));
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let dispatch = Arc::new(SingleDispatch {
         candidate: candidate("c1"),
     });

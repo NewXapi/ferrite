@@ -10,7 +10,7 @@ use forward::stage::ForwardStage;
 use gateway_pipeline::TokenInfo;
 use gateway_pipeline::ctx::{BodySource, ProtocolKind, RequestMeta, StreamedAccum};
 use gateway_pipeline::pipeline::Pipeline;
-use gateway_protocol_bridge::adaptor::AdaptorRegistry;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 use gateway_proxy::manager::ProxyManager;
 use gateway_proxy::node::ProxyScheme;
@@ -144,7 +144,7 @@ fn make_ctx() -> gateway_pipeline::RequestCtx {
 fn make_pipeline(mock_egress: Arc<MockSseEgress>) -> Arc<Pipeline> {
     let health = Arc::new(MemoryHealthTable::new());
     let dispatcher = Arc::new(Dispatcher::new(Some(make_snapshot()), health));
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let adaptors = Arc::new(FormatRegistry::with_defaults());
     Arc::new(
         Pipeline::new()
             .push(gateway_gate::chain::GateChain::new())
@@ -295,7 +295,7 @@ fn e2e_truncated_stream_returns_truncated_end() {
 #[tokio::test]
 async fn e2e_build_app_without_proxies_responds_200() {
     let health = Arc::new(MemoryHealthTable::new());
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let adaptors = Arc::new(FormatRegistry::with_defaults());
     let egress = Arc::new(MockSseEgress {
         chunks: make_sse_chunks(),
     });
@@ -317,7 +317,7 @@ async fn e2e_build_app_without_proxies_responds_200() {
 #[tokio::test]
 async fn e2e_build_app_with_proxy_node_returns_502() {
     let health = Arc::new(MemoryHealthTable::new());
-    let adaptors = Arc::new(AdaptorRegistry::with_defaults());
+    let adaptors = Arc::new(FormatRegistry::with_defaults());
     let egress = Arc::new(MockSseEgress {
         chunks: make_sse_chunks(),
     });

@@ -119,7 +119,7 @@ fn route_for(key: &str, base: &str) -> SelectedRoute {
 }
 
 fn make_pipeline_with(egress: Arc<SpyEgress>, proxies: Option<Arc<ProxyManager>>) -> Arc<Pipeline> {
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::with_defaults());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::with_defaults());
     let mut stage = ForwardStage::new(egress, adaptors.clone());
     if let Some(proxies) = proxies {
         stage = stage.with_proxies(proxies);

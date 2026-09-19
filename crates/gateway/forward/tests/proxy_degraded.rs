@@ -204,7 +204,7 @@ fn mk_ctx() -> RequestCtx {
 }
 
 fn build_stage(mgr: Arc<ProxyManager>, dispatcher: Arc<Dispatcher>) -> ForwardStage {
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     ForwardStage::new(Arc::new(NeverEgress), adaptors)
         .with_proxies(mgr)
         .with_retry(

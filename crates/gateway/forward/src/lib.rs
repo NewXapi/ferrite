@@ -56,6 +56,12 @@ pub struct ForwardTask {
     /// Vec 形态, 已 lower-case 化; 由 host 组装 ForwardTask 时一次性解析)。
     /// 完整 settings JSON 由 metering/审计消费, forward 只关心 headers 子集。
     pub extra_headers: Vec<(String, String)>,
+    /// 客户端说话的协议 (由请求路径判定) —— 请求方向据此 decode、
+    /// 响应方向据此 encode，使 Claude/Gemini/Responses 客户端拿到本格式响应。
+    ///
+    /// 旧版本没有这个字段，请求方向硬编码 OpenAI、响应恒转 OpenAI，流式路径更
+    /// 完全不做转换（G2）。由 host 从 `RequestCtx.request.inbound_protocol` 注入。
+    pub inbound_format: gateway_pipeline::ctx::ProtocolKind,
 }
 
 /// 转发结果: 上游状态码 + 响应流。

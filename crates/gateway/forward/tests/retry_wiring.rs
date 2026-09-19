@@ -29,7 +29,7 @@ fn stage_with_retry(
     dispatch: Arc<MockDispatch>,
     max_attempts: u32,
 ) -> ForwardStage {
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     ForwardStage::new(egress, adaptors).with_retry(
         dispatch,
         RetryPolicy {
