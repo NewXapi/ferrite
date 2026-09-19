@@ -108,7 +108,8 @@ dev-backend *args:
 dev-web port="8090" mode="":
     #!/usr/bin/env bash
     # 锚定 justfile 所在目录（= 仓库根），使配方可从任意 cwd 调用
-    cd "$(justfile_directory)"/apps/admin-web
+    # ponytail: just 无 justfile_directory 变量（1.58 实测），用内置 justfile() + shell dirname
+    cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
     if [ "{{mode}}" = "debug" ]; then
       dx serve --platform web --port {{port}} --watch false --features debug-auto-login
     else

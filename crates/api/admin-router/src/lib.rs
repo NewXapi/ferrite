@@ -4,8 +4,8 @@ use axum::Router;
 use sqlx::PgPool;
 
 use billing::{
-    AffiliateAppState, CurrencyAppState, TopupAppState, WalletAppState, affiliate_router,
-    currency_router, topup_router, wallet_router,
+    AffiliateAppState, CurrencyAppState, SubscriptionAppState, TopupAppState, WalletAppState,
+    affiliate_router, currency_router, subscription_router, topup_router, wallet_router,
 };
 
 /// 启动时建表 + 聚合 admin-api 子域 Router。
@@ -109,6 +109,11 @@ pub async fn router(
         svc: currency_svc,
         auth: auth_svc.clone(),
     });
+    // billing 订阅套餐子域：管理台「订阅」页 CRUD（0017 表）。
+    let subscription_router = subscription_router(SubscriptionAppState {
+        svc: Arc::new(billing::SubscriptionService::new(pool.clone())),
+        auth: auth_svc.clone(),
+    });
     let affiliate_router = affiliate_router(AffiliateAppState {
         svc: affiliate_svc,
         auth: auth_svc.clone(),
@@ -130,6 +135,7 @@ pub async fn router(
         .merge(redeem_router)
         .merge(wallet_router)
         .merge(currency_router)
+        .merge(subscription_router)
         .merge(affiliate_router)
         .merge(topup_router)
         .merge(options_router)

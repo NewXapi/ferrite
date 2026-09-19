@@ -1,4 +1,10 @@
-//! forward↔protocol-bridge 接线测试：验证请求/响应经过 adaptor 转换。
+//! forward ↔ protocol-bridge 接线测试：验证请求/响应经格式转换。
+//!
+//! 旧版本用 `(source, target)` 有向 `Codec` 的 SpyCodec 验证接线，其中还专门记了
+//! 一条回归——「拿请求方向的 codec 去转响应 → 502 Unsupported」。新抽象下方向由
+//! 方法名承载（`decode_request`/`encode_request` vs `decode_response`/`encode_response`），
+//! 请求与响应共用同一个单格式 codec，该缺陷在结构上不可能：只要有 codec 注册，
+//! 两个方向就都存在。本文件的用例因此改成验证「两跳真的发生、且产物是入站格式」。
 
 use bytes::Bytes;
 use contract::error::NormalizedError;
@@ -6,18 +12,20 @@ use contract::records::RouteUnitRecord;
 use forward::ForwardTask;
 use forward::egress::{Egress, ForwardedResponse, Timeouts};
 use forward::pipeline::forward_once;
-use gateway_protocol_bridge::adaptor::{AdaptorError, AdaptorRegistry, Codec, Protocol};
+use gateway_pipeline::ctx::ProtocolKind;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
 use parking_lot::Mutex;
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 // ---------- mock Egress ----------
 
-/// 假上游：总是返回 200 + 固定 body。
+/// 假上游：返回固定 body，并记录收到的请求体。
 struct MockEgress {
-    /// 记录收到的请求体。
     captured_body: Arc<Mutex<Option<Bytes>>>,
+    response: Bytes,
+    content_type: &'static str,
 }
 
 impl Egress for MockEgress {
@@ -27,93 +35,18 @@ impl Egress for MockEgress {
         _headers: &'a [(String, String)],
         body: Bytes,
         _timeouts: &'a Timeouts,
-    ) -> Pin<
-        Box<
-            dyn std::future::Future<Output = Result<ForwardedResponse, NormalizedError>>
-                + Send
-                + 'a,
-        >,
-    > {
+    ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
         *self.captured_body.lock() = Some(body.clone());
-        let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(
-            Bytes::from_static(b"{\\\"gems\\\":[]}"),
-        )]);
-        Box::pin(async move {
-            Ok(ForwardedResponse::from_stream(
-                200,
-                "application/json",
-                stream,
-            ))
-        })
-    }
-}
-
-// ---------- spy Codec ----------
-
-/// 记录是否被调用，并对 request/response 做可观测的 transform。
-struct SpyCodec {
-    source: Protocol,
-    target: Protocol,
-    request_called: Arc<AtomicBool>,
-    response_called: Arc<AtomicBool>,
-}
-
-impl Codec for SpyCodec {
-    fn source(&self) -> Protocol {
-        self.source
-    }
-    fn target(&self) -> Protocol {
-        self.target
-    }
-    fn adapt_request(&self, body: Bytes) -> Result<Bytes, AdaptorError> {
-        self.request_called.store(true, Ordering::SeqCst);
-        // 可观测 transform：注入 "_proxied":true。
-        let mut v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        v["_proxied"] = serde_json::json!(true);
-        Ok(serde_json::to_vec(&v).unwrap().into())
-    }
-    fn adapt_response(&self, chunk: Bytes) -> Result<Vec<Bytes>, AdaptorError> {
-        self.response_called.store(true, Ordering::SeqCst);
-        // 可观测 transform：每条 chunk 加前缀 "[adapter]"。
-        let s = String::from_utf8_lossy(&chunk);
-        Ok(vec![Bytes::from(format!("[adapter]{s}"))])
+        let payload = self.response.clone();
+        let ct = self.content_type;
+        let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(payload)]);
+        Box::pin(async move { Ok(ForwardedResponse::from_stream(200, ct, stream)) })
     }
 }
 
 // ---------- helpers ----------
 
-/// 注册一个 codec。
-///
-/// 只覆盖 `(source, target)` 一个方向 —— 与内建注册表一致：`Codec` 有向，
-/// 请求与响应各查自己方向。
-fn mk_registry(codec: Arc<dyn Codec>) -> AdaptorRegistry {
-    let mut reg = AdaptorRegistry::new();
-    reg.register(codec);
-    reg
-}
-
-/// 注册请求与响应两个方向的 spy codec，模拟真实注册表的成对登记。
-fn mk_bidi_registry(
-    request_called: Arc<AtomicBool>,
-    response_called: Arc<AtomicBool>,
-) -> AdaptorRegistry {
-    let mut reg = AdaptorRegistry::new();
-    reg.register(Arc::new(SpyCodec {
-        source: Protocol::OpenAi,
-        target: Protocol::Gemini,
-        request_called: request_called.clone(),
-        response_called: response_called.clone(),
-    }));
-    reg.register(Arc::new(SpyCodec {
-        source: Protocol::Gemini,
-        target: Protocol::OpenAi,
-        request_called,
-        response_called,
-    }));
-    reg
-}
-
-fn mk_task(stream: bool) -> ForwardTask {
+fn mk_task(stream: bool, inbound: ProtocolKind, provider_type: &str) -> ForwardTask {
     ForwardTask {
         candidate: dispatch::candidate::Candidate {
             unit: RouteUnitRecord {
@@ -136,177 +69,366 @@ fn mk_task(stream: bool) -> ForwardTask {
             secret: "s".into(),
             base_url: "https://upstream.example".into(),
             upstream_model: "m".into(),
-            provider_type: "gemini".into(),
+            provider_type: provider_type.into(),
             settings: serde_json::Value::Null,
         },
         path: "/v1/chat/completions".to_string(),
         headers: vec![],
-        // 公开名与上游真名一致（常见情形）：别名改写是 no-op，
-        // 这样本文件测的就只是 adaptor 转换，不掺入 model 改写。
-        body: Bytes::from_static(b"{\"model\":\"m\",\"messages\":[]}"),
+        // 公开名与上游真名一致：别名改写是 no-op，本文件测的只是格式转换。
+        body: Bytes::from_static(
+            b"{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}",
+        ),
         stream,
-        provider_type: "gemini".into(),
+        provider_type: provider_type.into(),
         extra_headers: vec![],
+        inbound_format: inbound,
     }
 }
 
-// ---------- tests ----------
-
-#[tokio::test]
-async fn forward_calls_adapt_request_for_non_stream() {
-    let captured = Arc::new(Mutex::new(None));
-    let egress = MockEgress {
-        captured_body: captured.clone(),
-    };
-    let request_called = Arc::new(AtomicBool::new(false));
-    let response_called = Arc::new(AtomicBool::new(false));
-
-    let codec: Arc<dyn Codec> = Arc::new(SpyCodec {
-        source: Protocol::OpenAi,
-        target: Protocol::Gemini,
-        request_called: request_called.clone(),
-        response_called: response_called.clone(),
-    });
-    let reg = mk_registry(codec);
-
-    let task = mk_task(false);
-    let _ = forward_once(&task, &egress, &reg, &Timeouts::default())
-        .await
-        .expect("forward 应成功");
-
-    // adapt_request 被调用
-    assert!(
-        request_called.load(Ordering::SeqCst),
-        "adapt_request 应被调用"
-    );
-    // 上游收到了经过 transform 的 body（含 _proxied 字段）
-    let sent_body = captured.lock().clone().unwrap();
-    let v: serde_json::Value = serde_json::from_slice(&sent_body).unwrap();
-    assert!(
-        v["_proxied"].as_bool().unwrap_or(false),
-        "请求体应被 adapt_request 转换"
-    );
-}
-
-#[tokio::test]
-async fn forward_calls_adapt_response_for_streaming() {
-    let captured = Arc::new(Mutex::new(None));
-    let egress = MockEgress {
-        captured_body: captured.clone(),
-    };
-    let request_called = Arc::new(AtomicBool::new(false));
-    let response_called = Arc::new(AtomicBool::new(false));
-
-    // 响应方向要查 (Gemini → OpenAi)，所以两个方向都得登记。
-    let reg = mk_bidi_registry(request_called.clone(), response_called.clone());
-
-    let task = mk_task(true);
-    let forwarded = forward_once(&task, &egress, &reg, &Timeouts::default())
-        .await
-        .expect("forward 应成功");
-
-    // 消费响应流
+/// 读干一条响应流。
+async fn drain(forwarded: forward::Forwarded) -> Bytes {
     use futures_util::StreamExt;
     let mut body = forwarded.body;
-    let first = body.next().await.unwrap().unwrap();
-
-    // adapt_request 被调用
-    assert!(request_called.load(Ordering::SeqCst));
-    // adapt_response 被调用
-    assert!(
-        response_called.load(Ordering::SeqCst),
-        "adapt_response 应被调用"
-    );
-    // 响应经过 transform（前缀 [adapter]）
-    let s = String::from_utf8_lossy(&first);
-    assert!(
-        s.contains("[adapter]"),
-        "响应应被 adapt_response 转换: got {s}"
-    );
+    let mut out = Vec::new();
+    while let Some(chunk) = body.next().await {
+        out.extend_from_slice(&chunk.expect("chunk"));
+    }
+    Bytes::from(out)
 }
 
+// ---------- 请求方向 ----------
+
+// OpenAI 客户端 → Claude 渠道：请求体必须被转成 Claude 形状（system 顶层、必填 max_tokens）。
+// 旧实现只在「入站恒 OpenAI」的假设下工作，这里显式验证入站格式确实驱动转换。
 #[tokio::test]
-async fn forward_passthrough_when_no_adaptor() {
+async fn openai_client_request_is_translated_to_claude_upstream() {
     let captured = Arc::new(Mutex::new(None));
     let egress = MockEgress {
         captured_body: captured.clone(),
+        response: Bytes::from_static(br#"{"id":"msg_1","type":"message","role":"assistant","model":"m","content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}"#),
+        content_type: "application/json",
     };
 
-    // 空 registry → 透传
-    let reg = AdaptorRegistry::new();
-
-    let task = mk_task(false);
-    let _ = forward_once(&task, &egress, &reg, &Timeouts::default())
-        .await
-        .expect("透传应成功");
-
-    // 上游收到原始 body（没有 _proxied 注入）
-    let sent_body = captured.lock().clone().unwrap();
-    assert_eq!(sent_body, task.body, "无 adaptor 时应原样转发");
-}
-
-/// 请求与响应必须各用自己方向的 codec。
-///
-/// `Codec` 是有向的：内建 `ClaudeCodec` 用 `to_claude` 区分方向，请求方向的
-/// 那个对 `adapt_response` 直接返回 `Unsupported`。用同一个 codec 两头转，
-/// 每个 claude / gemini 渠道的响应都会变成 502。
-///
-/// 回归：smoke 里 claude 渠道请求发出去正常、响应 502 "unsupported conversion:
-/// OpenAi -> Claude"。此处用真实内建注册表（而非双向 SpyCodec）复现。
-#[tokio::test]
-async fn forward_uses_reverse_codec_for_response() {
-    /// 假上游：回 Anthropic Messages 形状的响应。
-    struct ClaudeShapedEgress;
-    impl Egress for ClaudeShapedEgress {
-        fn execute<'a>(
-            &'a self,
-            _url: &'a str,
-            _headers: &'a [(String, String)],
-            _body: Bytes,
-            _timeouts: &'a Timeouts,
-        ) -> Pin<
-            Box<
-                dyn std::future::Future<Output = Result<ForwardedResponse, NormalizedError>>
-                    + Send
-                    + 'a,
-            >,
-        > {
-            let payload = br#"{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet","content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}"#;
-            let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(
-                Bytes::from_static(payload),
-            )]);
-            Box::pin(async move {
-                Ok(ForwardedResponse::from_stream(
-                    200,
-                    "application/json",
-                    stream,
-                ))
-            })
-        }
-    }
-
-    let mut task = mk_task(false);
-    task.provider_type = "claude".to_string();
-
-    let forwarded = forward_once(
+    let task = mk_task(false, ProtocolKind::OpenAI, "claude");
+    let _ = forward_once(
         &task,
-        &ClaudeShapedEgress,
-        &AdaptorRegistry::with_defaults(),
+        &egress,
+        &FormatRegistry::with_defaults(),
         &Timeouts::default(),
     )
     .await
-    .expect("claude 响应应能转回 OpenAI 形状, 而不是 Unsupported");
+    .expect("转发应成功");
 
-    use futures_util::StreamExt;
-    let mut body = forwarded.body;
-    let chunk = body
-        .next()
-        .await
-        .expect("应有响应体")
-        .expect("响应体应可读");
-    let v: serde_json::Value = serde_json::from_slice(&chunk).expect("应是合法 JSON");
+    let sent = captured.lock().clone().unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&sent).expect("发往上游的应是 JSON");
 
-    // 客户端拿到的必须是 OpenAI chat.completion，而不是原始 Anthropic 形状。
-    assert_eq!(v["object"], "chat.completion");
+    assert_eq!(
+        v["model"], "m",
+        "别名改写必须发生在转换之前（否则 model 已被搬进厂商字段）"
+    );
+    assert!(
+        v["max_tokens"].as_u64().is_some_and(|n| n > 0),
+        "Claude 必填的 max_tokens 必须被补上，实际: {v}"
+    );
+    assert!(
+        v.get("messages").is_some(),
+        "Claude 体应有 messages，实际: {v}"
+    );
+}
+
+// Claude 客户端 → Claude 渠道：同格式应零转换直通（不该被解析重写）。
+#[tokio::test]
+async fn same_format_request_passes_through_verbatim() {
+    let captured = Arc::new(Mutex::new(None));
+    let egress = MockEgress {
+        captured_body: captured.clone(),
+        response: Bytes::from_static(b"{}"),
+        content_type: "application/json",
+    };
+
+    let task = mk_task(false, ProtocolKind::Anthropic, "claude");
+    let _ = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("转发应成功");
+
+    let sent = captured.lock().clone().unwrap();
+    // 上游真名改写仍会发生（model 字段），但除此之外字节应保持原样：
+    // 原 body 只有 model+messages，转换若发生会产出 Claude 专属字段。
+    let v: serde_json::Value = serde_json::from_slice(&sent).unwrap();
+    assert!(
+        v.get("max_tokens").is_none(),
+        "同格式不该被注入厂商必填字段，实际: {v}"
+    );
+}
+
+// ---------- 响应方向 ----------
+
+// Claude 渠道响应 → OpenAI 客户端：必须转成 chat.completion 形状。
+// 这是旧实现里那条 502 回归的正向版本——现在只要有 codec 注册就必然成立。
+#[tokio::test]
+async fn claude_upstream_response_is_translated_to_openai_shape() {
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: Bytes::from_static(br#"{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet","content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}"#),
+        content_type: "application/json",
+    };
+
+    let task = mk_task(false, ProtocolKind::OpenAI, "claude");
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("claude 响应应能转回 OpenAI 形状");
+
+    let body = drain(forwarded).await;
+    let v: serde_json::Value = serde_json::from_slice(&body).expect("产物应是 JSON");
+
+    assert_eq!(
+        v["object"], "chat.completion",
+        "响应必须转成 OpenAI 形状，实际: {v}"
+    );
     assert_eq!(v["choices"][0]["message"]["content"], "pong");
+    assert_eq!(
+        v["choices"][0]["finish_reason"], "stop",
+        "Claude 的 end_turn 必须映射成 stop"
+    );
+}
+
+// OpenAI 客户端 → OpenAI 渠道：同格式响应零转换直通。
+#[tokio::test]
+async fn same_format_response_passes_through_verbatim() {
+    let payload = Bytes::from_static(
+        br#"{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}"#,
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: payload.clone(),
+        content_type: "application/json",
+    };
+
+    let task = mk_task(false, ProtocolKind::OpenAI, "openai");
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("转发应成功");
+
+    let body = drain(forwarded).await;
+    assert_eq!(
+        body, payload,
+        "同格式响应必须逐字节透传（不该被解析再序列化）"
+    );
+}
+
+// ---------- 流式：入站格式决定客户端收到什么 ----------
+
+// **G2 核心回归**：Claude 客户端拿到的流式响应必须是 Claude 事件形状。
+// 旧实现流式路径完全不转换（`ctx.upstream` 只在非流式分支写入），客户端只会拿到
+// OpenAI chunk；这里用真实注册表验证出站帧带 Claude 的 `event:` 行。
+#[tokio::test]
+async fn claude_client_streaming_receives_claude_event_shape() {
+    // 上游是 OpenAI 渠道，回 Chat chunk。
+    let upstream_sse = Bytes::from_static(
+        b"data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"po\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ng\"},\"finish_reason\":\"stop\"}]}\n\n\
+data: [DONE]\n\n",
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: upstream_sse,
+        content_type: "text/event-stream",
+    };
+
+    // 客户端说 Claude（路径 /v1/messages 判定为 Anthropic），渠道是 openai。
+    let mut task = mk_task(true, ProtocolKind::Anthropic, "openai");
+    task.path = "/v1/messages".to_string();
+
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("流式转发应成功");
+
+    let body = drain(forwarded).await;
+    let text = String::from_utf8_lossy(&body);
+
+    assert!(
+        text.contains("event: message_start"),
+        "Claude 客户端必须收到 message_start，实际: {text}"
+    );
+    assert!(
+        text.contains("\"type\":\"content_block_delta\""),
+        "Claude 客户端必须收到 content_block_delta，实际: {text}"
+    );
+    assert!(
+        text.contains("event: message_stop"),
+        "Claude 客户端必须收到 message_stop，实际: {text}"
+    );
+    assert!(
+        !text.contains("chat.completion.chunk"),
+        "不得把 OpenAI chunk 原样漏给 Claude 客户端，实际: {text}"
+    );
+
+    // 文本按 Claude 的 delta 语义分散在各帧里：把 `text_delta` 的 text 拼起来，
+    // 拼出的必须是完整原文。直接 grep "pong" 会误判——两个 delta（po / ng）之间
+    // 隔着帧边界，字节流里并不相邻。
+    let deltas: String = text
+        .lines()
+        .filter_map(|l| l.strip_prefix("data: "))
+        .filter_map(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+        .filter(|v| v["type"] == "content_block_delta")
+        .filter_map(|v| v["delta"]["text"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        deltas, "pong",
+        "各 delta 拼起来必须是完整文本，实际: {deltas:?}"
+    );
+}
+
+// OpenAI 客户端流式打 Claude 渠道：必须收到 Chat chunk（不是 Claude 事件）。
+#[tokio::test]
+async fn openai_client_streaming_receives_chat_chunk_shape() {
+    let upstream_sse = Bytes::from_static(
+        b"event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[],\"usage\":{\"input_tokens\":3,\"output_tokens\":0}}}\n\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"pong\"}}\n\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\n",
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: upstream_sse,
+        content_type: "text/event-stream",
+    };
+
+    // 客户端说 OpenAI，渠道是 claude，路径用 Claude 风格（服务端 SSE 形状由上游决定）。
+    let task = mk_task(true, ProtocolKind::OpenAI, "claude");
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("流式转发应成功");
+
+    let body = drain(forwarded).await;
+    let text = String::from_utf8_lossy(&body);
+
+    assert!(
+        text.contains("chat.completion.chunk"),
+        "OpenAI 客户端必须收到 chat chunk，实际: {text}"
+    );
+    assert!(
+        text.contains("\"content\":\"pong\""),
+        "文本增量必须搬过去，实际: {text}"
+    );
+    assert!(
+        !text.contains("event: message_start"),
+        "不得把 Claude 事件原样漏给 OpenAI 客户端，实际: {text}"
+    );
+}
+
+// SSE 规范不要求流以空行结尾：上游最后一帧没跟空行就断开时，该帧不得被丢掉。
+// 丢的往往是收尾帧，客户端会一直等或判定流异常。
+#[tokio::test]
+async fn unterminated_trailing_frame_is_not_dropped() {
+    // 注意结尾：最后一帧的 data 行后**没有**空行分隔符。
+    let upstream_sse = Bytes::from_static(
+        b"data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: upstream_sse,
+        content_type: "text/event-stream",
+    };
+
+    let mut task = mk_task(true, ProtocolKind::Anthropic, "openai");
+    task.path = "/v1/messages".to_string();
+
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("流式转发应成功");
+
+    let body = drain(forwarded).await;
+    let text = String::from_utf8_lossy(&body);
+
+    // 尾部那帧的 finish_reason 必须体现在出站事件里（Claude 侧是 message_delta 的 stop_reason）。
+    assert!(
+        text.contains("\"stop_reason\":\"end_turn\""),
+        "尾部未终结帧不得被丢弃，实际: {text}"
+    );
+}
+
+// 上游在 [DONE] 之后又发数据帧（SSE 规范不允许，但真实上游会犯）：
+// 这些帧不得被编码发给客户端——客户端在终止帧后收到内容是协议违规，
+// 也会让"流已结束"的判定失效。
+#[tokio::test]
+async fn frames_after_done_are_not_forwarded_to_client() {
+    let upstream_sse = Bytes::from_static(
+        b"data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+data: [DONE]\n\n\
+data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"stray\"},\"finish_reason\":null}]}\n\n",
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: upstream_sse,
+        content_type: "text/event-stream",
+    };
+
+    let mut task = mk_task(true, ProtocolKind::Anthropic, "openai");
+    task.path = "/v1/messages".to_string();
+
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("流式转发应成功");
+
+    let body = drain(forwarded).await;
+    let text = String::from_utf8_lossy(&body);
+
+    // 正常内容要到（Claude 侧的 text_delta）。
+    assert!(text.contains("hi"), "终止帧前的内容必须送达，实际: {text}");
+    // 终止帧后那帧的 "stray" 不得出现在出站流里。
+    assert!(
+        !text.contains("stray"),
+        "[DONE] 之后的数据帧不得转发给客户端，实际: {text}"
+    );
+    // 且客户端必须收到恰好一个终止帧（事件行 + data 行各一次，都算同一条）。
+    assert_eq!(
+        text.matches(r#""type":"message_stop""#).count(),
+        1,
+        "必须有且仅有一个终止帧，实际: {text}"
+    );
 }

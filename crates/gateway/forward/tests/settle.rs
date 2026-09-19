@@ -156,7 +156,7 @@ async fn commit_forwarded_settles_non_streamed_into_sink() {
     });
     let table = Arc::new(RecordingPriceTable::default());
     let sink = Arc::new(VecSink::default());
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let stage = ForwardStage::new(egress, adaptors).with_price_table(table.clone(), sink.clone());
 
     let mut ctx = ctx_single_shot();
@@ -196,7 +196,7 @@ async fn unsettlement_path_without_price_table() {
     let egress = Arc::new(FixedEgress {
         body: b"{\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":50}}",
     });
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let stage = ForwardStage::new(egress, adaptors); // 不调 with_price_table
 
     let mut ctx = ctx_single_shot();
@@ -214,7 +214,7 @@ async fn non_streamed_without_usage_falls_back_to_estimate() {
     });
     let table = Arc::new(RecordingPriceTable::default());
     let sink = Arc::new(VecSink::default());
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let stage = ForwardStage::new(egress, adaptors).with_price_table(table, sink.clone());
 
     let mut ctx = ctx_single_shot();

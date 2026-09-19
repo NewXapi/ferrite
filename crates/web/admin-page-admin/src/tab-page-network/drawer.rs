@@ -174,7 +174,11 @@ pub fn ImportPanel() -> Element {
 
     let import = move |_| {
         let n = alias.peek().trim().to_string();
-        let name = if n.is_empty() { MSG_DEFAULT_CHANNEL_NAME.into() } else { n };
+        let name = if n.is_empty() {
+            MSG_DEFAULT_CHANNEL_NAME.into()
+        } else {
+            n
+        };
         let u = url.peek().trim().to_string();
         // 多 key 按行拆分、trim、去空行（与 drawer_write::create_channel_import 约定一致）
         let kvec: Vec<String> = key

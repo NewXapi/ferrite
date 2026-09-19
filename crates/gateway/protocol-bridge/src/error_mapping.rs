@@ -1,7 +1,8 @@
 //! `error_mapping` —— NormalizedError → 各协议错误形状
 //!
 //! 唯一内部错误出口 (`contract::error::NormalizedError`)，本模块
-//! 负责把它映射成 OpenAI / Anthropic / Gemini 各自规范的错误响应体。
+//! 负责把它映射成 OpenAI Chat / OpenAI Responses / Anthropic / Gemini
+//! 各自规范的错误响应体。
 
 use axum::body::Body;
 use bytes::Bytes;
@@ -10,11 +11,27 @@ use gateway_pipeline::ctx::ProtocolKind;
 use gateway_pipeline::error::StageError;
 use http::Response;
 
-/// OpenAI 兼容错误形状 (SDK 解析用)。
+/// OpenAI Chat Completions 兼容错误形状 (SDK 解析用)。
 pub fn to_openai_shape(err: &NormalizedError) -> serde_json::Value {
     serde_json::json!({
         "error": {
             "code": err.code,
+            "message": err.message,
+            "type": classify_openai_error_type(err.code),
+        }
+    })
+}
+
+/// OpenAI Responses 错误形状。
+///
+/// Responses 与 Chat 同属 OpenAI 但错误体不同：客户端 SDK 读的是
+/// `error.{code,message,type}` 且 **`code` 是可空字符串**（不是内部错误码），
+/// `type` 才是分类。旧实现在 [`map_error`] 里把 `OpenAIResp` 与 `OpenAI` 归并到
+/// 同一个分支，Responses 客户端会拿到 Chat 形状——这里拆开。
+pub fn to_responses_shape(err: &NormalizedError) -> serde_json::Value {
+    serde_json::json!({
+        "error": {
+            "code": serde_json::Value::Null,
             "message": err.message,
             "type": classify_openai_error_type(err.code),
         }
@@ -90,10 +107,17 @@ pub fn map_error(e: StageError, target: ProtocolKind) -> Response<Body> {
     };
 
     let (status, body) = match target {
-        ProtocolKind::OpenAI | ProtocolKind::OpenAIResp => (
+        ProtocolKind::OpenAI => (
             http::StatusCode::from_u16(normalized.status)
                 .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR),
             to_openai_shape(&normalized),
+        ),
+        // Responses 与 Chat 是两种响应形状，错误体同样分开——旧实现两者归并，
+        // Responses 客户端会拿到 Chat 形状。
+        ProtocolKind::OpenAIResp => (
+            http::StatusCode::from_u16(normalized.status)
+                .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR),
+            to_responses_shape(&normalized),
         ),
         ProtocolKind::Anthropic => (
             http::StatusCode::from_u16(normalized.status)

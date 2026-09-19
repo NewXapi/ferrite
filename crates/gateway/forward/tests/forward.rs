@@ -5,10 +5,13 @@ use forward::ForwardTask;
 use forward::adapter::{prepare, sanitize_client_headers};
 use forward::egress::{Egress, ReqwestEgress, Timeouts};
 use forward::stream::{AbortGuard, SseContext, finish, pipe_chunk};
+use gateway_protocol_bridge::FormatRegistry;
+use std::sync::Arc;
 use std::time::Duration;
 
 use contract::records::{RouteUnitRecord, SyncMeta};
 use dispatch::candidate::Candidate;
+use gateway_pipeline::ctx::ProtocolKind;
 
 // ---------- 测试辅助 ----------
 
@@ -41,26 +44,140 @@ fn candidate(provider: &str) -> Candidate {
 
 // ---------- adapter ----------
 
+/// 客户端 path 不得决定上游端点 —— 转换后的体是什么格式, URL 就必须是什么端点。
+/// 这是跨格式转换能真正打通的另一半 (体在 protocol-bridge 转, 路径在 adapter 转)。
+#[test]
+fn adapter_url_follows_upstream_protocol_not_client_path() {
+    // Claude 客户端 (打 /v1/messages) 命中 OpenAI 渠道 → 必须 /v1/chat/completions,
+    // 因为体已被编成 Chat 格式; 用客户端的 /v1/messages 会 404。
+    let c = candidate("openai");
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "openai",
+        ProtocolKind::Anthropic,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/v1/chat/completions");
+
+    // Gemini 客户端 命中 Claude 渠道 → /v1/messages, 客户端的 :generateContent 作废。
+    let c = candidate("claude");
+    let p = prepare(
+        &c,
+        "/v1beta/models/gemini-pro:generateContent",
+        "claude",
+        ProtocolKind::Gemini,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/v1/messages");
+
+    // OpenAI 渠道 + Responses 客户端 → Responses 端点 (体是 Responses 格式)。
+    let c = candidate("openai");
+    let p = prepare(
+        &c,
+        "/v1/chat/completions",
+        "openai",
+        ProtocolKind::OpenAIResp,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/v1/responses");
+
+    // Gemini 渠道: model 入路径, verb 随 stream; model 取上游真名而非客户端别名。
+    let c = candidate("gemini");
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "gemini",
+        ProtocolKind::OpenAI,
+        true,
+        "gpt-4-0613",
+        vec![],
+    );
+    assert_eq!(
+        p.url,
+        "https://upstream.example/v1beta/models/gpt-4-0613:streamGenerateContent"
+    );
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "gemini",
+        ProtocolKind::OpenAI,
+        false,
+        "gpt-4-0613",
+        vec![],
+    );
+    assert_eq!(
+        p.url,
+        "https://upstream.example/v1beta/models/gpt-4-0613:generateContent"
+    );
+
+    // passthrough: 客户端 path 原样, 不被改写。
+    let c = candidate("passthrough");
+    let p = prepare(
+        &c,
+        "/custom/endpoint",
+        "passthrough",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/custom/endpoint");
+}
+
 #[test]
 fn adapter_builds_url_per_provider() {
     // openai → base + /v1 + path
     let c = candidate("openai");
-    let p = prepare(&c, "/chat/completions", "openai", vec![]);
+    let p = prepare(
+        &c,
+        "/chat/completions",
+        "openai",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
+        vec![],
+    );
     assert_eq!(p.url, "https://upstream.example/v1/chat/completions");
     assert_eq!(p.auth_header.0, "Authorization");
     assert_eq!(p.auth_header.1, "Bearer sk-openai-secret");
 
     // claude → base + /v1/messages
     let c = candidate("claude");
-    let p = prepare(&c, "/messages", "claude", vec![]);
+    let p = prepare(
+        &c,
+        "/messages",
+        "claude",
+        ProtocolKind::Anthropic,
+        false,
+        "m",
+        vec![],
+    );
     assert!(p.url.ends_with("/v1/messages"));
     assert_eq!(p.auth_header.0, "x-api-key");
     assert_eq!(p.auth_header.1, "sk-claude-secret");
 
     // gemini → base + /v1beta/...
     let c = candidate("gemini");
-    let p = prepare(&c, "/models/gemini-pro:generateContent", "gemini", vec![]);
-    assert!(p.url.contains("/v1beta/models/gemini-pro"));
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "gemini",
+        ProtocolKind::Anthropic,
+        false,
+        "gemini-pro",
+        vec![],
+    );
+    assert_eq!(
+        p.url,
+        "https://upstream.example/v1beta/models/gemini-pro:generateContent"
+    );
     assert_eq!(p.auth_header.0, "x-goog-api-key");
 }
 
@@ -73,6 +190,9 @@ fn adapter_extra_headers_carried_into_merge() {
         &c,
         "/chat/completions",
         "openai",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
         vec![("authorization".to_string(), "Bearer override".to_string())],
     );
     assert_eq!(p.auth_header.0, "Authorization");
@@ -215,6 +335,7 @@ fn forward_task_is_cloneable() {
         stream: false,
         provider_type: "openai".to_string(),
         extra_headers: vec![],
+        inbound_format: gateway_pipeline::ctx::ProtocolKind::OpenAI,
     };
     let clone = task.clone();
     assert_eq!(clone.path, task.path);
@@ -227,6 +348,136 @@ fn forward_task_is_cloneable() {
 /// 上游只认真名：路由单元把 `gpt-4` 映射到 `gpt-4-0613` 时，发出去的体里
 /// `model` 必须是真名，否则上游报 model not found。
 /// 回归：smoke 发现别名映射未生效，上游收到的仍是公开别名。
+/// resolve_upstream_model 决定 Gemini 路径里的 model: 渠道映射优先, 缺省回落客户端。
+/// 真实 HTTP 回环: Claude 客户端 (打 /v1/messages) 命中 OpenAI 渠道时,
+/// 上游必须收到 /v1/chat/completions —— 这是本 PR 修的 bug 的可观测复现。
+///
+/// forward_once 全链路 (prepare 真实拼 URL → reqwest 真发 → 响应转回入站格式),
+/// mock 上游只回最简 Chat 完成体; 转换失败会直接让测试红。
+#[tokio::test]
+async fn forward_once_routes_claude_client_to_openai_endpoint() {
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    // 单次 mock 上游: 抓请求行, 回最简非流式 Chat 响应。
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let (req_path_tx, req_path_rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let n = stream.read(&mut buf).expect("read");
+        let req = String::from_utf8_lossy(&buf[..n]);
+        // 请求行第一段: "POST /v1/chat/completions HTTP/1.1"
+        let path = req
+            .lines()
+            .next()
+            .and_then(|l| l.split_whitespace().nth(1))
+            .unwrap_or_default()
+            .to_string();
+        let _ = req_path_tx.send(path);
+        let body = serde_json::json!({
+            "id":"chatcmpl-1","object":"chat.completion","created":0,
+            "model":"m","choices":[{"index":0,"message":{
+                "role":"assistant","content":"hi"},"finish_reason":"stop"}],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+        });
+        let bytes = body.to_string();
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+             content-length: {}\r\nconnection: close\r\n\r\n{}",
+            bytes.len(),
+            bytes
+        );
+        use std::io::Write;
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+    });
+
+    // Claude 客户端形状的请求体 + 客户端路径 /v1/messages。
+    let client_body = Bytes::from(
+        serde_json::json!({
+            "model":"m","max_tokens":16,
+            "messages":[{"role":"user","content":"hi"}]
+        })
+        .to_string(),
+    );
+    let task = ForwardTask {
+        candidate: candidate("openai"),
+        path: "/v1/messages".to_string(),
+        headers: vec![("accept".to_string(), "application/json".to_string())],
+        body: client_body,
+        stream: false,
+        provider_type: "openai".to_string(),
+        extra_headers: vec![],
+        inbound_format: ProtocolKind::Anthropic,
+    };
+    // candidate() 的 base_url 指向 example; 换成本地 mock 上游。
+    let mut task = task;
+    task.candidate.base_url = format!("http://127.0.0.1:{port}");
+
+    let egress = ReqwestEgress::new();
+    let formats = Arc::new(FormatRegistry::with_defaults());
+    let timeouts = Timeouts::default();
+
+    let forwarded = forward::pipeline::forward_once(&task, &egress, &formats, &timeouts)
+        .await
+        .expect("forward must succeed");
+
+    assert_eq!(forwarded.status, 200);
+    // 核心断言: 上游收到的路径是 OpenAI 端点, 不是客户端的 /v1/messages。
+    assert_eq!(
+        req_path_rx.recv().expect("upstream saw a request"),
+        "/v1/chat/completions",
+        "Claude 客户端打 OpenAI 渠道必须落到 chat/completions 端点"
+    );
+}
+
+/// model 直接进 URL 路径段, 客户端可发任意串 — 非法值必须被拒, 不能改写上游路径。
+#[test]
+fn resolve_upstream_model_rejects_unsafe_for_url() {
+    use forward::pipeline::resolve_upstream_model;
+    // 渠道映射的非法值同样拒 (坏配置不该产出畸形 URL)。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"{}".as_ref()), "a/b"),
+        ""
+    );
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"{}".as_ref()), "../x"),
+        ""
+    );
+    // 单独的 ".." 不是穿越: URL 里它是 "..:verb" 一个段, 放行。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"{}".as_ref()), ".."),
+        ".."
+    );
+    // 客户端非法 model → 不寻址。
+    let bad = Bytes::from(r#"{"model":"x/../../etc"}"#);
+    assert_eq!(resolve_upstream_model(&bad, ""), "");
+    // 合法值照常: 含 . - _ 的模型名是常态。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(r#"{"model":"gemini-1.5.pro"}"#), ""),
+        "gemini-1.5.pro"
+    );
+}
+
+#[test]
+fn resolve_upstream_model_prefers_channel_mapping() {
+    use forward::pipeline::resolve_upstream_model;
+    let body = Bytes::from(r#"{"model":"gpt-4","messages":[]}"#);
+    // 渠道有真名映射 → 用真名, 客户端别名作废。
+    assert_eq!(resolve_upstream_model(&body, "gpt-4-0613"), "gpt-4-0613");
+    // 无映射 (空串) → 回落客户端发的 model。
+    assert_eq!(resolve_upstream_model(&body, ""), "gpt-4");
+    // 无映射且体非 JSON → 空, 由 build_url 退回客户端 path。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"not json".as_ref()), ""),
+        ""
+    );
+    // 无 model 字段 → 空。
+    assert_eq!(resolve_upstream_model(&Bytes::from(r#"{"foo":1}"#), ""), "");
+}
+
 #[test]
 fn rewrite_upstream_model_replaces_alias() {
     let body =

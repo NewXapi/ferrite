@@ -6,9 +6,9 @@ use super::drawer::{DrawerHeader, DrawerTabs, ImportPanel};
 use super::inspector::NodeInspector;
 use super::physics::{display_edge_pairs, edges_read, physics_step};
 use super::shared::{
-    BTN_FIT, BTN_IMPORT, BTN_SETTINGS, MSG_EMPTY, MSG_LOADING, MSG_LOADING_ARIA, MSG_WIRE_DELETE_HINT,
+    BTN_FIT, BTN_IMPORT, BTN_SETTINGS, LBL_ALIAS, LBL_CHANNELS, LBL_DISPATCH, LBL_GROUP,
+    LBL_IMPORT_SUBTITLE, MSG_EMPTY, MSG_LOADING, MSG_LOADING_ARIA, MSG_WIRE_DELETE_HINT,
     SEC_HINT_FOCUS, SEC_HINT_IDLE, SEC_HINT_MOVING, SEC_HINT_WIRING, SEC_SETTINGS_STALE,
-    LBL_ALIAS, LBL_CHANNELS, LBL_DISPATCH, LBL_GROUP, LBL_IMPORT_SUBTITLE,
 };
 use crate::state::EntityStore;
 use crate::tab_page_entities::EntitiesPanel;

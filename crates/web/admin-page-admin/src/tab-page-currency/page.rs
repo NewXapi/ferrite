@@ -167,7 +167,7 @@ pub fn CurrencyPage() -> Element {
         });
     };
 
-    let mut start_edit = move |d: CurrencyView| {
+    let start_edit = move |d: CurrencyView| {
         editing.set(Some(d.code.clone()));
         f_code.set(d.code.clone());
         f_name.set(d.name.clone());
@@ -260,8 +260,8 @@ pub fn CurrencyPage() -> Element {
                 defs: defs(),
                 loading: *loading.read(),
                 err: err(),
-                on_edit: move |d| start_edit(d),
-                on_disable: move |code| disable(code),
+                on_edit: start_edit,
+                on_disable: disable,
                 on_retry: move |_| reload.set(reload() + 1),
             }
 

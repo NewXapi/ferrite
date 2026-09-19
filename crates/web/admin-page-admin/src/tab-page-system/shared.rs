@@ -125,8 +125,7 @@ pub const SEC_ENV: &str = "运行环境";
 /// 运行环境区段说明:数据来源。
 pub const SEC_ENV_NOTE: &str = "采集自服务端进程与数据库连接池的实时诊断数据";
 /// 站点选项区段说明。
-pub const SEC_OPTIONS_NOTE: &str =
-    "运行时选项 (key/value 平表),来自 /api/option 注册表与数据库值";
+pub const SEC_OPTIONS_NOTE: &str = "运行时选项 (key/value 平表),来自 /api/option 注册表与数据库值";
 /// 出口代理节点导入面板的 aria 区域名。
 pub const SEC_PROXY_IMPORT: &str = "出口代理节点导入";
 /// 代理节点运行态面板的 aria 区域名。
@@ -247,8 +246,7 @@ pub const MSG_LOADING: &str = "正在加载系统信息…";
 /// 系统概览:空态标题。
 pub const MSG_EMPTY: &str = "暂无系统信息";
 /// 系统概览:空态说明。
-pub const MSG_EMPTY_HINT: &str =
-    "后端未返回采集数据 —— 服务重启产生指标后这里会展示真实系统状态";
+pub const MSG_EMPTY_HINT: &str = "后端未返回采集数据 —— 服务重启产生指标后这里会展示真实系统状态";
 /// 站点选项:加载态占位。
 pub const MSG_OPTIONS_LOADING: &str = "正在加载站点选项…";
 /// 站点选项:空态占位。

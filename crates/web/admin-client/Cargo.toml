@@ -10,3 +10,5 @@ gloo-net = { workspace = true }
 http = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# std::time::Instant 在 wasm32 上 panic; 见 manage_auth_token.rs 头注释
+web-time = "1.1"

@@ -1,22 +1,22 @@
-//! 订阅套餐卡片:单张套餐的概览(ID 徽标 + 标题 + 状态/分组徽标 + 开关 +
-//! 编辑/删除 + 副标题 + 五格指标条 + Stripe/Creem 徽标)。
+//! 订阅套餐卡片:单张套餐的概览(标识徽标 + 标题 + 状态/分组徽标 + 开关 +
+//! 编辑/删除 + 五格指标条)。
 //!
 //! 纯展示组件:数据以值传入(`PlanRow`),编辑 / 启停 / 删除事件通过
 //! `on_edit` / `on_toggle` / `on_delete` 抛回页面(传入 plans 列表中的下标),
-//! 写回逻辑在 `page` 的 `SubscriptionsPage` 里。
+//! 写回逻辑(真实后端调用)在 `page` 的 `SubscriptionsPage` 里。
 
 use dioxus::prelude::*;
 
 use super::shared::{
-    BTN_EDIT, LBL_DISABLED, LBL_ENABLED, LBL_GROUP_PREFIX, LBL_PAY_CHANNEL, LBL_PERIOD, LBL_PRICE,
-    LBL_QUOTA, LBL_RESET_CYCLE, LBL_UNLIMITED, OPT_NO_UPGRADE, ToggleSwitch,
+    BTN_EDIT, LBL_DISABLED, LBL_ENABLED, LBL_GROUP_PREFIX, LBL_PERIOD, LBL_PRICE, LBL_QUOTA,
+    LBL_UNLIMITED, ToggleSwitch,
 };
 use crate::state::PlanRow;
 
 /// 订阅套餐卡片
 ///
-/// 【是什么】单张订阅套餐的概览卡:ID 徽标 + 标题 + 状态/分组徽标 + 开关 +
-/// 编辑/删除 + 副标题 + 五格指标条 + 第三方配置徽标。
+/// 【是什么】单张订阅套餐的概览卡:标识徽标 + 标题 + 状态/分组徽标 + 开关 +
+/// 编辑/删除 + 五格指标条(价格 / 有效期 / 套餐额度 / 升级分组 / 限购)。
 ///
 /// 【做什么】按传入的 `PlanRow` 值渲染一张卡;不负责写回(启停/编辑/删除
 /// 均由回调抛回页面)、不负责列表容器与弹窗。
@@ -24,16 +24,20 @@ use crate::state::PlanRow;
 /// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
 /// - 点开关 `ToggleSwitch` → `on_toggle.call(index)`;点「编辑」→
 ///   `on_edit.call(index)`;点「✕」→ `on_delete.call(index)`。
-///   三个回调都只带本卡下标,由页面决定改 `plans` 哪一行。
+///   三个回调都只带本卡下标,由页面决定改 `plans` 哪一行(页面按下标取行,
+///   再以行的 `key` 调真实后端端点)。
 /// - 价格/额度/有效期等派生串(如 `quota <= 0` 时显示「无限制」)在渲染前
 ///   算好,纯展示。
 /// 数据交互:本组件**不发任何网络请求**。
 ///
+/// 【标识徽标】后端无 new-api 数字 id 列(`PlanRow.id` 恒为 `None`),徽标
+/// 改用 UUID 前缀(行 `key` 的前 8 字符),保证每行有稳定可辨识的标识;
+/// hover 时 `title` 显示完整 key。
+///
 /// 【样式】卡片 `group flex flex-col rounded-xl border border-zinc-800
 /// bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-700
 /// hover:bg-zinc-900/90 shadow-md`;头部 `flex flex-wrap items-start
-/// justify-between gap-2.5`;ID 徽标 `rounded-md border border-zinc-700/80
-/// bg-zinc-800 font-mono`;状态徽标按 `enabled` 切绿/灰两套圆角 pill;
+/// justify-between gap-2.5`;状态徽标按 `enabled` 切绿/灰两套圆角 pill;
 /// 指标条 `grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3
 /// border-t border-zinc-800/70`(手机 2 / sm 3 / md 5 列)。
 ///
@@ -43,8 +47,8 @@ use crate::state::PlanRow;
 /// - 对内(入):`plan`(该行 `PlanRow` 全量数据,页面 `plans` signal 中一行
 ///   的克隆)、`index`(在页面 `plans` 列表中的下标,回调原样回传)。
 /// - 对外(出):`on_edit(index)` → 页面 `open_edit`(开弹窗回填);
-///   `on_toggle(index)` → 页面就地取反 `plans[i].enabled`;
-///   `on_delete(index)` → 页面 `plans.remove(i)`。
+///   `on_toggle(index)` → 页面以同一 `name` 重建 upsert 体并取反 `enabled`;
+///   `on_delete(index)` → 页面按行 `key` 调 DELETE 端点。
 #[component]
 pub fn PlanCard(
     plan: PlanRow,
@@ -54,94 +58,101 @@ pub fn PlanCard(
     on_toggle: EventHandler<usize>,
     on_delete: EventHandler<usize>,
 ) -> Element {
+    // 预构建每行所需 owned 值:onclick 闭包在 rsx 构造之后才触发,
+    // 那时 plans.read() 的借用 guard 已释放,闭包只能捕获 owned 数据。
     let title_txt = plan.title.clone();
-    let sub_txt = plan.subtitle.clone();
-    let price_str = format!("${:.2}", plan.price);
+    let price_sym = if plan.currency == "USD" { "$" } else { "¥" };
+    let price_str = format!("{price_sym}{:.2}", plan.price);
+    // 后端无 new-api 数字 id 列(恒 None):徽标改用 UUID 前缀。
+    let badge_txt = plan
+        .id
+        .map(|n| format!("#{n}"))
+        .unwrap_or_else(|| plan.key.chars().take(8).collect());
+    let period_str = format!("{} 天", plan.period_val);
     let quota_str = if plan.quota <= 0.0 {
         LBL_UNLIMITED.to_string()
     } else {
         format!("{}", plan.quota)
     };
-    let period_str = format!("{} {}", plan.period_val, plan.period_unit);
+    let group_txt = if plan.group.is_empty() {
+        "不升级".to_string()
+    } else {
+        plan.group.clone()
+    };
+    let limit_txt = if plan.max_per_user > 0 {
+        format!("{}", plan.max_per_user)
+    } else {
+        "不限".to_string()
+    };
+    let cur_enabled = plan.enabled;
+    let row_key = plan.key.clone();
+    let edit_id = format!("subscriptions-edit-{}", plan.key);
+    let del_id = format!("subscriptions-delete-{}", plan.key);
 
     rsx! {
         div {
-            key: "{plan.id}",
+            key: "{row_key}",
             class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/90 shadow-md",
 
-            // 卡片头部行: ID + 标题 + 状态/分组徽标 + 操作按钮
+            // 卡片头部行: 标识 + 标题 + 状态/分组徽标 + 操作按钮
             div { class: "flex flex-wrap items-start justify-between gap-2.5",
                 div { class: "flex items-center gap-2.5 min-w-0 flex-1",
                     span { class: "shrink-0 rounded-md border border-zinc-700/80 bg-zinc-800 px-2 py-0.5 text-xs font-mono font-bold text-zinc-300",
-                        "#{plan.id}"
+                        title: "{row_key}",
+                        "{badge_txt}"
                     }
                     h3 { class: "truncate text-base font-bold text-zinc-100", "{title_txt}" }
                     span {
-                        class: if plan.enabled { "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400" } else { "rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500" },
-                        if plan.enabled { {LBL_ENABLED} } else { {LBL_DISABLED} }
+                        class: if cur_enabled { "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400" } else { "rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500" },
+                        if cur_enabled { "{LBL_ENABLED}" } else { "{LBL_DISABLED}" }
                     }
-                    if !plan.group.is_empty() && plan.group != OPT_NO_UPGRADE {
+                    if !plan.group.is_empty() && plan.group != "不升级" {
                         span { class: "rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-400 uppercase",
-                            {LBL_GROUP_PREFIX} "{plan.group}"
+                            "{LBL_GROUP_PREFIX}{plan.group}"
                         }
                     }
                 }
                 div { class: "flex items-center gap-2 shrink-0",
                     ToggleSwitch {
-                        on: plan.enabled,
+                        on: cur_enabled,
                         on_toggle: move |_| on_toggle.call(index),
                     }
                     button {
                         class: "rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 transition-colors hover:bg-zinc-700 hover:text-white",
+                        "data-testid": edit_id,
                         onclick: move |_| on_edit.call(index),
-                        {BTN_EDIT}
+                        "{BTN_EDIT}"
                     }
                     button {
                         class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300",
+                        "data-testid": del_id,
                         onclick: move |_| on_delete.call(index),
                         "✕"
                     }
                 }
             }
 
-            // 副标题
-            if !sub_txt.is_empty() {
-                p { class: "mt-1.5 text-xs text-zinc-400 leading-relaxed", "{sub_txt}" }
-            }
-
-            // 关键指标条 (对标 Image #5 字段)
+            // 关键指标条 — 只展示后端实际返回的字段
             div { class: "mt-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3 border-t border-zinc-800/70 text-xs",
                 div {
-                    span { class: "text-[11px] text-zinc-500 block", {LBL_PRICE} }
+                    span { class: "text-[11px] text-zinc-500 block", "{LBL_PRICE}" }
                     span { class: "font-mono font-bold text-sm text-emerald-400", "{price_str}" }
                 }
                 div {
-                    span { class: "text-[11px] text-zinc-500 block", {LBL_PERIOD} }
+                    span { class: "text-[11px] text-zinc-500 block", "{LBL_PERIOD}" }
                     span { class: "font-medium text-zinc-200", "{period_str}" }
                 }
                 div {
-                    span { class: "text-[11px] text-zinc-500 block", {LBL_QUOTA} }
+                    span { class: "text-[11px] text-zinc-500 block", "{LBL_QUOTA}" }
                     span { class: "font-mono font-semibold text-amber-300", "{quota_str}" }
                 }
                 div {
-                    span { class: "text-[11px] text-zinc-500 block", {LBL_PAY_CHANNEL} }
-                    span { class: "text-zinc-300 font-medium", "{plan.payment_method}" }
+                    span { class: "text-[11px] text-zinc-500 block", "升级分组" }
+                    span { class: "text-zinc-300 font-medium", "{group_txt}" }
                 }
                 div {
-                    span { class: "text-[11px] text-zinc-500 block", {LBL_RESET_CYCLE} }
-                    span { class: "text-zinc-400", "{plan.reset_cycle}" }
-                }
-            }
-
-            // 第三方配置徽标展示
-            if !plan.stripe_price_id.is_empty() || !plan.creem_product_id.is_empty() {
-                div { class: "mt-2.5 flex flex-wrap gap-2 text-[10px] text-zinc-500 font-mono",
-                    if !plan.stripe_price_id.is_empty() {
-                        span { class: "rounded bg-zinc-950 px-1.5 py-0.5 border border-zinc-800", "Stripe: {plan.stripe_price_id}" }
-                    }
-                    if !plan.creem_product_id.is_empty() {
-                        span { class: "rounded bg-zinc-950 px-1.5 py-0.5 border border-zinc-800", "Creem: {plan.creem_product_id}" }
-                    }
+                    span { class: "text-[11px] text-zinc-500 block", "限购" }
+                    span { class: "text-zinc-400", "{limit_txt}" }
                 }
             }
         }

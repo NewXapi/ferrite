@@ -1,259 +1,377 @@
-//! 订阅套餐管理页:单栏卡片列表 + 三 Tab 编辑/新建弹窗(本地演示态,
-//! 订阅套餐后端暂未实现)。
+//! 订阅套餐 tab 页面入口(`SubscriptionsPage`)。
 //!
-//! 本文件只保留状态与写回逻辑(`open_edit` / `open_new` / `commit` /
-//! 卡片启停删除),以及页面级布局(诚实横幅 + 顶部栏 + 卡片列表容器);
-//! 渲染细节拆给 `tab-page-subscriptions-card`(套餐卡片)与
-//! `tab-page-subscriptions-modal`(编辑弹窗 + 三个 Tab 体)。
+//! 数据走真实后端 `/api/subscriptions`:列表由本页 `use_effect` 拉取进本地
+//! signal;增/删/改由本页直接调 `crate::api` 的订阅端点,成功后 reload 重拉
+//! 全表(后端按 `sort_order` 排序,本地插入无法保证位次),失败显示错误条。
+//! 后端按 name upsert(同名保存即更新该行,改名 = 新建一行),故写回不依赖
+//! 列表下标,一律按返回的 key 定位。
+//!
+//! 弹窗与卡片拆分到 `modal.rs` / `card.rs`;文案常量在 `shared.rs`。
 
 use dioxus::prelude::*;
 
+use client::ApiClient;
+use contract::api::billing::SubscriptionUpsertRequest;
+
+use crate::api::{
+    delete_subscription_api, list_groups_api, list_subscriptions_api, upsert_subscription_api,
+};
+use crate::state::{PlanRow, map_subscription_view};
+
 use super::card::PlanCard;
 use super::modal::SubscriptionFormModal;
-use super::shared::{
-    BTN_NEW_PLAN, OPT_DOWNGRADE_PREV, OPT_NO_UPGRADE, OPT_PAY_ONLY_SPECIES, OPT_RESET_NEVER,
-    OPT_UNIT_MONTH, SEC_HONEST_BANNER, SEC_PAYMENT_HINT,
-};
-use crate::state::{EntityStore, PlanRow};
+use super::shared::{BTN_NEW_PLAN, MSG_EMPTY, MSG_LOAD_FAIL_PREFIX, MSG_LOAD_FAIL_SUFFIX};
 
-/// 订阅套餐管理页
+/// 以某行现有值重建 upsert 请求体(启停切换用):后端按 name 定位行
+/// 并整体回写这些列,返回更新后的视图。price 取规范字符串形式。
+fn rebuild_req(p: &PlanRow, enabled: bool) -> SubscriptionUpsertRequest {
+    SubscriptionUpsertRequest {
+        name: p.title.clone(),
+        price: format!("{}", p.price),
+        currency: p.currency.clone(),
+        // duration_days 后端要求 >= 1;防御非法存量行(0 天)。
+        duration_days: p.period_val.max(1),
+        // quota 已是展示口径,原样回传(后端入库侧自己 ×500_000)。
+        quota: p.quota,
+        upgrade_group: if p.group.is_empty() || p.group == "不升级" {
+            None
+        } else {
+            Some(p.group.clone())
+        },
+        // 0 = 不限 → None(后端 max_purchases 列可空)。
+        max_purchases: if p.max_per_user > 0 {
+            Some(p.max_per_user)
+        } else {
+            None
+        },
+        enabled: Some(enabled),
+    }
+}
+
+/// 订阅管理: 单栏卡牌展示 (web/平板/手机均为 1 栏) + 两 Tab 编辑弹窗。
 ///
-/// 【是什么】订阅套餐 tab 的页面入口:诚实横幅 + 顶部栏 + 单栏套餐卡列表
-/// + 三 Tab 编辑/新建弹窗。
+/// 数据走真实后端 `/api/subscriptions`:列表由本页 `use_effect` 拉取进本地
+/// signal;增/删/改由本页直接调 `crate::api` 的订阅端点,成功后 reload 重拉
+/// 全表,失败显示错误条。四态渲染(loading / error / empty / data)对齐
+/// CurrencyPage 惯例。
 ///
-/// 【做什么】持有 21 个 `f_*` 表单 signal 与弹窗开关状态,提供 `open_edit` /
-/// `open_new` / `commit` 三个写回闭包,以及卡片启停/删除的本地改动。
-/// 不负责卡片与弹窗的渲染细节(分别在 `card.rs` / `modal.rs`)。
-///
-/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
-/// - 点卡片「编辑」→ `open_edit(i)` 把该行值回填进各 `f_*` signal,
-///   `editing_idx = Some(i)`,`modal_tab = 0`,开弹窗。
-/// - 点「新建套餐」→ `open_new` 把字段重置为默认值(支付方式「仅扣菌种」、
-///   分组「不升级」、降级分组「降级到购买前分组」、有效期 1 个月等),
-///   `editing_idx = None`,开弹窗。
-/// - 弹窗内点「保存更改」→ `commit`:标题 trim 后为空则直接 return(不写回),
-///   否则组 `PlanRow`,按 `editing_idx` 决定原地替换还是插到列表头,关弹窗。
-/// - 卡片开关/删除 → 就地改 `plans` signal(取反 enabled / remove 该行)。
-/// 数据交互:本页**不发任何网络请求**,数据全走 `EntityStore` 本地演示态
-/// (订阅套餐后端暂未实现,横幅已明示)。
-///
-/// 【样式】根容器 `flex flex-col gap-4 w-full`;诚实横幅 `rounded-xl border
-/// border-zinc-700/60 bg-zinc-900/60 px-4 py-3`;顶部栏 `rounded-xl border
-/// border-amber-500/20 bg-amber-500/5`,新建按钮 `bg-amber-400` 圆角实底;
-/// 卡片列表容器 `flex flex-col gap-3`(单栏,Web/平板/手机统一一栏)。
-///
-/// 【子组件组成】`PlanCard`(单张套餐卡)、`SubscriptionFormModal`(编辑/新建
-/// 弹窗,内含三个 Tab 体);横幅与顶部栏为原生元素。
+/// 【子组件组成】`PlanCard`(单张套餐卡,纯展示 + 三个回调出口)、
+/// `SubscriptionFormModal`(两 Tab 编辑弹窗,表单 signal 由本页持有并传入)。
 ///
 /// 【数据流】
-/// - 对内(入):无 props;`store`(context 注入的 `EntityStore`)、
-///   `plans` / `groups`(从 store 取出的 signal 句柄)与全部 `f_*` 表单
-///   signal、`show_modal` / `modal_tab` / `editing_idx` 均由本页持有。
-/// - 对外(出):把 `groups` 与 21 个 `f_*` signal 以 Signal prop 注入弹窗,
-///   弹窗直接写这些 signal;`on_cancel` 关弹窗;`on_submit` 走本页 `commit`
-///   写 `plans`。`PlanCard` 的三个回调分别指向 `open_edit` / 就地改 `plans`。
+/// - 列表:`use_effect` 内 `list_subscriptions_api` → `map_subscription_view`
+///   → `plans` signal;`reload` 计数器变更即重拉。
+/// - 写回:`commit`(新建/编辑保存)/ 行内启停 / 行内删除均 spawn 异步调用,
+///   成功后 `reload += 1` 触发重拉,失败写 `action_err` 红条。
 #[component]
 pub fn SubscriptionsPage() -> Element {
-    let store = use_context::<EntityStore>();
-    let mut plans = store.plans;
-    let groups = store.groups;
+    // 列表数据走本地 signal(同 CurrencyPage/AliasesPage 范式):
+    // EntityStore 的 hydrate 灌入的是一次性实例,上下文 store 无人填充,
+    // 订阅页读 store.plans 会永远空——列表必须自己拉。
+    let mut plans = use_signal(Vec::<PlanRow>::new);
+    let mut loading = use_signal(|| true);
+    let mut err = use_signal(|| None::<String>);
+    // 写回成功后 +1 触发重拉:后端按 sort_order 排序,本地插入无法保证位次。
+    // 注意:外层绑定不 mutate——写路径里 `let mut reload = reload;` 各自拷贝
+    // 出可变副本(Signal 是 Copy),外层只需只读。
+    let reload = use_signal(|| 0u32);
+    // 「升级分组」下拉候选项(真实分组名)。
+    let mut group_names = use_signal(Vec::<String>::new);
 
-    // 弹窗开关状态:跨组件交互(顶部栏新建按钮 / 卡片编辑按钮 / 弹窗关闭按钮
-    // 三处都要读写),故提升到页面层,以 Signal prop 传入弹窗。
+    use_effect(move || {
+        let _ = reload();
+        loading.set(true);
+        err.set(None);
+        spawn(async move {
+            let client = ApiClient::shared().clone();
+            // 分组名先拉(快、小):失败不阻塞套餐列表,下拉退化到只有「不升级」。
+            match list_groups_api(&client).await {
+                Ok(gs) => group_names.set(gs.into_iter().map(|g| g.name).collect()),
+                Err(_) => group_names.set(Vec::new()),
+            }
+            match list_subscriptions_api(&client).await {
+                Ok(items) => {
+                    plans.set(items.into_iter().map(map_subscription_view).collect());
+                    loading.set(false);
+                }
+                Err(e) => {
+                    err.set(Some(e.to_string()));
+                    loading.set(false);
+                }
+            }
+        });
+    });
+
     let mut show_modal = use_signal(|| false);
     let mut modal_tab = use_signal(|| 0u8);
     let mut editing_idx = use_signal(|| None::<usize>);
 
-    // 基本信息表单字段:21 个 f_* signal 中以 Signal prop 注入弹窗、由弹窗
-    // 内的输入框直接写回。放页面层是因为它们由「打开弹窗」这一跨组件动作
-    // (open_edit / open_new)初始化,且 commit 在页面侧读取它们组装 PlanRow。
-    let mut f_id = use_signal(|| 0u32);
+    // 写反馈三信号(loading / error / ok)
+    let mut saving = use_signal(|| false);
+    let mut action_err = use_signal(|| None::<String>);
+    let mut ok_msg = use_signal(|| None::<String>);
+
+    // ---- Tab 0 基本信息:名称 / 价格 / 币种 / 额度 ----
     let mut f_title = use_signal(String::new);
-    let mut f_subtitle = use_signal(String::new);
     let mut f_price = use_signal(|| "0".to_string());
+    let mut f_currency = use_signal(|| "CNY".to_string());
     let mut f_quota = use_signal(|| "0".to_string());
-    let mut f_currency_price = use_signal(|| "0".to_string());
-    let mut f_payment_method = use_signal(|| OPT_PAY_ONLY_SPECIES.to_string());
-    let mut f_group = use_signal(|| OPT_NO_UPGRADE.to_string());
-    let mut f_downgrade_group = use_signal(|| OPT_DOWNGRADE_PREV.to_string());
+    // ---- Tab 1 规则与周期:启用 / 有效期天数 / 升级分组 / 限购 ----
+    let mut f_duration = use_signal(|| "30".to_string());
+    let mut f_group = use_signal(|| "不升级".to_string());
     let mut f_limit = use_signal(|| "0".to_string());
-    let mut f_sort = use_signal(|| "0".to_string());
-
-    // 规则与周期字段:归属同上,由弹窗「规则与周期」Tab 读写。
     let mut f_enabled = use_signal(|| true);
-    let mut f_allow_redeem = use_signal(|| true);
-    let mut f_allow_wallet = use_signal(|| true);
-    let mut f_period_val = use_signal(|| "1".to_string());
-    let mut f_period_unit = use_signal(|| OPT_UNIT_MONTH.to_string());
-    let mut f_reset_cycle = use_signal(|| OPT_RESET_NEVER.to_string());
-
-    // 第三方支付字段:归属同上,由弹窗「第三方支付配置」Tab 读写。
-    let mut f_stripe_id = use_signal(String::new);
-    let mut f_creem_id = use_signal(String::new);
-    let mut f_waffo_id = use_signal(String::new);
 
     let open_edit = move |i: usize| {
         let p = plans.read()[i].clone();
-        f_id.set(p.id);
         f_title.set(p.title);
-        f_subtitle.set(p.subtitle);
         f_price.set(format!("{}", p.price));
+        f_currency.set(p.currency);
         f_quota.set(format!("{}", p.quota));
-        f_currency_price.set(format!("{}", p.currency_price));
-        f_payment_method.set(p.payment_method);
-        f_group.set(p.group);
-        f_downgrade_group.set(p.downgrade_group);
+        f_duration.set(format!("{}", p.period_val.max(1)));
+        f_group.set(if p.group.is_empty() {
+            "不升级".into()
+        } else {
+            p.group
+        });
         f_limit.set(format!("{}", p.max_per_user));
-        f_sort.set(format!("{}", p.sort_order));
         f_enabled.set(p.enabled);
-        f_allow_redeem.set(p.allow_redeem);
-        f_allow_wallet.set(p.allow_wallet);
-        f_period_val.set(format!("{}", p.period_val));
-        f_period_unit.set(p.period_unit);
-        f_reset_cycle.set(p.reset_cycle);
-        f_stripe_id.set(p.stripe_price_id);
-        f_creem_id.set(p.creem_product_id);
-        f_waffo_id.set(p.waffo_product_id);
         editing_idx.set(Some(i));
+        action_err.set(None);
+        ok_msg.set(None);
         modal_tab.set(0);
         show_modal.set(true);
     };
 
     let open_new = move |_| {
-        let next_id = plans.read().iter().map(|p| p.id).max().unwrap_or(0) + 1;
-        f_id.set(next_id);
         f_title.set(String::new());
-        f_subtitle.set(String::new());
-        f_price.set("0".to_string());
-        f_quota.set("0".to_string());
-        f_currency_price.set("0".to_string());
-        f_payment_method.set(OPT_PAY_ONLY_SPECIES.to_string());
-        f_group.set(OPT_NO_UPGRADE.to_string());
-        f_downgrade_group.set(OPT_DOWNGRADE_PREV.to_string());
-        f_limit.set("0".to_string());
-        f_sort.set("0".to_string());
+        f_price.set("0".into());
+        f_currency.set("CNY".into());
+        f_quota.set("0".into());
+        f_duration.set("30".into());
+        f_group.set("不升级".into());
+        f_limit.set("0".into());
         f_enabled.set(true);
-        f_allow_redeem.set(true);
-        f_allow_wallet.set(true);
-        f_period_val.set("1".to_string());
-        f_period_unit.set(OPT_UNIT_MONTH.to_string());
-        f_reset_cycle.set(OPT_RESET_NEVER.to_string());
-        f_stripe_id.set(String::new());
-        f_creem_id.set(String::new());
-        f_waffo_id.set(String::new());
         editing_idx.set(None);
+        action_err.set(None);
+        ok_msg.set(None);
         modal_tab.set(0);
         show_modal.set(true);
     };
 
-    let commit = move |_| {
-        let t = f_title.peek().trim().to_string();
-        if t.is_empty() {
+    let mut commit = move |_| {
+        let name = f_title().trim().to_string();
+        if name.is_empty() {
+            action_err.set(Some("套餐名称必填".into()));
             return;
         }
-        let row = PlanRow {
-            id: f_id(),
-            title: t,
-            subtitle: f_subtitle.peek().trim().to_string(),
-            price: f_price.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
-            quota: f_quota.peek().trim().parse::<f64>().unwrap_or(0.0).max(0.0),
-            currency_price: f_currency_price
-                .peek()
-                .trim()
-                .parse::<f64>()
-                .unwrap_or(0.0)
-                .max(0.0),
-            payment_method: f_payment_method(),
-            group: f_group(),
-            downgrade_group: f_downgrade_group(),
-            period_val: f_period_val
-                .peek()
-                .trim()
-                .parse::<u32>()
-                .unwrap_or(1)
-                .max(1),
-            period_unit: f_period_unit(),
-            reset_cycle: f_reset_cycle(),
-            priority: 0,
-            enabled: f_enabled(),
-            allow_redeem: f_allow_redeem(),
-            allow_wallet: f_allow_wallet(),
-            max_per_user: f_limit.peek().trim().parse::<u32>().unwrap_or(0),
-            sort_order: f_sort.peek().trim().parse::<i32>().unwrap_or(0),
-            stripe_price_id: f_stripe_id.peek().trim().to_string(),
-            creem_product_id: f_creem_id.peek().trim().to_string(),
-            waffo_product_id: f_waffo_id.peek().trim().to_string(),
-        };
-        match *editing_idx.peek() {
-            Some(i) => {
-                plans.write()[i] = row;
+        let currency = f_currency();
+        let price = f_price().trim().to_string();
+        // 后端拒绝 duration_days == 0:非法/空输入钳到 1 而不是发 0 挨 400。
+        let duration_days = f_duration()
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|&d| d >= 1)
+            .unwrap_or(1);
+        // quota 展示口径直传;空串 = 0(无额度套餐),但显式非法值(非数字/负数)
+        // 必须报错而非静默存 0——否则用户拿到「已创建」成功提示却存了错数据。
+        let quota = {
+            let raw = f_quota().to_string();
+            let raw = raw.trim();
+            if raw.is_empty() {
+                0.0
+            } else {
+                match raw.parse::<f64>() {
+                    Ok(q) if q.is_finite() && q >= 0.0 => q,
+                    _ => {
+                        action_err.set(Some("额度必须是数字且不小于 0".into()));
+                        return;
+                    }
+                }
             }
-            None => plans.write().insert(0, row),
-        }
-        show_modal.set(false);
+        };
+        let upgrade_group = {
+            let g = f_group();
+            if g.is_empty() || g == "不升级" {
+                None
+            } else {
+                Some(g)
+            }
+        };
+        let max_purchases = f_limit().trim().parse::<u32>().ok().filter(|&n| n > 0);
+        let enabled = f_enabled();
+        let editing = editing_idx();
+
+        let client = ApiClient::shared().clone();
+        let mut reload = reload;
+        saving.set(true);
+        action_err.set(None);
+        ok_msg.set(None);
+        spawn(async move {
+            let req = SubscriptionUpsertRequest {
+                name,
+                price,
+                currency,
+                duration_days,
+                quota,
+                upgrade_group,
+                max_purchases,
+                enabled: Some(enabled),
+            };
+            match upsert_subscription_api(&client, &req).await {
+                Ok(_) => {
+                    saving.set(false);
+                    ok_msg.set(Some(if editing.is_some() {
+                        "套餐已更新".into()
+                    } else {
+                        "套餐已创建".into()
+                    }));
+                    show_modal.set(false);
+                    // 重拉全表:后端按 sort_order 排序,本地插入无法保证位次。
+                    reload += 1;
+                }
+                Err(e) => {
+                    saving.set(false);
+                    action_err.set(Some(e.to_string()));
+                }
+            }
+        });
+    };
+
+    // 行内启停:以同一 name 重建 upsert 体(enabled 取反),后端按 name 定位
+    // 行整体回写。下标由 PlanCard 回调给出,请求体在闭包构造前算好 owned。
+    let toggle_row = move |i: usize| {
+        let p = plans.read()[i].clone();
+        let client = ApiClient::shared().clone();
+        action_err.set(None);
+        ok_msg.set(None);
+        let req = rebuild_req(&p, !p.enabled);
+        let mut reload = reload;
+        spawn(async move {
+            match upsert_subscription_api(&client, &req).await {
+                Ok(_) => reload += 1,
+                Err(e) => action_err.set(Some(e.to_string())),
+            }
+        });
+    };
+
+    // 行内删除:按行 key 调 DELETE 端点。
+    let delete_row = move |i: usize| {
+        let key = plans.read()[i].key.clone();
+        let client = ApiClient::shared().clone();
+        action_err.set(None);
+        ok_msg.set(None);
+        let mut reload = reload;
+        spawn(async move {
+            match delete_subscription_api(&client, &key).await {
+                Ok(()) => {
+                    ok_msg.set(Some("套餐已删除".into()));
+                    reload += 1;
+                }
+                Err(e) => action_err.set(Some(e.to_string())),
+            }
+        });
     };
 
     rsx! {
         div { class: "flex flex-col gap-4 w-full",
-            // 诚实横幅: 订阅套餐后端暂未实现
-            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-400",
-                span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 font-bold text-zinc-300", "i" }
-                span { {SEC_HONEST_BANNER} }
+            role: "region",
+            "aria-label": "订阅套餐管理",
+            "data-testid": "subscriptions-page",
+
+            // ---- error:写请求(upsert / delete)失败的红条 ----
+            if let Some(e) = action_err() {
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                    "data-testid": "subscriptions-action-error",
+                    "{e}"
+                }
             }
+            // ---- ok:写成功反馈(点击后立即可见,列表也已同步刷新) ----
+            if let Some(m) = ok_msg() {
+                div { class: "rounded-xl border border-emerald-800 bg-emerald-950/40 p-3 text-sm text-emerald-300",
+                    "data-testid": "subscriptions-action-ok",
+                    "{m}"
+                }
+            }
+            // ---- loading:写请求在途(保存中…,弹窗保存按钮同时禁用) ----
+            if saving() {
+                div { class: "rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
+                    "data-testid": "subscriptions-saving",
+                    "正在与后端同步…"
+                }
+            }
+
             // 顶部栏: 提示横幅 + 新建按钮
             div { class: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3",
                 div { class: "flex items-center gap-2 text-xs text-amber-300",
                     span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/20 font-bold", "ℹ" }
-                    span { {SEC_PAYMENT_HINT} }
+                    span { "套餐按名称去重：同名保存即更新现有套餐，改名会新建一行" }
                 }
                 button {
                     class: "flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-amber-300 shadow-sm",
+                    "data-testid": "subscriptions-new",
                     onclick: open_new,
                     span { class: "text-sm", "+" }
-                    {BTN_NEW_PLAN}
+                    "{BTN_NEW_PLAN}"
                 }
             }
 
-            // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
-            // PlanCard:单张套餐卡(ID 徽标 + 标题 + 状态/分组徽标 + 五格指标条)。
-            // 启停/删除直接改本地演示态 plans(订阅后端暂未实现,页面横幅有说明);
-            // on_edit 开弹窗回填,跨组件交互由页面闭包处理。
-            div { class: "flex flex-col gap-3",
-                for (i, p) in plans.read().iter().enumerate() {
-                    PlanCard {
-                        key: "{p.id}",
-                        plan: p.clone(),
-                        index: i,
-                        on_edit: open_edit,
-                        on_toggle: move |i: usize| {
-                            let mut w = plans.write();
-                            w[i].enabled = !w[i].enabled;
-                        },
-                        on_delete: move |i: usize| {
-                            plans.write().remove(i);
-                        },
+            // ---- loading:首次/重拉在途(与写请求的 saving 指示区分开) ----
+            if loading() {
+                div { class: "rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center text-sm text-zinc-500",
+                    "data-testid": "subscriptions-loading",
+                    "正在加载订阅套餐…"
+                }
+            }
+            // ---- error:列表拉取失败(与写请求的 action_err 红条区分开) ----
+            if let Some(e) = err() {
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                    "data-testid": "subscriptions-load-error",
+                    "{MSG_LOAD_FAIL_PREFIX}{e}{MSG_LOAD_FAIL_SUFFIX}"
+                }
+            }
+
+            // ---- empty / data ----
+            if !loading() && plans.read().is_empty() {
+                div { class: "rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500",
+                    "data-testid": "subscriptions-empty",
+                    "{MSG_EMPTY}"
+                }
+            } else {
+                // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
+                div { class: "flex flex-col gap-3",
+                    "data-testid": "subscriptions-list",
+                    for (i, _p) in plans.read().iter().enumerate() {
+                        PlanCard {
+                            key: "{i}",
+                            plan: plans.read()[i].clone(),
+                            index: i,
+                            on_edit: open_edit,
+                            on_toggle: toggle_row,
+                            on_delete: delete_row,
+                        }
                     }
                 }
             }
         }
 
-        // ============ 多 Tab 编辑/新建弹窗 (对标 Image #6, #7, #8) ============
-        // 外壳(遮罩+头部+tab 切换条) + 三个 tab 子组件(基本信息/规则与周期/第三方支付)。
-        // 21 个 f_* 表单 signal 以 Signal 注入,commit 写回逻辑留在页面,
-        // 弹窗只渲染与抛 on_submit/on_cancel。
-        if show_modal() {
-            SubscriptionFormModal {
-                editing_idx,
-                modal_tab,
-                groups,
-                f_title, f_subtitle, f_price, f_quota, f_currency_price,
-                f_payment_method, f_group, f_downgrade_group, f_limit, f_sort,
-                f_enabled, f_allow_redeem, f_allow_wallet,
-                f_period_val, f_period_unit, f_reset_cycle,
-                f_stripe_id, f_creem_id, f_waffo_id,
-                on_cancel: move |_| show_modal.set(false),
-                on_submit: commit,
-            }
+        SubscriptionFormModal {
+            show_modal,
+            modal_tab,
+            editing_idx,
+            saving,
+            action_err,
+            group_names,
+            f_title,
+            f_price,
+            f_currency,
+            f_quota,
+            f_duration,
+            f_group,
+            f_limit,
+            f_enabled,
+            on_commit: move |_| commit(()),
         }
     }
 }

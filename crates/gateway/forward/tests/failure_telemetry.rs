@@ -41,7 +41,7 @@ impl PriceTable for FixedPriceTable {
 /// 挂 fake pt/sink 的 stage 构造器，返回 stage 与 sink 句柄。
 fn priced_stage(egress: Arc<ScriptedEgress>) -> (ForwardStage, Arc<VecSink>) {
     let sink = Arc::new(VecSink::default());
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let stage = ForwardStage::new(egress, adaptors)
         .with_price_table(Arc::new(FixedPriceTable), sink.clone());
     (stage, sink)
@@ -241,7 +241,7 @@ async fn failure_without_sink_still_short_circuits() {
             retryable: true,
         },
     )]));
-    let adaptors = Arc::new(gateway_protocol_bridge::adaptor::AdaptorRegistry::new());
+    let adaptors = Arc::new(gateway_protocol_bridge::format_codec::FormatRegistry::new());
     let stage = ForwardStage::new(egress.clone(), adaptors); // 不 with_price_table
 
     let mut ctx = ctx_with_body(NON_STREAM_BODY, candidate("c1"));

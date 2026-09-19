@@ -1,15 +1,23 @@
 //! 单次尝试转发管道 — forward 的核心编排。
 //!
-//! 管道 (一去一回):
+//! 管道（一去一回）：
 //! ```text
 //! ForwardTask
 //!   → adapter::prepare (URL 拼接 / 鉴权头 / 渠道参数覆盖)
-//!   → adapt_request (protocol-bridge: 客户端协议 → 上游厂商协议)
+//!   → 请求转换：入站格式 → IR → 上游格式
 //!   → egress::execute (带超时发送)
 //!   → [response]
-//!       ├─ 非流式: adapt_response → 整体回传 + metering 结算
-//!       └─ 流式:   adapt_response (逐 chunk) + SseScanner 事件
+//!       ├─ 非流式：上游格式 → IR → 入站格式，整体回传
+//!       └─ 流式：  逐 SSE 帧解码成 IR 事件 → 入站格式的 StreamEncoder 再编码
 //! ```
+//!
+//! ## 为什么转换在这里闭环（WP6 定稿）
+//!
+//! 请求方向与响应方向必须用同一份 codec 协作，而入站格式由请求路径决定、
+//! 上游格式由渠道 `provider_type` 决定——两者都只有在本函数里才同时可见。
+//! 旧实现把响应转换放在 `protocol-bridge` 的 stage 里，且硬编码「响应源协议 =
+//! OpenAI」，流式路径更是完全不转换（`ctx.upstream` 只在非流式分支写入），
+//! 导致流式的 Claude/Gemini 客户端拿到的永远是 OpenAI 事件形状（G2）。
 //!
 //! 失败出口统一为 contract::error::NormalizedError → dispatch::FailureClass。
 
@@ -18,7 +26,10 @@ use crate::adapter::{self, PreparedRequest};
 use crate::egress::{Egress, ForwardedResponse};
 use bytes::Bytes;
 use contract::error::NormalizedError;
-use gateway_protocol_bridge::adaptor::{AdaptorRegistry, Protocol};
+use gateway_protocol_bridge::adaptor::Protocol;
+use gateway_protocol_bridge::format_codec::FormatRegistry;
+use gateway_protocol_bridge::sse::SseScanner;
+use std::future::Future;
 use std::sync::Arc;
 
 /// 合并后的请求头 (adapter 鉴权 + 渠道覆盖 + 客户端已过滤头)。
@@ -45,51 +56,45 @@ async fn read_all_body(resp: ForwardedResponse) -> Result<Bytes, std::io::Error>
     Ok(Bytes::from(buf))
 }
 
-/// 单次转发的核心编排 — prepare + execute, 不做协议转换 (留给 protocol-bridge)。
+/// 单次转发的核心编排 — prepare + 双向协议转换 + execute。
 ///
-/// 流式 / 非流式统一返回 `Forwarded`: 非流式响应也按字节流形状给出 (单 chunk)。
+/// 流式 / 非流式统一返回 `Forwarded`：非流式响应也按字节流形状给出（单 chunk）。
 ///
-/// `body_stream` 决定响应形态:
-/// - 流式 (`stream=true`) → 直接接 `egress.execute` 的字节流
-/// - 非流式 (`stream=false`) → `read_all_body` 一次性收集
+/// `body_stream` 决定响应形态：
+/// - 流式 (`stream=true`) → 上游 SSE 逐帧转换后流过
+/// - 非流式 (`stream=false`) → `read_all_body` 一次性收集并整体转换
 ///
-/// TODO(#530): 流式路径在 stream 模块内挂 SseScanner / StreamScanner。
 /// TODO(#334): 非流式响应也需走 metering 估算 prompt token。
 pub async fn forward_once(
     task: &ForwardTask,
     egress: &dyn Egress,
-    adaptors: &AdaptorRegistry,
+    formats: &FormatRegistry,
     timeouts: &crate::egress::Timeouts,
 ) -> Result<crate::Forwarded, NormalizedError> {
+    // 上游端点由上游协议 + 入站格式决定 (客户端 path 只在 passthrough 下有效)。
+    let url_model = resolve_upstream_model(&task.body, &task.candidate.upstream_model);
     let prepared = adapter::prepare(
         &task.candidate,
         &task.path,
         &task.provider_type,
+        task.inbound_format,
+        task.stream,
+        &url_model,
         task.extra_headers.clone(),
     );
     let merged = merge_headers(&prepared, &task.headers);
 
-    // 客户端协议 → 上游厂商协议 (protocol-bridge)。
-    let upstream_protocol = match task.provider_type.as_str() {
-        "claude" | "anthropic" => Protocol::Claude,
-        "gemini" | "google" => Protocol::Gemini,
-        _ => Protocol::OpenAi,
-    };
-    // 中枢格式语义: ferrite 入站统一 OpenAI Chat Completions, 由 target 决定上游协议。
-    //
-    // 两个方向各要一个 codec: `Codec` 是有向的 (ClaudeCodec 的 to_claude 决定它
-    // 只做请求或只做响应), 用请求 codec 转响应会拿到 Unsupported。
-    let request_codec = adaptors.resolve(Protocol::OpenAi, upstream_protocol);
-    let response_codec = adaptors.resolve(upstream_protocol, Protocol::OpenAi);
-    // 公开别名 → 上游真名: 必须在协议转换之前改, 否则各家 codec 已把 model
-    // 搬进自己的字段位置, 再改就得按协议分别处理。
+    // 入站格式（客户端说的协议）→ 上游格式（渠道 provider_type 决定的厂商协议）。
+    let inbound = Protocol::from_kind(task.inbound_format);
+    let upstream_format = Protocol::from_provider_type(&task.provider_type);
+
+    // 公开别名 → 上游真名：必须在协议转换之前改，否则各家 codec 已把 model
+    // 搬进自己的字段位置，再改就得按协议分别处理。
     let body = rewrite_upstream_model(&task.body, &task.candidate.upstream_model);
-    let body = match request_codec.as_ref() {
-        Some(c) => c
-            .adapt_request(body)
-            .map_err(|e| protocol_bridge_error(e, 400, false))?,
-        None => capture_prompt_body(&body),
-    };
+    let body = formats
+        .translate_request(inbound, upstream_format, body)
+        .map_err(|e| protocol_bridge_error(e, 400, false))?;
+    let body = capture_prompt_body(&body);
 
     let resp = egress
         .execute(&prepared.url, &merged, body, timeouts)
@@ -98,68 +103,172 @@ pub async fn forward_once(
     let status = resp.status();
     let content_type = resp.content_type().to_string();
 
-    // 上游厂商协议 → 客户端协议 (protocol-bridge)。流式逐 chunk 转、非流式整 body 转。
-    let codec_arc = response_codec.clone();
-    let adapt_stream =
-        |stream: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>>| {
-            let mapped: futures_util::stream::BoxStream<'static, Result<Bytes, std::io::Error>> =
-                Box::pin(futures_util::stream::unfold(stream, move |mut s| {
-                    let codec = codec_arc.clone();
-                    async move {
-                        use futures_util::StreamExt;
-                        match s.next().await {
-                            Some(Ok(chunk)) => match codec.as_ref() {
-                                Some(c) => match c.adapt_response(chunk) {
-                                    Ok(chunks) => Some((
-                                        Ok::<Bytes, std::io::Error>(chunks.concat().into()),
-                                        s,
-                                    )),
-                                    Err(e) => Some((Err(std::io::Error::other(e.to_string())), s)),
-                                },
-                                None => Some((Ok(chunk), s)),
-                            },
-                            Some(Err(e)) => Some((Err(e), s)),
-                            None => None,
+    // 响应方向：上游格式 → 入站格式。流式逐帧转换，非流式整体转换。
+    if task.stream {
+        // 同格式 = 零转换透传：完全不建 encoder（客户端与渠道说同一协议时不该被
+        // 重写字节，也不该在流尾补终止帧——上游的 [DONE] 已经原样透传了，再补一个
+        // 就是两次流终止，e2e 的逐字保真断言实锤过这个坑）。
+        if inbound == upstream_format {
+            let mapped = resp.into_body_stream();
+            return Ok(crate::Forwarded {
+                status,
+                body: Box::pin(mapped),
+                content_type,
+            });
+        }
+
+        // 每条流一个 encoder（`&mut self` 持有 block 边界与 tool 碎片状态），
+        // 必须与本次请求同生共死——复用会串状态。
+        let encoder = formats.resolve(inbound).map(|c| c.stream_encoder());
+        let decoder = formats.resolve(upstream_format);
+
+        let mapped = futures_util::stream::unfold(
+            (
+                resp.into_body_stream(),
+                SseScanner::default(),
+                encoder,
+                decoder,
+            ),
+            move |(mut upstream, mut scanner, mut encoder, decoder)| async move {
+                use futures_util::StreamExt;
+                loop {
+                    let chunk = match upstream.next().await {
+                        Some(Ok(c)) => c,
+                        Some(Err(e)) => {
+                            return Some((Err(e), (upstream, scanner, encoder, decoder)));
+                        }
+                        None => {
+                            // 上游流结束：先把尾部未终结的帧吐出来（上游最后一帧可能
+                            // 没跟空行就断开），再让 encoder 补收尾帧。
+                            let mut tail_frames = scanner.flush_pending_frame();
+                            if !tail_frames.is_empty() {
+                                let mut out = Vec::new();
+                                for frame in tail_frames.drain(..) {
+                                    for ev in decode_events(decoder.as_deref(), &frame) {
+                                        if let Some(enc) = encoder.as_mut() {
+                                            match enc.encode_event(&ev) {
+                                                Ok(bytes) => out.extend(bytes),
+                                                // 尾帧编码失败不能断流：客户端仍应拿到 finish 帧与完整流尾。
+                                                Err(e) => tracing::warn!(
+                                                    "encode tail frame event failed: {e}"
+                                                ),
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(enc) = encoder.as_mut()
+                                    && let Ok(mut bytes) = enc.finish()
+                                {
+                                    out.append(&mut bytes);
+                                }
+                                // 收尾帧已随尾部一并吐出，置空 encoder 防重复收尾。
+                                return Some((
+                                    Ok::<Bytes, std::io::Error>(Bytes::from(out.concat())),
+                                    (upstream, scanner, None, decoder),
+                                ));
+                            }
+
+                            if let Some(enc) = encoder.as_mut() {
+                                match enc.finish() {
+                                    Ok(frames) if !frames.is_empty() => {
+                                        let out = frames.concat();
+                                        // finish 已吐完，置空避免重复收尾。
+                                        return Some((
+                                            Ok::<Bytes, std::io::Error>(Bytes::from(out)),
+                                            (upstream, scanner, None, decoder),
+                                        ));
+                                    }
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        return Some((
+                                            Err(std::io::Error::other(e.to_string())),
+                                            (upstream, scanner, None, decoder),
+                                        ));
+                                    }
+                                }
+                            }
+                            return None;
+                        }
+                    };
+
+                    // 跨格式：扫描器重组成完整行，逐帧 `data:` 负载解码成 IR 事件，
+                    // 再交给 encoder 编成入站格式的帧。
+                    let (_passthrough, _events) = scanner.push(&chunk);
+                    // 先取走并编码本 chunk 的数据帧——[DONE] 与前面的内容帧常在
+                    // 同一个 chunk 里，先排空会把合法内容一起丢掉。
+                    let frames = scanner.take_data_frames();
+                    if !frames.is_empty() {
+                        let mut out = Vec::new();
+                        for frame in frames {
+                            for ev in decode_events(decoder.as_deref(), &frame) {
+                                if let Some(enc) = encoder.as_mut() {
+                                    match enc.encode_event(&ev) {
+                                        Ok(bytes) => out.extend(bytes),
+                                        Err(e) => {
+                                            return Some((
+                                                Err(std::io::Error::other(e.to_string())),
+                                                (upstream, scanner, encoder, decoder),
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if !out.is_empty() {
+                            return Some((
+                                Ok::<Bytes, std::io::Error>(Bytes::from(out.concat())),
+                                (upstream, scanner, encoder, decoder),
+                            ));
                         }
                     }
-                }));
-            mapped
-        };
 
-    let body_stream: std::pin::Pin<
-        Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
-    > = if task.stream {
-        adapt_stream(Box::pin(resp.into_body_stream()))
-    } else {
-        let bytes = match read_all_body(resp).await {
-            Ok(b) => b,
-            Err(e) => {
-                return Err(NormalizedError {
-                    code: contract::error::code::UPSTREAM_ERROR,
-                    status: 502,
-                    retryable: true,
-                    channel_scoped: false,
-                    message: format!("read upstream body: {e}"),
-                });
-            }
-        };
-        match response_codec.as_ref() {
-            Some(c) => match c.adapt_response(bytes) {
-                Ok(chunks) => Box::pin(futures_util::stream::iter(chunks.into_iter().map(Ok)))
-                    as std::pin::Pin<
-                        Box<dyn futures_util::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
-                    >,
-                Err(e) => {
-                    return Err(protocol_bridge_error(e, 502, true));
+                    // 上游已显式终止：让 encoder 别再补终止帧（两个 [DONE] 是两次流终止）。
+                    if scanner.saw_done() {
+                        if let Some(e) = encoder.as_mut() {
+                            e.mark_done();
+                        }
+                        // 上游在 [DONE] 之后又给数据帧 —— SSE 规范不允许，编码发给客户端
+                        // 会让它在终止帧后收到内容。排空并丢弃，不走 encode_event。
+                        let stray = scanner.take_data_frames();
+                        if !stray.is_empty() {
+                            tracing::warn!(
+                                frames = stray.len(),
+                                "SSE frames after upstream [DONE], discarding"
+                            );
+                        }
+                    }
+                    continue;
                 }
             },
-            None => Box::pin(futures_util::stream::iter(std::iter::once(Ok(bytes)))),
+        );
+
+        return Ok(crate::Forwarded {
+            status,
+            body: Box::pin(mapped),
+            content_type,
+        });
+    }
+
+    // 非流式：收全上游 body 后整体两跳转换。
+    let bytes = match read_all_body(resp).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Err(NormalizedError {
+                code: contract::error::code::UPSTREAM_ERROR,
+                status: 502,
+                retryable: true,
+                channel_scoped: false,
+                message: format!("read upstream body: {e}"),
+            });
         }
     };
+    let bytes = formats
+        .translate_response(upstream_format, inbound, bytes)
+        .map_err(|e| protocol_bridge_error(e, 502, true))?;
 
     Ok(crate::Forwarded {
         status,
-        body: body_stream,
+        body: Box::pin(futures_util::stream::iter(std::iter::once(Ok(bytes)))),
         content_type,
     })
 }
@@ -176,6 +285,22 @@ fn protocol_bridge_error(
         retryable,
         channel_scoped: false,
         message: e.to_string(),
+    }
+}
+
+/// 把一帧 `data:` 负载解码成 IR 事件。
+///
+/// 单帧解码失败返回空列表而不是错误：SSE 流里存在非 JSON 控制帧，一帧解析不了
+/// 不该断掉整条流（旧实现在这里会把半行当 JSON 解析失败后**静默丢弃**，
+/// 但那时它连帧边界都没找准；现在边界由 [`SseScanner`] 保证，这里的跳过只针对
+/// 真正的合法非内容帧）。
+fn decode_events(
+    decoder: Option<&dyn gateway_protocol_bridge::format_codec::FormatCodec>,
+    frame: &str,
+) -> Vec<gateway_protocol_bridge::ir::StreamEvent> {
+    match decoder {
+        Some(d) => d.decode_event(frame).unwrap_or_default(),
+        None => Vec::new(),
     }
 }
 
@@ -196,8 +321,8 @@ pub trait Pipeline: Send + Sync {
 #[derive(Clone)]
 pub struct ReqwestPipeline {
     egress: Arc<dyn Egress>,
-    /// 厂商协议注册表; 空 = 透传 (同协议不转换)。
-    adaptors: Arc<AdaptorRegistry>,
+    /// 单格式协议注册表; 空 = 透传 (同格式不转换)。
+    formats: Arc<FormatRegistry>,
 }
 
 impl std::fmt::Debug for ReqwestPipeline {
@@ -207,8 +332,8 @@ impl std::fmt::Debug for ReqwestPipeline {
 }
 
 impl ReqwestPipeline {
-    pub fn new(egress: Arc<dyn Egress>, adaptors: Arc<AdaptorRegistry>) -> Self {
-        Self { egress, adaptors }
+    pub fn new(egress: Arc<dyn Egress>, formats: Arc<FormatRegistry>) -> Self {
+        Self { egress, formats }
     }
 }
 
@@ -218,19 +343,52 @@ impl Pipeline for ReqwestPipeline {
         task: &ForwardTask,
         timeouts: &crate::egress::Timeouts,
     ) -> Result<crate::Forwarded, NormalizedError> {
-        forward_once(task, self.egress.as_ref(), &self.adaptors, timeouts).await
+        forward_once(task, self.egress.as_ref(), &self.formats, timeouts).await
     }
 }
 
 /// 请求体预扫描 — metering 估算 prompt token 的输入挂点。
 ///
-/// 在 adapt_request 之后、发送之前调用一次 (适配后的体才是上游真实体)。
+/// 在请求方向转换之后、发送之前调用一次（转换后的体才是上游真实体）。
 ///
-/// 当前 V1 范围: 透传语义, 不解析 (metering 接口未定型)。适配协议体的
-/// transform 仍由 protocol-bridge 在 ForwardTask 进入 pipeline 前完成。
+/// 当前 V1 范围: 透传语义, 不解析 (metering 接口未定型)。
 /// TODO(#334): 与 metering::estimate_prompt_tokens 对接。
 pub fn capture_prompt_body(body: &bytes::Bytes) -> bytes::Bytes {
     body.clone()
+}
+
+/// 取将实际发往上游的 model 名 — 供 Gemini 之类的「model 入路径」协议寻址。
+///
+/// 渠道映射优先 (`upstream_model` 非空); 缺省时回落客户端发的 model
+/// (与 [`rewrite_upstream_model`] 的零改写情形保持一致, 见该函数注释)。
+///
+/// model 直接进 URL 路径段, 客户端可发任意字符串 — 含 `/` / `..` / 控制字符
+/// 会改写上游路径 (信任边界)。只放行单段安全字符, 非法则退回不寻址,
+/// 由 [`build_url`](crate::adapter::build_url) 走客户端 path 兜底, 上游自行拒绝。
+pub fn resolve_upstream_model(body: &Bytes, upstream_model: &str) -> String {
+    let resolved = if !upstream_model.is_empty() {
+        upstream_model.to_string()
+    } else {
+        serde_json::from_slice::<serde_json::Value>(body)
+            .ok()
+            .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(str::to_string))
+            .unwrap_or_default()
+    };
+    if is_safe_model_segment(&resolved) {
+        resolved
+    } else {
+        String::new()
+    }
+}
+
+/// model 是否可作为 URL 单段: 仅字母数字与 `.` `-` `_`。
+///
+/// 允许 `.` 是因为 `..:verb` 仍是单段 (穿越需要独立 `/..` 段), 而 `.`-分隔的
+/// 模型名 (`gemini-1.5-pro`) 常见。
+fn is_safe_model_segment(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 /// 把请求体的 `model` 改写为上游真名。

@@ -49,11 +49,42 @@ pub const BTN_SAVE: &str = "保存更改";
 
 // ---- SEC_* : 区段标题 / 说明条 ----
 
-/// 诚实横幅:订阅套餐后端未实现说明。
-pub const SEC_HONEST_BANNER: &str =
-    "订阅套餐后端暂未实现——此页暂无真实数据,以下为本地演示态";
-/// 顶部栏:第三方支付平台配置提示。
-pub const SEC_PAYMENT_HINT: &str = "Stripe / Creem 需在第三方平台创建商品并填入 ID";
+/// 顶部栏:套餐按名称去重的提示。
+pub const SEC_NAME_DEDUP: &str = "套餐按名称去重：同名保存即更新现有套餐，改名会新建一行";
+/// 列表为空时的空态提示。
+pub const MSG_EMPTY: &str = "还没有订阅套餐。点击右上角「新建套餐」创建第一个。";
+/// 列表加载中提示。
+pub const MSG_LOADING: &str = "正在加载订阅套餐…";
+/// 列表加载失败前缀(后接错误详情)。
+pub const MSG_LOAD_FAIL_PREFIX: &str = "加载失败：";
+/// 列表加载失败后缀(预留,当前为空)。
+pub const MSG_LOAD_FAIL_SUFFIX: &str = "";
+/// 写请求在途提示。
+pub const MSG_SAVING: &str = "正在与后端同步…";
+/// 保存按钮在途文案。
+pub const BTN_SAVING: &str = "保存中…";
+/// 更新成功提示。
+pub const MSG_UPDATED: &str = "套餐已更新";
+/// 创建成功提示。
+pub const MSG_CREATED: &str = "套餐已创建";
+/// 删除成功提示。
+pub const MSG_DELETED: &str = "套餐已删除";
+/// 表单校验:名称必填。
+pub const MSG_ERR_NAME_REQUIRED: &str = "套餐名称必填";
+/// 表单校验:额度非法。
+pub const MSG_ERR_QUOTA: &str = "额度必须是数字且不小于 0";
+/// 套餐标题旁说明:按名称去重语义。
+pub const MSG_TITLE_HINT: &str = "名称唯一：同名保存会更新已有套餐，而非新建";
+/// 计价币种旁说明。
+pub const MSG_CURRENCY_HINT: &str = "决定列表价格符号；后端要求非空";
+/// 有效期(天)旁说明。
+pub const MSG_DURATION_HINT: &str = "后端按天存储有效期；至少 1 天";
+/// 升级分组旁说明。
+pub const MSG_GROUP_HINT: &str = "购买该套餐后升级到该分组；「不升级」表示不改变分组";
+/// 限购为 0 时的展示文案。
+pub const LBL_NO_LIMIT: &str = "不限";
+/// 删除按钮文案。
+pub const BTN_DELETE: &str = "✕";
 
 // ---- TAB_* : 弹窗内页签标题 ----
 
@@ -164,7 +195,7 @@ pub const MSG_PH_PLAN_SUBTITLE: &str = "向你们致敬，向外开拓的勇士�
 /// 套餐价格输入框旁的说明。
 pub const MSG_PRICE_HINT: &str = "用户购买该套餐需支付的金额，具体币种由支付渠道决定";
 /// 额度输入框旁的说明。
-pub const MSG_QUOTA_HINT: &str = "套餐包含的总额度，每个计费周期可用；0 表示不限量";
+pub const MSG_QUOTA_HINT: &str = "套餐包含的总额度；0 表示不限量";
 /// 套餐价格（菌种）输入框旁的说明。
 pub const MSG_CURRENCY_PRICE_HINT: &str = "最小单位 0.1。仅当支付方式包含它时才生效。";
 /// 站内支付方式旁的说明。
@@ -172,10 +203,9 @@ pub const MSG_PAYMENT_METHOD_HINT: &str = "只影响站内货币，不影响第�
 /// 降级分组旁的说明。
 pub const MSG_DOWNGRADE_HINT: &str = "订阅过期后降级到该分组";
 /// 限购输入框旁的说明。
-pub const MSG_LIMIT_HINT: &str = "0 表示不限";
+pub const MSG_LIMIT_HINT: &str = "单个用户可购买的次数；0 表示不限";
 /// 支付 Tab 顶部说明条。
-pub const MSG_PAYMENT_NOTE: &str =
-    "使用此套餐的标题和价格，在已保存的店铺中创建 Pancake 产品。需要先在支付设置中完整配置 Waffo Pancake。";
+pub const MSG_PAYMENT_NOTE: &str = "使用此套餐的标题和价格，在已保存的店铺中创建 Pancake 产品。需要先在支付设置中完整配置 Waffo Pancake。";
 /// Stripe Price ID 输入框占位。
 pub const MSG_PH_STRIPE_ID: &str = "price_1M...";
 /// Creem Product ID 输入框占位。

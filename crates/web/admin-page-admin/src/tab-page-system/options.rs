@@ -4,9 +4,7 @@
 
 use dioxus::prelude::*;
 
-use super::shared::{
-    LBL_SITE_OPTIONS, MSG_OPTIONS_EMPTY, MSG_OPTIONS_LOADING, SEC_OPTIONS_NOTE,
-};
+use super::shared::{LBL_SITE_OPTIONS, MSG_OPTIONS_EMPTY, MSG_OPTIONS_LOADING, SEC_OPTIONS_NOTE};
 use crate::api::{OptionView, list_options_api};
 use client::ApiClient;
 

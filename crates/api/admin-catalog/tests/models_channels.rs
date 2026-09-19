@@ -60,6 +60,9 @@ async fn model_crud_full_flow() {
             8192,
             true,
             false,
+            None,
+            None,
+            None,
         )
         .await
         .expect("create model");
@@ -81,6 +84,9 @@ async fn model_crud_full_flow() {
             0,
             false,
             false,
+            None,
+            None,
+            None,
         )
         .await;
     assert!(matches!(dup, Err(auth::AuthError::Conflict(_))));
@@ -113,6 +119,9 @@ async fn model_crud_full_flow() {
             None,
             None,
             Some(2),
+            None,
+            None,
+            None,
         )
         .await
         .expect("update");
@@ -315,6 +324,9 @@ async fn channel_models_list() {
             0,
             false,
             false,
+            None,
+            None,
+            None,
         )
         .await
         .expect("create");
@@ -372,7 +384,10 @@ async fn model_empty_name_rejected() {
                 serde_json::json!({}),
                 0,
                 false,
-                false
+                false,
+                None,
+                None,
+                None
             )
             .await,
         Err(auth::AuthError::BadRequest(_))
@@ -419,7 +434,10 @@ async fn model_invalid_base_url_rejected() {
                 serde_json::json!({}),
                 0,
                 false,
-                false
+                false,
+                None,
+                None,
+                None
             )
             .await,
         Err(auth::AuthError::BadRequest(_))
@@ -466,7 +484,10 @@ async fn model_empty_keys_rejected() {
                 serde_json::json!({}),
                 0,
                 false,
-                false
+                false,
+                None,
+                None,
+                None
             )
             .await,
         Err(auth::AuthError::BadRequest(_))

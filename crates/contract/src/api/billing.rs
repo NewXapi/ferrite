@@ -66,7 +66,10 @@ impl From<&SubscriptionPlanRecord> for SubscriptionDto {
             name: r.name.clone(),
             description: None,
             price: r.price.parse().ok(),
-            quota: Some(r.quota as f64),
+            // 记录层 quota 是 i64 内部单位（500_000 = $1），DTO 是展示层口径，
+            // 边界处换算（见 SubscriptionUpsertRequest 文档）。与
+            // admin-billing 的 From<SubscriptionRow> 同式，两条路径输出一致。
+            quota: Some(r.quota as f64 / 500_000.0),
             currency_price: None,
             payment_method: None,
             group: r.upgrade_group.clone(),

@@ -5,6 +5,7 @@ use contract::api::user::{UserDto, role_label};
 
 use crate::api;
 use crate::usage_support::{fmt_quota, short_key, used_pct};
+use ui::StatCard;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 /// 拉取当前用户的密钥列表 (GET /api/token, owner 模式) 并写回三个 Signal。
@@ -262,17 +263,6 @@ pub fn KeysPanel() -> Element {
                     load_keys(keys, keys_loaded, keys_err);
                 },
             }
-        }
-    }
-}
-
-#[component]
-fn StatCard(value: String, label: &'static str) -> Element {
-    rsx! {
-        div {
-            class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
-            p { class: "text-xl font-semibold tracking-tight text-white", "{value}" }
-            p { class: "mt-0.5 text-xs text-zinc-500", "{label}" }
         }
     }
 }

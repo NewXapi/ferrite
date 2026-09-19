@@ -13,9 +13,9 @@ use super::shared::{
     BTN_REFRESH, BTN_RETRY, LBL_CONN_POOL, LBL_COUNT_ACTIVE_CHANNELS, LBL_COUNT_CHANNELS,
     LBL_COUNT_MODELS, LBL_COUNT_TOKENS, LBL_COUNT_USERS, LBL_CPU_LOAD, LBL_DB_STATUS, LBL_HOSTNAME,
     LBL_LOAD_AVG, LBL_MEMORY_DETAIL, LBL_OS, LBL_PROCESS_RSS, LBL_SERVICE_VERSION, LBL_STARTED_AT,
-    LBL_SYS_MEMORY, LBL_UPTIME, MSG_EMPTY, MSG_EMPTY_HINT, MSG_LOADING, MSG_LOAD_FAILED, SEC_COUNTS,
-    SEC_ENV, SEC_ENV_NOTE, SEC_STATS, SystemInfoView, format_bytes, format_db_status, format_load,
-    format_started_at, format_uptime,
+    LBL_SYS_MEMORY, LBL_UPTIME, MSG_EMPTY, MSG_EMPTY_HINT, MSG_LOAD_FAILED, MSG_LOADING,
+    SEC_COUNTS, SEC_ENV, SEC_ENV_NOTE, SEC_STATS, SystemInfoView, format_bytes, format_db_status,
+    format_load, format_started_at, format_uptime,
 };
 use crate::tab_page_groups::StatCard;
 
@@ -88,7 +88,10 @@ pub fn SystemOverview(
         Some(v) => vec![
             (v.counts.users.to_string(), LBL_COUNT_USERS),
             (v.counts.channels.to_string(), LBL_COUNT_CHANNELS),
-            (v.counts.active_channels.to_string(), LBL_COUNT_ACTIVE_CHANNELS),
+            (
+                v.counts.active_channels.to_string(),
+                LBL_COUNT_ACTIVE_CHANNELS,
+            ),
             (v.counts.models.to_string(), LBL_COUNT_MODELS),
             (v.counts.tokens.to_string(), LBL_COUNT_TOKENS),
         ],
