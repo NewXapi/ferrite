@@ -9,6 +9,8 @@ pub const MOVERS_LIMIT: usize = 6;
 
 /// 真实用量榜标题。
 pub const USAGE_TITLE: &str = "真实用量榜";
+/// 真实用量榜区的 `aria-label`(H1:aria 文案也是用户可见文案,走常量)。
+pub const USAGE_ARIA_LABEL: &str = "模型用量排行";
 /// 副标题前缀(后接窗口内有调用的模型数)。
 pub const USAGE_SUBTITLE_HEAD: &str = "后端消费日志聚合 · 窗口内 ";
 /// 副标题后缀。

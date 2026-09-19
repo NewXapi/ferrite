@@ -11,8 +11,8 @@
 use dioxus::prelude::*;
 
 use super::shared::{
-    TREND_AVG, TREND_AVG_SUB, TREND_MODELS, TREND_MODELS_SUB, TREND_PEAK, TREND_RANGE_SUB,
-    TREND_RANGE_TOTAL, TREND_TOP5,
+    TREND_AVG, TREND_AVG_SUB, TREND_MODELS, TREND_MODELS_SUB, TREND_MODELS_UNIT, TREND_PEAK,
+    TREND_RANGE_SUB, TREND_RANGE_TOTAL, TREND_TOP5,
 };
 use crate::shared::fmt_raw;
 
@@ -50,7 +50,7 @@ pub fn TrendSummary(
                 }
                 div {
                     p { class: "text-[11px] text-zinc-600", "{TREND_MODELS}" }
-                    p { class: "mt-1 text-sm font-semibold text-zinc-100", "{model_count} 个" }
+                    p { class: "mt-1 text-sm font-semibold text-zinc-100", "{model_count}{TREND_MODELS_UNIT}" }
                     p { class: "text-xs font-mono text-zinc-500", "{TREND_MODELS_SUB}" }
                 }
                 div {

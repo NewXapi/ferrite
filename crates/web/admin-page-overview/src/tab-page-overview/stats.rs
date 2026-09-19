@@ -6,7 +6,8 @@
 use dioxus::prelude::*;
 
 use super::shared::{
-    LBL_QUOTA_REMAINING, QUOTA_FOOTNOTE, QuotaView, RUNWAY_EXHAUSTED, RUNWAY_NO_USAGE, SEC_STATS,
+    LBL_QUOTA_REMAINING, QUOTA_FOOTNOTE, QuotaView, RUNWAY_AVAILABLE, RUNWAY_CAP_DAYS,
+    RUNWAY_EXHAUSTED, RUNWAY_LT1_DAY, RUNWAY_NO_USAGE, RUNWAY_UNIT, SEC_STATS,
     STATS_LOADING, StatCardView, TESTID_QUOTA_RUNWAY,
 };
 use super::sparkline::Sparkline;
@@ -130,21 +131,21 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
     } else {
         let days = remaining as f64 / today as f64;
         let days_text = if days < 1.0 {
-            "<1 天".to_string()
+            RUNWAY_LT1_DAY.to_string()
         } else if days >= 999.0 {
-            "999+ 天".to_string()
+            RUNWAY_CAP_DAYS.to_string()
         } else {
-            format!("{days:.1} 天")
+            format!("{days:.1}{RUNWAY_UNIT}")
         };
         if days < 3.0 {
             (
-                format!("可用 {days_text}"),
+                format!("{RUNWAY_AVAILABLE}{days_text}"),
                 "text-yellow-400".to_string(),
                 "bg-yellow-400",
             )
         } else {
             (
-                format!("可用 {days_text}"),
+                format!("{RUNWAY_AVAILABLE}{days_text}"),
                 "text-emerald-400".to_string(),
                 "bg-emerald-400",
             )

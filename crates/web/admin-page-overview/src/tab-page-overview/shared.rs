@@ -31,6 +31,14 @@ pub const TESTID_QUOTA_RUNWAY: &str = "额度余量可用天数";
 pub const RUNWAY_NO_USAGE: &str = "无近期消耗";
 /// runway 态:额度已耗尽(红点红字)。
 pub const RUNWAY_EXHAUSTED: &str = "已耗尽";
+/// runway 文案前缀(后接天数)。
+pub const RUNWAY_AVAILABLE: &str = "可用 ";
+/// runway 天数单位(接在数值后)。
+pub const RUNWAY_UNIT: &str = " 天";
+/// runway 不足一天的特判文案。
+pub const RUNWAY_LT1_DAY: &str = "<1 天";
+/// runway 超出可显示精度时的封顶文案。
+pub const RUNWAY_CAP_DAYS: &str = "999+ 天";
 /// 额度卡口径小字。
 pub const QUOTA_FOOTNOTE: &str = "启用用户余额合计 ÷ 今日消耗";
 
@@ -101,6 +109,8 @@ pub const TREND_AVG_SUB: &str = "均值";
 pub const TREND_MODELS: &str = "活跃模型";
 /// 右栏数据位:活跃模型副文案。
 pub const TREND_MODELS_SUB: &str = "窗口内有调用";
+/// 右栏数据位:活跃模型数单位(接在数字后)。
+pub const TREND_MODELS_UNIT: &str = " 个";
 /// 右栏数据位:区间总量。
 pub const TREND_RANGE_TOTAL: &str = "区间总量";
 /// 右栏数据位:区间总量副文案。

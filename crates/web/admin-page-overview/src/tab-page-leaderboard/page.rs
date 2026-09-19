@@ -24,8 +24,8 @@ use super::insights::{
 use super::rank_board::{RankCard, RankMetric};
 use super::shared::{
     BTN_RETRY, RANK_CALLS_SUBTITLE, RANK_CALLS_TITLE, RANK_QUOTA_SUBTITLE, RANK_QUOTA_TITLE,
-    RANK_TOKENS_SUBTITLE, RANK_TOKENS_TITLE, USAGE_EMPTY, USAGE_EMPTY_HINT, USAGE_ERR,
-    USAGE_LOADING,
+    RANK_TOKENS_SUBTITLE, RANK_TOKENS_TITLE, USAGE_ARIA_LABEL, USAGE_EMPTY, USAGE_EMPTY_HINT,
+    USAGE_ERR, USAGE_LOADING,
 };
 use super::toolbar::UsageToolbar;
 use crate::api::{UsageTopRow, top_usage_api, window_start};
@@ -94,7 +94,7 @@ pub fn LeaderboardPanel() -> Element {
             // 时间窗 tab 与标题同行(8090 预览反馈④);介绍语只留一行口径说明。
             UsageToolbar { timeframe, model_count: data.len() }
 
-            section { "data-testid": "leaderboard-usage", role: "region", "aria-label": "模型用量排行",
+            section { "data-testid": "leaderboard-usage", role: "region", "aria-label": "{USAGE_ARIA_LABEL}",
                 if let Some(e) = error {
                     div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
                         p { class: "text-sm text-red-300", "{USAGE_ERR}" }
