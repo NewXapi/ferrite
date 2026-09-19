@@ -172,7 +172,8 @@ crates/web/<prefix-feature>/
 | 要开 PR 干活，或要派子代理分担任务 | `.agent/rules/pr-workflow.md` |
 | 要写测试、跑测试、看 CI 结果，或怀疑「CI 绿了但没验东西」 | `.agent/rules/testing-ci.md` |
 | 提交 / 推送被拦、创建 PR 被拒、要查检查规则 | `.agent/rules/gates.md` |
-| 启动后端 / 数据库 / 前端，或前端报错、构建卡住 | `.agent/rules/dev-env.md` |
+| 要启动后端 / 数据库 / 前端，或前端报错、构建卡住 | `.agent/rules/dev-env.md` |
+| 要起/用 Ainotation 视觉标注反馈（页面标注 + agent 经 MCP 读标注） | `.agent/skills/ainotation-web/SKILL.md` |
 | 写前端界面、写 Rust 公共接口、调查或审查代码 | `.agent/rules/conventions.md` |
 | 要派一件具体的事给某个 agent（写任务书） | 开发任务用 `.agent/tasks/dev.md`，收尾合并用 `.agent/tasks/closeout-pr.md`；空白模板 `.agent/tasks/TEMPLATE.md` |
 | 想了解 `.agent/` 目录本身怎么组织 | `.agent/README.md` |

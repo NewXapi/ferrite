@@ -129,6 +129,56 @@ dev-check:
     echo "  2. 勿 pkill -f cargo/rustc (T 态≠死进程, 会误杀并行会话构建); 清理前 readlink /proc/<pid>/cwd"
     echo "  3. 用户报错但实测 200 → 先查浏览器缓存重放 (dx 日志 grep 该路径无请求 = 实锤)"
 
+# ---------- Ainotation 视觉标注反馈栈 (用法详见 .agent/skills/ainotation-web/SKILL.md) ----------
+#   重打 SDK bundle : just aino-bundle   (改了 ainotation-entry.ts / 升级 SDK 后; 改完需重启 dx)
+#   起 service      : just aino-service  (用运行时后台任务启动; 就绪判据 ~/.ainotation/service/connection.json)
+#   起同步桥        : just aino-bridge   (同上; 就绪判据日志 "project ready" + :44090 端点)
+#   体检            : just aino-check    (service 注册表 + 桥端点 + 前端连通)
+#   顺序硬约束: service 必须先于 agent 的 ainotation MCP 可用, 否则 MCP 工具调用会挂起
+aino-bundle:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd apps/admin-web
+    bun install
+    bun run aino
+    echo "✓ bundle 已重打: assets/ainotation/ainotation.iife.js (bundle 内容变化会改指纹, 记得重启 dx)"
+
+aino-service:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f "$HOME/.ainotation/service/connection.json" ]; then
+      url=$(jq -r .url "$HOME/.ainotation/service/connection.json")
+      token=$(jq -r .token "$HOME/.ainotation/service/connection.json")
+      if curl -sf -m 3 "$url/control/health" -H "Authorization: Bearer $token" >/dev/null 2>&1; then
+        echo "service 已在运行: $url"; exit 0
+      fi
+    fi
+    CLI=$(ls "$HOME"/.npm/_npx/*/node_modules/@ainotation/mcp/dist/cli.mjs 2>/dev/null | head -1)
+    if [ -n "$CLI" ]; then exec node "$CLI" service; else exec npx --yes @ainotation/mcp@beta service; fi
+
+aino-bridge:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd apps/admin-web
+    exec node scripts/ainotation-bridge.mjs
+
+aino-check:
+    #!/usr/bin/env bash
+    echo "== service =="
+    if [ -f "$HOME/.ainotation/service/connection.json" ]; then
+      url=$(jq -r .url "$HOME/.ainotation/service/connection.json")
+      token=$(jq -r .token "$HOME/.ainotation/service/connection.json")
+      curl -sf -m 3 "$url/control/health" -H "Authorization: Bearer $token" >/dev/null 2>&1 \
+        && echo "  ✓ $url" || echo "  ✗ $url 不健康 (just aino-service 重启)"
+      curl -sf -m 3 "$url/control/projects" -H "Authorization: Bearer $token" 2>/dev/null | jq -r '.projects[] | "  project: \(.name) (\(.projectId[0:8]))"' 2>/dev/null || true
+    else
+      echo "  ✗ 未运行 (just aino-service)"
+    fi
+    echo "== 同步桥 (:44090) =="
+    curl -sf -m 3 http://127.0.0.1:44090/connection.json 2>/dev/null | jq -e -r '"  ✓ 桥活跃 service=" + .url + " token=" + (.token[0:8])' || echo "  ✗ 未运行 (just aino-bridge)"
+    echo "== 前端 (本次会话端口, 示例 8092) =="
+    curl -s -o /dev/null -m 3 -w '  :8092 -> %{http_code}\n' http://127.0.0.1:8092/ || echo "  :8092 未监听 (just dev-web 8092 debug)"
+
 # ---------- 疑难问题 → 推荐处理 ----------
 # 症状: 前端一直 500 "Connection refused" / dx 日志消失
 #   → 后端或 dx serve 被回收(常见于用 nohup 起)。just dev-check 看监听;

@@ -64,22 +64,22 @@ async function main() {
   const projectId = project.projectId ?? project.config.projectId;
   console.log('project ready:', projectId, project.name ?? project.config?.name);
 
-  // 2. 签发 grant 并写入 SDK 连接文件
+  // 2. 签发 grant 并写入 SDK 连接文件（renew 响应不含 token，签发 token 需单独保存）
+  let grantToken;
   async function issue() {
     const grant = await api(url, token, '/control/grants', 'POST', {
       kind: 'browser',
       projectId,
       origin: ORIGIN,
     });
-    await import('node:fs/promises').then((fs) =>
-      fs.writeFile(SDK_CONNECTION, `${JSON.stringify({ url, token: grant.token }, null, 2)}\n`),
-    );
+    grantToken = grant.token;
+    await writeFile(SDK_CONNECTION, `${JSON.stringify({ url, token: grant.token }, null, 2)}\n`);
     console.log('grant issued', grant.grantId, 'expires', new Date(grant.expiresAt).toISOString());
     return grant;
   }
   let grant = await issue();
 
-  // 3. 续租循环（renew 保持同一 token 有效，无需重写连接文件）
+  // 3. 续租循环（renew 保持同一 token 在服务端有效，仅更新过期时间）
   setInterval(async () => {
     try {
       grant = await api(url, token, `/control/grants/${grant.grantId}/renew`, 'POST');
@@ -94,7 +94,7 @@ async function main() {
   createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ url, token: grant.token }));
+    res.end(JSON.stringify({ url, token: grantToken }));
   }).listen(FILE_PORT, '127.0.0.1', () => console.log(`connection file served on :${FILE_PORT}`));
 }
 

@@ -49,6 +49,7 @@
 | 5. 验证后端 | `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3211/api/dashboard` | 返回 **401 是正常的**（说明服务活着、接口需要登录）；返回连接被拒说明没起来 |
 | 6. 启动前端 | `just dev-web 8090`（用持久后台任务，见第二节） | 启动后确认 8090 在监听；`curl http://127.0.0.1:8090/` 应该返回 200。`dx` 是 Dioxus 的官方开发 CLI（装在 PATH 里，`dx --help` 可查），配方内部就是调它 |
 | 7. 免登录调前端 | `just dev-web 8090 debug` | 与上一行唯一区别：编译时多开 `debug-auto-login` feature（自动登录测试账号 `admin_dev`）。想手动测登录页就打开 `#login` 锚点；自己点"退出登录"不会被自动重登顶掉 |
+| 8. UI 视觉标注反馈 | 见 `.agent/skills/ainotation-web/SKILL.md` | 需要用户在页面上标注、agent 经 MCP 读标注时：先 `just aino-service` + `just aino-bridge`（顺序硬约束），再起前端 |
 
 **前端报 `Connection refused` 时，先看后端**：前端 `dx` 的代理指向 3211，后端死了前端必然报错。
 先跑 `just dev-check` 确认后端状态，不要先去折腾前端。

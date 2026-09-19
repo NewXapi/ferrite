@@ -31,17 +31,22 @@
 
 ```bash
 # 0. 后端：共享 3211 已在跑则跳过（just dev-check 体检）
-# 1. 起前端（worktree 内，端口自选避开他人）
+# 1. 标注栈（顺序硬约束，均用运行时后台任务启动，详见 .agent/skills/ainotation-web/SKILL.md）
+just aino-service      # 本地 service（就绪判据 ~/.ainotation/service/connection.json）
+just aino-bridge       # 同步桥：注册项目 + grant 签发续租 + :44090 连接端点
+# 2. 前端（worktree 内，端口自选避开他人）
 just dev-web 8092 debug
-# 2. 浏览器打开 http://127.0.0.1:8092 ，右下角点浮动 A 按钮
-# 3. 标注：
+# 3. 浏览器打开 http://127.0.0.1:8092 ，右下角点浮动 A 按钮
+# 4. 标注：
 #    - 点击元素 / 拖选文字（按住 Shift 多选）
 #    - 按住 Option/Alt 可先操作真实页面（开菜单、填表单）
 #    - marker 弹窗里写意见，可加截图 / 画箭头，Cmd/Ctrl+Enter 保存
-# 4. 交给 Agent：
-#    - 工具栏 Copy feedback → 粘贴进 omp 会话；或 Export JSON → 告诉 agent 文件路径
-#    - 一句话示例：「这是页面上标注的反馈（见下），按标注完成 UI 修改」
+# 5. 交给 Agent：
+#    - agent 直接经 MCP 读（ainotation_get_feedback 等），用户说「看我的标注」即可
+#    - 或工具栏 Copy feedback → 粘贴进会话；Export JSON → 告诉 agent 文件路径
 ```
+
+体检：`just aino-check`（service 注册表 / 桥端点 / 前端连通一次看完）。
 
 ### 常用快捷键
 
