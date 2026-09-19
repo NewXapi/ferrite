@@ -361,14 +361,34 @@ pub fn capture_prompt_body(body: &bytes::Bytes) -> bytes::Bytes {
 ///
 /// 渠道映射优先 (`upstream_model` 非空); 缺省时回落客户端发的 model
 /// (与 [`rewrite_upstream_model`] 的零改写情形保持一致, 见该函数注释)。
+///
+/// model 直接进 URL 路径段, 客户端可发任意字符串 — 含 `/` / `..` / 控制字符
+/// 会改写上游路径 (信任边界)。只放行单段安全字符, 非法则退回不寻址,
+/// 由 [`build_url`](crate::adapter::build_url) 走客户端 path 兜底, 上游自行拒绝。
 pub fn resolve_upstream_model(body: &Bytes, upstream_model: &str) -> String {
-    if !upstream_model.is_empty() {
-        return upstream_model.to_string();
+    let resolved = if !upstream_model.is_empty() {
+        upstream_model.to_string()
+    } else {
+        serde_json::from_slice::<serde_json::Value>(body)
+            .ok()
+            .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(str::to_string))
+            .unwrap_or_default()
+    };
+    if is_safe_model_segment(&resolved) {
+        resolved
+    } else {
+        String::new()
     }
-    serde_json::from_slice::<serde_json::Value>(body)
-        .ok()
-        .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(str::to_string))
-        .unwrap_or_default()
+}
+
+/// model 是否可作为 URL 单段: 仅字母数字与 `.` `-` `_`。
+///
+/// 允许 `.` 是因为 `..:verb` 仍是单段 (穿越需要独立 `/..` 段), 而 `.`-分隔的
+/// 模型名 (`gemini-1.5-pro`) 常见。
+fn is_safe_model_segment(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 /// 把请求体的 `model` 改写为上游真名。

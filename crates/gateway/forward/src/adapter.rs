@@ -78,10 +78,10 @@ fn build_url(
         }
         "openai" => {
             // Responses 客户端 → Responses 端点; 其余入站统一编成 Chat 格式。
-            if inbound == ProtocolKind::OpenAIResp {
-                format!("{base}/v1/responses")
-            } else {
-                format!("{base}/v1/chat/completions")
+            // 用 match 而非 == : ProtocolKind 新增变体时编译器会要求此处表态。
+            match inbound {
+                ProtocolKind::OpenAIResp => format!("{base}/v1/responses"),
+                _ => format!("{base}/v1/chat/completions"),
             }
         }
         // passthrough / 未知 — 透传, 客户端路径完全决定目标。

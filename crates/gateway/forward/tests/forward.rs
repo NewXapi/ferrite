@@ -347,6 +347,34 @@ fn forward_task_is_cloneable() {
 /// `model` 必须是真名，否则上游报 model not found。
 /// 回归：smoke 发现别名映射未生效，上游收到的仍是公开别名。
 /// resolve_upstream_model 决定 Gemini 路径里的 model: 渠道映射优先, 缺省回落客户端。
+/// model 直接进 URL 路径段, 客户端可发任意串 — 非法值必须被拒, 不能改写上游路径。
+#[test]
+fn resolve_upstream_model_rejects_unsafe_for_url() {
+    use forward::pipeline::resolve_upstream_model;
+    // 渠道映射的非法值同样拒 (坏配置不该产出畸形 URL)。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"{}".as_ref()), "a/b"),
+        ""
+    );
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"{}".as_ref()), "../x"),
+        ""
+    );
+    // 单独的 ".." 不是穿越: URL 里它是 "..:verb" 一个段, 放行。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(b"{}".as_ref()), ".."),
+        ".."
+    );
+    // 客户端非法 model → 不寻址。
+    let bad = Bytes::from(r#"{"model":"x/../../etc"}"#);
+    assert_eq!(resolve_upstream_model(&bad, ""), "");
+    // 合法值照常: 含 . - _ 的模型名是常态。
+    assert_eq!(
+        resolve_upstream_model(&Bytes::from(r#"{"model":"gemini-1.5.pro"}"#), ""),
+        "gemini-1.5.pro"
+    );
+}
+
 #[test]
 fn resolve_upstream_model_prefers_channel_mapping() {
     use forward::pipeline::resolve_upstream_model;
