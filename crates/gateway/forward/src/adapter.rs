@@ -5,11 +5,12 @@
 //! 协议体转换在 protocol crate, 这里只做**寻址与鉴权**。
 
 use dispatch::Candidate;
+use gateway_pipeline::ctx::ProtocolKind;
 
 /// 准备产物 — egress::execute 的直接输入。
 #[derive(Debug, Clone)]
 pub struct PreparedRequest {
-    /// 完整上游 URL (base_url + path, 含 /v1 前缀规则)。
+    /// 完整上游 URL (base_url + 上游端点路径)。
     pub url: String,
     /// 鉴权头 (如 Authorization: Bearer sk-...)。
     pub auth_header: (String, String),
@@ -33,37 +34,54 @@ fn auth_header_for(provider: &str, secret: &str) -> (String, String) {
     }
 }
 
-/// 拼接上游 URL — 按 provider 分发路径模板。
+/// 拼接上游 URL — 用**上游协议**选端点模板, 用**入站格式**区分同协议的多端点。
 ///
-/// - `openai` → `{base}/v1{path}` (兼容 client 路径含/不含 /v1 前缀)
-/// - `claude` → `{base}/v1/messages` (强制覆盖, 客户端 path 不影响)
-/// - `gemini` → `{base}/v1beta/{path}` (Gemini 路径含 `models/...`)
-/// - `passthrough` → `{base}{path}` (字节透传, 路径由客户端决定)
+/// 转换层已把请求体编成上游格式, URL 也必须是该格式的端点, 客户端打的 path
+/// 只在 passthrough 下有意义 (透传语义: 路径与体都由客户端决定):
+/// - `openai` → `/v1/chat/completions`; 入站为 Responses 时走 `/v1/responses`
+///   (Responses 客户端的体被编成 Responses 格式, 必须打对应端点)
+/// - `claude` → `/v1/messages` (强制, 客户端 path 不影响)
+/// - `gemini` → `/v1beta/models/{model}:{verb}`, verb 随 stream
+///   (model 取渠道映射后的上游真名; 无 model 可寻址时退回客户端 path)
+/// - `passthrough` / 未知 → `{base}{path}` (客户端路径完全决定目标)
 ///
 /// base 末尾的 `/` 与 path 开头的 `/` 自动归一化, 避免双斜杠或漏斜杠。
-fn build_url(provider: &str, base_url: &str, path: &str) -> String {
+fn build_url(
+    provider: &str,
+    base_url: &str,
+    path: &str,
+    inbound: ProtocolKind,
+    model: &str,
+    stream: bool,
+) -> String {
     let base = base_url.trim_end_matches('/');
     let normalized = provider.trim().to_ascii_lowercase();
     match normalized.as_str() {
         "claude" => format!("{base}/v1/messages"),
         "gemini" => {
-            // Gemini 路径形如 `/v1beta/models/foo:streamGenerateContent`, path 通常已含 /v1beta 前缀。
-            // 若 path 已含 /v1beta/ 则直接拼接 base+path; 否则强制补 /v1beta。
-            let trimmed = path.trim_start_matches('/');
-            if trimmed.starts_with("v1beta/") {
-                format!("{base}/{trimmed}")
+            let verb = if stream {
+                "streamGenerateContent"
             } else {
-                format!("{base}/v1beta/{trimmed}")
+                "generateContent"
+            };
+            if model.is_empty() {
+                // 无 model 可寻址 (非聊天类请求或体非 JSON): 退回客户端 path,
+                // 由上游判定。保留旧前缀规则避免回归。
+                let trimmed = path.trim_start_matches('/');
+                return if trimmed.starts_with("v1beta/") {
+                    format!("{base}/{trimmed}")
+                } else {
+                    format!("{base}/v1beta/{trimmed}")
+                };
             }
+            format!("{base}/v1beta/models/{model}:{verb}")
         }
         "openai" => {
-            // path 通常已含 /v1/..., 但客户端也可能直接打 /chat/completions (无 /v1)。
-            // 仅补一次 /v1 前缀, 避免 /v1/v1 双前缀。
-            let trimmed = path.trim_start_matches('/');
-            if trimmed.starts_with("v1/") {
-                format!("{base}/{trimmed}")
+            // Responses 客户端 → Responses 端点; 其余入站统一编成 Chat 格式。
+            if inbound == ProtocolKind::OpenAIResp {
+                format!("{base}/v1/responses")
             } else {
-                format!("{base}/v1/{trimmed}")
+                format!("{base}/v1/chat/completions")
             }
         }
         // passthrough / 未知 — 透传, 客户端路径完全决定目标。
@@ -92,18 +110,29 @@ pub fn extra_headers_from_settings(settings: &serde_json::Value) -> Vec<(String,
     }
     out
 }
+
 /// 按 provider_type 准备请求 — adapter 工厂函数。
 ///
-/// 路径规则 (new-api 一致): openai → base_url + /v1{path};
-/// claude → base_url + /v1/messages; gemini → base_url + /v1beta/...
+/// `inbound` / `stream` / `upstream_model` 决定上游端点 (见 [`build_url`]):
+/// 上游 URL 必须匹配转换后请求体的格式, 而不是客户端打进来的路径。
 /// 鉴权头按 provider 协议族选择; 渠道 settings.headers 覆盖可改写鉴权头键名。
 pub fn prepare(
     candidate: &Candidate,
     path: &str,
     provider_type: &str,
+    inbound: ProtocolKind,
+    stream: bool,
+    upstream_model: &str,
     extra_headers: Vec<(String, String)>,
 ) -> PreparedRequest {
-    let url = build_url(provider_type, &candidate.base_url, path);
+    let url = build_url(
+        provider_type,
+        &candidate.base_url,
+        path,
+        inbound,
+        upstream_model,
+        stream,
+    );
     let auth = auth_header_for(provider_type, &candidate.secret);
     PreparedRequest {
         url,
@@ -111,6 +140,7 @@ pub fn prepare(
         extra_headers,
     }
 }
+
 /// 头过滤 — 剥离 hop-by-hop/凭据/冲突头 (new-api api_request.go 规则)。
 /// - 永远剥离 (HTTP/1.1 RFC 7230 §6.1 hop-by-hop): `connection`, `keep-alive`,
 ///   `transfer-encoding`, `upgrade`, `proxy-*`

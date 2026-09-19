@@ -71,10 +71,15 @@ pub async fn forward_once(
     formats: &FormatRegistry,
     timeouts: &crate::egress::Timeouts,
 ) -> Result<crate::Forwarded, NormalizedError> {
+    // 上游端点由上游协议 + 入站格式决定 (客户端 path 只在 passthrough 下有效)。
+    let url_model = resolve_upstream_model(&task.body, &task.candidate.upstream_model);
     let prepared = adapter::prepare(
         &task.candidate,
         &task.path,
         &task.provider_type,
+        task.inbound_format,
+        task.stream,
+        &url_model,
         task.extra_headers.clone(),
     );
     let merged = merge_headers(&prepared, &task.headers);
@@ -350,6 +355,20 @@ impl Pipeline for ReqwestPipeline {
 /// TODO(#334): 与 metering::estimate_prompt_tokens 对接。
 pub fn capture_prompt_body(body: &bytes::Bytes) -> bytes::Bytes {
     body.clone()
+}
+
+/// 取将实际发往上游的 model 名 — 供 Gemini 之类的「model 入路径」协议寻址。
+///
+/// 渠道映射优先 (`upstream_model` 非空); 缺省时回落客户端发的 model
+/// (与 [`rewrite_upstream_model`] 的零改写情形保持一致, 见该函数注释)。
+fn resolve_upstream_model(body: &Bytes, upstream_model: &str) -> String {
+    if !upstream_model.is_empty() {
+        return upstream_model.to_string();
+    }
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// 把请求体的 `model` 改写为上游真名。

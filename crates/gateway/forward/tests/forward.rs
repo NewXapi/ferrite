@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use contract::records::{RouteUnitRecord, SyncMeta};
 use dispatch::candidate::Candidate;
+use gateway_pipeline::ctx::ProtocolKind;
 
 // ---------- 测试辅助 ----------
 
@@ -41,26 +42,140 @@ fn candidate(provider: &str) -> Candidate {
 
 // ---------- adapter ----------
 
+/// 客户端 path 不得决定上游端点 —— 转换后的体是什么格式, URL 就必须是什么端点。
+/// 这是跨格式转换能真正打通的另一半 (体在 protocol-bridge 转, 路径在 adapter 转)。
+#[test]
+fn adapter_url_follows_upstream_protocol_not_client_path() {
+    // Claude 客户端 (打 /v1/messages) 命中 OpenAI 渠道 → 必须 /v1/chat/completions,
+    // 因为体已被编成 Chat 格式; 用客户端的 /v1/messages 会 404。
+    let c = candidate("openai");
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "openai",
+        ProtocolKind::Anthropic,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/v1/chat/completions");
+
+    // Gemini 客户端 命中 Claude 渠道 → /v1/messages, 客户端的 :generateContent 作废。
+    let c = candidate("claude");
+    let p = prepare(
+        &c,
+        "/v1beta/models/gemini-pro:generateContent",
+        "claude",
+        ProtocolKind::Gemini,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/v1/messages");
+
+    // OpenAI 渠道 + Responses 客户端 → Responses 端点 (体是 Responses 格式)。
+    let c = candidate("openai");
+    let p = prepare(
+        &c,
+        "/v1/chat/completions",
+        "openai",
+        ProtocolKind::OpenAIResp,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/v1/responses");
+
+    // Gemini 渠道: model 入路径, verb 随 stream; model 取上游真名而非客户端别名。
+    let c = candidate("gemini");
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "gemini",
+        ProtocolKind::OpenAI,
+        true,
+        "gpt-4-0613",
+        vec![],
+    );
+    assert_eq!(
+        p.url,
+        "https://upstream.example/v1beta/models/gpt-4-0613:streamGenerateContent"
+    );
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "gemini",
+        ProtocolKind::OpenAI,
+        false,
+        "gpt-4-0613",
+        vec![],
+    );
+    assert_eq!(
+        p.url,
+        "https://upstream.example/v1beta/models/gpt-4-0613:generateContent"
+    );
+
+    // passthrough: 客户端 path 原样, 不被改写。
+    let c = candidate("passthrough");
+    let p = prepare(
+        &c,
+        "/custom/endpoint",
+        "passthrough",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
+        vec![],
+    );
+    assert_eq!(p.url, "https://upstream.example/custom/endpoint");
+}
+
 #[test]
 fn adapter_builds_url_per_provider() {
     // openai → base + /v1 + path
     let c = candidate("openai");
-    let p = prepare(&c, "/chat/completions", "openai", vec![]);
+    let p = prepare(
+        &c,
+        "/chat/completions",
+        "openai",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
+        vec![],
+    );
     assert_eq!(p.url, "https://upstream.example/v1/chat/completions");
     assert_eq!(p.auth_header.0, "Authorization");
     assert_eq!(p.auth_header.1, "Bearer sk-openai-secret");
 
     // claude → base + /v1/messages
     let c = candidate("claude");
-    let p = prepare(&c, "/messages", "claude", vec![]);
+    let p = prepare(
+        &c,
+        "/messages",
+        "claude",
+        ProtocolKind::Anthropic,
+        false,
+        "m",
+        vec![],
+    );
     assert!(p.url.ends_with("/v1/messages"));
     assert_eq!(p.auth_header.0, "x-api-key");
     assert_eq!(p.auth_header.1, "sk-claude-secret");
 
     // gemini → base + /v1beta/...
     let c = candidate("gemini");
-    let p = prepare(&c, "/models/gemini-pro:generateContent", "gemini", vec![]);
-    assert!(p.url.contains("/v1beta/models/gemini-pro"));
+    let p = prepare(
+        &c,
+        "/v1/messages",
+        "gemini",
+        ProtocolKind::Anthropic,
+        false,
+        "gemini-pro",
+        vec![],
+    );
+    assert_eq!(
+        p.url,
+        "https://upstream.example/v1beta/models/gemini-pro:generateContent"
+    );
     assert_eq!(p.auth_header.0, "x-goog-api-key");
 }
 
@@ -73,6 +188,9 @@ fn adapter_extra_headers_carried_into_merge() {
         &c,
         "/chat/completions",
         "openai",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
         vec![("authorization".to_string(), "Bearer override".to_string())],
     );
     assert_eq!(p.auth_header.0, "Authorization");
