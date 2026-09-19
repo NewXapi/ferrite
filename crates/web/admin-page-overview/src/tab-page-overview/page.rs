@@ -40,7 +40,6 @@ const SPARK_GRADIENT_QUOTA: &str = "sparkline-quota";
 /// 数据全部来自真实后端：/api/dashboard + /api/log/trend + /api/log/top。
 #[component]
 pub fn OverviewPanel() -> Element {
-    // ponytail: full UI overhaul to add breakdown cards for all timeframes in one go.
     let timeframe = use_signal(|| "今天"); // "今天", "本周", "本月", "今年"
 
     // 实时汇总:挂载时 use_effect 拉 GET /api/dashboard,写入 summary signal。
