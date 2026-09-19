@@ -313,7 +313,7 @@ fn decode_events(
     }
 }
 
-/// 管道执行 trait — apps/gateway 用 reqwest 实现。
+/// 管道执行 trait — apps/api 用 reqwest 实现。
 pub trait Pipeline: Send + Sync {
     /// 执行一次转发尝试。不重试 (重试是 dispatch::retry 的事)。
     fn execute(
@@ -325,7 +325,7 @@ pub trait Pipeline: Send + Sync {
 
 /// 默认 reqwest 管道 — 持有 `Egress` 实例。
 ///
-/// ponytail: 未来 apps/gateway 可以传入自定义 Egress (代理池/限速 Client);
+/// ponytail: 未来 apps/api 可以传入自定义 Egress (代理池/限速 Client);
 /// 当前一个全局 client 已足够。
 #[derive(Clone)]
 pub struct ReqwestPipeline {

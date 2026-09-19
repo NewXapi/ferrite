@@ -19,7 +19,7 @@ git log refs/heads/main --no-merges --format="%s" -- <组件路径...> | grep -c
 
 ## gateway 组件
 
-- 路径：`apps/gateway` + `crates/gateway/*`
+- 路径：`apps/api`（数据面组装入口）+ `crates/gateway/*`
 - 功能域（minor = 9）：
 
 | 功能域 | crate |
@@ -32,9 +32,9 @@ git log refs/heads/main --no-merges --format="%s" -- <组件路径...> | grep -c
 | 厂商协议适配 + SSE 帧扫描 | crates/gateway/protocol-bridge |
 | 代理节点池 + 主动探测 + SSRF 防护 + 分享链接 | crates/gateway/proxy |
 | 过滤词扫描 | crates/gateway/security |
-| 网关数据面组装 / 启动 + 可观测 | apps/gateway |
+| 网关数据面组装 / 启动 + 可观测 | apps/api（feature 门装配形态） |
 
-- **patch = 11**（gateway 路径 fix，`-- apps/gateway crates/gateway`）
+- **patch = 11**（gateway 路径 fix，`-- apps/api crates/gateway`）
 
 ## 快照（gateway-v0.9.11）
 

@@ -17,7 +17,7 @@
 //!
 //! ## 配置
 //!
-//! [`FilterConfig`] 由 `apps/gateway` 的 `GatewayConfig` 从 `[security]` 段读入：
+//! [`FilterConfig`] 由 `apps/api` 的 `GatewayConfig` 从 `[security]` 段读入：
 //!
 //! ```toml
 //! [security]

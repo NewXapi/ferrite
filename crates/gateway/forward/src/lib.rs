@@ -33,7 +33,7 @@ pub use stream_resilience::{ResilientChunk, StreamPhase, StreamResilience, pipe_
 
 use bytes::Bytes;
 
-/// 一次转发任务的全部输入 (apps/gateway 组装)。
+/// 一次转发任务的全部输入 (apps/api 组装)。
 #[derive(Debug, Clone)]
 pub struct ForwardTask {
     /// 已选候选 (dispatch::Candidate)。
@@ -47,7 +47,7 @@ pub struct ForwardTask {
     /// 是否 SSE (客户端 Accept 判定)。
     pub stream: bool,
     /// 渠道协议族 ("openai" / "claude" / "gemini" / "passthrough") — adapter 据此
-    /// 选路径模板与鉴权头。apps/gateway 从 ChannelRecord.provider_type 注入。
+    /// 选路径模板与鉴权头。apps/api 从 ChannelRecord.provider_type 注入。
     /// ponytail: dispatch::Candidate 当前不带 provider_type (RouteUnitRecord
     /// 只持 channel_key 引用); forward 拿不到完整 ChannelRecord, 由 host 在
     /// 组装 ForwardTask 时一并传入, 避免 forward 回头查快照。
