@@ -115,13 +115,20 @@ ensure_fresh_backend() {
             curl -s -o /dev/null "http://127.0.0.1:$bport/api/dashboard" 2>/dev/null && break
             sleep 1
         done
-        echo "隔离后端 ✓ 127.0.0.1:$bport (pid $(cat "$FRESH_PIDFILE"))"
+        if curl -s -o /dev/null "http://127.0.0.1:$bport/api/dashboard" 2>/dev/null ||
+            curl -s -o /dev/null "http://127.0.0.1:$bport/api/dashboard" 2>/dev/null; then
+            echo "隔离后端 ✓ 127.0.0.1:$bport (pid $(cat "$FRESH_PIDFILE"))"
+        else
+            rm -f "$FRESH_PIDFILE"
+            die "隔离后端启动失败, 见 /tmp/ferrite-devweb-$PORT-backend.log"
+        fi
         echo "  ⚠️  数据库仍取本 worktree config/config.toml —— 要数据隔离请改指向另一库后重跑 (dev-env.md 3.2)"
     fi
     # 前端代理指向隔离后端 (dx 不支持代理参数, 临时改 Dioxus.toml, 退出还原)
     FRESH_TOML_BAK="$ADMIN_WEB/Dioxus.toml.devweb-bak"
     cp "$ADMIN_WEB/Dioxus.toml" "$FRESH_TOML_BAK"
-    sed -i "s|backend = \"http://127.0.0.1:3211\"|backend = \"http://127.0.0.1:$bport\"|" "$ADMIN_WEB/Dioxus.toml"
+    sed -i "s|http://127.0.0.1:3211|http://127.0.0.1:$bport|" "$ADMIN_WEB/Dioxus.toml"
+    grep -q "127.0.0.1:$bport" "$ADMIN_WEB/Dioxus.toml" || echo "⚠️  Dioxus.toml 代理改写未生效, 前端仍指向共享后端"
     trap 'restore_fresh' EXIT INT TERM
 }
 
