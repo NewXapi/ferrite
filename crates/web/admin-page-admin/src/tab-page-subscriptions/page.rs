@@ -20,7 +20,11 @@ use crate::state::{PlanRow, map_subscription_view};
 
 use super::card::PlanCard;
 use super::modal::SubscriptionFormModal;
-use super::shared::{BTN_NEW_PLAN, MSG_EMPTY, MSG_LOAD_FAIL_PREFIX, MSG_LOAD_FAIL_SUFFIX};
+use super::shared::{
+    BTN_NEW_PLAN, MSG_CREATED, MSG_DELETED, MSG_EMPTY, MSG_ERR_NAME_REQUIRED, MSG_ERR_QUOTA,
+    MSG_LOAD_FAIL_PREFIX, MSG_LOAD_FAIL_SUFFIX, MSG_LOADING, MSG_SAVING, MSG_UPDATED,
+    SEC_NAME_DEDUP,
+};
 
 /// 以某行现有值重建 upsert 请求体(启停切换用):后端按 name 定位行
 /// 并整体回写这些列,返回更新后的视图。price 取规范字符串形式。
@@ -162,7 +166,7 @@ pub fn SubscriptionsPage() -> Element {
     let mut commit = move |_| {
         let name = f_title().trim().to_string();
         if name.is_empty() {
-            action_err.set(Some("套餐名称必填".into()));
+            action_err.set(Some(MSG_ERR_NAME_REQUIRED.into()));
             return;
         }
         let currency = f_currency();
@@ -185,7 +189,7 @@ pub fn SubscriptionsPage() -> Element {
                 match raw.parse::<f64>() {
                     Ok(q) if q.is_finite() && q >= 0.0 => q,
                     _ => {
-                        action_err.set(Some("额度必须是数字且不小于 0".into()));
+                        action_err.set(Some(MSG_ERR_QUOTA.into()));
                         return;
                     }
                 }
@@ -223,9 +227,9 @@ pub fn SubscriptionsPage() -> Element {
                 Ok(_) => {
                     saving.set(false);
                     ok_msg.set(Some(if editing.is_some() {
-                        "套餐已更新".into()
+                        MSG_UPDATED.into()
                     } else {
-                        "套餐已创建".into()
+                        MSG_CREATED.into()
                     }));
                     show_modal.set(false);
                     // 重拉全表:后端按 sort_order 排序,本地插入无法保证位次。
@@ -266,7 +270,7 @@ pub fn SubscriptionsPage() -> Element {
         spawn(async move {
             match delete_subscription_api(&client, &key).await {
                 Ok(()) => {
-                    ok_msg.set(Some("套餐已删除".into()));
+                    ok_msg.set(Some(MSG_DELETED.into()));
                     reload += 1;
                 }
                 Err(e) => action_err.set(Some(e.to_string())),
@@ -298,7 +302,7 @@ pub fn SubscriptionsPage() -> Element {
             if saving() {
                 div { class: "rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
                     "data-testid": "subscriptions-saving",
-                    "正在与后端同步…"
+                    "{MSG_SAVING}"
                 }
             }
 
@@ -306,7 +310,7 @@ pub fn SubscriptionsPage() -> Element {
             div { class: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3",
                 div { class: "flex items-center gap-2 text-xs text-amber-300",
                     span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/20 font-bold", "ℹ" }
-                    span { "套餐按名称去重：同名保存即更新现有套餐，改名会新建一行" }
+                    span { "{SEC_NAME_DEDUP}" }
                 }
                 button {
                     class: "flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-amber-300 shadow-sm",
@@ -321,7 +325,7 @@ pub fn SubscriptionsPage() -> Element {
             if loading() {
                 div { class: "rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center text-sm text-zinc-500",
                     "data-testid": "subscriptions-loading",
-                    "正在加载订阅套餐…"
+                    "{MSG_LOADING}"
                 }
             }
             // ---- error:列表拉取失败(与写请求的 action_err 红条区分开) ----

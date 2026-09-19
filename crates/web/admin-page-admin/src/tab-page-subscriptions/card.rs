@@ -8,8 +8,8 @@
 use dioxus::prelude::*;
 
 use super::shared::{
-    BTN_EDIT, LBL_DISABLED, LBL_ENABLED, LBL_GROUP_PREFIX, LBL_PERIOD, LBL_PRICE, LBL_QUOTA,
-    LBL_UNLIMITED, ToggleSwitch,
+    BTN_DELETE, BTN_EDIT, LBL_DISABLED, LBL_ENABLED, LBL_GROUP_PREFIX, LBL_NO_LIMIT, LBL_PERIOD,
+    LBL_PRICE, LBL_QUOTA, LBL_UNLIMITED, ToggleSwitch,
 };
 use crate::state::PlanRow;
 
@@ -82,7 +82,7 @@ pub fn PlanCard(
     let limit_txt = if plan.max_per_user > 0 {
         format!("{}", plan.max_per_user)
     } else {
-        "不限".to_string()
+        LBL_NO_LIMIT.to_string()
     };
     let cur_enabled = plan.enabled;
     let row_key = plan.key.clone();
@@ -127,7 +127,7 @@ pub fn PlanCard(
                         class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300",
                         "data-testid": del_id,
                         onclick: move |_| on_delete.call(index),
-                        "✕"
+                        "{BTN_DELETE}"
                     }
                 }
             }

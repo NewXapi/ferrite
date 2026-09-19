@@ -11,9 +11,10 @@
 use dioxus::prelude::*;
 
 use super::shared::{
-    BTN_CLOSE, BTN_SAVE, FIELD_ENABLED, FIELD_GROUP, FIELD_LIMIT, FIELD_PLAN_TITLE, MSG_GROUP_HINT,
-    MSG_LIMIT_HINT, MSG_QUOTA_HINT, MSG_TITLE_HINT, OPT_NO_UPGRADE, TAB_BASIC, TAB_RULES, TTL_EDIT,
-    TTL_NEW, ToggleSwitch,
+    BTN_CLOSE, BTN_SAVE, FIELD_DURATION, FIELD_ENABLED, FIELD_GROUP, FIELD_LIMIT, FIELD_PLAN_TITLE,
+    FIELD_PRICE, LBL_QUOTA, MSG_CURRENCY_HINT, MSG_DURATION_HINT, MSG_GROUP_HINT, MSG_LIMIT_HINT,
+    MSG_PH_PLAN_TITLE, MSG_PRICE_HINT, MSG_QUOTA_HINT, MSG_TITLE_HINT, OPT_NO_UPGRADE, TAB_BASIC,
+    TAB_RULES, TTL_EDIT, TTL_NEW, ToggleSwitch,
 };
 
 /// 订阅编辑/新建弹窗
@@ -129,14 +130,14 @@ pub fn SubscriptionFormModal(
                                 class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                 "data-testid": "subscriptions-form-title",
                                 value: "{f_title()}",
-                                placeholder: "例如：月度会员",
+                                placeholder: MSG_PH_PLAN_TITLE,
                                 oninput: move |e| f_title.set(e.value()),
                             }
                             p { class: "text-[11px] text-zinc-500", "{MSG_TITLE_HINT}" }
                         }
                         div { class: "grid grid-cols-1 sm:grid-cols-3 gap-4",
                             label { class: "block space-y-1",
-                                span { class: "text-xs font-medium text-zinc-300", "套餐价格" }
+                                span { class: "text-xs font-medium text-zinc-300", "{FIELD_PRICE}" }
                                 input {
                                     r#type: "number",
                                     step: "0.01",
@@ -145,7 +146,7 @@ pub fn SubscriptionFormModal(
                                     value: "{f_price()}",
                                     oninput: move |e| f_price.set(e.value()),
                                 }
-                                p { class: "text-[11px] text-zinc-500", "用户购买该套餐需支付的金额" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_PRICE_HINT}" }
                             }
                             label { class: "block space-y-1",
                                 span { class: "text-xs font-medium text-zinc-300", "计价币种" }
@@ -157,10 +158,10 @@ pub fn SubscriptionFormModal(
                                     option { value: "CNY", "CNY（¥）" }
                                     option { value: "USD", "USD（$）" }
                                 }
-                                p { class: "text-[11px] text-zinc-500", "决定列表价格符号；后端要求非空" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_CURRENCY_HINT}" }
                             }
                             label { class: "block space-y-1",
-                                span { class: "text-xs font-medium text-zinc-300", "套餐额度" }
+                                span { class: "text-xs font-medium text-zinc-300", "{LBL_QUOTA}" }
                                 input {
                                     r#type: "number",
                                     step: "0.01",
@@ -184,7 +185,7 @@ pub fn SubscriptionFormModal(
                         }
                         div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2",
                             label { class: "block space-y-1",
-                                span { class: "text-xs text-zinc-400", "有效期（天）" }
+                                span { class: "text-xs text-zinc-400", "{FIELD_DURATION}" }
                                 input {
                                     r#type: "number",
                                     class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
@@ -192,7 +193,7 @@ pub fn SubscriptionFormModal(
                                     value: "{f_duration()}",
                                     oninput: move |e| f_duration.set(e.value()),
                                 }
-                                p { class: "text-[11px] text-zinc-500", "后端按天存储有效期；至少 1 天" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_DURATION_HINT}" }
                             }
                             label { class: "block space-y-1",
                                 span { class: "text-xs text-zinc-400", "{FIELD_LIMIT}" }

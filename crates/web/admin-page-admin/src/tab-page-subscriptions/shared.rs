@@ -1,14 +1,11 @@
 //! 订阅套餐 tab 共享件:页面骨架组件(`GridShell` / `Panel`)、三个通用按钮
 //! (`PushBtn` / `DangerBtn` / `GhostBtn`)与状态开关(`ToggleSwitch`),
-//! 以及该 tab 的全部用户可见文案常量。
+//! 以及该 tab 的全部用户可见文案常量（i18n 第 1 层）：
+//! 常量值即原字面量,逐字符保持一致以保证零渲染变化。
 //!
-//! 本文件同时承载该 tab 的全部用户可见文案常量（i18n 第 1 层）：
-//! 常量值即原字面量，逐字符保持一致以保证零渲染变化。
-//!
-//! 边界:不放业务面板(`PlanCard` 在 `card.rs`,`SubscriptionFormModal` 与三个
-//! Tab 体在 `modal.rs`,下拉选项列表在 `options.rs`)；不放网络调用(在
-//! `page.rs` 的 `commit` 与 `modal.rs`)。订阅套餐后端暂未实现,数据全走
-//! `state::EntityStore` 本地演示态。
+//! 边界:不放业务面板(`PlanCard` 在 `card.rs`,`SubscriptionFormModal` 与两个
+//! Tab 体在 `modal.rs`）；不放网络调用(在 `page.rs`:列表 `use_effect` 与
+//! `commit` / `delete_row` 两个写回闭包)。
 
 use dioxus::prelude::*;
 
@@ -22,10 +19,6 @@ pub const LBL_PRICE: &str = "价格";
 pub const LBL_PERIOD: &str = "有效期";
 /// 套餐卡指标:套餐额度。
 pub const LBL_QUOTA: &str = "套餐额度";
-/// 套餐卡指标:站内支付 / 渠道。
-pub const LBL_PAY_CHANNEL: &str = "站内支付 / 渠道";
-/// 套餐卡指标:额度重置。
-pub const LBL_RESET_CYCLE: &str = "额度重置";
 /// 套餐卡状态徽标:启用。
 pub const LBL_ENABLED: &str = "启用";
 /// 套餐卡状态徽标:禁用。
@@ -92,8 +85,6 @@ pub const BTN_DELETE: &str = "✕";
 pub const TAB_BASIC: &str = "基本信息";
 /// 弹窗页签:规则与周期。
 pub const TAB_RULES: &str = "规则与周期";
-/// 弹窗页签:第三方支付配置。
-pub const TAB_PAYMENT: &str = "第三方支付配置";
 
 // ---- TTL_* : 弹窗 / 抽屉标题 ----
 
@@ -101,117 +92,37 @@ pub const TAB_PAYMENT: &str = "第三方支付配置";
 pub const TTL_EDIT: &str = "更新套餐信息";
 /// 弹窗标题:新建态。
 pub const TTL_NEW: &str = "新建订阅套餐";
-/// 弹窗副标题:说明。
-pub const TTL_SUBTITLE: &str = "修改现有订阅套餐的配置";
 
 // ---- FIELD_* : 表单字段标签 ----
 
 /// 基本信息字段:套餐标题。
 pub const FIELD_PLAN_TITLE: &str = "套餐标题";
-/// 基本信息字段:套餐副标题。
-pub const FIELD_PLAN_SUBTITLE: &str = "套餐副标题";
-/// 基本信息字段:套餐价格 ($)。
-pub const FIELD_PRICE: &str = "套餐价格 ($)";
-/// 基本信息字段:额度 (点)。
-pub const FIELD_QUOTA: &str = "额度 (点)";
-/// 基本信息字段:套餐价格（菌种）。
-pub const FIELD_CURRENCY_PRICE: &str = "套餐价格（菌种）";
-/// 基本信息字段:站内支付方式。
-pub const FIELD_PAYMENT_METHOD: &str = "站内支付方式";
+/// 基本信息字段:套餐价格(币种由旁边下拉决定)。
+pub const FIELD_PRICE: &str = "套餐价格";
+/// 规则字段:有效期(天)。
+pub const FIELD_DURATION: &str = "有效期（天）";
 /// 基本信息字段:升级分组。
 pub const FIELD_GROUP: &str = "升级分组";
-/// 基本信息字段:降级分组。
-pub const FIELD_DOWNGRADE_GROUP: &str = "降级分组";
 /// 基本信息字段:限购。
 pub const FIELD_LIMIT: &str = "限购";
-/// 基本信息字段:排序。
-pub const FIELD_SORT: &str = "排序";
 /// 规则字段:启用状态。
 pub const FIELD_ENABLED: &str = "启用状态";
-/// 规则字段:允许余额兑换。
-pub const FIELD_ALLOW_REDEEM: &str = "允许余额兑换";
-/// 规则字段:额度用尽后允许使用钱包余额。
-pub const FIELD_ALLOW_WALLET: &str = "额度用尽后允许使用钱包余额";
-/// 规则字段:有效期设置区标题。
-pub const FIELD_PERIOD_SECTION: &str = "有效期设置";
-/// 规则字段:有效期数值。
-pub const FIELD_PERIOD_VAL: &str = "有效期数值";
-/// 规则字段:有效期单位。
-pub const FIELD_PERIOD_UNIT: &str = "有效期单位";
-/// 规则字段:额度重置区标题。
-pub const FIELD_RESET_SECTION: &str = "额度重置";
-/// 规则字段:重置周期。
-pub const FIELD_RESET_CYCLE: &str = "重置周期";
-/// 规则字段:自定义秒数。
-pub const FIELD_RESET_SECS: &str = "自定义秒数";
-/// 支付字段:Stripe Price ID。
-pub const FIELD_STRIPE_ID: &str = "Stripe Price ID";
-/// 支付字段:Creem Product ID。
-pub const FIELD_CREEM_ID: &str = "Creem Product ID";
-/// 支付字段:Waffo Pancake Product ID。
-pub const FIELD_WAFFO_ID: &str = "Waffo Pancake Product ID";
 
 // ---- OPT_* : 下拉选项 / 分段选择器选项 ----
 
-/// 站内支付方式选项:仅扣菌种。
-pub const OPT_PAY_ONLY_SPECIES: &str = "仅扣菌种";
-/// 站内支付方式选项:允许余额兑换。
-pub const OPT_PAY_WALLET_EXCHANGE: &str = "允许余额兑换";
-/// 站内支付方式选项:无限制。
-pub const OPT_PAY_UNLIMITED: &str = "无限制";
 /// 升级分组选项:不升级。
 pub const OPT_NO_UPGRADE: &str = "不升级";
-/// 降级分组选项:降级到购买前分组。
-pub const OPT_DOWNGRADE_PREV: &str = "降级到购买前分组";
-/// 降级分组选项:默认分组。
-pub const OPT_DEFAULT_GROUP: &str = "默认分组";
-/// 有效期单位选项:小时。
-pub const OPT_UNIT_HOUR: &str = "小时";
-/// 有效期单位选项:天。
-pub const OPT_UNIT_DAY: &str = "天";
-/// 有效期单位选项:个月。
-pub const OPT_UNIT_MONTH: &str = "个月";
-/// 有效期单位选项:年。
-pub const OPT_UNIT_YEAR: &str = "年";
-/// 有效期单位选项:秒。
-pub const OPT_UNIT_SECOND: &str = "秒";
-/// 重置周期选项:不重置。
-pub const OPT_RESET_NEVER: &str = "不重置";
-/// 重置周期选项:每天。
-pub const OPT_RESET_DAILY: &str = "每天";
-/// 重置周期选项:每周。
-pub const OPT_RESET_WEEKLY: &str = "每周";
-/// 重置周期选项:每月。
-pub const OPT_RESET_MONTHLY: &str = "每月";
-/// 重置周期选项:自定义。
-pub const OPT_RESET_CUSTOM: &str = "自定义";
 
 // ---- MSG_* : 提示 / 错误 / 空态 / 占位 ----
 
 /// 套餐标题输入框占位。
 pub const MSG_PH_PLAN_TITLE: &str = "例如：开拓的封赏";
-/// 套餐副标题输入框占位。
-pub const MSG_PH_PLAN_SUBTITLE: &str = "向你们致敬，向外开拓的勇士们！";
 /// 套餐价格输入框旁的说明。
 pub const MSG_PRICE_HINT: &str = "用户购买该套餐需支付的金额，具体币种由支付渠道决定";
 /// 额度输入框旁的说明。
 pub const MSG_QUOTA_HINT: &str = "套餐包含的总额度；0 表示不限量";
-/// 套餐价格（菌种）输入框旁的说明。
-pub const MSG_CURRENCY_PRICE_HINT: &str = "最小单位 0.1。仅当支付方式包含它时才生效。";
-/// 站内支付方式旁的说明。
-pub const MSG_PAYMENT_METHOD_HINT: &str = "只影响站内货币，不影响第三方支付渠道。";
-/// 降级分组旁的说明。
-pub const MSG_DOWNGRADE_HINT: &str = "订阅过期后降级到该分组";
 /// 限购输入框旁的说明。
 pub const MSG_LIMIT_HINT: &str = "单个用户可购买的次数；0 表示不限";
-/// 支付 Tab 顶部说明条。
-pub const MSG_PAYMENT_NOTE: &str = "使用此套餐的标题和价格，在已保存的店铺中创建 Pancake 产品。需要先在支付设置中完整配置 Waffo Pancake。";
-/// Stripe Price ID 输入框占位。
-pub const MSG_PH_STRIPE_ID: &str = "price_1M...";
-/// Creem Product ID 输入框占位。
-pub const MSG_PH_CREEM_ID: &str = "prod_...";
-/// Waffo Pancake Product ID 输入框占位。
-pub const MSG_PH_WAFFO_ID: &str = "选择产品或输入 ID";
 
 // ============ 页面骨架 ============
 
