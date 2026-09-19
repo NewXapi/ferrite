@@ -37,6 +37,8 @@ pub use components::admin_card::{
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
+pub use dialog::Dialog;
+pub use feedback::{Avatar, EmptyState, IconButton, Loading};
 pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};
 pub use i18n::{LOCALE, Locale, plural, t, t_in};
 pub use icons::{IconChartBar, IconLogOut, IconUser};
