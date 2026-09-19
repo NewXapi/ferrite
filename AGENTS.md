@@ -174,7 +174,8 @@ crates/web/<prefix-feature>/
 | 提交 / 推送被拦、创建 PR 被拒、要查检查规则 | `.agent/rules/gates.md` |
 | 启动后端 / 数据库 / 前端，或前端报错、构建卡住 | `.agent/rules/dev-env.md` |
 | 写前端界面、写 Rust 公共接口、调查或审查代码 | `.agent/rules/conventions.md` |
-| 要派一件具体的事给某个 agent（写任务书） | 开发任务用 `.agent/tasks/dev.md`，收尾合并用 `.agent/tasks/closeout-pr.md`；空白模板 `.agent/tasks/TEMPLATE.md` |
+| 要派一件具体的事给某个 agent（写任务书） | 开发任务用 `.agent/tasks/dev.md`，收尾合并用 `.agent/tasks/closeout-pr.md`，web 页面 crate 重构用 `.agent/tasks/restructure-web-page-crate.md`；空白模板 `.agent/tasks/TEMPLATE.md` |
+| 要重构 `crates/web/*` 页面 crate（平铺迁目录） | 规范细则 `.agent/tasks/web-page-crate-spec.md`；推进状态 `todo/web-page-refactor-rollout.md` |
 | 想了解 `.agent/` 目录本身怎么组织 | `.agent/README.md` |
 
 ---
