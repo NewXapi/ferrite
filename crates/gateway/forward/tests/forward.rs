@@ -223,6 +223,9 @@ fn merge_headers_channel_settings_win_over_client_headers() {
         &c,
         "/chat/completions",
         "openai",
+        ProtocolKind::OpenAI,
+        false,
+        "m",
         vec![("x-custom".to_string(), "from-channel".to_string())],
     );
     let client = vec![("X-Custom".to_string(), "from-client".to_string())];
