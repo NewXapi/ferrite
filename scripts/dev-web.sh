@@ -41,6 +41,12 @@ case "$AINO" in on|off) ;; *) die "--aino 只能是 on|off" ;; esac
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ADMIN_WEB="$REPO_ROOT/apps/admin-web"
 
+# 自愈: fresh 模式被 SIGKILL 时 trap 不触发, 残留 .devweb-bak 说明代理停在改写态
+if [ -f "$ADMIN_WEB/Dioxus.toml.devweb-bak" ]; then
+    mv -f "$ADMIN_WEB/Dioxus.toml.devweb-bak" "$ADMIN_WEB/Dioxus.toml"
+    echo "dev-web: 检测到上次残留的 Dioxus.toml 备份, 已还原"
+fi
+
 # ---------- Ainotation 标注栈 (aino=on) ----------
 AINO_URL=""
 ensure_aino() {
