@@ -31,3 +31,10 @@ pub use groups::GroupCard;
 pub use redemptions::RedemptionCard;
 /// 供管理页展示用户摘要的卡片组件。
 pub use users::UserCard;
+
+/// 区段外壳、空态块、卡片外壳等 tab 内容区共享壳（含 class 常量）。
+pub mod shell;
+pub use shell::{
+    AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
+    PlaceholderBlock, SectionHeader,
+};
