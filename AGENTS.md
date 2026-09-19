@@ -157,9 +157,9 @@ crates/web/<prefix-feature>/
   `just dev-check`（环境体检）、`just dev-backend start|update|stop|status`（共享后端）、
   `just db-seed` / `just db-reset`（测试数据）、`just verify`（fmt + clippy + check 全套）。
   开工前先跑 `just dev-check` 自检环境，不要手工拼这些命令。
-- **免登录调试前端**（`debug-auto-login`，默认关）：`just dev-web <端口> debug` 会自动登录
-  dev 种子账号 `admin_dev`；想手动调登录页就打开 `#login`（auth hash 不触发自动登录）。
-  主动「退出登录」不会被自动重登顶掉。
+- **免登录调试前端**（`debug-auto-login`，`just dev-web` 下默认开）：`just dev-web <端口>` 会自动登录
+  dev 种子账号 `admin_dev`；要手动调登录页用 `just dev-web <端口> shared manual`，打开 `#login`
+  （auth hash 不触发自动登录）。主动「退出登录」不会被自动重登顶掉。
 
 ---
 

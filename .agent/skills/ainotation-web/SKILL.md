@@ -19,20 +19,23 @@ agent 通过 MCP 读取这些标注并完成 UI 修改。本技能让你能在�
 
 ## 启动顺序（硬约束：service 必须先于 agent 的 ainotation MCP 可用）
 
-三条长驻命令都用运行时的托管后台任务启动（omp `hub start` / 等价物），
-**禁止 `nohup &`**；CPU 类命令照仓库规则套 `cpulimit -l 65 -i --`。
+**一条命令**（内部按序拉起标注栈再起前端；长跑命令用运行时托管后台任务启动，
+**禁止 `nohup &`**，CPU 类套 `cpulimit -l 65 -i --`）：
 
 ```bash
-# 1. 本地 service（写 ~/.ainotation/service/connection.json，端口随机）
-hub start: just aino-service        # 就绪判据: connection.json 出现
-# 2. 同步桥（注册项目 + 给页面 origin 签发 grant + 续租 + :44090 提供连接信息）
-hub start: just aino-bridge         # 就绪判据: 日志 "project ready" / "grant issued"
-# 3. 前端（端口自选避开其他会话；debug=自动登录 admin_dev）
-hub start: just dev-web 8092 debug  # 就绪判据: curl :8092 返回 >1000B
+just dev-web 8092            # 共享后端 + 免登录 + 标注栈（端口自选避开其他会话）
+# 位置参数: port backend(shared|fresh) login(auto|manual) aino(on|off)
+#   just dev-web 8092 shared manual   需要登录
+#   just dev-web 8092 fresh           起隔离后端(:端口+1000; 数据库隔离见 dev-env.md 3.2)
+#   just dev-web 8092 shared auto off 不接标注栈
 ```
 
+脚本 `scripts/dev-web.sh` 会幂等拉起/复用 service 与 bridge（nohup+pidfile 守护，
+日志在 /tmp/aino-{service,bridge}.log），再 `dx serve --watch false` 前台运行。
+体检用 `just aino-check`。
+
 **顺序错了的症状**：omp 会话先于 service 启动时，其 ainotation MCP 的工具调用会
-无限挂起（initialize 正常、tools/call 无响应）。修复：按上面顺序拉起后，在 omp 里
+无限挂起（initialize 正常、tools/call 无响应）。修复：拉起标注栈后，在 omp 里
 `/mcp reconnect ainotation`，或重开 omp 会话。
 
 ## 读用户的标注（agent 侧）

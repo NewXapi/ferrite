@@ -41,9 +41,10 @@ verify: fmt-check clippy check
 #   改了 crates/api 代码   : just dev-backend update   (重建+重启, 登录态不丢, ~3s)
 #   前端联调起不来/报 500 : just dev-check            (查 3211/8090 监听 + 后端状态)
 #   重置脏数据            : just db-reset && just db-seed
-#   起前端 web            : just dev-web 8090          (dx serve --platform web, --watch false 防 watch 卡死)
-#   免登录调试前端        : just dev-web 8090 debug    (debug-auto-login feature, 自动登录 dev 种子 admin_dev;
-#                                          打开 #login/#signup/#auth 仍可手动调试登录页)
+#   起前端 web            : just dev-web 8090          (一站式: 后端复用 + 免登录 + ainotation 标注栈)
+#   前端变体              : just dev-web 8090 shared manual (需要登录) / 8090 fresh (隔离后端)
+#   免登录说明            : login=auto(默认) 编译时开 debug-auto-login feature, 自动登录 dev 种子 admin_dev;
+#                           打开 #login/#signup/#auth 仍可手动调试登录页
 
 # PG 连接参数 (容器名/库可按环境覆盖)
 PG_CONTAINER := "uf-local-postgres"
@@ -103,18 +104,19 @@ dev-backend *args:
 #     手动调试登录页, 主动「退出登录」不会被自动重登顶掉。彻底关闭用普通档重新起。
 #   全部 --watch false (仓库已知 dx watch 重建卡死)。
 #   ⚠️ 改了依赖 crate（ui-components 等）后页面没变：dx 不会自动重编 wasm，
-#      必须 `kill <dx pid> && just dev-web <port>`（或 `just dev-web <port> debug`）重启，
-#      浏览器再强刷一次；仅 touch src 文件不会触发结构变更的重建。
-dev-web port="8090" mode="":
+#      必须 `kill <dx pid> && just dev-web <port>` 重启，浏览器再强刷一次；
+#      仅 touch src 文件不会触发结构变更的重建。
+# 起前端 web (一站式): Ainotation 标注栈(默认接) + 后端复用/新起 + 免登录(默认)
+#   just dev-web 8092                       共享后端 + 免登录 + 标注
+#   just dev-web 8092 shared manual         需要登录
+#   just dev-web 8092 fresh                 起隔离后端(端口=web+1000; 数据库隔离见 dev-env.md 3.2)
+#   just dev-web 8092 shared auto off       不接标注栈
+#   位置顺序: port backend(shared|fresh) login(auto|manual) aino(on|off)
+# 内部: scripts/dev-web.sh (dx serve --watch false 防 watch 卡死; 标注栈启动顺序硬约束见 skill)
+dev-web port="8090" backend="shared" login="auto" aino="on":
     #!/usr/bin/env bash
-    # 锚定 justfile 所在目录（= 仓库根），使配方可从任意 cwd 调用
-    # ponytail: just 无 justfile_directory 变量（1.58 实测），用内置 justfile() + shell dirname
-    cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
-    if [ "{{mode}}" = "debug" ]; then
-      dx serve --platform web --port {{port}} --watch false --features debug-auto-login
-    else
-      dx serve --platform web --port {{port}} --watch false
-    fi
+    set -euo pipefail
+    exec bash scripts/dev-web.sh --port {{port}} --backend {{backend}} --login {{login}} --aino {{aino}}
 
 # dev 环境体检：查共享后端(3211)/前端 serve(8090) 监听 + 打印进程卫生提醒
 # 场景: 前端页面报 500/连不上, 或 agent 开工前确认环境活着

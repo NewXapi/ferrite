@@ -47,9 +47,9 @@
 | 3. 灌测试数据 | `just db-seed` | 可以重复执行（幂等）。数据乱了用 `just db-reset && just db-seed` |
 | 4. 确认后端起没起 | `just dev-backend status` | 已经在跑就**不要**再 start。没起才 `just dev-backend start` |
 | 5. 验证后端 | `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3211/api/dashboard` | 返回 **401 是正常的**（说明服务活着、接口需要登录）；返回连接被拒说明没起来 |
-| 6. 启动前端 | `just dev-web 8090`（用持久后台任务，见第二节） | 启动后确认 8090 在监听；`curl http://127.0.0.1:8090/` 应该返回 200。`dx` 是 Dioxus 的官方开发 CLI（装在 PATH 里，`dx --help` 可查），配方内部就是调它 |
-| 7. 免登录调前端 | `just dev-web 8090 debug` | 与上一行唯一区别：编译时多开 `debug-auto-login` feature（自动登录测试账号 `admin_dev`）。想手动测登录页就打开 `#login` 锚点；自己点"退出登录"不会被自动重登顶掉 |
-| 8. UI 视觉标注反馈 | 见 `.agent/skills/ainotation-web/SKILL.md` | 需要用户在页面上标注、agent 经 MCP 读标注时：先 `just aino-service` + `just aino-bridge`（顺序硬约束），再起前端 |
+| 6. 启动前端（一站式） | `just dev-web 8090`（用持久后台任务，见第二节） | 默认：共享后端 + 免登录 + Ainotation 标注栈。启动后确认端口在监听；`curl http://127.0.0.1:8090/` 应该返回 200。内部调 `scripts/dev-web.sh`（dx serve --watch false） |
+| 7. 变体 | 位置参数：port backend login aino | `just dev-web 8090 shared manual` 需要登录；`just dev-web 8090 fresh` 起隔离后端(:端口+1000，数据库隔离见 3.2)；`just dev-web 8090 shared auto off` 不接标注栈 |
+| 8. UI 视觉标注反馈 | 见 `.agent/skills/ainotation-web/SKILL.md` | 用户在页面标注、agent 经 MCP 读标注。标注栈默认随 dev-web 拉起；顺序硬约束（service 先于 agent 的 MCP 可用）与故障对照见该 skill |
 
 **前端报 `Connection refused` 时，先看后端**：前端 `dx` 的代理指向 3211，后端死了前端必然报错。
 先跑 `just dev-check` 确认后端状态，不要先去折腾前端。
