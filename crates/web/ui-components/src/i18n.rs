@@ -72,12 +72,12 @@ pub static LOCALE: GlobalSignal<Locale> = Signal::global(|| Locale::Zh);
 /// 回落链：当前语言表 → 中文表 → key 原样返回（便于 grep 出漏配 key）。
 /// 查表为线性扫，条目百级内耗时可忽略；key 必须来自编译期常量表，
 /// 不要拼接动态 key。
-pub fn t<'a>(key: &'a str) -> &'a str {
+pub fn t(key: &str) -> &str {
     t_in(LOCALE(), key)
 }
 
 /// 按指定 locale 取文案（不读全局信号；测试与服务端场景用）。
-pub fn t_in<'a>(locale: Locale, key: &'a str) -> &'a str {
+pub fn t_in(locale: Locale, key: &str) -> &str {
     let primary = match locale {
         Locale::Zh => ZH,
         Locale::En => EN,
