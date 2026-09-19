@@ -1,9 +1,9 @@
 // Ainotation 开发标注工具入口（仅开发环境，见 main.rs 的 debug_assertions 门控）。
 // 打包：bun run aino → assets/ainotation/ainotation.iife.js
 //
-// MCP 接线：运行时 fetch 同目录的 connection.json（gitignore，由 `service` 的
-// ~/.ainotation/service/connection.json 拷贝生成，见 AINOTATION.md）；缺失时降级为
-// 纯本地模式（标注/复制/导出可用，不与 Agent 同步）。
+// MCP 接线：从本地桥（scripts/ainotation-bridge.mjs，127.0.0.1:44090）取 {url, token}
+// （grant token 由桥签发并续租）；桥不在时降级为纯本地模式（标注/复制/导出可用）。
+// 备用：相对路径 connection.json（未来 vite/bridge 同源场景）。
 import { createAinotation } from '@ainotation/sdk';
 
 const PROJECT_ID = 'ferrite-admin';
@@ -21,7 +21,19 @@ function start(mcp) {
   }
 }
 
-fetch('/assets/ainotation/connection.json', { cache: 'no-store' })
-  .then((r) => (r.ok ? r.json() : null))
+async function loadConnection() {
+  for (const url of ['http://127.0.0.1:44090/connection.json', '/assets/ainotation/connection.json']) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) continue;
+      return await res.json();
+    } catch {
+      // 下一个来源
+    }
+  }
+  return null;
+}
+
+loadConnection()
   .then((cfg) => start(cfg ? { mcp: { endpoint: cfg.url, token: cfg.token } } : {}))
   .catch(() => start({}));
