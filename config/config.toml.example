@@ -1,5 +1,6 @@
-# apps/gateway 单机配置 —— 渠道与本地 key 就是数据面的唯一来源，
-# 不需要数据库。本文件已 gitignore（config/config.toml），示例只放占位符。
+# apps/api 配置（两种构建形态共用，feature 门只决定装配哪些路由域）——
+# 渠道/模型/密钥存 Postgres，本文件只放进程级参数。已 gitignore
+# （config/config.toml），示例只放占位符。
 listen = "0.0.0.0:3000"
 log_level = "info"
 

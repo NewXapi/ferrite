@@ -200,7 +200,7 @@ impl ForwardStage {
     /// 按候选 + 已读请求体组装一次尝试的 [`ForwardTask`]。
     ///
     /// 字段组装逻辑与原单次路径一致：headers 留空（gate 已清洗，透传头由
-    /// apps/gateway 组装），provider_type/extra_headers 从候选自带的完整解析取。
+    /// apps/api 组装），provider_type/extra_headers 从候选自带的完整解析取。
     fn build_task(
         candidate: &SelectedRoute,
         path: String,

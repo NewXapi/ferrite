@@ -154,6 +154,7 @@ async fn model_missing_detection() {
             0,
             None,
             "",
+            serde_json::json!({}),
         )
         .await
         .expect("create channel");
@@ -198,6 +199,7 @@ async fn channel_tag_batch_operations() {
                 0,
                 None,
                 "",
+                serde_json::json!({}),
             )
             .await
             .expect("create channel");
@@ -254,6 +256,7 @@ async fn channel_probe_writes_history() {
             0,
             None,
             "",
+            serde_json::json!({}),
         )
         .await
         .expect("create channel");
@@ -410,7 +413,8 @@ async fn channel_empty_name_rejected() {
                 0,
                 0,
                 None,
-                ""
+                "",
+                serde_json::json!({}),
             )
             .await,
         Err(auth::AuthError::BadRequest(_))
@@ -460,7 +464,8 @@ async fn channel_invalid_base_url_rejected() {
                 0,
                 0,
                 None,
-                ""
+                "",
+                serde_json::json!({}),
             )
             .await,
         Err(auth::AuthError::BadRequest(_))
@@ -510,7 +515,8 @@ async fn channel_empty_keys_rejected() {
                 0,
                 0,
                 None,
-                ""
+                "",
+                serde_json::json!({}),
             )
             .await,
         Err(auth::AuthError::BadRequest(_))

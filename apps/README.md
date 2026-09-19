@@ -6,10 +6,18 @@
 - `web/` — 管理后台浏览器应用，组装 admin-web。
 - `tavern-web/` — 酒馆浏览器应用，组装 tavern-web。
 
+## 构建形态（cargo features）
+
+`api/` 一个包用编译期 feature 裁出两种入口（控制层面功能多寡，数据面同一套、不跨进程）：
+
+- 全功能（默认，`--features tavern,billing`）：网关 + 计费 + 酒馆 + 完整管理面。
+- 个人网关（`--no-default-features`）：api 聚合网关，PG 持久化，不含酒馆与计费域。
+
+两种形态都走 PG；前端由构建选 `admin-web` / `tavern-web` 包，二者已物理隔离。feature 只落在 `apps/api` 包自己（落共享 crate 会触发 feature unification 泄漏，见 rust-lang/cargo#10266）。
+
 ## `api/` MVP
 
 ### `api/src/main.rs`
-
 - 读取 `config/config.toml`。
 - 初始化 PostgreSQL。
 - 初始化日志。

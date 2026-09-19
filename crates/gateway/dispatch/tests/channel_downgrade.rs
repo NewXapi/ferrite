@@ -13,7 +13,7 @@
 //!
 //! classify_channel_scope 的纯分类断言在 failure_scope.rs;
 //! egress 状态码 → channel_scoped 的映射由 stage 闭包消费, 端到端形状
-//! 见 apps/gateway/tests/route_resolution.rs P0-2。
+//! 见 apps/api/tests/route_resolution.rs P0-2。
 
 use contract::records::{RouteUnitRecord, SyncMeta};
 use dispatch::health::FailureClass;

@@ -103,3 +103,31 @@ jobs:
         run: cargo check -p gateway-proxy --features utls
       - name: Check with no default features
         run: cargo check -p gateway-proxy --no-default-features
+
+  # apps/api 双入口 feature 门的编译验证（todo/features-dual-entry-roadmap 任务 3）。
+  # 动机：tests/e2e 以默认 feature 依赖 apps/api，上面 clippy job 的 --all-targets
+  # 也只编默认变体 → 个人形态（关掉 tavern/billing）平时没人编，是持续验证盲区。
+  # 三个非默认组合各 check 一遍；默认（全功能）变体由 clippy / full-test 覆盖，不重复。
+  # 只 check 不 clippy：-D warnings 在非默认变体可能冒出新的 lint 噪音，治理它们是
+  # 后续任务，本 job 先守住"每个组合都能编"这个最低契约（见对应 commit body）。
+  api-feature-matrix:
+    name: API Feature Matrix (${{ matrix.variant.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          # 个人形态：关掉 tavern + billing
+          - name: personal
+            flags: "--no-default-features"
+          - name: tavern-only
+            flags: "--no-default-features --features tavern"
+          - name: billing-only
+            flags: "--no-default-features --features billing"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check ${{ matrix.variant.name }} variant
+        run: cargo check -p api ${{ matrix.variant.flags }}

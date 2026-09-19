@@ -70,7 +70,7 @@ impl Default for RetryPolicy {
     }
 }
 
-/// 编排 trait — apps/gateway 的转发 handler 实现 (需要访问 forward+metering)。
+/// 编排 trait — apps/api 的转发 handler 实现 (需要访问 forward+metering)。
 pub trait RetryLoop: Send + Sync {
     fn run(
         &self,
