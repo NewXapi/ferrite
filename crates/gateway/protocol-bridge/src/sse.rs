@@ -19,6 +19,8 @@ pub struct SseScanner {
     saw_first_token: bool,
     /// 是否收到过 [DONE]。
     saw_done: bool,
+    /// 是否已截断：[DONE] 之后的帧一律丢弃，不再入队。
+    done_cutoff: bool,
     /// 行数计数。
     line_count: u64,
     /// 当前帧内累积的 `data:` 负载（多行以换行连接，符合 SSE 规范）。
@@ -83,6 +85,14 @@ impl SseScanner {
 
                 if rest.starts_with(b"[DONE]") {
                     self.saw_done = true;
+                    // [DONE] 是流终止符：同 chunk 里它之后的数据帧（SSE 规范不允许
+                    // 但真实上游会犯）不得再进 ready_frames，否则会被取走编码、
+                    // 让客户端在终止帧后收到内容。截断后续所有帧。
+                    self.done_cutoff = true;
+                    continue;
+                }
+                // 已终止的流不再接收任何数据帧。
+                if self.done_cutoff {
                     continue;
                 }
 

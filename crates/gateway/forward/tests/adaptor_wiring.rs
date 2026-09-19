@@ -386,3 +386,49 @@ data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{
         "尾部未终结帧不得被丢弃，实际: {text}"
     );
 }
+
+// 上游在 [DONE] 之后又发数据帧（SSE 规范不允许，但真实上游会犯）：
+// 这些帧不得被编码发给客户端——客户端在终止帧后收到内容是协议违规，
+// 也会让"流已结束"的判定失效。
+#[tokio::test]
+async fn frames_after_done_are_not_forwarded_to_client() {
+    let upstream_sse = Bytes::from_static(
+        b"data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+data: [DONE]\n\n\
+data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"stray\"},\"finish_reason\":null}]}\n\n",
+    );
+    let egress = MockEgress {
+        captured_body: Arc::new(Mutex::new(None)),
+        response: upstream_sse,
+        content_type: "text/event-stream",
+    };
+
+    let mut task = mk_task(true, ProtocolKind::Anthropic, "openai");
+    task.path = "/v1/messages".to_string();
+
+    let forwarded = forward_once(
+        &task,
+        &egress,
+        &FormatRegistry::with_defaults(),
+        &Timeouts::default(),
+    )
+    .await
+    .expect("流式转发应成功");
+
+    let body = drain(forwarded).await;
+    let text = String::from_utf8_lossy(&body);
+
+    // 正常内容要到（Claude 侧的 text_delta）。
+    assert!(text.contains("hi"), "终止帧前的内容必须送达，实际: {text}");
+    // 终止帧后那帧的 "stray" 不得出现在出站流里。
+    assert!(
+        !text.contains("stray"),
+        "[DONE] 之后的数据帧不得转发给客户端，实际: {text}"
+    );
+    // 且客户端必须收到恰好一个终止帧（事件行 + data 行各一次，都算同一条）。
+    assert_eq!(
+        text.matches(r#""type":"message_stop""#).count(),
+        1,
+        "必须有且仅有一个终止帧，实际: {text}"
+    );
+}

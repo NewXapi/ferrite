@@ -140,10 +140,14 @@ pub async fn forward_once(
                                 let mut out = Vec::new();
                                 for frame in tail_frames.drain(..) {
                                     for ev in decode_events(decoder.as_deref(), &frame) {
-                                        if let Some(enc) = encoder.as_mut()
-                                            && let Ok(bytes) = enc.encode_event(&ev)
-                                        {
-                                            out.extend(bytes);
+                                        if let Some(enc) = encoder.as_mut() {
+                                            match enc.encode_event(&ev) {
+                                                Ok(bytes) => out.extend(bytes),
+                                                // 尾帧编码失败不能断流：客户端仍应拿到 finish 帧与完整流尾。
+                                                Err(e) => tracing::warn!(
+                                                    "encode tail frame event failed: {e}"
+                                                ),
+                                            }
                                         }
                                     }
                                 }
@@ -185,43 +189,50 @@ pub async fn forward_once(
                     // 跨格式：扫描器重组成完整行，逐帧 `data:` 负载解码成 IR 事件，
                     // 再交给 encoder 编成入站格式的帧。
                     let (_passthrough, _events) = scanner.push(&chunk);
-                    // 上游已显式终止：让 encoder 别再补终止帧（两个 [DONE] 是两次流终止）。
-                    if scanner.saw_done()
-                        && let Some(e) = encoder.as_mut()
-                    {
-                        e.mark_done();
-                    }
+                    // 先取走并编码本 chunk 的数据帧——[DONE] 与前面的内容帧常在
+                    // 同一个 chunk 里，先排空会把合法内容一起丢掉。
                     let frames = scanner.take_data_frames();
-                    if frames.is_empty() {
-                        // 半帧（跨 chunk 的行还没凑齐）：本块无可产出，继续读。
-                        continue;
-                    }
-
-                    let mut out = Vec::new();
-                    for frame in frames {
-                        for ev in decode_events(decoder.as_deref(), &frame) {
-                            if let Some(enc) = encoder.as_mut() {
-                                match enc.encode_event(&ev) {
-                                    Ok(bytes) => out.extend(bytes),
-                                    Err(e) => {
-                                        return Some((
-                                            Err(std::io::Error::other(e.to_string())),
-                                            (upstream, scanner, encoder, decoder),
-                                        ));
+                    if !frames.is_empty() {
+                        let mut out = Vec::new();
+                        for frame in frames {
+                            for ev in decode_events(decoder.as_deref(), &frame) {
+                                if let Some(enc) = encoder.as_mut() {
+                                    match enc.encode_event(&ev) {
+                                        Ok(bytes) => out.extend(bytes),
+                                        Err(e) => {
+                                            return Some((
+                                                Err(std::io::Error::other(e.to_string())),
+                                                (upstream, scanner, encoder, decoder),
+                                            ));
+                                        }
                                     }
                                 }
                             }
                         }
+                        if !out.is_empty() {
+                            return Some((
+                                Ok::<Bytes, std::io::Error>(Bytes::from(out.concat())),
+                                (upstream, scanner, encoder, decoder),
+                            ));
+                        }
                     }
 
-                    if out.is_empty() {
-                        // 该 chunk 只含无内容事件（如 message_start），继续读下一块。
-                        continue;
+                    // 上游已显式终止：让 encoder 别再补终止帧（两个 [DONE] 是两次流终止）。
+                    if scanner.saw_done() {
+                        if let Some(e) = encoder.as_mut() {
+                            e.mark_done();
+                        }
+                        // 上游在 [DONE] 之后又给数据帧 —— SSE 规范不允许，编码发给客户端
+                        // 会让它在终止帧后收到内容。排空并丢弃，不走 encode_event。
+                        let stray = scanner.take_data_frames();
+                        if !stray.is_empty() {
+                            tracing::warn!(
+                                frames = stray.len(),
+                                "SSE frames after upstream [DONE], discarding"
+                            );
+                        }
                     }
-                    return Some((
-                        Ok(Bytes::from(out.concat())),
-                        (upstream, scanner, encoder, decoder),
-                    ));
+                    continue;
                 }
             },
         );
