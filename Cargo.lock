@@ -110,7 +110,6 @@ dependencies = [
  "admin-proxy",
  "auth",
  "axum",
- "billing",
  "catalog",
  "db-bootstrap",
  "dispatch",

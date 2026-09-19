@@ -24,7 +24,7 @@ pub struct Config {
 pub struct PaymentConfig {
     /// 易支付商户；省略 = 不注册 epay 渠道。
     /// 个人形态（无 billing feature）该字段不存在：配置反序列化与 epay 渠道
-    /// 注册都属计费域；admin_router 的参数是 Option，None 是它支持的缺省。
+    /// 注册都属计费域，由 apps/api 侧的 feature 门消费（见 lib.rs assemble）。
     #[cfg(feature = "billing")]
     #[serde(default)]
     pub epay: Option<EpayMerchant>,

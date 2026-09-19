@@ -112,25 +112,87 @@ async fn assemble(
     // auth_svc 同时留给 reload 路由的 bearer 鉴权（见 ReloadState）。
     // dispatcher/health 与数据面 ForwardStage / reload 路由共享同一批 Arc，
     // 查询面 /api/gateway/health 才能读到运行期实时冷却/慢启动状态。
-    // 支付渠道配置只在 billing feature 下存在（PaymentConfig.epay 随门存在）；
-    // admin_router 的参数是 Option，None = 不注册 epay 渠道，是它本来就支持的
-    // 缺省——个人形态直接传 None，不用为它造一个假商户。
-    #[cfg(feature = "billing")]
-    let epay = payment.epay.clone();
+    // 计费域（wallet/currency/subscription/affiliate/topup/redeem）路由由本层
+    // 按 feature 门构造后 merge，admin-router 只给不含 billing 的基础聚合——
+    // #10266：feature 只能落在 apps/api 自己，在共享 crate 声明会被 workspace
+    // unify 泄漏给个人形态的依赖图。注册钩子同理：WalletSeedHook 是 billing 类型，
+    // 但 OnUserRegistered trait 归 auth，故 admin-router 收 trait 对象即可不依赖
+    // billing；个人形态传 None（auth router 本来就支持无钩子）。
     #[cfg(not(feature = "billing"))]
     let _payment = payment;
-    #[cfg(not(feature = "billing"))]
-    let epay = None;
+    let registered_hook: Option<Arc<dyn auth::routes::OnUserRegistered>> = {
+        #[cfg(feature = "billing")]
+        {
+            // 注册 hook：新用户注册 → seed 全部启用货币（#179 多货币，幂等）。
+            let hook: Arc<dyn auth::routes::OnUserRegistered> =
+                Arc::new(::billing::WalletSeedHook::new(pool.clone()));
+            Some(hook)
+        }
+        #[cfg(not(feature = "billing"))]
+        None
+    };
     let admin = admin_router::router(
         pool.clone(),
         auth_svc.clone(),
         proxies.clone(),
         dispatcher.clone(),
         health.clone(),
-        epay,
+        registered_hook,
     )
     .await
     .map_err(|e| anyhow::anyhow!("failed to initialize admin router: {e}"))?;
+
+    // 计费域管理面（feature 门）：六个子域 router 全在 admin-billing，本层构造
+    // 后 merge 进上面的基础 admin router。个人形态整块 cfg 出去，依赖图里
+    // 既不出现 admin-billing，也没有 /api/wallet/* 等路由。
+    #[cfg(feature = "billing")]
+    let admin = {
+        // AffiliateService::new 收 WalletService 值（非 Arc），内部独享一份。
+        let wallet_svc = Arc::new(::billing::WalletService::new(pool.clone()));
+        let currency_svc = Arc::new(::billing::CurrencyService::new(pool.clone()));
+        let affiliate_svc = Arc::new(::billing::AffiliateService::new(
+            pool.clone(),
+            ::billing::WalletService::new(pool.clone()),
+        ));
+        // epay 配置存在才注册渠道（缺省只有 manual，开单指 epay 报未配置）。
+        let mut topup_svc = ::billing::TopupService::new(pool.clone());
+        if let Some(epay) = payment.epay.clone() {
+            topup_svc = topup_svc.with_epay(epay);
+        }
+        let topup_svc = Arc::new(topup_svc);
+
+        use ::billing::{
+            AffiliateAppState, CurrencyAppState, RedeemAppState, SubscriptionAppState,
+            TopupAppState, WalletAppState, affiliate_router, currency_router,
+            router as redeem_router, subscription_router, topup_router, wallet_router,
+        };
+        admin
+            .merge(wallet_router(WalletAppState {
+                svc: wallet_svc,
+                auth: auth_svc.clone(),
+            }))
+            .merge(currency_router(CurrencyAppState {
+                svc: currency_svc,
+                auth: auth_svc.clone(),
+            }))
+            // billing 订阅套餐子域：管理台「订阅」页 CRUD（0017 表）。
+            .merge(subscription_router(SubscriptionAppState {
+                svc: Arc::new(::billing::SubscriptionService::new(pool.clone())),
+                auth: auth_svc.clone(),
+            }))
+            .merge(affiliate_router(AffiliateAppState {
+                svc: affiliate_svc,
+                auth: auth_svc.clone(),
+            }))
+            .merge(topup_router(TopupAppState {
+                svc: topup_svc,
+                auth: auth_svc.clone(),
+            }))
+            .merge(redeem_router(RedeemAppState {
+                svc: Arc::new(::billing::RedeemService::new(pool.clone())),
+                auth: auth_svc.clone(),
+            }))
+    };
 
     // 出口代理池：DB proxy_nodes 表（enabled）→ ProxyManager；
     // 管理台 CRUD 会原地 reload（见 admin-router /api/proxy_nodes）。
