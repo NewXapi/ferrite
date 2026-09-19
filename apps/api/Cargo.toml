@@ -12,6 +12,25 @@ path = "src/lib.rs"
 name = "ferrite"
 path = "src/main.rs"
 
+# 双入口 feature 门（roadmap: todo/features-dual-entry-roadmap.md 任务 1.1）。
+# feature 只属于 apps/api 自己：绝不把 feature 声明进 crates/gateway/* 或任何
+# 共享 crate，否则 `cargo build --workspace` 时 feature 会被别的成员 unify
+# 进来（rust-lang/cargo#10266），个人形态的编译开关污染全量构建。
+# default = 全功能：scripts/dev-backend.sh 跑的是无 --features 的
+# `cargo build -p api`，default 少一项就会让 dev 构建偷偷缺功能。
+[features]
+default = ["tavern", "billing"]
+tavern = [
+    "dep:tavern-storage",
+    "dep:tavern-auth",
+    "dep:tavern-characters",
+    "dep:tavern-chats",
+    "dep:tavern-settings",
+    "dep:tavern-secrets",
+    "dep:tavern-generate",
+]
+billing = ["dep:billing", "dep:metering"]
+
 [dependencies]
 axum      = { workspace = true }
 tokio     = { workspace = true }
@@ -37,18 +56,18 @@ hex = "0.4"
 gateway-proxy    = { path = "../../crates/gateway/proxy" }
 admin-proxy      = { path = "../../crates/api/admin-proxy" }
 
-tavern-storage    = { path = "../../crates/api/tavern-storage" }
-tavern-auth       = { path = "../../crates/api/tavern-auth" }
-tavern-characters = { path = "../../crates/api/tavern-characters" }
-tavern-chats      = { path = "../../crates/api/tavern-chats" }
-tavern-settings   = { path = "../../crates/api/tavern-settings" }
-tavern-secrets    = { path = "../../crates/api/tavern-secrets" }
-tavern-generate   = { path = "../../crates/api/tavern-generate" }
+tavern-storage    = { path = "../../crates/api/tavern-storage", optional = true }
+tavern-auth       = { path = "../../crates/api/tavern-auth", optional = true }
+tavern-characters = { path = "../../crates/api/tavern-characters", optional = true }
+tavern-chats      = { path = "../../crates/api/tavern-chats", optional = true }
+tavern-settings   = { path = "../../crates/api/tavern-settings", optional = true }
+tavern-secrets    = { path = "../../crates/api/tavern-secrets", optional = true }
+tavern-generate   = { path = "../../crates/api/tavern-generate", optional = true }
 admin-router = { path = "../../crates/api/admin-router" }
 auth = { path = "../../crates/api/auth" }
 observe = { path = "../../crates/api/admin-observe" }
-billing = { path = "../../crates/api/admin-billing" }
-metering = { path = "../../crates/gateway/metering" }
+billing = { path = "../../crates/api/admin-billing", optional = true }
+metering = { path = "../../crates/gateway/metering", optional = true }
 gateway-pipeline = { path = "../../crates/gateway/pipeline" }
 gateway-protocol-bridge = { path = "../../crates/gateway/protocol-bridge" }
 forward = { path = "../../crates/gateway/forward" }

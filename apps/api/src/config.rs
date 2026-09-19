@@ -3,6 +3,8 @@
 use std::path::Path;
 use thiserror::Error;
 
+// epay 商户配置只在 billing feature 下存在（个人形态不解析支付配置）。
+#[cfg(feature = "billing")]
 use billing::topup_epay::EpayMerchant;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -21,6 +23,9 @@ pub struct Config {
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct PaymentConfig {
     /// 易支付商户；省略 = 不注册 epay 渠道。
+    /// 个人形态（无 billing feature）该字段不存在：配置反序列化与 epay 渠道
+    /// 注册都属计费域；admin_router 的参数是 Option，None 是它支持的缺省。
+    #[cfg(feature = "billing")]
     #[serde(default)]
     pub epay: Option<EpayMerchant>,
 }

@@ -1,5 +1,7 @@
 //! `/tavern/*` 路由冒烟：角色卡与聊天走完整 HTTP 往返。
 
+#![cfg(feature = "tavern")]
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
