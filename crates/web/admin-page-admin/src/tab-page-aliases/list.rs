@@ -6,14 +6,55 @@
 //!
 //! 卡片本体是 ui-components 的 `AliasCard`（四页签 + 共享外壳）；
 //! 本文件只做四态分支与网格排版，不再自带卡片样式。
+//!
+//! 边界:筛选计算、可用分组判定之外的拉取/写回都在 `page.rs`(本文件只用
+//! `usable_groups_for` 算这张卡的可用分组展示);卡片外壳 class 不在此定义,
+//! 由 ui-components 的 `admin_card::shell` 统一。
 
 use contract::api::admin::GroupDto;
 use dioxus::prelude::*;
 use ui::{CardGrid, DangerBlock, GhostButton, PlaceholderBlock, SectionHeader};
 
-use super::shared::{AliasItem, PriceMode, SEC_LIST, usable_groups_for};
+use super::shared::{
+    AliasItem, BTN_RETRY, LBL_ALIAS_LIST, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST,
+    OPT_BADGE_LOADING, PriceMode, SEC_LIST, usable_groups_for,
+};
 
 /// 别名卡片网格区:错误 / 加载 / 空 / 网格 四态。
+///
+/// 【是什么】别名 tab 的编号段 3:标题行 + 计数徽标 + 四态分支 + 别名卡片网格。
+///
+/// 【做什么】按 `err` / `loading` / `filtered` 的取值渲染四种形态之一,并在有数据时
+/// 把每条 `AliasItem` 铺成 `ui::AliasCard`。不负责筛选(页面已把 filtered 算好)、
+/// 不负责拉数据、不负责卡片内部的多页签逻辑(在 ui-components 的 `AliasCard` 里)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 点错误态「重试」→ `on_retry` 抛回页面(MouseEvent,页面 `reload + 1` 触发重拉)。
+/// - 在卡片上切换定价模式 → 卡片把 `PriceMode` 抛上来,本组件补上 `alias_key`
+///   组成 `(String, PriceMode)` 再调 `on_mode_change`,页面据此写回 `rows`(纯本地状态,不发网络)。
+/// - `on_edit` / `on_delete` 与四个通道开关 `c_*` 目前透传但未挂到卡片上
+///   (卡片暂不渲染编辑入口),仅保留接线。
+/// 数据交互:本组件自身**不发任何网络请求**。
+///
+/// 【样式】外壳 `section#aliases-sec-list` 为 `scroll-mt-8 space-y-4`;标题行由
+/// `SectionHeader` 提供(左 `text-lg font-medium text-zinc-100` 标题 + 右
+/// `rounded-full bg-zinc-800` 计数胶囊);错误态用红底 `DangerBlock`,加载/空态用
+/// 虚线描边 `PlaceholderBlock`;网格为 `grid grid-cols-1 gap-3 md:grid-cols-3
+/// lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
+///
+/// 【子组件组成】`SectionHeader`(标题 + 计数)、`DangerBlock`(错误块)、
+/// `PlaceholderBlock`(加载/空态)、`GhostButton`(重试)、`CardGrid`(网格容器)、
+/// `ui::AliasCard`(单张别名卡)。
+///
+/// 【数据流】
+/// - 对内(入):`loading` / `err`(页面 effect 的加载与失败态,err 优先于 loading 渲染)、
+///   `filtered`(页面按 search + filter_tier 筛好的 `(原始下标, AliasItem)`,只用于
+///   计数与渲染,下标不参与定位)、`groups`(`page` effect 拉到的分组,供
+///   `usable_groups_for` 算每卡可用分组与倍率)、`c_output_on` 等四个通道开关
+///   (与弹窗共享,页面持有)、`on_edit` / `on_delete` / `on_retry`。
+/// - 对外(出):`on_mode_change((alias_key, mode))` → 页面 `on_mode_change` 就地改写
+///   `rows` 中该条的 `price_mode`;`on_retry` → 页面重拉;`on_edit` / `on_delete`
+///   为预留出口(分别指向页面 `open_edit` / `write_delete`)。
 #[component]
 pub fn AliasesListSection(
     /// 列表加载中(骨架态)
@@ -50,7 +91,7 @@ pub fn AliasesListSection(
     );
 
     let badge = if loading {
-        "加载中…".to_string()
+        OPT_BADGE_LOADING.to_string()
     } else {
         format!("{} 个", filtered.len())
     };
@@ -61,16 +102,16 @@ pub fn AliasesListSection(
 
             if let Some(e) = err {
                 DangerBlock {
-                    title: "加载别名失败",
+                    title: MSG_LOAD_FAILED,
                     detail: e,
-                    GhostButton { label: "重试", onclick: on_retry }
+                    GhostButton { label: BTN_RETRY, onclick: on_retry }
                 }
             } else if loading {
-                PlaceholderBlock { message: "正在加载模型别名…" }
+                PlaceholderBlock { message: MSG_LOADING_LIST }
             } else if filtered.is_empty() {
-                PlaceholderBlock { message: "没有匹配的模型别名" }
+                PlaceholderBlock { message: MSG_EMPTY }
             } else {
-                CardGrid { aria_label: "别名列表", testid: "aliases-list",
+                CardGrid { aria_label: LBL_ALIAS_LIST, testid: "aliases-list",
                     for (idx, it) in filtered {
                         {
                             let key_ref = it.key.clone();

@@ -20,6 +20,32 @@ use super::shared::SystemInfoView;
 use client::ApiClient;
 
 /// 系统页:顶部运行指标 + 实体统计 + 运行环境明细,数据来自 `/api/system-info`。
+///
+/// 【是什么】系统 tab 的页面入口组件:一个纵向 `flex flex-col gap-6` 容器,
+/// 内挂四个面板。
+///
+/// 【做什么】持有 `/api/system-info` 的拉取状态并挂载 `SystemOverview`、
+/// `SystemOptionsPanel`、`ProxyNodesPanel`、`ProxyRuntimePanel`。
+/// 不负责各面板自己的数据拉取(选项面板与代理两面板各自在组件内拉)、
+/// 不负责渲染细节(全在子面板里)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - `SystemOverview` 内点「刷新」/「重试」→ 调到本页 `on_refresh` 闭包,
+///   推进 `reload`,触发本页 effect 重拉 `/api/system-info`(一次 GET)。
+/// 数据交互:仅本页 effect 对 system-info 发一次 GET;其余面板各自拉自己端点。
+///
+/// 【样式】根容器 `div.flex flex-col gap-6`;各面板自带外壳样式,本页不写视觉
+/// 细节(符合「页面 rsx 只做组装」)。
+///
+/// 【子组件组成】`SystemOverview`(概览/实体统计/运行环境三段)、
+/// `SystemOptionsPanel`(站点选项)、`ProxyNodesPanel`(代理节点导入)、
+/// `ProxyRuntimePanel`(代理节点运行态)。
+///
+/// 【数据流】
+/// - 对内(入):无 props;`info` / `loading` / `err` / `reload` 四个 signal
+///   为本页持有(拉取 effect 与刷新按钮跨组件,故放页面层)。
+/// - 对外(出):以 props 把 `info` / `loading` / `err` 的值 + `on_refresh`
+///   事件传给 `SystemOverview`;`on_refresh` 只推进 `reload`,由 effect 发请求。
 #[component]
 pub fn SystemPage() -> Element {
     // —— 列表状态(data/loading/err 被 overview 组件消费,reload 跨组件)——

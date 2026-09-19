@@ -4,6 +4,9 @@
 
 use dioxus::prelude::*;
 
+use super::shared::{
+    LBL_SITE_OPTIONS, MSG_OPTIONS_EMPTY, MSG_OPTIONS_LOADING, SEC_OPTIONS_NOTE,
+};
 use crate::api::{OptionView, list_options_api};
 use client::ApiClient;
 
@@ -25,6 +28,30 @@ pub fn option_editable(v: &serde_json::Value) -> bool {
 }
 
 /// 站点选项面板:列表来自 `list_options_api`,补三态 loading/error/empty。
+///
+/// 【是什么】系统 tab 的站点选项只读列表:区段头(标题 + 说明)+ key/value 平表。
+///
+/// 【做什么】挂载时拉 `/api/option` 注册表与数据库值,按 `err` / `loading` /
+/// `list.is_empty()` 渲染错误 / 加载 / 空 / 列表四态。不负责编辑(只读展示,
+/// `option_editable` 仅用于给可编辑项换文字颜色)、不负责持久化。
+///
+/// 【交互逻辑】纯展示,无交互 —— 无按钮、无输入框;三态切换由挂载 effect 的
+/// 拉取结果驱动(仅触发一次网络请求 `list_options_api`,不发写请求)。
+///
+/// 【样式】外壳 `section#system-sec-options` 为 `scroll-mt-8 rounded-xl border
+/// border-zinc-800 bg-zinc-900/60 p-5 space-y-4`;区段头 h2 `text-sm
+/// font-medium text-zinc-200` + 说明 p `text-xs text-zinc-500`;错误态红底
+/// `border-red-500/30 bg-red-950/30`;加载/空态虚线描边 `border-dashed
+/// border-zinc-700`;列表用 `divide-y divide-zinc-800/80` 分行,值列按是否
+/// 可编辑切换 `text-zinc-300` / `text-zinc-500` 两档色。
+///
+/// 【子组件组成】无子组件:全部使用原生 dioxus 元素(`section` / `div` / `h2`
+/// / `p` / `span`),不依赖未导出的 pub(crate) 组件。
+///
+/// 【数据流】
+/// - 对内(入):无 props;`options` / `loading` / `err` 三个 signal 均为组件内
+///   `use_signal`,由挂载 effect 填充,不跨组件共享。
+/// - 对外(出):无 EventHandler / 无 signal 写回;拉取结果只影响本组件渲染。
 #[component]
 pub fn SystemOptionsPanel() -> Element {
     let mut options = use_signal(Vec::<OptionView>::new);
@@ -53,11 +80,11 @@ pub fn SystemOptionsPanel() -> Element {
             id: "system-sec-options",
             "data-testid": "system-options-panel",
             role: "region",
-            "aria-label": "站点选项",
+            "aria-label": LBL_SITE_OPTIONS,
             class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
             div {
-                h2 { class: "text-sm font-medium text-zinc-200", "站点选项" }
-                p { class: "text-xs text-zinc-500", "运行时选项 (key/value 平表),来自 /api/option 注册表与数据库值" }
+                h2 { class: "text-sm font-medium text-zinc-200", {LBL_SITE_OPTIONS} }
+                p { class: "text-xs text-zinc-500", {SEC_OPTIONS_NOTE} }
             }
             if let Some(e) = err {
                 div {
@@ -70,13 +97,13 @@ pub fn SystemOptionsPanel() -> Element {
                 div {
                     "data-testid": "system-options-loading",
                     class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
-                    p { class: "text-zinc-400", "正在加载站点选项…" }
+                    p { class: "text-zinc-400", {MSG_OPTIONS_LOADING} }
                 }
             } else if list.is_empty() {
                 div {
                     "data-testid": "system-options-empty",
                     class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
-                    p { class: "text-zinc-400", "暂无站点选项" }
+                    p { class: "text-zinc-400", {MSG_OPTIONS_EMPTY} }
                 }
             } else {
                 div { class: "divide-y divide-zinc-800/80",

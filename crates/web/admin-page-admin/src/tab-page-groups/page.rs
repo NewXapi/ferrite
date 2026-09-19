@@ -1,8 +1,14 @@
-//! 分组管理页:卡片式设计,对齐用户管理面板 (UsersPanel) 视觉规范。
+//! 分组管理页入口:卡片式设计,对齐用户管理面板 (UsersPanel) 视觉规范。
+//!
 //! 数据来自真实后端:挂载时 `use_effect` 拉 `list_groups_api`,写入本地
 //! `groups` signal;删除走 `delete_group_api`,新建/编辑走
-//! `create_group_api` / `update_group_api`。
+//! `create_group_api` / `update_group_api`(新建/编辑由弹窗内部发起,
+//! 见 `modal.rs::GroupFormModal`),启停与倍率分别走 `set_group_status_api` /
+//! `update_group_ratio_api`。
 //!
+//! 本文件只保留状态、派生与写回逻辑,渲染拆给 `stats` / `toolbar` / `list` / `modal`;
+//! 边界:不含任何样式细节与卡片内部交互。
+
 use dioxus::prelude::*;
 
 use client::ApiClient;
@@ -10,13 +16,53 @@ use contract::api::admin::GroupDto;
 
 use super::list::GroupsList;
 use super::modal::GroupFormModal;
-use super::shared::{ModalState, WriteOp, parse_whitelist};
+use super::shared::{
+    LBL_STAT_AVG_RATIO, LBL_STAT_CUSTOM_RATIO, LBL_STAT_DISABLED, LBL_STAT_ENABLED, LBL_STAT_TOTAL,
+    MSG_BULK_FAIL_SUFFIX, MSG_BULK_OK, MSG_BULK_OK_SUFFIX, MSG_BULK_PREFIX, MSG_BULK_TAIL,
+    MSG_OP_FAILED, MSG_OP_OK, ModalState, OPT_ALL, OPT_DISABLED, OPT_ENABLED, SEC_PAGE_ARIA,
+    WriteOp, parse_whitelist,
+};
 use super::stats::GroupsStatsSection;
 use super::toolbar::GroupsToolbar;
 use crate::api::{delete_group_api, list_groups_api, set_group_status_api, update_group_ratio_api};
 
+/// 分组管理页。
+///
+/// 【是什么】分组 tab 的页面入口:一张可滚动页面,自上而下是通知条、统计区(段 1)、
+/// 筛选与操作区(段 2)、卡片网格区(段 3),外加按需挂载的新建/编辑弹窗。
+///
+/// 【做什么】持有本 tab 的全部跨组件状态,挂载即拉取列表,把筛选与统计派生好之后
+/// 以值传给三个区段组件,并实现删除 / 启停 / 倍率 / 批量启停 / 新建编辑的写回闭包。
+/// 不负责任何视觉细节(§2 硬约束 H2:页面 rsx 只做组装)、不负责卡片内部交互
+/// (在 `modal.rs`)、不负责弹窗表单的提交请求(在 `GroupFormModal` 内)。
+///
+/// 【交互逻辑】用户操作 → 页面行为 → 数据交互:
+/// - 挂载 / `reload` 变化 → `use_effect` 调 `list_groups_api` 写入 `groups`,失败置 `err`。
+/// - 挂载 → 另一条 `use_effect` 并行调 `list_models_api` 取映射别名候选,失败留空。
+/// - 单卡删除 → `delete_group_api`,成功后 `reload + 1` 整页重拉(行要消失)。
+/// - 单卡启停 / 拖倍率 → `set_group_status_api` / `update_group_ratio_api`,成功后
+///   `with_mut` 就地改本地对应项(不重拉、无闪烁);失败则追加 `reload` 与真值同步。
+/// - 批量启停 → 快照 `selected` 顺序 await 每个 key,成功者就地更新,最后汇总通知并清空选中。
+/// - 弹窗提交 → `close_and_reload`(关弹窗 + 重拉)。
+/// 数据交互:本文件是本 tab 全部网络请求的唯一发起处(除弹窗内的创建/更新)。
+///
+/// 【样式】根节点 `div.flex.flex-col.gap-6` 加 `role="region"` 与
+/// `aria-label=SEC_PAGE_ARIA`;通知条为 `rounded-xl border border-zinc-700 bg-zinc-900
+/// px-4 py-2 text-xs text-zinc-300`(进行中追加 `···`)。
+///
+/// 【子组件组成】`GroupsStatsSection`(段 1)、`GroupsToolbar`(段 2)、
+/// `GroupsList`(段 3)、`GroupFormModal`(条件挂载的编辑/新建弹窗)。
+///
+/// 【数据流】
+/// - 对内(入):无 prop(页面级组件,由路由挂载)。
+/// - 对外(出):无;状态通过 Signal prop 传给子组件,子组件的 EventHandler 回到本页闭包。
+///
+/// 状态块:以下 signal 均因**跨组件交互**而提升到本层(§2.2):列表状态被三区段共享;
+/// 筛选状态页面要用它算 `filtered`;弹窗状态要跨 toolbar(开)与弹窗(读写)、页面(提交);
+/// `selected` 要跨 toolbar(点选)与页面(批量);表单元字段由「打开弹窗」动作初始化。
 #[component]
 pub fn GroupsPage() -> Element {
+    // 列表状态:effect 拉取,stats / toolbar / list 三处共享,故放页面层。
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
     let mut groups = use_signal(Vec::<GroupDto>::new);
     let mut loading = use_signal(|| true);
@@ -27,12 +73,15 @@ pub fn GroupsPage() -> Element {
     // reload 计数:触发一次即重拉列表(写操作后刷新)
     let mut reload = use_signal(|| 0u32);
 
+    // 筛选状态:页面要拿它算 filtered,故提升到页面层,toolbar 就地读写同一份。
     let search = use_signal(String::new);
     let filter_tier = use_signal(|| 0usize);
     let mut modal_state = use_signal(|| ModalState::Closed);
     // 多选集合 (卡片勾选框); 批量动作只在选中数>0 时可用
     let mut selected = use_signal(Vec::<String>::new);
 
+    // 弹窗表单状态:仅弹窗内部使用,但因为由「打开弹窗」这一跨组件动作初始化
+    // (toolbar 的新建 / list 的编辑),故提升到页面层持有,以 Signal prop 传入弹窗。
     // 表单状态
     let mut f_name = use_signal(String::new);
     let mut f_ratio = use_signal(|| "1.0".to_string());
@@ -42,7 +91,8 @@ pub fn GroupsPage() -> Element {
     // 映射别名(编辑弹窗 tab2): 逗号分隔; MVP 仅登记
     let mut f_alias = use_signal(String::new);
 
-    // 映射别名候选 (models 域 name 列表); 与分组列表并行拉取, 失败留空
+    // 映射别名候选 (models 域 name 列表); 与分组列表并行拉取, 失败留空。
+    // 单独一条 effect(不依赖 reload),故只在这里拉一次。
     let mut alias_options = use_signal(Vec::<String>::new);
     use_effect(move || {
         spawn(async move {
@@ -89,17 +139,17 @@ pub fn GroupsPage() -> Element {
         .count();
 
     let stats: [(String, &str); 5] = [
-        (total.to_string(), "总分组数"),
-        (enabled_count.to_string(), "启用中"),
-        (disabled_count.to_string(), "已停用"),
-        (format!("{:.2}×", avg_ratio), "平均倍率"),
-        (custom_count.to_string(), "非基准倍率"),
+        (total.to_string(), LBL_STAT_TOTAL),
+        (enabled_count.to_string(), LBL_STAT_ENABLED),
+        (disabled_count.to_string(), LBL_STAT_DISABLED),
+        (format!("{:.2}×", avg_ratio), LBL_STAT_AVG_RATIO),
+        (custom_count.to_string(), LBL_STAT_CUSTOM_RATIO),
     ];
 
     let filter_options = vec![
-        format!("全部 ({total})"),
-        format!("启用中 ({enabled_count})"),
-        format!("已停用 ({disabled_count})"),
+        format!("{OPT_ALL} ({total})"),
+        format!("{OPT_ENABLED} ({enabled_count})"),
+        format!("{OPT_DISABLED} ({disabled_count})"),
     ];
 
     // 过滤列表
@@ -174,7 +224,7 @@ pub fn GroupsPage() -> Element {
                 };
                 match res {
                     Ok(_) => {
-                        n.set(Some("操作成功".to_string()));
+                        n.set(Some(MSG_OP_OK.to_string()));
                         match op {
                             WriteOp::Delete => {
                                 // 删除:行要消失,必须整页重拉
@@ -200,7 +250,7 @@ pub fn GroupsPage() -> Element {
                         }
                     }
                     Err(e) => {
-                        n.set(Some(format!("操作失败:{e}")));
+                        n.set(Some(format!("{MSG_OP_FAILED}{e}")));
                         // 失败也要整页重拉: 本地列表可能已与服务端漂移(如并发
                         // 写冲突/他人改动), 重拉一次与真值重新同步。删除成功
                         // 分支已有重拉, 这里只在失败路径统一追加, 不重复。
@@ -244,7 +294,7 @@ pub fn GroupsPage() -> Element {
                     }
                 }
                 let msg = if failed.is_empty() {
-                    "批量操作成功".to_string()
+                    MSG_BULK_OK.to_string()
                 } else {
                     // 失败 key 截断到前 3 个, 更长以 … 结尾提示
                     let shown = failed
@@ -255,7 +305,7 @@ pub fn GroupsPage() -> Element {
                         .join(", ");
                     let more = if failed.len() > 3 { "…" } else { "" };
                     format!(
-                        "批量操作：{ok} 成功，{} 失败（key: {shown}{more}）",
+                        "{MSG_BULK_PREFIX}{ok}{MSG_BULK_OK_SUFFIX}{}{MSG_BULK_FAIL_SUFFIX}{shown}{more}{MSG_BULK_TAIL}",
                         failed.len()
                     )
                 };
@@ -285,7 +335,7 @@ pub fn GroupsPage() -> Element {
     rsx! {
         div { class: "flex flex-col gap-6",
             role: "region",
-            "aria-label": "分组管理",
+            "aria-label": SEC_PAGE_ARIA,
             // 通知条(成功/错误/进行中)
             if let Some(msg) = notice() {
                 div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",

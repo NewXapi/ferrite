@@ -10,12 +10,46 @@
 use dioxus::prelude::*;
 
 use super::shared::{
-    SEC_COUNTS, SEC_ENV, SEC_STATS, SystemInfoView, format_bytes, format_db_status, format_load,
+    BTN_REFRESH, BTN_RETRY, LBL_CONN_POOL, LBL_COUNT_ACTIVE_CHANNELS, LBL_COUNT_CHANNELS,
+    LBL_COUNT_MODELS, LBL_COUNT_TOKENS, LBL_COUNT_USERS, LBL_CPU_LOAD, LBL_DB_STATUS, LBL_HOSTNAME,
+    LBL_LOAD_AVG, LBL_MEMORY_DETAIL, LBL_OS, LBL_PROCESS_RSS, LBL_SERVICE_VERSION, LBL_STARTED_AT,
+    LBL_SYS_MEMORY, LBL_UPTIME, MSG_EMPTY, MSG_EMPTY_HINT, MSG_LOADING, MSG_LOAD_FAILED, SEC_COUNTS,
+    SEC_ENV, SEC_ENV_NOTE, SEC_STATS, SystemInfoView, format_bytes, format_db_status, format_load,
     format_started_at, format_uptime,
 };
 use crate::tab_page_groups::StatCard;
 
 /// 系统概览区:概览统计 / 实体统计 / 运行环境明细(编号段 1-3)。
+///
+/// 【是什么】系统 tab 的三段合体展示:概览统计卡 + 实体统计卡 + 运行环境明细行。
+///
+/// 【做什么】把页面拉到的 `SystemInfoView` 拆成三组渲染数据(`stats` /
+/// `count_cards` / `env_rows` 三个派生 Vec),按 err / loading / 有数据渲染;
+/// 概览段空时另给「后端未返回采集数据」说明。不负责拉数据(页面 effect 负责)、
+/// 不负责刷新动作本身(只把点击抛回页面)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 点区段头「刷新」或错误态「重试」→ 均调 `on_refresh`,抛回页面
+///   (MouseEvent,页面 `reload + 1` 触发 effect 重拉)。
+/// 数据交互:本组件**不发网络请求**,拉取链路在页面 `use_effect` 里。
+///
+/// 【样式】外壳三段:`section#system-sec-stats` 为 `scroll-mt-8 space-y-3`
+/// (区段头左 `text-lg font-medium text-zinc-100` 标题 + 右描边按钮);统计卡
+/// 网格 `grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3
+/// / 大屏 5 列);`section#system-sec-counts` 同网格但仅在有数据时渲染;
+/// `section#system-sec-env` 为 `rounded-xl border border-zinc-800 bg-zinc-900/60
+/// p-5`,明细行 `divide-y divide-zinc-800/80` + 左标签 `text-zinc-500` / 右值
+/// `font-mono text-zinc-300`。错误/加载/空态均为虚线或红边圆角块 + 居中文字。
+///
+/// 【子组件组成】`StatCard`(来自 `tab_page_groups`,概览卡与统计卡共用);
+/// 其余为原生元素,无自定义子组件。
+///
+/// 【数据流】
+/// - 对内(入):`data`(页面 effect 拉到的 `SystemInfoView`,`None` = 未拿到)、
+///   `loading`(首屏加载中)、`err`(拉取失败摘要,`Some` 时优先于 loading 渲染);
+///   三者与 `on_refresh` 均由页面持有并传入。
+/// - 对外(出):`on_refresh` → 页面 `reload` signal 递增,触发 effect 重拉
+///   `/api/system-info`。
 #[component]
 pub fn SystemOverview(
     /// `/api/system-info` 采集结果(None = 尚未拿到)
@@ -30,21 +64,21 @@ pub fn SystemOverview(
     // 概览统计卡:运行时长 / 内存占用 / CPU 负载 / 数据库 / 进程内存
     let stats: Vec<(String, &'static str)> = match &data {
         Some(v) => vec![
-            (format_uptime(v.uptime.uptime_seconds), "运行时长"),
+            (format_uptime(v.uptime.uptime_seconds), LBL_UPTIME),
             (
                 format!(
                     "{}/{}",
                     format_bytes(v.memory.system_used_bytes),
                     format_bytes(v.memory.system_total_bytes)
                 ),
-                "系统内存 (已用/总量)",
+                LBL_SYS_MEMORY,
             ),
             (
                 format!("{} · {}核", format_load(v.cpu.load_avg_1m), v.cpu.num_cpus),
-                "CPU 负载 (1m)",
+                LBL_CPU_LOAD,
             ),
-            (format_db_status(&v.database.status), "数据库状态"),
-            (format_bytes(v.memory.process_rss_bytes), "进程常驻内存"),
+            (format_db_status(&v.database.status), LBL_DB_STATUS),
+            (format_bytes(v.memory.process_rss_bytes), LBL_PROCESS_RSS),
         ],
         None => Vec::new(),
     };
@@ -52,11 +86,11 @@ pub fn SystemOverview(
     // 实体统计卡:核心业务实体行数
     let count_cards: Vec<(String, &'static str)> = match &data {
         Some(v) => vec![
-            (v.counts.users.to_string(), "注册用户"),
-            (v.counts.channels.to_string(), "渠道总数"),
-            (v.counts.active_channels.to_string(), "启用渠道"),
-            (v.counts.models.to_string(), "模型数量"),
-            (v.counts.tokens.to_string(), "Token 总数"),
+            (v.counts.users.to_string(), LBL_COUNT_USERS),
+            (v.counts.channels.to_string(), LBL_COUNT_CHANNELS),
+            (v.counts.active_channels.to_string(), LBL_COUNT_ACTIVE_CHANNELS),
+            (v.counts.models.to_string(), LBL_COUNT_MODELS),
+            (v.counts.tokens.to_string(), LBL_COUNT_TOKENS),
         ],
         None => Vec::new(),
     };
@@ -64,18 +98,18 @@ pub fn SystemOverview(
     // 运行环境明细行
     let env_rows: Vec<(String, String)> = match &data {
         Some(v) => vec![
-            ("服务版本".to_string(), v.runtime.version.clone()),
+            (LBL_SERVICE_VERSION.to_string(), v.runtime.version.clone()),
             (
-                "操作系统".to_string(),
+                LBL_OS.to_string(),
                 format!("{} / {}", v.runtime.os, v.runtime.arch),
             ),
-            ("主机名".to_string(), v.runtime.hostname.clone()),
+            (LBL_HOSTNAME.to_string(), v.runtime.hostname.clone()),
             (
-                "启动时间".to_string(),
+                LBL_STARTED_AT.to_string(),
                 format_started_at(&v.uptime.started_at),
             ),
             (
-                "负载均值".to_string(),
+                LBL_LOAD_AVG.to_string(),
                 format!(
                     "1m {} · 5m {} · 15m {}",
                     format_load(v.cpu.load_avg_1m),
@@ -84,14 +118,14 @@ pub fn SystemOverview(
                 ),
             ),
             (
-                "连接池".to_string(),
+                LBL_CONN_POOL.to_string(),
                 format!(
                     "大小 {} · 空闲 {}",
                     v.database.pool_size, v.database.idle_connections
                 ),
             ),
             (
-                "内存明细".to_string(),
+                LBL_MEMORY_DETAIL.to_string(),
                 format!(
                     "已用 {} · 可用 {} · 进程 {}",
                     format_bytes(v.memory.system_used_bytes),
@@ -115,27 +149,27 @@ pub fn SystemOverview(
                     class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
                     "data-testid": "refresh-system",
                     onclick: on_refresh,
-                    "刷新"
+                    {BTN_REFRESH}
                 }
             }
             if let Some(e) = err {
                 div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                    p { class: "text-sm text-red-300", "加载系统信息失败" }
+                    p { class: "text-sm text-red-300", {MSG_LOAD_FAILED} }
                     p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                     button {
                         class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                         onclick: on_refresh,
-                        "重试"
+                        {BTN_RETRY}
                     }
                 }
             } else if loading {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", "正在加载系统信息…" }
+                    p { class: "text-zinc-400", {MSG_LOADING} }
                 }
             } else if stats.is_empty() {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", "暂无系统信息" }
-                    p { class: "mt-1 text-xs text-zinc-600", "后端未返回采集数据 —— 服务重启产生指标后这里会展示真实系统状态" }
+                    p { class: "text-zinc-400", {MSG_EMPTY} }
+                    p { class: "mt-1 text-xs text-zinc-600", {MSG_EMPTY_HINT} }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
@@ -165,7 +199,7 @@ pub fn SystemOverview(
                 class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
                 div {
                     h2 { class: "text-sm font-medium text-zinc-200", "{SEC_ENV}" }
-                    p { class: "text-xs text-zinc-500", "采集自服务端进程与数据库连接池的实时诊断数据" }
+                    p { class: "text-xs text-zinc-500", {SEC_ENV_NOTE} }
                 }
                 div { class: "divide-y divide-zinc-800/80",
                     for (label, value) in env_rows {

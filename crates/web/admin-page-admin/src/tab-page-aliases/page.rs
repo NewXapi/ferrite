@@ -28,7 +28,11 @@ use dioxus::prelude::*;
 
 use super::list::AliasesListSection;
 use super::modal::AliasFormModal;
-use super::shared::{AliasItem, AliasModalState, PriceMode};
+use super::shared::{
+    AliasItem, AliasModalState, LBL_STAT_AVG, LBL_STAT_CUSTOM, LBL_STAT_FREE, LBL_STAT_STANDARD,
+    LBL_STAT_TOTAL, MSG_CREATE_REJECTED, MSG_DELETE_FAILED, MSG_DELETED, MSG_SAVE_FAILED, OPT_ALL,
+    OPT_CUSTOM, OPT_FREE, OPT_STANDARD, PriceMode, SEC_DATA_NOTE,
+};
 use super::stats::AliasesStatsSection;
 use super::toolbar::AliasesToolbarSection;
 use crate::api::{
@@ -36,9 +40,37 @@ use crate::api::{
 };
 use crate::state::AliasRow;
 /// 别名管理页
+///
+/// 【是什么】别名 tab 的页面入口组件,持有跨组件状态并薄组装三段区(统计/筛选/列表)与弹窗。
+///
+/// 【做什么】负责列表拉取(GET /api/models?size=100)与分组拉取、按条件派生 filtered
+/// 与统计、以及全部写回(编辑 PUT / 删除 DELETE / 新建诚实拒绝);不负责任何视觉细节
+/// —— 渲染交给 `stats` / `toolbar` / `list` / `modal` 四个子模块(本文件的 rsx 只有组装)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互(网络请求都发生在本文件):
+/// - 首屏/`reload` 变化 → `use_effect` 触发:先拉分组(`list_groups_api`,失败不阻塞),
+///   再拉别名列表(`list_model_aliases_api`),把结果映射为 `AliasItem` 并按别名排序后写 `rows`。
+/// - 搜索/切档 → toolbar 就地写 `search` / `filter_tier`,本文件重算 `filtered`(无网络)。
+/// - 卡片切定价模式 → 写回 `rows` 中该条的 `price_mode`(纯 UI 本地状态,不发网络)。
+/// - 提交弹窗 → 编辑走 `update_model_alias_api`(PUT,请求体只带 `name`);新建不造数据,
+///   置 `notice = MSG_CREATE_REJECTED` 诚实拒绝。
+/// - 请求删除 → `delete_model_alias_api`(DELETE),成功后本地从 `rows` 移除,
+///   不整体重拉,避免列表闪 loading 骨架与高度跳动。
+///
+/// 【样式】顶层 `div.flex flex-col gap-6`;通知条为 `rounded-xl border-zinc-700
+/// bg-zinc-900`,数据来源说明条为 `bg-zinc-900/60` 的窄横幅。页面自身不写卡片/网格样式。
+///
+/// 【子组件组成】`AliasesStatsSection` / `AliasesToolbarSection` / `AliasesListSection`,
+/// 条件渲染时挂载 `AliasFormModal`;`AliasCard` 由 list 区内部使用。
+///
+/// 【数据流】
+/// - 对内(入):无 prop —— 页面组件不接收外部参数。
+/// - 对外(出):把上面各 Signal 以 prop 下发给子组件;子组件则通过 Signal 就地读写
+///   或 `EventHandler` 回调(开弹窗 / 编辑 / 删除 / 重试 / 切模式)把意图抛回本文件的
+///   写回闭包,由本文件统一落成 API 调用与 `rows` / `notice` 更新。
 #[component]
 pub fn AliasesPage() -> Element {
-    // —— 列表状态 ——
+    // 列表状态:跨 stats/list 两区与 effect 共享,故放页面层持有。
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
     let mut rows = use_signal(Vec::<AliasItem>::new);
     let mut loading = use_signal(|| true);
@@ -48,11 +80,15 @@ pub fn AliasesPage() -> Element {
     // 分组列表(用于卡片展示「哪些分组可用此别名 + 各分组倍率」)
     let mut groups = use_signal(Vec::<GroupDto>::new);
 
-    // —— 筛选状态 ——
+    // 筛选状态:由 toolbar 就地读写,但 filtered 的派生计算在页面,
+    // 所以状态提升到这一层、以 Signal 传入 toolbar(组件内零 use_signal)。
     let search = use_signal(String::new);
     let filter_tier = use_signal(|| 0usize);
 
     // —— 弹窗表单状态(被 open_new/open_edit 重置,弹窗读写,卡片读 c_*)——
+    // 这组状态只服务弹窗本体,但由「打开弹窗」这一跨组件动作初始化(open_new /
+    // open_edit 要成组重置),且通道开关 c_* 还会被卡片读到,跨越三处 ——
+    // 因此不能下沉进弹窗内部,统一提升到页面层持有,以 Signal prop 注入。
     let mut modal_state = use_signal(|| AliasModalState::Closed);
     let mut f_name = use_signal(String::new);
     let mut f_display = use_signal(String::new);
@@ -77,6 +113,8 @@ pub fn AliasesPage() -> Element {
     let mut c_completion_on = use_signal(|| true);
 
     // —— 写回状态 ——
+    // 写操作进行中 / 成功提示:由删除与提交两个写回闭包共同写、被通知条读取,
+    // 跨组件共享,故放页面层。submitting 独立于 busy,只用于禁用弹窗提交按钮。
     // 写操作进行中 / 成功提示
     let busy = use_signal(|| false);
     let mut notice = use_signal(|| None::<String>);
@@ -146,18 +184,18 @@ pub fn AliasesPage() -> Element {
     };
 
     let stats: [(String, &str); 5] = [
-        (total.to_string(), "总别名数"),
-        (standard_count.to_string(), "标准 1.0× 别名"),
-        (custom_count.to_string(), "自定倍率别名"),
-        (free_count.to_string(), "免费别名 (0×)"),
-        (format!("{:.2}×", avg_mult), "平均加价倍率"),
+        (total.to_string(), LBL_STAT_TOTAL),
+        (standard_count.to_string(), LBL_STAT_STANDARD),
+        (custom_count.to_string(), LBL_STAT_CUSTOM),
+        (free_count.to_string(), LBL_STAT_FREE),
+        (format!("{:.2}×", avg_mult), LBL_STAT_AVG),
     ];
 
     let filter_options = vec![
-        format!("全部 ({total})"),
-        format!("标准 1.0× ({standard_count})"),
-        format!("自定倍率 ({custom_count})"),
-        format!("免费通道 ({free_count})"),
+        format!("{OPT_ALL} ({total})"),
+        format!("{OPT_STANDARD} ({standard_count})"),
+        format!("{OPT_CUSTOM} ({custom_count})"),
+        format!("{OPT_FREE} ({free_count})"),
     ];
 
     let filtered: Vec<(usize, AliasItem)> = {
@@ -246,9 +284,9 @@ pub fn AliasesPage() -> Element {
                     let mut items = items_sig().to_vec();
                     items.retain(|it| it.key != key);
                     items_sig.set(items);
-                    n.set(Some("已删除".to_string()));
+                    n.set(Some(MSG_DELETED.to_string()));
                 }
-                Err(e) => n.set(Some(format!("删除失败:{e}"))),
+                Err(e) => n.set(Some(format!("{MSG_DELETE_FAILED}{e}"))),
             }
             b.set(false);
         });
@@ -283,7 +321,7 @@ pub fn AliasesPage() -> Element {
                         ..Default::default()
                     };
                     if let Err(e) = update_model_alias_api(&client, &k, &req).await {
-                        n.set(Some(format!("保存失败:{e}")));
+                        n.set(Some(format!("{MSG_SAVE_FAILED}{e}")));
                     }
                     sub.set(false);
                     ms.set(AliasModalState::Closed);
@@ -292,9 +330,7 @@ pub fn AliasesPage() -> Element {
             // 新建:后端 CreateModelRequest 必填 owner 与 api_key,表单没有
             // 这两个字段的来源 — 诚实拒绝,不造数据、不假成功。
             None => {
-                notice.set(Some(
-                    "新建未执行:后端创建模型需要 owner 与 api_key 字段,当前表单未提供".to_string(),
-                ));
+                notice.set(Some(MSG_CREATE_REJECTED.to_string()));
                 modal_state.set(AliasModalState::Closed);
             }
         }
@@ -314,7 +350,7 @@ pub fn AliasesPage() -> Element {
 
             // 数据与写路径说明(后端 models 端点暂无计费字段)
             div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
-                span { "别名来自真实 /api/models;编辑与删除已接后端;定价模式与价格配置为 UI 层本地状态,后端扩展 pricing 列前保存不写库;新建暂未开放(后端需要 owner/api_key 字段)" }
+                span { "{SEC_DATA_NOTE}" }
             }
 
             // 统计区(编号段 1):五张概览卡(总数/标准 1.0×/自定倍率/免费/平均倍率)。

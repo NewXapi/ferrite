@@ -1,3 +1,16 @@
+//! 实体设置页的渠道卡:渠道列表 / 选中编辑 / 启停 / 删除,以及候补池 ↔ 调度模型
+//! 的双向搬运。
+//!
+//! 负责:渠道的录入与保存(新建走 `create_channel_import`,编辑走 `update_channel`)、
+//! 启停(`set_channel_status`)、删除(`delete_channel`),以及候补池/调度模型的本地
+//! 勾选与搬运。
+//!
+//! 不负责:分组卡与别名卡(`cards.rs`)、卡片折叠态(`page.rs`)、写路径实现
+//! (`crate::drawer_write`)、拓扑画布刷新(`bump_topo_refresh` 只被调用)。
+//!
+//! 本卡是 RENAMED 来的(原 `entities.rs` 的渠道部分):候补池/调度模型操作纯本地,
+//! 不落库;只有渠道本身的 CRUD 与启停会发请求。
+
 use super::shared::*;
 use crate::drawer_write::{
     DrawerNotice, DrawerNoticeBar, create_channel_import, delete_channel, find_channel_by_name,
@@ -10,10 +23,48 @@ use ui::dialog::Dialog;
 
 // ============ 卡片 3：渠道 ============
 
+/// 渠道卡：渠道的录入 / 启停 / 删除与候补池 ↔ 调度模型搬运。
+///
+/// 【是什么】实体设置页的第三张卡:渠道胶囊列表 + 录入行 + 节点区(左候补池、右调度模型)
+/// + 删除确认弹窗,外加顶部写操作提示条。
+///
+/// 【做什么】负责渠道的保存(新建 `create_channel_import` / 编辑 `update_channel`)、
+/// 启停(`set_channel_status`)、删除(`delete_channel`),并在成功后
+/// `bump_topo_refresh()` 刷拓扑画布。候补池的勾选、加入调度、清空、移出拓扑全部
+/// 只改本地 store 行,不落库。不负责分组/别名卡与折叠态。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 点渠道胶囊 → `load_row(i)` 回填录入行(keys 固定留空 = 不覆盖现网密钥)。
+/// - 点「＋ 新建渠道」→ `load_new` 把表单置为草稿态(不动 `current`,故启停/删除被禁用)。
+/// - 点「保存」→ `save`:先拦空名与「新建无 Key」,新建 POST 后 push 本地行并切到新行;
+///   编辑优先用行内服务端 key(无改名竞态),seed 行才 `find_channel_by_name` 兜底,
+///   失败一律报错而不降级成新建(避免复制出重复渠道);`saving` 为真时防双击。
+/// - 点「停用/启用」→ `toggle_status`(1↔2),成功后写回本地行 `status`。
+/// - 点「删除此渠道」→ 打开确认弹窗;确认后本地 key 存在走 `delete_channel`,
+///   否则按名称查找,后端已无此名时只清本地行。
+/// - 候补池内勾选/「加入调度 →」/「清空候补」/ 调度模型行的 ✕ 只操作本地 store 行,无网络。
+///
+/// 【样式】外壳与头部由 `CardPanel` 提供;胶囊行 `flex flex-wrap items-center gap-2`,
+/// 选中态 `border-zinc-100 bg-zinc-100 text-zinc-900`;录入行同为 `flex flex-wrap
+/// items-center gap-2`;节点区为 `grid grid-cols-1 gap-3 lg:grid-cols-2`,左格
+/// `border-dashed border-zinc-700 bg-zinc-950/60`,右格实线 `border-zinc-800 bg-zinc-950`;
+/// 删除确认用 `ui::dialog::Dialog`。
+///
+/// 【子组件组成】`DrawerNoticeBar`(写操作提示条)、`CardPanel`(卡外壳)、
+/// `TextCell`(渠道名/Base URL/API Key)、`SelectCell`(渠道类型)、`NodeArea`(节点槽)、
+/// `EmptyHint`(三处空态)、`Dialog`(删除确认,条件渲染)。
+///
+/// 【数据流】
+/// - 对内(入):`open`(卡片展开态,页面持有)、`on_toggle`(切展开);渠道数据来自
+///   `use_context::<EntityStore>()` 的 `channels`(本地 store 行,仅作拓扑启动布局兜底)。
+/// - 对外(出):写本地 `channels` 行、置 `notice`、调 `bump_topo_refresh()` 通知画布重拉;
+///   `on_toggle` 冒泡给页面翻转 `open` 数组。
 #[component]
 pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let store = use_context::<EntityStore>();
     let mut channels = store.channels;
+    // —— 卡片自身状态:选中下标、录入行、草稿标记、提示与确认 ——
+    // 这组状态只服务本卡,不跨组件,故就地持有(channels 行本身在 EntityStore)。
     let mut current = use_signal(|| 0usize);
     let mut name = use_signal(String::new);
     let mut ctype = use_signal(String::new);
@@ -43,7 +94,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
     };
 
     let mut load_new = move |_| {
-        name.set("新渠道".into());
+        name.set(MSG_NEW_CHANNEL_NAME.into());
         ctype.set("openai".into());
         url.set(String::new());
         keys.set(String::new());
@@ -76,7 +127,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
         let i = *current.peek();
         // 新建渠道至少要一个明文 key（后端 validate 必 400，提前拦省一趟）
         if new && kvec.is_empty() {
-            notice.set(DrawerNotice::Err("新建渠道至少填写一个 API Key".into()));
+            notice.set(DrawerNotice::Err(MSG_ERR_NEED_API_KEY.into()));
             return;
         }
         // 新建 = default 分组；编辑取当前行既有分组
@@ -106,7 +157,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 let created = match create_channel_import(&n, &u, &ct, &grp, &kvec).await {
                     Ok(c) => c,
                     Err(e) => {
-                        ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                        ns.set(DrawerNotice::Err(format!("{MSG_SAVE_FAILED_PREFIX}{e}")));
                         return;
                     }
                 };
@@ -146,12 +197,12 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         Ok(None) => match create_channel_import(&n, &u, &ct, &grp, &kvec).await {
                             Ok(c) => c.key,
                             Err(e) => {
-                                ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                                ns.set(DrawerNotice::Err(format!("{MSG_SAVE_FAILED_PREFIX}{e}")));
                                 return;
                             }
                         },
                         Err(e) => {
-                            ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                            ns.set(DrawerNotice::Err(format!("{MSG_SAVE_FAILED_PREFIX}{e}")));
                             return;
                         }
                     }
@@ -159,7 +210,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 // 用户未重输 keys → 传 None（请求体缺席 keys 字段 = 保留现值）
                 let new_keys = (!kvec.is_empty()).then(|| kvec.clone());
                 if let Err(e) = update_channel(&key, &n, &u, new_keys).await {
-                    ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                    ns.set(DrawerNotice::Err(format!("{MSG_SAVE_FAILED_PREFIX}{e}")));
                     return;
                 }
                 if let Some(r) = ch_sig.write().get_mut(i) {
@@ -176,7 +227,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     ns.set(DrawerNotice::Ok);
                     bump_topo_refresh();
                 }
-                Err(e) => ns.set(DrawerNotice::Err(format!("保存失败：{e}"))),
+                Err(e) => ns.set(DrawerNotice::Err(format!("{MSG_SAVE_FAILED_PREFIX}{e}"))),
             }
             saving.set(false);
         });
@@ -200,12 +251,12 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     Ok(Some(c)) => c.key,
                     Ok(None) => {
                         ns.set(DrawerNotice::Err(format!(
-                            "渠道「{cur_name}」不存在于后端（可能已被删除）"
+                            "{MSG_CHANNEL_MISSING_PREFIX}{cur_name}{MSG_CHANNEL_MISSING_SUFFIX}"
                         )));
                         return;
                     }
                     Err(e) => {
-                        ns.set(DrawerNotice::Err(format!("启停失败：{e}")));
+                        ns.set(DrawerNotice::Err(format!("{MSG_TOGGLE_FAILED_PREFIX}{e}")));
                         return;
                     }
                 }
@@ -218,7 +269,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     ns.set(DrawerNotice::Ok);
                     bump_topo_refresh();
                 }
-                Err(e) => ns.set(DrawerNotice::Err(format!("启停失败：{e}"))),
+                Err(e) => ns.set(DrawerNotice::Err(format!("{MSG_TOGGLE_FAILED_PREFIX}{e}"))),
             }
         });
     };
@@ -243,7 +294,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
             // 行 key 优先（免查询且无改名竞态），seed 演示行为空才按名称找
             if !local_key.is_empty() {
                 if let Err(e) = delete_channel(&local_key).await {
-                    ns.set(DrawerNotice::Err(format!("删除失败：{e}")));
+                    ns.set(DrawerNotice::Err(format!("{MSG_DELETE_FAILED_PREFIX}{e}")));
                     return;
                 }
                 ch_sig.write().remove(i);
@@ -254,7 +305,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
             match find_channel_by_name(&r.name).await {
                 Ok(Some(c)) => {
                     if let Err(e) = delete_channel(&c.key).await {
-                        ns.set(DrawerNotice::Err(format!("删除失败：{e}")));
+                        ns.set(DrawerNotice::Err(format!("{MSG_DELETE_FAILED_PREFIX}{e}")));
                         return;
                     }
                     ch_sig.write().remove(i);
@@ -267,7 +318,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     ns.set(DrawerNotice::Ok);
                 }
                 Err(e) => {
-                    ns.set(DrawerNotice::Err(format!("删除失败：{e}")));
+                    ns.set(DrawerNotice::Err(format!("{MSG_DELETE_FAILED_PREFIX}{e}")));
                 }
             }
         });
@@ -277,8 +328,8 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
         DrawerNoticeBar { notice, on_clear: move |_| notice.set(DrawerNotice::Idle) }
         CardPanel {
             section_index: 2,
-            title: "渠道",
-            hint: "URL + Key 是凭证容器；调度模型由候补池加入，名字不可改",
+            title: SEC_CARD_CHANNELS,
+            hint: SEC_CARD_CHANNELS_HINT,
             count: channels.read().len(),
             open: open,
             on_toggle: on_toggle,
@@ -313,60 +364,60 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         // 草稿期这两个按钮与 NodeArea 一并禁用（下方）。
                         load_new(());
                     },
-                    "＋ 新建渠道"
+                    "{BTN_NEW_CHANNEL}"
                 }
             }
 
             div { class: "flex flex-wrap items-center gap-2",
                 TextCell {
-                    label: "渠道名称",
+                    label: FIELD_CHANNEL_NAME,
                     value: name(),
-                    placeholder: "OpenAI 官方",
+                    placeholder: MSG_PH_CHANNEL_NAME,
                     oninput: move |v: String| name.set(v),
                 }
                 SelectCell {
-                    label: "类型",
+                    label: FIELD_CHANNEL_TYPE,
                     value: ctype(),
                     options: crate::state::CHANNEL_TYPES,
                     oninput: move |v: String| ctype.set(v),
                 }
                 TextCell {
-                    label: "Base URL",
+                    label: FIELD_BASE_URL,
                     value: url(),
-                    placeholder: "https://…",
+                    placeholder: MSG_PH_BASE_URL,
                     oninput: move |v: String| url.set(v),
                 }
                 TextCell {
-                    label: "API Key（留空 = 不改动现有密钥）",
+                    label: FIELD_API_KEY,
                     value: keys(),
-                    placeholder: "sk-…",
+                    placeholder: MSG_PH_API_KEY,
                     oninput: move |v: String| keys.set(v),
                 }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
                     disabled: saving(),
                     onclick: save,
-                    "保存"
+                    "{BTN_SAVE}"
                 }
                 button {
                     class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
                     disabled: is_new(),
-                    title: if is_new() { "草稿未保存，保存后才能启停" } else { "" },
+                    title: if is_new() { MSG_TITLE_DRAFT_NO_TOGGLE } else { "" },
                     onclick: toggle_status,
-                    if status() == 1 { "停用" } else { "启用" }
+                    if status() == 1 { "{BTN_DISABLE}" } else { "{BTN_ENABLE}" }
                 }
                 button {
                     class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-red-400 hover:border-red-700",
                     disabled: is_new(),
-                    title: if is_new() { "草稿未保存，保存后才能删除" } else { "" },
+                    title: if is_new() { MSG_TITLE_DRAFT_NO_DELETE } else { "" },
                     onclick: move |_| request_delete(idx),
-                    "删除此渠道"
+                    "{BTN_DELETE_CHANNEL}"
                 }
             }
 
             if is_new() {
                 NodeArea {
-                    EmptyHint { text: "草稿渠道：填好 URL + Key 保存后，这里才会显示候补池与调度模型" }
+                    EmptyHint { text: MSG_DRAFT_CHANNEL }
                 }
             } else if let Some(c) = row {
                 NodeArea {
@@ -375,12 +426,12 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         div { class: "flex min-h-0 flex-col gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/60 p-3",
                             div { class: "flex items-center justify-between gap-2",
                                 div {
-                                    p { class: "text-xs text-zinc-300", "候补池" }
-                                    p { class: "text-[11px] text-zinc-600", "拉取结果，尚未进入拓扑" }
+                                    p { class: "text-xs text-zinc-300", "{LBL_CANDIDATE_POOL}" }
+                                    p { class: "text-[11px] text-zinc-600", "{LBL_CANDIDATE_POOL_HINT}" }
                                 }
                             }
                             if c.candidates.is_empty() {
-                                EmptyHint { text: "点「拉取模型」获取候补" }
+                                EmptyHint { text: MSG_EMPTY_CANDIDATES }
                             } else {
                                 div { class: "min-h-0 flex-1 space-y-0.5 overflow-y-auto",
                                     for (j, (m, on)) in c.candidates.iter().enumerate() {
@@ -423,12 +474,12 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                                             }
                                             w[idx].candidates.retain(|(n, on)| !(*on && picked.contains(n)));
                                         },
-                                        "加入调度 →"
+                                        "{BTN_JOIN_DISPATCH}"
                                     }
                                     button {
                                         class: "rounded border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-500 hover:border-zinc-600 hover:text-zinc-300",
                                         onclick: move |_| { channels.write()[idx].candidates.clear(); },
-                                        "清空候补"
+                                        "{BTN_CLEAR_CANDIDATES}"
                                     }
                                 }
                             }
@@ -437,11 +488,11 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         // 调度模型
                         div { class: "flex min-h-0 flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
                             div {
-                                p { class: "text-xs text-zinc-300", "调度模型" }
-                                p { class: "text-[11px] text-zinc-600", "已在拓扑中；名字来自上游，不可改" }
+                                p { class: "text-xs text-zinc-300", "{LBL_DISPATCH_MODELS}" }
+                                p { class: "text-[11px] text-zinc-600", "{LBL_DISPATCH_MODELS_HINT}" }
                             }
                             if c.dispatch.is_empty() {
-                                EmptyHint { text: "从左侧候补池加入" }
+                                EmptyHint { text: MSG_EMPTY_DISPATCH }
                             } else {
                                 div { class: "min-h-0 flex-1 space-y-1 overflow-y-auto",
                                     for (j, m) in c.dispatch.iter().enumerate() {
@@ -452,7 +503,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                                                     span { class: "truncate font-mono text-xs text-zinc-200", "{label}" }
                                                     button {
                                                         class: "shrink-0 text-[11px] text-zinc-600 hover:text-red-400",
-                                                        title: "移出拓扑，退回候补池",
+                                                        title: MSG_TITLE_MOVE_OUT,
                                                         onclick: move |_| {
                                                             let mut w = channels.write();
                                                             let m = w[idx].dispatch.remove(j);
@@ -479,11 +530,11 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                 let cname = channels.read().get(ci).map(|r| r.name.clone()).unwrap_or_default();
                 rsx! {
                     Dialog {
-                        title: "删除渠道".to_string(),
+                        title: TTL_DELETE_CHANNEL.to_string(),
                         open: true,
                         on_confirm: confirm_delete,
                         on_cancel: move |_| confirming.set(None),
-                        div { class: "text-xs text-zinc-400", "确认删除渠道「{cname}」？该操作直接生效于后端，不可撤销。" }
+                        div { class: "text-xs text-zinc-400", "{MSG_CONFIRM_DELETE_CHANNEL_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
                     }
                 }
             } else {

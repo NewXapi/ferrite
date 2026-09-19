@@ -4,12 +4,59 @@
 //! 模式 toggle 直接写回页面级 signal;提交按钮只把事件抛给页面(`on_submit`),
 //! 校验与网络写回(PUT /api/models/{key})在 `page` 的
 //! `submit_alias` 里。三 tab 内容统一固定高度,切换时弹窗不伸缩。
+//!
+//! 边界:本文件**不做**输入校验(空别名直接由页面 `submit_alias` 提前 return)、
+//! **不做**网络请求、**不决定**提交按钮的启用语义(`submitting` 由页面的写回
+//! 闭包控制);弹窗外壳与遮罩行为复用 `tab_page_groups::Modal`。
 
 use dioxus::prelude::*;
 
-use super::shared::{PriceMode, PriceModeToggle};
+use super::shared::{
+    BTN_CANCEL, BTN_CREATE_ALIAS, BTN_SAVE_CHANGES, FIELD_ALIAS_ID, FIELD_DISPLAY,
+    FIELD_INPUT_PRICE, FIELD_MULTIPLIER, FIELD_PER_CALL_PRICE, FIELD_PRICE_MODE, LBL_CH_CACHE_READ,
+    LBL_CH_CACHE_READ_DESC, LBL_CH_CACHE_WRITE, LBL_CH_CACHE_WRITE_DESC, LBL_CH_COMPLETION,
+    LBL_CH_COMPLETION_DESC, LBL_CH_OUTPUT, LBL_CH_OUTPUT_DESC, LBL_INPUT_PRICE_DESC,
+    LBL_MODAL_TABLIST, LBL_PER_CALL_DESC, MSG_PH_ALIAS_ID, MSG_PH_DISPLAY, MSG_PH_PER_CALL,
+    PriceMode, PriceModeToggle, SEC_MODE_NOTE, SEC_PER_CALL_NOTE, TAB_BASIC, TAB_PER_CALL,
+    TAB_PER_TOKEN, TTL_EDIT, TTL_NEW,
+};
 use crate::tab_page_groups::Modal;
 /// 别名新建/编辑弹窗
+///
+/// 【是什么】别名 tab 的新建/编辑弹窗,内含「基本 / 按量定价 / 按次定价」三个页签。
+///
+/// 【做什么】渲染表单、页签切换与底部取消/提交两个按钮,并把表单值写回页面注入的
+/// Signal;不负责提交前的校验与网络写回(在页面 `submit_alias`)、不负责弹窗
+/// 的开关(`modal_state` 归页面)、不负责决定标题/按钮文案之外的业务逻辑。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 点顶部页签 → 写页面注入的 `active_tab`(仅影响弹窗本体,不关弹窗)。
+/// - 在标识/展示名/倍率/价格输入框输入 → `oninput` 写对应 Signal(纯本地,不发网络)。
+/// - 切换定价模式 toggle → `PriceModeToggle::on_change` 写页面级 `price_mode`。
+/// - 按各补充通道开关 → 写对应的 `c_*_on` bool(启用/停用该通道行)。
+/// - 点「取消」→ `on_cancel`(页面关弹窗,`modal_state = Closed`)。
+/// - 点「保存修改 / 创建别名」→ `on_submit`,校验与 PUT `/api/models/{key}` 由页面执行;
+///   按钮在 `submitting()` 为 true 时 `disabled:opacity-40`。
+///
+/// 【样式】外壳复用 `Modal`(标题栏 + 关闭按钮);内容区 `div.space-y-4`。三页签用
+/// `flex w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 p-0.5`,
+/// 选中项 `bg-zinc-100 text-zinc-900`、未选中 `text-zinc-400 hover:text-zinc-200`;
+/// 三 tab 内容统一 `min-h-[300px]`(`TAB_CONTENT_H`)固定高度,**切换时弹窗不伸缩**;
+/// 底部按钮区 `mt-6 flex gap-3`,取消为描边 `border-zinc-700`,提交为白底 `bg-white`。
+///
+/// 【子组件组成】`Modal`(弹窗外壳)、`PriceModeToggle`(定价模式开关);
+/// 按量 tab 的补充通道行由函数内闭包 `price_panel` 生成(标题 + 悬停说明 / 价格框 /
+/// 开关),不是独立的 `#[component]`。
+///
+/// 【数据流】
+/// - 对内(入):`editing`(决定标题 `TTL_EDIT`/`TTL_NEW` 与提交按钮文案);
+///   表单 Signal —— `alias` / `display` / `input_rate` / `output_rate` / `multiplier` /
+///   `price_mode` / `active_tab`;价格 Signal —— `p_input` / `p_output` /
+///   `p_cache_read` / `p_cache_write` / `p_completion` / `p_per_call`;通道开关 ——
+///   `c_output_on` / `c_cache_read_on` / `c_cache_write_on` / `c_completion_on`;
+///   `submitting`。全部由 `page.rs` 持有并在打开弹窗时重置。
+/// - 对外(出):上述 Signal 就地写回页面状态(输入即改,不发网络);`on_cancel` 关弹窗;
+///   `on_submit` 抛回页面,由页面走 PUT 或「新建被拒」提示。
 #[component]
 pub fn AliasFormModal(
     editing: bool,
@@ -34,15 +81,11 @@ pub fn AliasFormModal(
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
-    let title = if editing {
-        "编辑模型别名"
-    } else {
-        "新建模型别名"
-    };
+    let title = if editing { TTL_EDIT } else { TTL_NEW };
     let submit_label = if editing {
-        "保存修改"
+        BTN_SAVE_CHANGES
     } else {
-        "创建别名"
+        BTN_CREATE_ALIAS
     };
 
     // 弹窗内 tab 信号:由页面持有(active_tab),弹窗内切换只影响弹窗本体
@@ -115,8 +158,8 @@ pub fn AliasFormModal(
                 div {
                     class: "flex w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-xs",
                     role: "tablist",
-                    "aria-label": "别名编辑选项",
-                    for (i, tab_label) in (["基本", "按量定价", "按次定价"]).into_iter().enumerate() {
+                    "aria-label": "{LBL_MODAL_TABLIST}",
+                    for (i, tab_label) in ([TAB_BASIC, TAB_PER_TOKEN, TAB_PER_CALL]).into_iter().enumerate() {
                         button {
                             key: "{i}",
                             class: if i == active_tab() {
@@ -137,29 +180,29 @@ pub fn AliasFormModal(
                 if active_tab() == 0 {
                     div { class: "space-y-4 {TAB_CONTENT_H}",
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "别名标识 (API 请求匹配名)" }
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_ALIAS_ID}" }
                             input {
                                 class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
                                 "data-testid": "alias-name",
-                                placeholder: "例如: gpt-4o, claude-3-5-sonnet",
+                                placeholder: "{MSG_PH_ALIAS_ID}",
                                 value: "{alias}",
                                 oninput: move |e| alias.set(e.value()),
                             }
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "展示名称 (可选)" }
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_DISPLAY}" }
                             input {
                                 class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
                                 "data-testid": "alias-display",
-                                placeholder: "例如: GPT-4o 旗舰模型",
+                                placeholder: "{MSG_PH_DISPLAY}",
                                 value: "{display}",
                                 oninput: move |e| display.set(e.value()),
                             }
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "计费倍率 (multiplier ≥ 0)" }
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_MULTIPLIER}" }
                             input {
                                 class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
                                 "data-testid": "alias-multiplier",
@@ -171,9 +214,9 @@ pub fn AliasFormModal(
 
                         // 定价模式 toggle:与卡片面板同一状态(非 compact 全宽)
                         div { class: "space-y-1.5",
-                            label { class: "block text-xs text-zinc-400", "定价模式 (启用哪种定价)" }
+                            label { class: "block text-xs text-zinc-400", "{FIELD_PRICE_MODE}" }
                             PriceModeToggle { active: price_mode(), on_change: on_mode_change, compact: false }
-                            p { class: "mt-1 text-[11px] text-zinc-500", "切换到按量定价后,补充通道的启用开关在「按量定价」tab" }
+                            p { class: "mt-1 text-[11px] text-zinc-500", "{SEC_MODE_NOTE}" }
                         }
                     }
                 }
@@ -184,8 +227,8 @@ pub fn AliasFormModal(
                         // 输入价格:主通道,固定开启,不带 toggle
                         div { class: "space-y-1.5",
                             div {
-                                label { class: "block text-sm font-medium text-zinc-100", "输入价格" }
-                                p { class: "mt-0.5 text-[11px] text-zinc-500", "每 100 万输入 token 的价格。" }
+                                label { class: "block text-sm font-medium text-zinc-100", "{FIELD_INPUT_PRICE}" }
+                                p { class: "mt-0.5 text-[11px] text-zinc-500", "{LBL_INPUT_PRICE_DESC}" }
                             }
                             div { class: "flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2",
                                 span { class: "text-xs text-zinc-500", "$" }
@@ -203,8 +246,8 @@ pub fn AliasFormModal(
                         // 补充通道:紧凑单行面板(标题+悬停说明 / 价格框 / 开关)
                         {
                             price_panel(
-                                "输出价格".to_string(),
-                                "生成内容的输出 token 价格(悬停标题查看)".to_string(),
+                                LBL_CH_OUTPUT.to_string(),
+                                LBL_CH_OUTPUT_DESC.to_string(),
                                 c_output_on,
                                 p_output,
                                 "alias-output-price".to_string(),
@@ -212,8 +255,8 @@ pub fn AliasFormModal(
                         }
                         {
                             price_panel(
-                                "缓存读取价格".to_string(),
-                                "缓存读取 token 价格(悬停标题查看)".to_string(),
+                                LBL_CH_CACHE_READ.to_string(),
+                                LBL_CH_CACHE_READ_DESC.to_string(),
                                 c_cache_read_on,
                                 p_cache_read,
                                 "alias-cache-read-price".to_string(),
@@ -221,8 +264,8 @@ pub fn AliasFormModal(
                         }
                         {
                             price_panel(
-                                "缓存写入价格".to_string(),
-                                "缓存写入 token 价格(悬停标题查看)".to_string(),
+                                LBL_CH_CACHE_WRITE.to_string(),
+                                LBL_CH_CACHE_WRITE_DESC.to_string(),
                                 c_cache_write_on,
                                 p_cache_write,
                                 "alias-cache-write-price".to_string(),
@@ -230,8 +273,8 @@ pub fn AliasFormModal(
                         }
                         {
                             price_panel(
-                                "补全价格".to_string(),
-                                "补全(输出)调用的 token 价格(悬停标题查看)".to_string(),
+                                LBL_CH_COMPLETION.to_string(),
+                                LBL_CH_COMPLETION_DESC.to_string(),
                                 c_completion_on,
                                 p_completion,
                                 "alias-completion-price".to_string(),
@@ -244,8 +287,8 @@ pub fn AliasFormModal(
                 if active_tab() == 2 {
                     div { class: "space-y-3 {TAB_CONTENT_H}",
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "单次调用价格" }
-                            p { class: "text-[11px] text-zinc-500", "每次调用(不论 token 数)固定扣费。" }
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_PER_CALL_PRICE}" }
+                            p { class: "text-[11px] text-zinc-500", "{LBL_PER_CALL_DESC}" }
                         }
                         div {
                             class: "flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5",
@@ -254,13 +297,13 @@ pub fn AliasFormModal(
                                 class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
                                 r#type: "text",
                                 "data-testid": "alias-call-price",
-                                placeholder: "例如: 0.05",
+                                placeholder: "{MSG_PH_PER_CALL}",
                                 value: "{p_per_call}",
                                 oninput: move |e| p_per_call.set(e.value()),
                             }
                             span { class: "shrink-0 text-[11px] text-zinc-500", "USD/次" }
                         }
-                        p { class: "text-[11px] text-zinc-500", "后端落地前按次价格暂存于倍率字段,仅 UI 层生效。" }
+                        p { class: "text-[11px] text-zinc-500", "{SEC_PER_CALL_NOTE}" }
                     }
                 }
             }
@@ -270,7 +313,7 @@ pub fn AliasFormModal(
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     "data-testid": "alias-cancel",
                     onclick: move |_| on_cancel.call(()),
-                    "取消"
+                    "{BTN_CANCEL}"
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",

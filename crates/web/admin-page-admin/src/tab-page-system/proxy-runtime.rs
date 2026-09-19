@@ -5,6 +5,12 @@
 
 use dioxus::prelude::*;
 
+use super::shared::{
+    BTN_REFRESH, LBL_NODE_DISABLED, LBL_NODE_ENABLED, LBL_PROXY_RUNTIME, MSG_COOLDOWN_PREFIX,
+    MSG_DELAY_PREFIX, MSG_FAILURE_PREFIX, MSG_INFLIGHT_PREFIX, MSG_NO_RUNTIME,
+    MSG_RUNTIME_EMPTY, MSG_RUNTIME_EMPTY_HINT, MSG_RUNTIME_LOAD_FAILED, MSG_RUNTIME_LOADING,
+    SEC_PROXY_RUNTIME, SEC_PROXY_RUNTIME_LIST, SEC_PROXY_RUNTIME_NOTE,
+};
 use client::ApiClient;
 
 /// 节点运行态指标,对应 `GET /api/proxy_nodes/report` 每行的 `stats` 字段,
@@ -80,6 +86,34 @@ fn format_delay(ms: Option<u16>) -> String {
 /// (ProxyManager)每节点的 inflight/失败计数/冷却剩余/最近延迟 join DB 行
 /// 呈现出来。三态诚实:loading 占位、错误透出后端信息、空态明示无代理节点;
 /// stats 缺失的行(停用/未装配)明示"无运行态",不拿全 0 冒充。
+///
+/// 【是什么】代理节点运行态列表面板:区段头(标题 + 数据来源说明 + 刷新)+
+/// 每节点一行的运行指标。
+///
+/// 【做什么】挂载时拉 `/api/proxy_nodes/report`,按 `err` / `loading` /
+/// `nodes.is_empty()` 渲染错误 / 加载 / 空 / 列表四态;有数据的行 show
+/// name + 启停徽标 + 掩码 URL + 在途/失败/冷却/延迟四项指标(`stats` 为
+/// `None` 时改显「无运行态」)。不负责导入节点(在 `proxy_nodes`)、
+/// 不负责节点的编辑/删除(写路径在拓扑抽屉)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 点「刷新」→ `reload` signal 递增,页面 effect 重拉 report(一次 GET)。
+/// 数据交互:仅挂载与点刷新时各发一次 GET;无写请求。
+///
+/// 【样式】外壳 `section#proxy-runtime-section` 为 `scroll-mt-8 rounded-2xl
+/// border border-zinc-800 bg-zinc-900/60 p-6 space-y-6`;区段头 h2
+/// `text-lg font-semibold` + 副说明 `text-xs text-zinc-500`,右侧描边刷新按钮;
+/// 错误态红底圆角卡;加载/空态虚线描边;列表 `divide-y divide-zinc-800/80`,
+/// 每行 `flex flex-wrap items-center justify-between gap-x-4`,行内指标
+/// `text-xs text-zinc-400`,状态徽标 `rounded-full bg-zinc-800`。
+///
+/// 【子组件组成】无子组件:全部为原生 dioxus 元素(`section` / `div` / `h2`
+/// / `span` / `p` / `button`)。
+///
+/// 【数据流】
+/// - 对内(入):无 props;`items` / `loading` / `err` / `reload` 四个 signal
+///   均为组件内 `use_signal`,由挂载 effect 填充。
+/// - 对外(出):无 EventHandler / 无 signal 写回;刷新只改本组件 `reload`。
 #[component]
 pub fn ProxyRuntimePanel() -> Element {
     let mut items = use_signal(|| None::<Vec<ProxyNodeReportRow>>);
@@ -117,21 +151,21 @@ pub fn ProxyRuntimePanel() -> Element {
     rsx! {
         section {
             role: "region",
-            "aria-label": "代理节点运行态",
+            "aria-label": SEC_PROXY_RUNTIME,
             id: "proxy-runtime-section",
             "data-testid": "proxy-runtime-panel",
             class: "scroll-mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-6",
 
             div { class: "flex items-center justify-between",
                 div { class: "flex items-center gap-2",
-                    h2 { class: "text-lg font-semibold text-zinc-100", "代理节点运行态" }
-                    span { class: "text-xs text-zinc-500", "网关数据面实时采集" }
+                    h2 { class: "text-lg font-semibold text-zinc-100", {LBL_PROXY_RUNTIME} }
+                    span { class: "text-xs text-zinc-500", {SEC_PROXY_RUNTIME_NOTE} }
                 }
                 button {
                     class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
                     "data-testid": "proxy-runtime-refresh",
                     onclick: move |_| reload.set(reload() + 1),
-                    "刷新"
+                    {BTN_REFRESH}
                 }
             }
 
@@ -140,25 +174,25 @@ pub fn ProxyRuntimePanel() -> Element {
                     role: "alert",
                     "data-testid": "proxy-runtime-error",
                     class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
-                    "加载代理节点运行态失败:{e}"
+                    {MSG_RUNTIME_LOAD_FAILED} "{e}"
                 }
             } else if loading {
                 div {
                     "data-testid": "proxy-runtime-loading",
                     class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", "正在加载代理节点运行态…" }
+                    p { class: "text-zinc-400", {MSG_RUNTIME_LOADING} }
                 }
             } else if nodes.is_empty() {
                 div {
                     "data-testid": "proxy-runtime-empty",
                     class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", "无代理节点" }
-                    p { class: "mt-1 text-xs text-zinc-600", "先在上方导入出口代理节点,导入成功的节点运行态会在这里展示" }
+                    p { class: "text-zinc-400", {MSG_RUNTIME_EMPTY} }
+                    p { class: "mt-1 text-xs text-zinc-600", {MSG_RUNTIME_EMPTY_HINT} }
                 }
             } else {
                 div {
                     role: "list",
-                    "aria-label": "代理节点运行态列表",
+                    "aria-label": SEC_PROXY_RUNTIME_LIST,
                     class: "divide-y divide-zinc-800/80",
                     for node in &nodes {
                         div {
@@ -170,20 +204,20 @@ pub fn ProxyRuntimePanel() -> Element {
                                     span { class: "text-sm text-zinc-200", "{node.name}" }
                                     span {
                                         class: "rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400",
-                                        if node.enabled { "已启用" } else { "已停用" }
+                                        if node.enabled { {LBL_NODE_ENABLED} } else { {LBL_NODE_DISABLED} }
                                     }
                                 }
                                 p { class: "mt-0.5 truncate text-xs font-mono text-zinc-500", "{node.url_masked}" }
                             }
                             if let Some(s) = &node.stats {
                                 div { class: "flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400",
-                                    span { "在途 {s.inflight}" }
-                                    span { "失败 {s.failure_count}" }
-                                    span { "冷却 {format_cooldown(s.cooldown_remaining_secs)}" }
-                                    span { "延迟 {format_delay(s.last_delay_ms)}" }
+                                    span { {MSG_INFLIGHT_PREFIX} "{s.inflight}" }
+                                    span { {MSG_FAILURE_PREFIX} "{s.failure_count}" }
+                                    span { {MSG_COOLDOWN_PREFIX} "{format_cooldown(s.cooldown_remaining_secs)}" }
+                                    span { {MSG_DELAY_PREFIX} "{format_delay(s.last_delay_ms)}" }
                                 }
                             } else {
-                                div { class: "text-xs text-zinc-500", "无运行态(未启用或未装配)" }
+                                div { class: "text-xs text-zinc-500", {MSG_NO_RUNTIME} }
                             }
                         }
                     }

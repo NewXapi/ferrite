@@ -21,24 +21,60 @@ use crate::api::{disable_redemption_api, generate_redemptions_api, list_redempti
 
 use super::list::RedemptionsListSection;
 use super::modal::{GeneratedCodesModal, RedemptionGenerateModal};
-use super::shared::{RedModalState, RedRowFE, map_redemption_view};
+use super::shared::{
+    LBL_STAT_AVAILABLE, LBL_STAT_DISABLED, LBL_STAT_TOTAL, LBL_STAT_UNUSED, LBL_STAT_USED, OPT_ALL,
+    OPT_DISABLED, OPT_UNUSED, OPT_USED, RedModalState, RedRowFE, map_redemption_view,
+};
 use super::stats::RedemptionsStatsSection;
 use super::toolbar::RedemptionsToolbarSection;
 
-/// 兑换码管理页
+/// 兑换码管理页。
+///
+/// 【是什么】兑换码 tab 的页面入口:自上而下是统计区(段 1)、筛选与操作区(段 2)、
+/// 卡片网格区(段 3),外加按 `RedModalState` 三选一挂载的弹窗(生成表单 / 明文码展示 / 无)。
+///
+/// 【做什么】持有本 tab 的全部跨组件状态,挂载即拉取列表,把统计与筛选派生好之后以值
+/// 传给三个区段组件,并实现停用与生成两个写回闭包。不负责任何视觉细节(§2 硬约束 H2)、
+/// 不负责卡片内部状态(复制高亮在 `list.rs`)、不负责弹窗表单交互(在 `modal.rs`)。
+///
+/// 【交互逻辑】用户操作 → 页面行为 → 数据交互:
+/// - 挂载 / `reload` 变化 → `use_effect` 调 `list_redemptions_api`(第 1 页 100 条),
+///   成功映射为 `RedRowFE` 写入 `reds`,失败写 `err`。
+/// - 点卡片「停用」→ `disable_red`:调 `disable_redemption_api`,成功 `reload + 1`
+///   (行状态要变),失败写 `err`。
+/// - 点「生成兑换码」→ `open_generate`:重置 `f_count`/`f_quota` 后开生成弹窗。
+/// - 弹窗提交 → `commit_generate`:clamp 数量到 1–100、把 ¥ 面额换算成后端内部单位
+///   (×500000),调 `generate_redemptions_api`,成功切到明文码弹窗,失败写 `err`。
+/// 数据交互:本文件是本 tab 全部网络请求的唯一发起处。
+///
+/// 【样式】根节点 `div.flex.flex-col.gap-6`(无额外装饰,子区段自带卡片外壳);
+/// 三个区段由各自组件提供独立外壳与 `id`。
+///
+/// 【子组件组成】`RedemptionsStatsSection`(段 1)、`RedemptionsToolbarSection`(段 2)、
+/// `RedemptionsListSection`(段 3)、`RedemptionGenerateModal` / `GeneratedCodesModal`
+/// (按弹窗状态二选一挂载)。
+///
+/// 【数据流】
+/// - 对内(入):无 prop(页面级组件,由路由挂载)。
+/// - 对外(出):无;状态通过 Signal prop / 值 prop 下发,子组件事件回到本页闭包。
+///
+/// 状态块:以下三组 signal 因**跨组件交互**而提升到本层(§2.2)——
+/// 列表状态被三个区段共享;筛选状态页面要用它算 `filtered_rows`;弹窗状态要跨
+/// toolbar(开)与弹窗(读写)、页面(提交)三处;`copied_key` 则相反,已下沉进 `list.rs`。
 #[component]
 pub fn RedemptionsPage() -> Element {
-    // —— 列表状态 ——
+    // —— 列表状态:e_effect 拉取 + stats/toolbar/list 三组件共享 ——
     let mut reds = use_signal(Vec::<RedRowFE>::new);
     let mut loading = use_signal(|| true);
     let mut err = use_signal(|| None::<String>);
     let mut reload = use_signal(|| 0u32);
 
-    // —— 筛选状态 ——
+    // —— 筛选状态:页面要据此算 filtered_rows,toolbar 就地读写同一份 ——
     let search = use_signal(String::new);
     let filter_tier = use_signal(|| 0usize);
 
-    // —— 弹窗状态与表单 ——
+    // —— 弹窗状态与表单:由 toolbar 的生成按钮开弹窗并预填,弹窗读写,
+    //    页面 commit_generate 提交并切换状态,跨三处,必须放页面层 ——
     let mut modal_state = use_signal(|| RedModalState::Closed);
     // 生成弹窗字段(后端只支持 面额+数量;活动名/有效期无对应字段)
     let mut f_count = use_signal(|| "1".to_string());
@@ -78,19 +114,19 @@ pub fn RedemptionsPage() -> Element {
         .sum();
 
     let stats: [(String, &str); 5] = [
-        (total.to_string(), "兑换码总数"),
-        (unused_count.to_string(), "未使用"),
-        (used_count.to_string(), "已核销"),
-        (disabled_count.to_string(), "已停用"),
-        (format!("¥{:.0}", available_quota), "可用面额"),
+        (total.to_string(), LBL_STAT_TOTAL),
+        (unused_count.to_string(), LBL_STAT_UNUSED),
+        (used_count.to_string(), LBL_STAT_USED),
+        (disabled_count.to_string(), LBL_STAT_DISABLED),
+        (format!("¥{:.0}", available_quota), LBL_STAT_AVAILABLE),
     ];
     let _ = total_quota;
 
     let filter_options = vec![
-        format!("全部 ({total})"),
-        format!("未使用 ({unused_count})"),
-        format!("已核销 ({used_count})"),
-        format!("已停用 ({disabled_count})"),
+        format!("{OPT_ALL} ({total})"),
+        format!("{OPT_UNUSED} ({unused_count})"),
+        format!("{OPT_USED} ({used_count})"),
+        format!("{OPT_DISABLED} ({disabled_count})"),
     ];
 
     let filtered_rows: Vec<RedRowFE> = {

@@ -10,41 +10,84 @@ use dioxus::prelude::*;
 
 use super::card::PlanCard;
 use super::modal::SubscriptionFormModal;
+use super::shared::{
+    BTN_NEW_PLAN, OPT_DOWNGRADE_PREV, OPT_NO_UPGRADE, OPT_PAY_ONLY_SPECIES, OPT_RESET_NEVER,
+    OPT_UNIT_MONTH, SEC_HONEST_BANNER, SEC_PAYMENT_HINT,
+};
 use crate::state::{EntityStore, PlanRow};
 
 /// 订阅套餐管理页
+///
+/// 【是什么】订阅套餐 tab 的页面入口:诚实横幅 + 顶部栏 + 单栏套餐卡列表
+/// + 三 Tab 编辑/新建弹窗。
+///
+/// 【做什么】持有 21 个 `f_*` 表单 signal 与弹窗开关状态,提供 `open_edit` /
+/// `open_new` / `commit` 三个写回闭包,以及卡片启停/删除的本地改动。
+/// 不负责卡片与弹窗的渲染细节(分别在 `card.rs` / `modal.rs`)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 点卡片「编辑」→ `open_edit(i)` 把该行值回填进各 `f_*` signal,
+///   `editing_idx = Some(i)`,`modal_tab = 0`,开弹窗。
+/// - 点「新建套餐」→ `open_new` 把字段重置为默认值(支付方式「仅扣菌种」、
+///   分组「不升级」、降级分组「降级到购买前分组」、有效期 1 个月等),
+///   `editing_idx = None`,开弹窗。
+/// - 弹窗内点「保存更改」→ `commit`:标题 trim 后为空则直接 return(不写回),
+///   否则组 `PlanRow`,按 `editing_idx` 决定原地替换还是插到列表头,关弹窗。
+/// - 卡片开关/删除 → 就地改 `plans` signal(取反 enabled / remove 该行)。
+/// 数据交互:本页**不发任何网络请求**,数据全走 `EntityStore` 本地演示态
+/// (订阅套餐后端暂未实现,横幅已明示)。
+///
+/// 【样式】根容器 `flex flex-col gap-4 w-full`;诚实横幅 `rounded-xl border
+/// border-zinc-700/60 bg-zinc-900/60 px-4 py-3`;顶部栏 `rounded-xl border
+/// border-amber-500/20 bg-amber-500/5`,新建按钮 `bg-amber-400` 圆角实底;
+/// 卡片列表容器 `flex flex-col gap-3`(单栏,Web/平板/手机统一一栏)。
+///
+/// 【子组件组成】`PlanCard`(单张套餐卡)、`SubscriptionFormModal`(编辑/新建
+/// 弹窗,内含三个 Tab 体);横幅与顶部栏为原生元素。
+///
+/// 【数据流】
+/// - 对内(入):无 props;`store`(context 注入的 `EntityStore`)、
+///   `plans` / `groups`(从 store 取出的 signal 句柄)与全部 `f_*` 表单
+///   signal、`show_modal` / `modal_tab` / `editing_idx` 均由本页持有。
+/// - 对外(出):把 `groups` 与 21 个 `f_*` signal 以 Signal prop 注入弹窗,
+///   弹窗直接写这些 signal;`on_cancel` 关弹窗;`on_submit` 走本页 `commit`
+///   写 `plans`。`PlanCard` 的三个回调分别指向 `open_edit` / 就地改 `plans`。
 #[component]
 pub fn SubscriptionsPage() -> Element {
     let store = use_context::<EntityStore>();
     let mut plans = store.plans;
     let groups = store.groups;
 
+    // 弹窗开关状态:跨组件交互(顶部栏新建按钮 / 卡片编辑按钮 / 弹窗关闭按钮
+    // 三处都要读写),故提升到页面层,以 Signal prop 传入弹窗。
     let mut show_modal = use_signal(|| false);
     let mut modal_tab = use_signal(|| 0u8);
     let mut editing_idx = use_signal(|| None::<usize>);
 
-    // 基本信息表单字段
+    // 基本信息表单字段:21 个 f_* signal 中以 Signal prop 注入弹窗、由弹窗
+    // 内的输入框直接写回。放页面层是因为它们由「打开弹窗」这一跨组件动作
+    // (open_edit / open_new)初始化,且 commit 在页面侧读取它们组装 PlanRow。
     let mut f_id = use_signal(|| 0u32);
     let mut f_title = use_signal(String::new);
     let mut f_subtitle = use_signal(String::new);
     let mut f_price = use_signal(|| "0".to_string());
     let mut f_quota = use_signal(|| "0".to_string());
     let mut f_currency_price = use_signal(|| "0".to_string());
-    let mut f_payment_method = use_signal(|| "仅扣菌种".to_string());
-    let mut f_group = use_signal(|| "不升级".to_string());
-    let mut f_downgrade_group = use_signal(|| "降级到购买前分组".to_string());
+    let mut f_payment_method = use_signal(|| OPT_PAY_ONLY_SPECIES.to_string());
+    let mut f_group = use_signal(|| OPT_NO_UPGRADE.to_string());
+    let mut f_downgrade_group = use_signal(|| OPT_DOWNGRADE_PREV.to_string());
     let mut f_limit = use_signal(|| "0".to_string());
     let mut f_sort = use_signal(|| "0".to_string());
 
-    // 规则与周期字段
+    // 规则与周期字段:归属同上,由弹窗「规则与周期」Tab 读写。
     let mut f_enabled = use_signal(|| true);
     let mut f_allow_redeem = use_signal(|| true);
     let mut f_allow_wallet = use_signal(|| true);
     let mut f_period_val = use_signal(|| "1".to_string());
-    let mut f_period_unit = use_signal(|| "个月".to_string());
-    let mut f_reset_cycle = use_signal(|| "不重置".to_string());
+    let mut f_period_unit = use_signal(|| OPT_UNIT_MONTH.to_string());
+    let mut f_reset_cycle = use_signal(|| OPT_RESET_NEVER.to_string());
 
-    // 第三方支付字段
+    // 第三方支付字段:归属同上,由弹窗「第三方支付配置」Tab 读写。
     let mut f_stripe_id = use_signal(String::new);
     let mut f_creem_id = use_signal(String::new);
     let mut f_waffo_id = use_signal(String::new);
@@ -84,17 +127,17 @@ pub fn SubscriptionsPage() -> Element {
         f_price.set("0".to_string());
         f_quota.set("0".to_string());
         f_currency_price.set("0".to_string());
-        f_payment_method.set("仅扣菌种".to_string());
-        f_group.set("不升级".to_string());
-        f_downgrade_group.set("降级到购买前分组".to_string());
+        f_payment_method.set(OPT_PAY_ONLY_SPECIES.to_string());
+        f_group.set(OPT_NO_UPGRADE.to_string());
+        f_downgrade_group.set(OPT_DOWNGRADE_PREV.to_string());
         f_limit.set("0".to_string());
         f_sort.set("0".to_string());
         f_enabled.set(true);
         f_allow_redeem.set(true);
         f_allow_wallet.set(true);
         f_period_val.set("1".to_string());
-        f_period_unit.set("个月".to_string());
-        f_reset_cycle.set("不重置".to_string());
+        f_period_unit.set(OPT_UNIT_MONTH.to_string());
+        f_reset_cycle.set(OPT_RESET_NEVER.to_string());
         f_stripe_id.set(String::new());
         f_creem_id.set(String::new());
         f_waffo_id.set(String::new());
@@ -155,19 +198,19 @@ pub fn SubscriptionsPage() -> Element {
             // 诚实横幅: 订阅套餐后端暂未实现
             div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-400",
                 span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 font-bold text-zinc-300", "i" }
-                span { "订阅套餐后端暂未实现——此页暂无真实数据,以下为本地演示态" }
+                span { {SEC_HONEST_BANNER} }
             }
             // 顶部栏: 提示横幅 + 新建按钮
             div { class: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3",
                 div { class: "flex items-center gap-2 text-xs text-amber-300",
                     span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/20 font-bold", "ℹ" }
-                    span { "Stripe / Creem 需在第三方平台创建商品并填入 ID" }
+                    span { {SEC_PAYMENT_HINT} }
                 }
                 button {
                     class: "flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-amber-300 shadow-sm",
                     onclick: open_new,
                     span { class: "text-sm", "+" }
-                    "新建套餐"
+                    {BTN_NEW_PLAN}
                 }
             }
 

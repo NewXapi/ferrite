@@ -1,3 +1,11 @@
+//! 实体设置页的两张纯本地卡片:分组卡(接后端 CRUD)与模型别名卡(演示态本地行)。
+//!
+//! 负责:分组的新增/改名展示/删除(走 `drawer_write` 真实端点)与别名卡的
+//! 本地行增删改(后端 models 域无对应列,仅 UI 层演示)。
+//!
+//! 不负责:渠道卡(`channels.rs`)、三卡展开态(`page.rs`)、网络层实现
+//! (`crate::drawer_write`)。
+
 use super::shared::*;
 use crate::drawer_write::{
     DrawerNotice, DrawerNoticeBar, create_group_write, delete_group, find_group_by_name,
@@ -7,12 +15,47 @@ use crate::state::EntityStore;
 use crate::tab_page_network::bump_topo_refresh;
 use dioxus::prelude::*;
 use ui::dialog::Dialog;
+
 // ============ 卡片 1：分组 ============
 
+/// 分组卡：分组的新增 / 选中编辑 / 删除确认。
+///
+/// 【是什么】实体设置页的第一张卡:录入行(分组名/展示名/倍率 + 提交按钮)+ 下方分组胶囊区。
+///
+/// 【做什么】负责分组的新建(POST `/api/group`)与展示名更新(`update_group_display`)、
+/// 删除确认弹窗,并把结果折算成顶部 `DrawerNoticeBar` 的提示。不负责渠道与别名
+/// (`cards.rs` 的兄弟卡 / `channels.rs`)、不负责卡片的折叠态(`page.rs` 持有)。
+/// 分组名在后端无改名路径,编辑态下只读。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 在录入行输入 → 就地写 `name` / `display` / `mult` 三 Signal(无网络)。
+/// - 点「新增/更新」→ `commit`:新建走 `create_group_write`,编辑先
+///   `find_group_by_name` 再 `update_group_display`;成功后写本地 `groups` 行、
+///   `bump_topo_refresh()` 刷拓扑画布,并置 `notice`。
+/// - 点胶囊 → 回填三 Signal 并置 `editing = Some(i)`(无网络);点胶囊 ✕ → 打开确认弹窗。
+/// - 确认删除 → `delete_group`;后端已无此名时只清本地行并按成功提示。
+/// 写操作期间 `saving` 为真会禁用提交按钮,避免双击重复提交。
+///
+/// 【样式】卡片外壳与头部由 `CardPanel` 提供;录入行 `flex flex-wrap items-end gap-2`;
+/// 提交按钮 `rounded-md border-zinc-100 bg-zinc-100 ... hover:bg-zinc-300`,取消按钮
+/// `border-zinc-800 text-zinc-400 hover:border-zinc-600`;胶囊区在 `NodeArea` 里
+/// `flex flex-wrap gap-2`;确认弹窗用 `ui::dialog::Dialog`。
+///
+/// 【子组件组成】`DrawerNoticeBar`(写操作提示条)、`CardPanel`(卡外壳)、
+/// `InputCell`(三个录入格)、`NodeArea`(胶囊槽)、`EmptyHint`(空态)、
+/// `EntityChip`(单个分组胶囊)、`Dialog`(删除确认,条件渲染)。
+///
+/// 【数据流】
+/// - 对内(入):`open`(卡片展开态,页面持有)、`on_toggle`(切展开);
+///   分组数据来自 `use_context::<EntityStore>()` 的 `groups`(本地 store 行,
+///   仅作拓扑启动布局兜底),而非 prop。
+/// - 对外(出):写本地 `groups` 行、置 `notice`、调 `bump_topo_refresh()` 通知画布重拉;
+///   `on_toggle` 冒泡给页面翻转 `open` 数组。
 #[component]
 pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let store = use_context::<EntityStore>();
     let mut groups = store.groups;
+    // —— 录入行状态:仅本卡使用,不跨组件,故就地持有 ——
     let mut name = use_signal(String::new);
     let mut display = use_signal(String::new);
     let mut mult = use_signal(String::new);
@@ -23,9 +66,9 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let mut saving = use_signal(|| false);
     // 编辑态下分组名锁读（后端 UpdateGroupRequest 无 name 列），标签如实标注
     let name_label: &'static str = if editing.peek().is_some() {
-        "分组名（锁读，后端无改名路径）"
+        FIELD_GROUP_NAME_LOCKED
     } else {
-        "分组名"
+        FIELD_GROUP_NAME
     };
 
     let commit = move |_| {
@@ -67,12 +110,14 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                 Ok(Some(g)) => g,
                                 Ok(None) => {
                                     ns.set(DrawerNotice::Err(format!(
-                                        "分组「{cn}」不存在于后端（可能已被删除）"
+                                        "{MSG_GROUP_MISSING_PREFIX}{cn}{MSG_GROUP_MISSING_SUFFIX}"
                                     )));
                                     return;
                                 }
                                 Err(e) => {
-                                    ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                                    ns.set(DrawerNotice::Err(format!(
+                                        "{MSG_SAVE_FAILED_PREFIX}{e}"
+                                    )));
                                     return;
                                 }
                             };
@@ -82,19 +127,21 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                                     bump_topo_refresh();
                                 }
                                 Err(e) => {
-                                    ns.set(DrawerNotice::Err(format!("保存失败：{e}")));
+                                    ns.set(DrawerNotice::Err(format!(
+                                        "{MSG_SAVE_FAILED_PREFIX}{e}"
+                                    )));
                                     return;
                                 }
                             }
                             Ok(())
                         }
-                        None => Err("分组行已失效，请刷新后重试".into()),
+                        None => Err(MSG_ROW_STALE.into()),
                     }
                 }
             };
             match res {
                 Ok(()) => ns.set(DrawerNotice::Ok),
-                Err(e) => ns.set(DrawerNotice::Err(format!("保存失败：{e}"))),
+                Err(e) => ns.set(DrawerNotice::Err(format!("{MSG_SAVE_FAILED_PREFIX}{e}"))),
             }
             saving.set(false);
         });
@@ -128,7 +175,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                         bump_topo_refresh();
                         ns.set(DrawerNotice::Ok);
                     }
-                    Err(e) => ns.set(DrawerNotice::Err(format!("删除失败：{e}"))),
+                    Err(e) => ns.set(DrawerNotice::Err(format!("{MSG_DELETE_FAILED_PREFIX}{e}"))),
                 }
                 return;
             }
@@ -139,14 +186,14 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                         bump_topo_refresh();
                         ns.set(DrawerNotice::Ok);
                     }
-                    Err(e) => ns.set(DrawerNotice::Err(format!("删除失败：{e}"))),
+                    Err(e) => ns.set(DrawerNotice::Err(format!("{MSG_DELETE_FAILED_PREFIX}{e}"))),
                 },
                 // 后端已无此名 → 本地行是幻影（创建请求没落地/已被删），只清本地
                 Ok(None) => {
                     groups.write().remove(i);
                     ns.set(DrawerNotice::Ok);
                 }
-                Err(e) => ns.set(DrawerNotice::Err(format!("删除失败：{e}"))),
+                Err(e) => ns.set(DrawerNotice::Err(format!("{MSG_DELETE_FAILED_PREFIX}{e}"))),
             }
         });
     };
@@ -155,15 +202,15 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
         DrawerNoticeBar { notice, on_clear: move |_| notice.set(DrawerNotice::Idle) }
         CardPanel {
             section_index: 0,
-            title: "分组",
-            hint: "对模型别名分组；分组本身只有名字",
+            title: SEC_CARD_GROUPS,
+            hint: SEC_CARD_GROUPS_HINT,
             count: groups.read().len(),
             open: open,
             on_toggle: on_toggle,
 
             div { class: "flex flex-wrap items-end gap-2",
-                InputCell { label: name_label, value: name, placeholder: "vip", grow: true }
-                InputCell { label: FIELD_DISPLAY, value: display, placeholder: "默认分组（可选）", grow: true }
+                InputCell { label: name_label, value: name, placeholder: MSG_PH_GROUP_NAME, grow: true }
+                InputCell { label: FIELD_DISPLAY, value: display, placeholder: MSG_PH_GROUP_DISPLAY, grow: true }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
@@ -187,7 +234,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
             NodeArea {
                 if groups.read().is_empty() {
-                    EmptyHint { text: "还没有分组" }
+                    EmptyHint { text: MSG_EMPTY_GROUPS }
                 } else {
                     div { class: "flex flex-wrap gap-2",
                         for (i, r) in groups.read().iter().enumerate() {
@@ -217,11 +264,11 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 let cname = groups.read().get(ci).map(|r| r.name.clone()).unwrap_or_default();
                 rsx! {
                     Dialog {
-                        title: "删除分组".to_string(),
+                        title: TTL_DELETE_GROUP.to_string(),
                         open: true,
                         on_confirm: confirm_delete,
                         on_cancel: move |_| confirming.set(None),
-                        div { class: "text-xs text-zinc-400", "确认删除分组「{cname}」？该操作直接生效于后端，不可撤销。" }
+                        div { class: "text-xs text-zinc-400", "{MSG_CONFIRM_DELETE_GROUP_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
                     }
                 }
             } else {
@@ -233,10 +280,37 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
 // ============ 卡片 2：模型别名 ============
 
+/// 模型别名卡：演示态本地行的录入 / 选中编辑 / 删除。
+///
+/// 【是什么】实体设置页的第二张卡:录入行(别名/展示名/输入价/输出价/倍率)+ 下方别名胶囊区。
+///
+/// 【做什么】只维护 `EntityStore.aliases` 的本地行(增删改),**不接后端**——后端
+/// models 域只有 `name` 列(display/价格/倍率无对应列,PUT 会静默丢弃),create 还
+/// 必填 owner 与 api_key(表单无来源)。刷新即丢,不伪装成功,也不留 todo! 占位
+/// (那会在用户可触发的提交路径上 panic)。不负责分组卡与渠道卡,不负责真实定价。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 在录入行输入 → 就地写五个 Signal(无网络)。
+/// - 点「新增/更新」→ `commit` 就地改 `aliases` 本地行(编辑按下标写回、新增 push),
+///   随即清空录入行;不发起任何请求。
+/// - 点胶囊 → 回填五个 Signal 并置 `editing = Some(i)`;点胶囊 ✕ → 直接删本地行并
+///   在命中当前编辑行时退出编辑态(无确认弹窗,因为不触后端)。
+///
+/// 【样式】卡片外壳与头部由 `CardPanel` 提供;录入行 `flex flex-wrap items-end gap-2`;
+/// 提交/取消按钮样式与分组卡一致;胶囊区在 `NodeArea` 里 `flex flex-wrap gap-2`。
+///
+/// 【子组件组成】`CardPanel`(卡外壳)、`InputCell`(五个录入格)、`NodeArea`(胶囊槽)、
+/// `EmptyHint`(空态)、`EntityChip`(单个别名胶囊)。
+///
+/// 【数据流】
+/// - 对内(入):`open`(卡片展开态,页面持有)、`on_toggle`(切展开);
+///   别名数据来自 `use_context::<EntityStore>()` 的 `aliases`。
+/// - 对外(出):写本地 `aliases` 行(纯 UI 层,不发网络);`on_toggle` 冒泡给页面。
 #[component]
 pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     let store = use_context::<EntityStore>();
     let mut aliases = store.aliases;
+    // —— 录入行状态:仅本卡使用,不跨组件,故就地持有 ——
     let mut name = use_signal(String::new);
     let mut display = use_signal(String::new);
     let mut input_rate = use_signal(String::new);
@@ -283,17 +357,17 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
     rsx! {
         CardPanel {
             section_index: 1,
-            title: "模型别名",
-            hint: "对外暴露给用户的模型名；卡牌样式后续再做",
+            title: SEC_CARD_ALIASES,
+            hint: SEC_CARD_ALIASES_HINT,
             count: aliases.read().len(),
             open: open,
             on_toggle: on_toggle,
 
             div { class: "flex flex-wrap items-end gap-2",
-                InputCell { label: "别名", value: name, placeholder: "gpt-4o", grow: true }
-                InputCell { label: FIELD_DISPLAY, value: display, placeholder: "GPT-4o（可选）", grow: true }
-                InputCell { label: "输入价 ¥/1k", value: input_rate, placeholder: "0.0175" }
-                InputCell { label: "输出价 ¥/1k", value: output_rate, placeholder: "0.07" }
+                InputCell { label: FIELD_ALIAS, value: name, placeholder: "gpt-4o", grow: true }
+                InputCell { label: FIELD_DISPLAY, value: display, placeholder: MSG_PH_ALIAS_DISPLAY, grow: true }
+                InputCell { label: FIELD_INPUT_PRICE, value: input_rate, placeholder: "0.0175" }
+                InputCell { label: FIELD_OUTPUT_PRICE, value: output_rate, placeholder: "0.07" }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
                     class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
@@ -318,7 +392,7 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
 
             NodeArea {
                 if aliases.read().is_empty() {
-                    EmptyHint { text: "还没有模型别名" }
+                    EmptyHint { text: MSG_EMPTY_ALIASES }
                 } else {
                     div { class: "flex flex-wrap gap-2",
                         for (i, r) in aliases.read().iter().enumerate() {

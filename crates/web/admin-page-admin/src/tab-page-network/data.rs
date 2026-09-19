@@ -9,6 +9,8 @@ use contract::api::admin::{ChannelDto, GroupDto};
 use crate::api::{ModelView, list_channels_api, list_groups_api, list_models_api};
 use crate::state::EntityStore;
 
+use super::shared::{MSG_LOAD_CHANNELS_FAILED, MSG_LOAD_GROUPS_FAILED, MSG_LOAD_MODELS_FAILED};
+
 /// 拓扑写路径成功后的画布刷新信号（#183 起画布由 `load_network_data`
 /// 真实数据驱动，store 行不再是事实源）。写函数（`crate::drawer_write`
 /// 的分组/渠道 CRUD）成功后调 `bump_topo_refresh()`；`NetworkPanel`
@@ -129,9 +131,9 @@ pub async fn load_network_data(client: &ApiClient) -> NetworkResult {
         list_channels_api(client),
         list_models_api(client),
     );
-    let groups = groups.map_err(|e| format!("拉取分组失败: {e}"))?;
-    let channels = channels.map_err(|e| format!("拉取渠道失败: {e}"))?;
-    let models = models.map_err(|e| format!("拉取模型失败: {e}"))?;
+    let groups = groups.map_err(|e| format!("{MSG_LOAD_GROUPS_FAILED}{e}"))?;
+    let channels = channels.map_err(|e| format!("{MSG_LOAD_CHANNELS_FAILED}{e}"))?;
+    let models = models.map_err(|e| format!("{MSG_LOAD_MODELS_FAILED}{e}"))?;
     Ok(GraphView::from_dtos(&groups, &models, &channels))
 }
 
@@ -724,13 +726,7 @@ pub enum Drag {
     Select,
 }
 
-// —— 共享文案 (HUD 按钮 / 抽屉页签 / 节点层名) ——
-pub const LBL_GROUP: &str = "分组";
-pub const LBL_ALIAS: &str = "模型别名";
-pub const LBL_DISPATCH: &str = "调度模型";
-pub const LBL_NODES: &str = "节点";
-pub const BTN_IMPORT: &str = "导入";
-pub const BTN_SETTINGS: &str = "设置";
-pub const BTN_FIT: &str = "适配";
-pub const FIELD_DISPLAY: &str = "展示名";
-pub const EXAMPLE_CHANNEL: &str = "OpenAI 官方";
+// —— 共享文案已迁至 `tab-page-network/shared.rs` ——
+// LBL_GROUP / LBL_ALIAS / LBL_DISPATCH / LBL_NODES / BTN_IMPORT / BTN_SETTINGS /
+// BTN_FIT / FIELD_DISPLAY / EXAMPLE_CHANNEL 现定义在 `super::shared`,
+// 本文件不再重定义,调用方改为 `use super::shared::...`。

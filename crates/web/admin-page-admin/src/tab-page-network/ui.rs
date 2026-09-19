@@ -5,6 +5,11 @@ use super::data::*;
 use super::drawer::{DrawerHeader, DrawerTabs, ImportPanel};
 use super::inspector::NodeInspector;
 use super::physics::{display_edge_pairs, edges_read, physics_step};
+use super::shared::{
+    BTN_FIT, BTN_IMPORT, BTN_SETTINGS, MSG_EMPTY, MSG_LOADING, MSG_LOADING_ARIA, MSG_WIRE_DELETE_HINT,
+    SEC_HINT_FOCUS, SEC_HINT_IDLE, SEC_HINT_MOVING, SEC_HINT_WIRING, SEC_SETTINGS_STALE,
+    LBL_ALIAS, LBL_CHANNELS, LBL_DISPATCH, LBL_GROUP, LBL_IMPORT_SUBTITLE,
+};
 use crate::state::EntityStore;
 use crate::tab_page_entities::EntitiesPanel;
 use client::ApiClient;
@@ -453,10 +458,10 @@ pub fn NetworkPanel() -> Element {
     };
 
     let hint = match drag_now {
-        _ if cone_now.is_some() => "焦点空间 · 左键节点切换 · 右键空白或再点同节点返回",
-        Some(Drag::Wire { .. }) => "拖到相邻层节点松开连线",
-        Some(Drag::Move { .. }) => "松开落位",
-        _ => "滚轮缩放 · 拖空白平移 · Shift拖空白框选 · Ctrl点选多个 · 拖节点摆位 · 拖圆点连线",
+        _ if cone_now.is_some() => SEC_HINT_FOCUS,
+        Some(Drag::Wire { .. }) => SEC_HINT_WIRING,
+        Some(Drag::Move { .. }) => SEC_HINT_MOVING,
+        _ => SEC_HINT_IDLE,
     };
 
     let hint_right = if drawer_tab() != DrawerTab::Node || inspect().is_some() {
@@ -538,7 +543,7 @@ pub fn NetworkPanel() -> Element {
                             div { class: "absolute inset-0 z-20 flex items-center justify-center",
                                 "data-testid": "net-loading",
                                 "role": "status",
-                                "aria-label": "正在加载调度数据",
+                                "aria-label": MSG_LOADING_ARIA,
                                 div { class: "flex flex-col items-center gap-2",
                                     div {
                                         class: "h-4 w-40 animate-pulse rounded-full bg-zinc-800",
@@ -546,7 +551,7 @@ pub fn NetworkPanel() -> Element {
                                     div {
                                         class: "h-4 w-24 animate-pulse rounded-full bg-zinc-800/70",
                                     }
-                                    p { class: "text-[11px] text-zinc-500", "正在加载调度数据…" }
+                                    p { class: "text-[11px] text-zinc-500", {MSG_LOADING} }
                                 }
                             }
                         },
@@ -569,8 +574,8 @@ pub fn NetworkPanel() -> Element {
                                 div { class: "absolute inset-0 z-20 flex items-center justify-center",
                                     "data-testid": "net-empty",
                                     "role": "status",
-                                    "aria-label": "暂无调度数据",
-                                    p { class: "text-xs text-zinc-600", "暂无调度数据" }
+                                    "aria-label": MSG_EMPTY,
+                                    p { class: "text-xs text-zinc-600", {MSG_EMPTY} }
                                 }
                             }
                         }
@@ -862,7 +867,7 @@ pub fn NetworkPanel() -> Element {
                                                 history.write().push((false, vec![raw]));
                                             }
                                         },
-                                        title { "右键删除连线" }
+                                        title { {MSG_WIRE_DELETE_HINT} }
                                     }
                                 }
                             }
@@ -1151,7 +1156,7 @@ pub fn NetworkPanel() -> Element {
                                 div {
                                     class: "px-4 py-2",
                                     "data-testid": "ent-blocked",
-                                    p { class: "text-[11px] text-red-300/80", "调度数据拉取失败,设置页显示的是本地缓存" }
+                                    p { class: "text-[11px] text-red-300/80", {SEC_SETTINGS_STALE} }
                                 }
                             }
                             // 导航钉在抽屉上，不随内容滚动
@@ -1160,7 +1165,7 @@ pub fn NetworkPanel() -> Element {
                                 items: vec![
                                     ({LBL_GROUP}.to_string(), "ent-card-0".to_string()),
                                     ({LBL_ALIAS}.to_string(), "ent-card-1".to_string()),
-                                    ("渠道".to_string(), "ent-card-2".to_string()),
+                                    ({LBL_CHANNELS}.to_string(), "ent-card-2".to_string()),
                                 ],
                             }
                             div {
@@ -1176,7 +1181,7 @@ pub fn NetworkPanel() -> Element {
                         DrawerHeader {
                             tab: drawer_tab(),
                             title: BTN_IMPORT.to_string(),
-                            subtitle: "把 JSON 包进来，一个渠道一个".to_string(),
+                            subtitle: LBL_IMPORT_SUBTITLE.to_string(),
                             on_tab: move |t: DrawerTab| drawer_tab.set(t),
                             on_close: move |_| { drawer_tab.set(DrawerTab::Node); inspect.set(None) },
                         }

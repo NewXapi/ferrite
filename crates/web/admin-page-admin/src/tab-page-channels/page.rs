@@ -29,13 +29,48 @@ use crate::api::{
 
 use super::list::ChannelsListSection;
 use super::modal::ChannelFormModal;
-use super::shared::{ChannelModalState, WriteOp, filter_channels};
+use super::shared::{
+    ChannelModalState, LBL_STAT_DISABLED, LBL_STAT_ENABLED, LBL_STAT_GROUPS, LBL_STAT_KEYS,
+    LBL_STAT_TOTAL, MSG_OP_FAILED, MSG_OP_OK, OPT_ALL, OPT_DISABLED, OPT_ENABLED, WriteOp,
+    filter_channels,
+};
 use super::stats::ChannelsStatsSection;
 use super::toolbar::ChannelsToolbarSection;
 
+/// 渠道管理页
+///
+/// 【是什么】渠道 tab 的页面入口组件,持有跨组件状态并薄组装三段区(统计/筛选/列表)与弹窗。
+///
+/// 【做什么】负责渠道列表与分组候选的拉取、按条件派生 filtered 与统计、以及全部写回
+/// (启停 / 删除 / 弹窗提交的落点);不负责任何视觉细节 —— 渲染交给 `stats` / `toolbar` /
+/// `list` / `card` / `modal`(本文件的 rsx 只有组装)。
+///
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 首屏/`reload` 变化 → `use_effect`:`channels.peek()` 判空决定 `loading`(首屏,
+///   清列表渲染占位)还是 `refreshing`(已有数据,旧列表留屏避免闪烁,用 `peek` 是为了
+///   不让本 effect 订阅自己写入的信号而重拉死循环),随后 `list_channels_api`。
+/// - 同一 `reload` 还触发第二个 effect 拉分组候选(`list_groups_api`),失败只记
+///   `group_err`,弹窗回退为只读展示当前分组。
+/// - 搜索/切档 → toolbar 就地写 `search` / `filter_tier`,本文件调 `filter_channels` 重算。
+/// - 卡片启停 / 删除 → 走 `make_write` 工厂生成的闭包:`set_channel_status_api` /
+///   `delete_channel_api`,成功后置 `MSG_OP_OK` 并 `reload + 1`。
+/// - 点卡片「编辑」→ `open_edit` 回填表单并按需拉掩码密钥(`get_channel_api`)。
+/// - 弹窗保存 → 由弹窗自己发创建/更新请求,成功回到 `close_and_reload`(关弹窗 + 重拉)。
+///
+/// 【样式】顶层 `div.flex flex-col gap-6`;通知条 `rounded-xl border-zinc-700
+/// bg-zinc-900`。页面自身不写卡片/网格样式。
+///
+/// 【子组件组成】`ChannelsStatsSection` / `ChannelsToolbarSection` / `ChannelsListSection`,
+/// 条件渲染时挂载 `ChannelFormModal`;`ChannelCard` 由 list 区内部使用。
+///
+/// 【数据流】
+/// - 对内(入):无 prop —— 页面组件不接收外部参数。
+/// - 对外(出):把上面的 Signal 与派生值以 prop 下发;子组件则通过 Signal 就地读写或
+///   `EventHandler`(开弹窗 / 编辑 / 启停 / 删除 / 重试)把意图抛回本文件的写回闭包,
+///   由本文件统一落成 API 调用与 `channels` / `notice` 更新。
 #[component]
 pub fn ChannelsPage() -> Element {
-    // —— 列表状态 ——
+    // 列表状态:被 effect、list 区与 count 徽标共用,故放页面层。
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
     let mut channels = use_signal(Vec::<ChannelDto>::new);
     let mut loading = use_signal(|| true);
@@ -46,7 +81,8 @@ pub fn ChannelsPage() -> Element {
     // reload 计数:触发一次即重拉列表(写操作后刷新)
     let mut reload = use_signal(|| 0u32);
 
-    // —— 弹窗数据状态 ——
+    // 弹窗数据状态:只被弹窗消费,但由 `open_edit` 与列表 effect 写入 ——
+    // 写入方在页面层,故随之提升到这里,以 Signal 注入弹窗(组件内不自持)。
     // 弹窗「绑定分组」候选（真实分组列表,失败留空 → 弹窗内只读回退）。
     let mut group_options = use_signal(Vec::<GroupDto>::new);
     let mut group_err = use_signal(|| None::<String>);
@@ -57,11 +93,13 @@ pub fn ChannelsPage() -> Element {
     let mut models_touched = use_signal(|| false);
     let mut fetching_models = use_signal(|| false);
 
-    // —— 筛选状态 ——
+    // 筛选状态:toolbar 就地读写,但 filtered 由页面调用 `filter_channels` 计算,
+    // 所以状态提升到这一层、以 Signal 传入 toolbar。
     let search = use_signal(String::new);
     let filter_tier = use_signal(|| 0usize);
 
-    // —— 弹窗状态与表单 ——
+    // 弹窗开关与表单状态:弹窗状态决定挂载与否;`f_*` 由 `open_new` / `open_edit`
+    // 成组重置、弹窗就地读写 —— 初值写入方在页面,故整组放页面层。
     let mut modal_state = use_signal(|| ChannelModalState::Closed);
 
     // 编辑/新建表单状态
@@ -76,6 +114,8 @@ pub fn ChannelsPage() -> Element {
     let mut f_test_model = use_signal(|| None::<String>);
 
     // —— 写回状态 ——
+    // 写操作进行中 / 成功提示:由 `make_write` 生成的两个闭包共同写、被通知条读取,
+    // 跨组件共享,故放页面层。
     // 写操作进行中 / 成功提示
     let busy = use_signal(|| false);
     let notice = use_signal(|| None::<String>);
@@ -131,17 +171,17 @@ pub fn ChannelsPage() -> Element {
         list.iter().flat_map(|c| c.groups.iter().cloned()).collect();
 
     let stats: [(String, &str); 5] = [
-        (total.to_string(), "总渠道数"),
-        (enabled_count.to_string(), "正常启用"),
-        (disabled_count.to_string(), "停用/异常"),
-        (total_keys.to_string(), "密钥总数"),
-        (group_set.len().to_string(), "绑定分组数"),
+        (total.to_string(), LBL_STAT_TOTAL),
+        (enabled_count.to_string(), LBL_STAT_ENABLED),
+        (disabled_count.to_string(), LBL_STAT_DISABLED),
+        (total_keys.to_string(), LBL_STAT_KEYS),
+        (group_set.len().to_string(), LBL_STAT_GROUPS),
     ];
 
     let filter_options = vec![
-        format!("全部 ({total})"),
-        format!("启用中 ({enabled_count})"),
-        format!("已停用 ({disabled_count})"),
+        format!("{OPT_ALL} ({total})"),
+        format!("{OPT_ENABLED} ({enabled_count})"),
+        format!("{OPT_DISABLED} ({disabled_count})"),
     ];
 
     // 筛选纯函数:抽取为模块级 `filter_channels`,便于纯函数单测
@@ -226,10 +266,10 @@ pub fn ChannelsPage() -> Element {
                 };
                 match res {
                     Ok(_) => {
-                        n.set(Some("操作成功".to_string()));
+                        n.set(Some(MSG_OP_OK.to_string()));
                         r.set(r() + 1);
                     }
-                    Err(e) => n.set(Some(format!("操作失败:{e}"))),
+                    Err(e) => n.set(Some(format!("{MSG_OP_FAILED}{e}"))),
                 }
                 b.set(false);
             });
