@@ -1,7 +1,6 @@
-//! 模型别名管理共享类型、判定与文案。page / card / modal 三处复用。
+//! 模型别名管理共享类型、判定与文案。page / list / modal 三处复用。
 
 use contract::api::admin::GroupDto;
-use dioxus::prelude::*;
 
 use crate::state::AliasRow;
 use crate::tab_page_groups::parse_whitelist;
@@ -44,77 +43,10 @@ pub fn usable_groups_for(alias: &str, groups: &[GroupDto]) -> Vec<(String, f64)>
         .collect()
 }
 
-// ============ 定价模式 toggle（共享组件,卡片与弹窗共用） ============
+// ============ 定价模式 toggle（已上提到 ui-components，卡片/弹窗/本页共用） ============
 
-/// 定价模式:按量(Token 计费) / 按次(按调用次数计费)。
-/// 后端 models 域暂无对应列,UI 层本地状态,保存路径见 AliasFormModal。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum PriceMode {
-    PerToken,
-    PerCall,
-}
-
-/// 定价模式 toggle:两个分段胶囊,激活段浅色底。
-///
-/// - `compact`(默认 true):小号胶囊,用在卡片面板里(不占满,视觉克制)。
-/// - 非 compact:全宽,用在编辑弹窗「基本」tab 里。
-/// 后端 models 域暂无对应列,UI 层本地状态,保存路径见 AliasFormModal。
-#[component]
-pub fn PriceModeToggle(
-    /// 当前激活模式
-    active: PriceMode,
-    /// 切换回调
-    on_change: EventHandler<PriceMode>,
-    /// 紧凑模式(卡片用);默认 true
-    #[props(default = true)]
-    compact: bool,
-) -> Element {
-    // 容器:略提亮 zinc-800/60 底;激活段用深色高对比底 + 白字(不依赖渐变对比,
-    // 避免浅色字在亮底上看不清)。
-    let container_cls = if compact {
-        "inline-flex items-center rounded-full border border-zinc-700/60 bg-zinc-800/60 p-0.5 text-[11px] shadow-sm"
-    } else {
-        "flex w-full overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-0.5 text-xs shadow-sm"
-    };
-    let active_cls = if compact {
-        "rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-950 shadow-sm transition-colors"
-    } else {
-        "flex-1 rounded-md bg-zinc-100 px-3 py-1.5 text-center font-semibold text-zinc-950 shadow-sm transition-colors"
-    };
-    let idle_cls = if compact {
-        "rounded-full px-2.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:text-zinc-200"
-    } else {
-        "flex-1 rounded-md px-3 py-1.5 text-center text-zinc-400 transition-colors hover:text-zinc-200"
-    };
-    rsx! {
-        div {
-            class: "{container_cls}",
-            role: "tablist",
-            "aria-label": "定价模式",
-            button {
-                class: if active == PriceMode::PerToken {
-                    "{active_cls}"
-                } else {
-                    "{idle_cls}"
-                },
-                role: "tab",
-                aria_selected: "{active == PriceMode::PerToken}",
-                "data-testid": "price-mode-token",
-                onclick: move |_| on_change.call(PriceMode::PerToken),
-                "按量"
-            }
-            button {
-                class: if active == PriceMode::PerCall {
-                    "{active_cls}"
-                } else {
-                    "{idle_cls}"
-                },
-                role: "tab",
-                aria_selected: "{active == PriceMode::PerCall}",
-                "data-testid": "price-mode-call",
-                onclick: move |_| on_change.call(PriceMode::PerCall),
-                "按次"
-            }
-        }
-    }
-}
+// `PriceMode` 与 `PriceModeToggle` 原定义于此；卡片改由 ui-components 的
+// `AliasCard` 承载后上提到该 crate（避免 ui-components 反向依赖页面 crate）。
+// 此处再导出，保证 `crate::tab_page_aliases::{PriceMode, PriceModeToggle}`
+// 这一既有路径继续可用，公开面零变化。
+pub use ui::{PriceMode, PriceModeToggle};

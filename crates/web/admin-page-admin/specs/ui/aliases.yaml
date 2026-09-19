@@ -1,33 +1,53 @@
 page: "#aliases"
 name: "别名管理"
 
-# 契约源：crates/web/admin-page-admin/src/aliases.rs 的 AliasesPage，及
-# crates/web/ui-components/src/components/admin_card/{card,dot_tab,aliases}.rs。
+# 契约源：crates/web/admin-page-admin/src/tab-page-aliases/{page,list}.rs 的 AliasesPage，
+# 及 crates/web/ui-components/src/components/admin_card/{card,dot_tab,aliases,shell}.rs。
 # 导航入口：管理区「别名」tab（Section::Manage index 3）或 #aliases hash。
+#
+# 变更记录（2026-09-19，feat/web-visual）：卡片已由「旧卡网格 + 首条新卡示例」
+# 合一为 ui-components 的 AliasCard（四页签）。原先的 `别名新卡示例` 区块
+# （testid `alias-card-prototype`）已移除，网格整体改由 AliasCard 渲染。
 
 elements:
-  # ---------- 新卡示例 ----------
+  # ---------- 卡片网格 ----------
+  - role: list
+    name: "别名列表"
+    required: true
+    testid: "aliases-list"
+    note: "网格容器；每张卡为 region + testid alias-card-new"
+
   - role: region
-    name: "别名新卡示例"
-    required: false
-    testid: "alias-card-prototype"
+    name: "别名卡片"
+    required: true
+    testid: "alias-card-new"
+    note: "ui-components 的 AliasCard：标题栏含序号 badge 与四颗圆点页签"
 
   # 共享卡内的四颗圆点是普通按钮，切换只读内容（不采用 ARIA tab 语义）。
   - role: group
     name: "内容页签"
-    required: false
+    required: true
 
   - role: button
-    name: "概览 / 定价 / 分组 / 系统"
-    required: false
+    name: "基本信息 / 定价 / 分组 / 系统"
+    required: true
     testid: "dot-tab-0..3"
     action: click
-    effect: "切换只读内容"
+    effect: "切换只读内容页签"
 
-  # 当前入口只转发既有编辑回调；Popover 尚未实现。
-  - role: button
-    name: "编辑入口（未来可接 Popover）"
+  # 定价页签内的按量/按次切换（ui-components PriceModeToggle）。
+  - role: tablist
+    name: "定价模式"
     required: false
-    testid: "admin-card-edit"
+    testid: "price-mode-token / price-mode-call"
     action: click
-    effect: "触发现有编辑入口（不是 Popover 已实现）"
+    effect: "切换该卡的按量/按次定价展示"
+
+  # ---------- 四态 ----------
+  - role: region
+    name: "加载别名失败"
+    required: false
+    note: "错误态；含「重试」按钮"
+
+  # 卡片本身不发起编辑：`编辑入口` / `admin-card-edit` 是 Popover 阶段的规划项，
+  # 当前代码尚未实现，故不在此断言。待 Popover 落地后补回。

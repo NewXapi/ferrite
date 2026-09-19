@@ -115,8 +115,9 @@ crates/web/
   - 总览：OverviewPanel 与 ModelsPanel 均接真实 API（/api/dashboard、/api/models）；LeaderboardPanel 静态数据
 - **admin-page-account**（内部依赖：client, contract, ui；src：lib.rs / api.rs / keys.rs / usage_logs.rs / usage_support.rs / sessions.rs / settings.rs / rewards.rs）
   - 个人中心：API Key 列表增删、用量日志、会话、奖励；现状：**已接真实 API**（仅 rewards「立即充值」为占位成功，见 §7）
-- **admin-page-admin**（内部依赖：client, contract, ui；src：lib.rs / api.rs / entities.rs / channels.rs / pages.rs / groups.rs / redemptions.rs / network.rs / system.rs / state.rs / aliases.rs）
+- **admin-page-admin**（内部依赖：client, contract, ui；src：lib.rs / api.rs / state.rs / drawer_write.rs / tab-page-\<name\>/）
   - 管理操作：渠道 CRUD（凭据掩码、测试按钮）、模型+分组到渠道的路由映射、令牌、分组倍率、兑换码、网络、系统
+  - **按 tab 目录化**：每个 tab 独占 `tab-page-<name>/`，内含 `page.rs`（入口，组装） / `stats.rs` / `toolbar.rs` / `list.rs` / `shared.rs` / `modal.rs`；页面 rsx 只做组装，组件内部细节不外泄到页面
   - 现状：**UI 就绪、未接线**——api.rs 已实现真实调用，但 channels/groups/aliases/redemptions/system/network 各页面零消费（页面用内联演示数据）
 - **admin-page-users**（内部依赖：client, contract, ui；src：lib.rs / api.rs / data.rs / panel.rs）
   - 用户管理：列表与操作；现状：**页面未接线**（api.rs 数据层已备真实调用，panel 暂用内联演示常量）
@@ -152,9 +153,11 @@ crates/web/
 
 ### 跨端共享
 
-- **ui-components**（内部依赖：contract；src：lib.rs / card.rs / bubble.rs / dialog.rs / feedback.rs / form.rs / segmented.rs / scroll_spy.rs / auth_modal.rs / session.rs / components/{badge,button,card,input}）
+- **ui-components**（内部依赖：contract；src：lib.rs / card.rs / bubble.rs / dialog.rs / feedback.rs / form.rs / segmented.rs / scroll_spy.rs / auth_modal.rs / session.rs / components/{badge,button,card,input} / components/admin_card/）
   - 跨端通用组件层；**只依赖 contract，不依赖任何 client/page**
   - `session.rs`：localStorage 令牌存取与 auth 请求（`get_cached_token` / `refresh_access_token` / `clear_cached_session`），storage key：`ferrite_access_token` / `ferrite_current_user` / `ferrite_refresh_token`
+  - `components/admin_card/`：管理区可复用卡牌族。`card.rs`（`AdminCard` 四态面板叠放 + `DotTabBar`）、`shell.rs`（语义化样式壳：`CARD_SHELL_CLASS` / `CardShell` / `AdminSection` / `SectionHeader` / `CardGrid` / `PlaceholderBlock` / `DangerBlock` / `GhostButton`）、`price_mode.rs`（`PriceMode` + `PriceModeToggle`）、`dot_tab.rs`，以及各实体卡 `aliases.rs` / `channels.rs` / `groups.rs` / `redemptions.rs` / `users.rs`
+  - **判定点约束**：卡牌搬运以「零行为漂移」为准——testid / aria / class / 四态分支逐字保留，`specs/ui/*.yaml` 会断言这些
 
 ## 3. 依赖规则与改名映射
 

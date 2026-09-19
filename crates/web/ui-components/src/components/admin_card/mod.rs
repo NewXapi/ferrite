@@ -12,8 +12,12 @@ pub mod channels;
 pub mod dot_tab;
 /// 分组实体卡原型。
 pub mod groups;
+/// 别名定价模式（按量 / 按次）及分段 toggle。
+pub mod price_mode;
 /// 兑换码实体卡原型。
 pub mod redemptions;
+/// tab 内容区共享壳组件（区段 / 空态 / 卡片外壳等）。
+pub mod shell;
 /// 用户实体卡原型。
 pub mod users;
 
@@ -27,7 +31,15 @@ pub use channels::ChannelCard;
 pub use dot_tab::DotTabBar;
 /// 供管理页展示分组摘要的卡片组件。
 pub use groups::GroupCard;
+/// 定价模式枚举与分段 toggle（卡片 / 弹窗共用）。
+pub use price_mode::{PriceMode, PriceModeToggle};
 /// 供管理页展示兑换码摘要的卡片组件。
 pub use redemptions::RedemptionCard;
 /// 供管理页展示用户摘要的卡片组件。
 pub use users::UserCard;
+
+/// 区段外壳、空态块、卡片外壳等 tab 内容区共享壳（含 class 常量）。
+pub use shell::{
+    AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
+    PlaceholderBlock, SectionHeader,
+};
