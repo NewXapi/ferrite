@@ -47,11 +47,11 @@
 
 **现成的任务书**（已按 ferrite 约定适配，直接用）：
 
-| 文件 | 什么时候用 |
-|---|---|
 | `.agent/tasks/dev.md` | 从零开发一个功能 / 修复的完整流程（建 worktree、draft PR、拆任务、派子代理、审查、测试、合并） |
 | `.agent/tasks/closeout-pr.md` | PR 已就绪后的收尾：审查、smoke、修复、合并、清理 |
-| `.agent/tasks/TEMPLATE.md` | 空白模板——上面两份不适配时复制它从头写 |
+| `.agent/tasks/restructure-web-page-crate.md` | 把某个 `crates/web/*` 页面 crate 从平铺迁到 `tab-page-<name>/` 目录（填空版，一个 crate 一份） |
+| `.agent/tasks/web-page-crate-spec.md` | web 页面 crate 重构的**规范**（硬约束 / 目录结构 / 抽象 / 文案 / 注释 / 核验 / 验收）——上面那份任务书的权威依据 |
+| `.agent/tasks/TEMPLATE.md` | 空白模板——上面几份不适配时复制它从头写 |
 
 要点：
 - 工作目录必须写**全局绝对路径**——子代理一律按这个路径工作，禁止自己推导相对路径
