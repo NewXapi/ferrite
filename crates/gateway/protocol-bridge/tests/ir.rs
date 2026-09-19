@@ -183,7 +183,9 @@ fn ir_stream_event_tagged_shape() {
     );
 }
 
-// 附带：StopReason 的 Other 逃逸口与 snake_case 形状（非 tagged，枚举直接序列化成字符串/对象）。
+// 附带：StopReason 统一序列化为裸字符串，未归类原因原样回传（修复点：
+// 旧实现把 Other 序列化成 {"other":"…"}，与已知变体的字符串形状不一致，
+// 混进 IR JSON 会让下游 codec 产出非法形状）。
 #[test]
 fn ir_stop_reason_snake_case_and_other_escape() {
     assert_eq!(
@@ -194,10 +196,19 @@ fn ir_stop_reason_snake_case_and_other_escape() {
         serde_json::to_value(StopReason::ToolUse).expect("serialize"),
         json!("tool_use")
     );
-    // ponytail: Other(String) 在非 tagged 枚举里序列化成 {"other": "..."}，作为未归类原因的兜底
+    // 未归类原因：裸字符串，round-trip 无损。
     assert_eq!(
         serde_json::to_value(StopReason::Other("spam".into())).expect("serialize"),
-        json!({"other": "spam"})
+        json!("spam")
+    );
+    // 反序列化兜底：未知字符串回成 Other，已知字符串回成对应变体。
+    assert_eq!(
+        serde_json::from_value::<StopReason>(json!("spam")).expect("deserialize"),
+        StopReason::Other("spam".into())
+    );
+    assert_eq!(
+        serde_json::from_value::<StopReason>(json!("content_filter")).expect("deserialize"),
+        StopReason::ContentFilter
     );
 }
 

@@ -262,17 +262,47 @@ pub struct LlmResponse {
     pub stop_reason: StopReason,
 }
 
-/// 停止原因（非 tagged，序列化为 `"stop"` / `"length"` / ...）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// 停止原因：**所有变体统一序列化为裸字符串**（`"stop"` / `"length"` / 未归类原样）。
+///
+/// 不用 `#[serde(tag=…)]`：下游 codec（claude/gemini/openai）的消费方式是
+/// `StopReason::Other(s) => s`，即把原因当字符串取用。若 `Other` 序列化成
+/// `{"other":"…"}`，混进 IR JSON 会产生非法形状。
+#[derive(Debug, Clone, PartialEq)]
 pub enum StopReason {
     Stop,
     Length,
     ContentFilter,
     ToolUse,
     Error,
-    /// 未归类的厂商原因原样保留。
+    /// 未归类的厂商原因原样保留（序列化/反序列化均为裸字符串）。
     Other(String),
+}
+
+impl Serialize for StopReason {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            StopReason::Stop => serializer.serialize_str("stop"),
+            StopReason::Length => serializer.serialize_str("length"),
+            StopReason::ContentFilter => serializer.serialize_str("content_filter"),
+            StopReason::ToolUse => serializer.serialize_str("tool_use"),
+            StopReason::Error => serializer.serialize_str("error"),
+            StopReason::Other(s) => serializer.serialize_str(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StopReason {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "stop" => Ok(StopReason::Stop),
+            "length" => Ok(StopReason::Length),
+            "content_filter" => Ok(StopReason::ContentFilter),
+            "tool_use" => Ok(StopReason::ToolUse),
+            "error" => Ok(StopReason::Error),
+            _ => Ok(StopReason::Other(s)),
+        }
+    }
 }
 
 /// token 用量。
