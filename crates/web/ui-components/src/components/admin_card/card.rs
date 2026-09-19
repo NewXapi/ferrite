@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use super::dot_tab::DotTabBar;
+use super::shell::CARD_SHELL_CLASS;
 
 /// Shortens a key by Unicode scalar value without splitting UTF-8 characters.
 ///
@@ -51,6 +52,9 @@ pub fn AdminCard(
     /// 整张卡片的可选测试标识；未传时渲染空值。
     #[props(default)]
     testid: Option<String>,
+    /// 标题栏右侧、圆点页签之前的可选插槽（如实体卡的序号 badge）。
+    #[props(default)]
+    header_action: Option<Element>,
 ) -> Element {
     // 非激活页签：invisible（占布局高度）+ pointer-events-none（不可交互）。
     // 类名必须完整字面量出现在源码里，Tailwind 才会生成对应 CSS（动态拼串不会被扫描）。
@@ -62,7 +66,9 @@ pub fn AdminCard(
     let c3 = if active_tab == 3 { PANEL_ON } else { PANEL_OFF };
     rsx! {
         div {
-            class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            // 卡片外壳 class 与各实体卡共用 shell::CARD_SHELL_CLASS（含 justify-between，
+            // 与旧卡几何一致）；此前本组件自带一份少 justify-between 的拷贝。
+            class: "{CARD_SHELL_CLASS}",
             role: "region",
             "aria-label": "{title}",
             "data-testid": testid.unwrap_or_default(),
@@ -76,6 +82,9 @@ pub fn AdminCard(
                     }
                 }
                 div { class: "flex items-center gap-2 pt-0.5",
+                    if let Some(action) = header_action {
+                        {action}
+                    }
                     DotTabBar {
                         tabs: tabs.clone(),
                         active: active_tab,

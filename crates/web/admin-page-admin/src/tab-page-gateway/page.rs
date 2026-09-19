@@ -4,18 +4,23 @@
 //! `admin-observe/gateway_health.rs`)。响应**只含有记录的渠道**——
 //! 正常态是空数组,不是错误。
 //!
+//! 本文件只留面板外壳:状态 (拉取/错误/刷新) + 轮询拉取 + 四态分支;
+//! 单行渲染 (渠道名 / 模型 Badge / 三态 Badge / 倒计时) 见
+//! [`super::row::GatewayHealthRow`],三态语义色见
+//! [`super::shared`]。
+//!
 //! 渲染约定(仓库铁律):
 //! - 卡片面板模式,禁 `<table>`:`rounded-xl border bg-card divide-y`
 //!   容器 + `flex flex-wrap` 行;
-//! - 每行:渠道名 (channelName,缺省 channelKey 前 8 位) + 模型 Badge
-//!   + 三态 Badge (cooling=红 / slow_start=黄 / ok=绿,禁 emoji)
-//!   + 冷却剩余秒 + lastCoolingOutcome 小字;
 //! - 三态:loading=skeleton、error=柔和红边卡、empty=虚线占位卡;
 //! - 轮询:挂载即拉一次;仅当存在 cooling / slow_start 条目时按 5s
 //!   间隔继续轮询,全 ok 或空时停止 (防无意义轮询)。
 //!
 //! 交互元素带 `data-testid`,容器带 `role` + `aria-label`
 //! (仓库 UI 验证约定,PR smoke 走 ariaSnapshot)。
+//!
+//! 边界:文案常量与语义色在 `shared`,单行渲染在 `row`;本文件不发写请求
+//! (本 tab 只读),也不做失败重试策略(交给用户点按钮)。
 
 use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
@@ -23,77 +28,49 @@ use gloo_timers::future::TimeoutFuture;
 use client::fetch_gateway_health;
 use client::{ApiClient, GatewayHealthItem, HealthItemState};
 
+use super::row::GatewayHealthRow;
+use super::shared::{
+    BTN_REFRESH, BTN_RETRY, LBL_COUNT_COOLING_PREFIX, LBL_COUNT_OK_PREFIX, LBL_COUNT_SLOW_PREFIX,
+    LBL_POLLING, LBL_SYNCED, SEC_EMPTY_HINT, SEC_EMPTY_NOTE, SEC_LOAD_FAILED, SEC_PANEL,
+    TONE_COOLING, TONE_OK, TONE_SLOW_START,
+};
+
 /// 轮询间隔 (仅存在 cooling / slow_start 条目时)。
 const POLL_INTERVAL_MS: u32 = 5000;
 
-/// 三态 Badge 语义色 (shadcn dashboard 既有 token 风格,禁 emoji):
-/// cooling=红系 / slow_start=黄系 / ok=绿系。
-const TONE_COOLING: &str = "border-red-500/30 bg-red-500/15 text-red-300";
-const TONE_SLOW_START: &str = "border-amber-500/30 bg-amber-500/15 text-amber-300";
-const TONE_OK: &str = "border-emerald-500/30 bg-emerald-500/15 text-emerald-400";
-
-/// 渠道名回退:channelName 缺省显示 channelKey 前 8 位。
-fn display_name(item: &GatewayHealthItem) -> String {
-    if let Some(name) = item.channel_name.as_deref()
-        && !name.is_empty()
-    {
-        return name.to_string();
-    }
-    item.channel_key
-        .as_deref()
-        .map(|k| k.chars().take(8).collect())
-        .unwrap_or_else(|| {
-            format!(
-                "未同步渠道 ({}…)",
-                item.unit_key.chars().take(6).collect::<String>()
-            )
-        })
-}
-
-/// 剩余冷却秒 (冷却中才显示倒计时数字;非冷却 = 0 不展示)。
-fn remaining_seconds(item: &GatewayHealthItem) -> Option<u64> {
-    if item.state == HealthItemState::Cooling && item.remaining_cooldown_ms > 0 {
-        Some(item.remaining_cooldown_ms / 1000)
-    } else {
-        None
-    }
-}
-
-/// 模型徽标文案:publicModel 缺省回退 unitKey 末段。
-fn model_label(item: &GatewayHealthItem) -> String {
-    item.public_model.clone().unwrap_or_else(|| {
-        item.unit_key
-            .rsplit_once(':')
-            .map(|(_, m)| m.to_string())
-            .unwrap_or_else(|| "未知模型".to_string())
-    })
-}
-
-/// 三态 Badge 语义色 (match 而非 if-chain,类型收敛为 `&'static str`)。
-fn state_tone(state: HealthItemState) -> &'static str {
-    match state {
-        HealthItemState::Cooling => TONE_COOLING,
-        HealthItemState::SlowStart => TONE_SLOW_START,
-        HealthItemState::Ok => TONE_OK,
-    }
-}
-
 /// 网关渠道健康面板。
 ///
-/// 挂载即拉一次;响应含 cooling / slow_start 条目时按 5s 间隔轮询,
-/// 全 ok 或空时停。错误显示柔和红边卡 (非满屏红),不影响其他页面。
+/// 【是什么】网关健康 tab 的页面入口组件:标题 + 三态计数徽标 + 刷新按钮 + 四态列表容器。
 ///
-/// 轮询纪律:`use_effect` 依赖 `reload` 计数,循环内联 async (信号句柄
-/// 直接 move 进 `spawn` 块,无闭包自续),全 ok / 空时循环 break 停止。
-/// 「刷新」「重试」按钮自增 `reload` 重启循环,避免网络抖动摘掉
-/// 冷却中的渠道。
+/// 【做什么】负责一次拉取与后续轮询(`fetch_gateway_health`)、四态分支
+/// (loading / error / empty / data)、以及三个计数的派生;数据态逐项渲染
+/// [`GatewayHealthRow`]。不负责单行内部的回退与取色(在 `row.rs`),
+/// 不做写操作(本 tab 只读)。
 ///
-/// # 用法
-/// ```ignore
-/// GatewayHealthPanel {}
-/// ```
+/// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
+/// - 挂载 → `use_effect`(依赖 `reload`)启动轮询循环,循环内先拉一次快照,
+///   若存在 cooling / slow_start 条目则 `TimeoutFuture` 等 5s 再拉,否则 `break`。
+/// - 点「刷新」或错误态「重试」→ `reload + 1`,effect 重跑重启循环。
+/// - 拉取失败时保留旧快照的轮询意愿(用 `items` 里的异常项决定是否继续),
+///   避免一次网络抖动把冷却中的渠道从面板上摘掉。
+///
+/// 【样式】外层 `section.flex flex-col gap-3`;标题 `text-lg font-medium
+/// text-zinc-100`;状态胶囊 `rounded-full bg-zinc-800 px-2 py-0.5 text-[11px]
+/// text-zinc-400`;三个计数徽标各自叠 `TONE_*` 语义色;列表容器
+/// `rounded-xl border border-zinc-800 bg-card p-4 divide-y divide-zinc-800`;
+/// 错误态 `border-red-900/50 bg-red-950/20`;空态 `border-dashed` ;loading 为 3 行
+/// `animate-pulse` 骨架。
+///
+/// 【子组件组成】`GatewayHealthRow`(数据态逐项);其余(标题、徽标、按钮、四态块)
+/// 都是本文件内联 rsx,未再拆分。
+///
+/// 【数据流】
+/// - 对内(入):无 prop —— 面板不接收外部参数,数据全部来自 `fetch_gateway_health`。
+/// - 对外(出):无 EventHandler;`items` / `loading` / `err` / `reload` 四个 Signal
+///   都只在本文件内读写(`reload` 是唯一的「入口」,由两个按钮自增)。
 #[component]
 pub fn GatewayHealthPanel() -> Element {
+    // —— 面板状态:全部只服务本组件,不跨组件,故就地持有 ——
     let items = use_signal(Vec::<GatewayHealthItem>::new);
     let loading = use_signal(|| true);
     let err = use_signal(|| None::<String>);
@@ -156,29 +133,29 @@ pub fn GatewayHealthPanel() -> Element {
         section {
             class: "flex flex-col gap-3",
             role: "region",
-            "aria-label": "网关渠道健康",
+            "aria-label": SEC_PANEL,
             "data-testid": "gateway-health-panel",
 
             // 标题 + 统计 + 手动刷新 (交互元素带 data-testid)
             div { class: "flex flex-wrap items-center justify-between gap-2",
                 div { class: "flex items-center gap-2",
-                    h2 { class: "text-lg font-medium text-zinc-100", "网关渠道健康" }
+                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PANEL}" }
                     span { class: "rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400",
-                        if polling { "轮询中 · 5s" } else { "已同步" }
+                        if polling { "{LBL_POLLING}" } else { "{LBL_SYNCED}" }
                     }
                 }
                 div { class: "flex flex-wrap items-center gap-1.5 text-[11px]",
-                    span { class: "rounded-full border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-red-300",
-                        "冷却 {cooling_count}" }
-                    span { class: "rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-amber-300",
-                        "慢启动 {slow_count}" }
-                    span { class: "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-emerald-400",
-                        "正常 {ok_count}" }
+                    span { class: "rounded-full border px-2 py-0.5 {TONE_COOLING}",
+                        "{LBL_COUNT_COOLING_PREFIX}{cooling_count}" }
+                    span { class: "rounded-full border px-2 py-0.5 {TONE_SLOW_START}",
+                        "{LBL_COUNT_SLOW_PREFIX}{slow_count}" }
+                    span { class: "rounded-full border px-2 py-0.5 {TONE_OK}",
+                        "{LBL_COUNT_OK_PREFIX}{ok_count}" }
                     button {
                         class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
                         "data-testid": "refresh-gateway-health",
                         onclick: move |_| reload.set(reload() + 1),
-                        "刷新"
+                        "{BTN_REFRESH}"
                     }
                 }
             }
@@ -192,13 +169,13 @@ pub fn GatewayHealthPanel() -> Element {
                     // 错误态:柔和红边卡 (非满屏红),保留重试入口
                     div { class: "rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-6 text-center",
                         "data-testid": "gateway-health-error",
-                        p { class: "text-sm text-red-300", "网关健康拉取失败" }
+                        p { class: "text-sm text-red-300", "{SEC_LOAD_FAILED}" }
                         p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                         button {
                             class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                             "data-testid": "retry-gateway-health",
                             onclick: move |_| reload.set(reload() + 1),
-                            "重试"
+                            "{BTN_RETRY}"
                         }
                     }
                 } else if loading() {
@@ -214,43 +191,17 @@ pub fn GatewayHealthPanel() -> Element {
                     // 空态:虚线占位卡 (正常态,后端只返回有记录渠道)
                     div { class: "rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center",
                         "data-testid": "gateway-health-empty",
-                        p { class: "text-sm text-zinc-400", "暂无渠道健康记录——正常态" }
+                        p { class: "text-sm text-zinc-400", "{SEC_EMPTY_NOTE}" }
                         p { class: "mt-1 text-xs text-zinc-500",
-                            "网关只上报发生过错的渠道;全部健康时列表为空" }
+                            "{SEC_EMPTY_HINT}" }
                     }
                 } else {
+                    // 数据态:每个上报过错的渠道一行;行渲染与状态徽标在 row.rs,
+                    // 页面只负责拉取/轮询与四态分支。
                     for item in list {
                         {
-                            let name = display_name(&item);
-                            let model = model_label(&item);
-                            let tone = state_tone(item.state);
-                            let state_text = item.state.label().to_string();
-                            let remaining = remaining_seconds(&item);
-                            let outcome = item.last_cooling_outcome.clone();
                             rsx! {
-                                div {
-                                    key: "{item.unit_key}",
-                                    class: "flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 first:pt-1 last:pb-1",
-                                    "data-testid": "gateway-health-row",
-                                    // 渠道名 (channelName,缺省 channelKey 前 8 位)
-                                    span { class: "min-w-0 truncate text-sm font-medium text-zinc-100",
-                                        title: "{item.unit_key}", "{name}" }
-                                    // 模型 Badge
-                                    span { class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
-                                        "{model}" }
-                                    // 三态 Badge (cooling=红 / slow_start=黄 / ok=绿)
-                                    span { class: "rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}",
-                                        "{state_text}" }
-                                    // 冷却中才显示倒计时秒
-                                    if let Some(sec) = remaining {
-                                        span { class: "font-mono text-xs text-red-300",
-                                            "余 {sec}s" }
-                                    }
-                                    // lastCoolingOutcome (有则小字)
-                                    if let Some(o) = outcome {
-                                        span { class: "text-[11px] text-zinc-500", "{o}" }
-                                    }
-                                }
+                                GatewayHealthRow { key: "{item.unit_key}", item }
                             }
                         }
                     }

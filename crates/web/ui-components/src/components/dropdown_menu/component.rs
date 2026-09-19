@@ -168,26 +168,18 @@ pub fn DropdownMenu(
 
     // 外部关闭信号（可选）：内容（item）侧写入 true 即请求收关面板；
     // 语义=「面板应关闭？」，默认 false（不请求关闭），变更到 true 才生效。
-    // 实现为轻量轮询（同 scroll_spy 的收尾模式），避免引入新依赖。
-    if let Some(close) = &close_signal {
-        let close_clone = *close;
-        use_hook(move || {
-            spawn(async move {
-                let mut last = close_clone();
-                loop {
-                    let now = close_clone();
-                    if now && !last {
-                        // 变更到 true：请求关闭（开合主权仍在 trigger，这里只收不重开）
-                        open.set(false);
-                    }
-                    last = now;
-                    // 让出一次防止连续忙轮询（纯 std，无新依赖；wasm 单线程
-                    // 协作调度，Ready 立即返回但每次调用经过 spawn 调度器）
-                    std::future::poll_fn(|_| std::task::Poll::Ready(())).await;
-                }
-            });
-        });
-    }
+    //
+    // 用响应式 effect 订阅该信号（effect 内读 `close()` 即建立依赖），请求到 true 时收关。
+    // 切勿改回 `poll_fn(|_| Ready(()))` 之类的「立即就绪」轮询：wasm 单线程协作调度下，
+    // 立即就绪的 await 不会让出事件循环，循环体会在同一次 task poll 内无限重入，把主线程
+    // 钉死——这是控制台首屏整页白屏（总览/模型/管理等登录后路由全部不可见）的真凶。
+    use_effect(move || {
+        if let Some(close) = close_signal
+            && close()
+        {
+            open.set(false);
+        }
+    });
 
     rsx! {
         div {
