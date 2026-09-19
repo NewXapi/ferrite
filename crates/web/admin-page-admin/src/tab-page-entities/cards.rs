@@ -1,8 +1,11 @@
-use dioxus::prelude::*;
-use crate::drawer_write::{DrawerNotice, DrawerNoticeBar, create_group_write, delete_group, find_group_by_name, update_group_display};
-use crate::tab_page_network::bump_topo_refresh;
-use crate::state::EntityStore;
 use super::shared::*;
+use crate::drawer_write::{
+    DrawerNotice, DrawerNoticeBar, create_group_write, delete_group, find_group_by_name,
+    update_group_display,
+};
+use crate::state::EntityStore;
+use crate::tab_page_network::bump_topo_refresh;
+use dioxus::prelude::*;
 use ui::dialog::Dialog;
 // ============ 卡片 1：分组 ============
 
@@ -345,4 +348,3 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
         }
     }
 }
-

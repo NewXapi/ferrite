@@ -172,6 +172,9 @@ pub fn SubscriptionsPage() -> Element {
             }
 
             // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
+            // PlanCard:单张套餐卡(ID 徽标 + 标题 + 状态/分组徽标 + 五格指标条)。
+            // 启停/删除直接改本地演示态 plans(订阅后端暂未实现,页面横幅有说明);
+            // on_edit 开弹窗回填,跨组件交互由页面闭包处理。
             div { class: "flex flex-col gap-3",
                 for (i, p) in plans.read().iter().enumerate() {
                     PlanCard {
@@ -192,6 +195,9 @@ pub fn SubscriptionsPage() -> Element {
         }
 
         // ============ 多 Tab 编辑/新建弹窗 (对标 Image #6, #7, #8) ============
+        // 外壳(遮罩+头部+tab 切换条) + 三个 tab 子组件(基本信息/规则与周期/第三方支付)。
+        // 21 个 f_* 表单 signal 以 Signal 注入,commit 写回逻辑留在页面,
+        // 弹窗只渲染与抛 on_submit/on_cancel。
         if show_modal() {
             SubscriptionFormModal {
                 editing_idx,

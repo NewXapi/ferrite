@@ -10,7 +10,9 @@
 //! (`admin_page_admin::tab_page_system::ProxyReportResponse`)解码形状与后端一致,
 //! 防止前后端字段名漂移导致面板静默归零或解码失败。
 
-use admin_page_admin::tab_page_system::{NodeRuntimeStats, ProxyNodeReportRow, ProxyReportResponse};
+use admin_page_admin::tab_page_system::{
+    NodeRuntimeStats, ProxyNodeReportRow, ProxyReportResponse,
+};
 
 /// 后端真实形状:enabled 行带完整 stats + disabled 行 stats 为 null。
 /// 字段名逐一对照 admin-proxy report handler 的 `json!` / ProxyNodeView。

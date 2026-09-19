@@ -1136,6 +1136,8 @@ pub fn NetworkPanel() -> Element {
                     }
                 }
                 }
+                // 设置抽屉:页签条(DrawerTabs)+ 实体面板(EntitiesPanel)+ 滚动钉(ScrollSpyNav)。
+                // 拉取失败时 store 是旧/空快照,顶部红条避免对着错误数据编辑。
                 if drawer_tab() == DrawerTab::Settings {
                     aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
                         DrawerTabs {
@@ -1168,6 +1170,7 @@ pub fn NetworkPanel() -> Element {
                             }
                         }
                     }
+                // 导入抽屉:头部(DrawerHeader 复用页签条)+ ImportPanel(JSON 批量导入渠道)。
                 } else if drawer_tab() == DrawerTab::Import {
                     aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
                         DrawerHeader {
@@ -1181,6 +1184,8 @@ pub fn NetworkPanel() -> Element {
                             ImportPanel {}
                         }
                     }
+                // 节点检视抽屉:点节点进入;按节点类型分流 Group/Alias/Dispatch 三种检视体。
+                // 关闭时还原 saved_positions(进出焦点的位移动画走 tween)。
                 } else if let Some(node) = inspect() {
                     NodeInspector {
                         node: node,

@@ -206,7 +206,9 @@ pub fn CurrencyPage() -> Element {
                 }
             }
 
-            // ---------- 列表 ----------
+            // 列表区:货币定义四态(加载/错误/空/表格)+ 每行编辑/停用按钮。
+            // 纯渲染,defs 由页面拉取后传入;on_edit 回传整行回填表单,
+            // on_disable 只回传 code(软禁用按内存定义原样回写),见 list.rs。
             CurrencyList {
                 defs: defs(),
                 loading: *loading.read(),
@@ -215,7 +217,9 @@ pub fn CurrencyPage() -> Element {
                 on_disable: move |code| disable(code),
             }
 
-            // ---------- 表单 ----------
+            // 表单区:新增/编辑录入(Code/名称/符号/kind/汇率/小数位/启用/备注)。
+            // f_* 以 Signal 注入(Signal 可拷贝句柄),校验与写回逻辑留在页面的
+            // submit 闭包;editing 区分新增/编辑态(code 编辑时禁用),见 form.rs。
             CurrencyForm {
                 editing: editing(),
                 f_code,

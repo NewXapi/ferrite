@@ -8,39 +8,45 @@
 //! 拓扑测速、批量分组、快速导入是 mock 期的纯前端特性,已移除(后端暂无对应接口)。
 //!
 //! 本文件只保留状态、拉取与写回逻辑(submit / open_edit / toggle / delete)
-//! 以及组件组合;单卡渲染见 `tab-page_channels_card`,弹窗见
-//! `modal`,共享类型与纯函数见 `shared`。
+//! 以及组件组合;渲染拆成 `stats`(概览统计)、`toolbar`(筛选与操作)、
+//! `list`(卡片网格)、`card`(单卡)、`modal`(弹窗),共享类型见 `shared`。
+//!
+//! 状态归属约定(页面层持有的都是跨组件交互的):
+//! - 列表状态(channels/loading/refreshing/err/reload):effect 拉取 + 三组件共享
+//! - 筛选状态(search/filter_tier):页面算 filtered,toolbar 就地读写
+//! - 弹窗表单状态(f_*/existing_keys/model_pool/models_touched/fetching_models/
+//!   group_options/group_err):open_new/open_edit 重置 → 弹窗读写,跨组件
+//! - 写回状态(busy/notice):通知条与 make_write 闭包共享
 
 use dioxus::prelude::*;
-
-use ui::ChannelCard as PrototypeChannelCard;
-use ui::SegmentedCapsule;
 
 use client::ApiClient;
 use contract::api::admin::{ChannelDto, GroupDto};
 
 use crate::api::{
-    delete_channel_api, get_channel_api, list_channels_api, list_groups_api,
-    set_channel_status_api,
+    delete_channel_api, get_channel_api, list_channels_api, list_groups_api, set_channel_status_api,
 };
-use crate::tab_page_groups::StatCard;
 
-use super::card::ChannelCard;
+use super::list::ChannelsListSection;
 use super::modal::ChannelFormModal;
 use super::shared::{ChannelModalState, WriteOp, filter_channels};
-
-const SEC_STATS: &str = "渠道概览";
-const SEC_FILTER: &str = "筛选与操作";
-const SEC_LIST: &str = "渠道列表";
+use super::stats::ChannelsStatsSection;
+use super::toolbar::ChannelsToolbarSection;
 
 #[component]
 pub fn ChannelsPage() -> Element {
+    // —— 列表状态 ——
     // 真实数据 + 加载/错误态(本地 signal,不触碰 EntityStore)
     let mut channels = use_signal(Vec::<ChannelDto>::new);
     let mut loading = use_signal(|| true);
     // 后台刷新态:与 `loading` 分离,渲染层不清空列表,只在计数徽标上提示。
     // 合并成一个 loading 会让写操作后的重拉把列表换成占位卡 → 视觉闪烁。
     let mut refreshing = use_signal(|| false);
+    let mut err = use_signal(|| None::<String>);
+    // reload 计数:触发一次即重拉列表(写操作后刷新)
+    let mut reload = use_signal(|| 0u32);
+
+    // —— 弹窗数据状态 ——
     // 弹窗「绑定分组」候选（真实分组列表,失败留空 → 弹窗内只读回退）。
     let mut group_options = use_signal(Vec::<GroupDto>::new);
     let mut group_err = use_signal(|| None::<String>);
@@ -50,15 +56,12 @@ pub fn ChannelsPage() -> Element {
     let mut model_pool = use_signal(Vec::<(String, bool)>::new);
     let mut models_touched = use_signal(|| false);
     let mut fetching_models = use_signal(|| false);
-    let mut err = use_signal(|| None::<String>);
-    // 写操作进行中 / 成功提示
-    let busy = use_signal(|| false);
-    let notice = use_signal(|| None::<String>);
-    // reload 计数:触发一次即重拉列表(写操作后刷新)
-    let mut reload = use_signal(|| 0u32);
 
-    let mut search = use_signal(String::new);
-    let mut filter_tier = use_signal(|| 0usize);
+    // —— 筛选状态 ——
+    let search = use_signal(String::new);
+    let filter_tier = use_signal(|| 0usize);
+
+    // —— 弹窗状态与表单 ——
     let mut modal_state = use_signal(|| ChannelModalState::Closed);
 
     // 编辑/新建表单状态
@@ -71,6 +74,11 @@ pub fn ChannelsPage() -> Element {
     // 测速模型：弹窗无编辑控件，但后端 test_model 列是 SQL 直绑（无 COALESCE），
     // 编辑保存必须原样回传现值，缺席即被清成 NULL。编辑打开时从列表行带入。
     let mut f_test_model = use_signal(|| None::<String>);
+
+    // —— 写回状态 ——
+    // 写操作进行中 / 成功提示
+    let busy = use_signal(|| false);
+    let notice = use_signal(|| None::<String>);
 
     // 挂载即拉取真实列表;reload 变化时重拉。
     // 首屏(列表为空)走 `loading` → 渲染占位卡;已有数据的重拉走 `refreshing`
@@ -113,6 +121,7 @@ pub fn ChannelsPage() -> Element {
         });
     });
 
+    // —— 派生:统计与筛选(filtered 被 list 组件消费,计算留在页面)——
     let list = channels();
     let total = list.len();
     let enabled_count = list.iter().filter(|c| c.status == 1).count();
@@ -138,6 +147,7 @@ pub fn ChannelsPage() -> Element {
     // 筛选纯函数:抽取为模块级 `filter_channels`,便于纯函数单测
     let filtered = filter_channels(&list, &search(), filter_tier());
 
+    // —— 写回闭包 ——
     let open_new = move |_| {
         f_name.set(String::new());
         f_ctype.set("openai".to_string());
@@ -153,7 +163,7 @@ pub fn ChannelsPage() -> Element {
         modal_state.set(ChannelModalState::New);
     };
 
-    let mut open_edit = move |key: String| {
+    let open_edit = move |key: String| {
         if let Some(c) = channels().iter().find(|c| c.key == key) {
             f_name.set(c.name.clone());
             f_ctype.set(c.channel_type.clone());
@@ -228,6 +238,10 @@ pub fn ChannelsPage() -> Element {
     let write_toggle = make_write();
     let write_delete = make_write();
 
+    // 卡片启停/删除:把 (key, 目标状态) 落成 WriteOp 走 make_write 通道
+    let on_toggle_card = move |pair: (String, i16)| write_toggle(pair.0, WriteOp::Toggle(pair.1));
+    let on_delete_card = move |key: String| write_delete(key, WriteOp::Delete);
+
     // 弹窗关闭并触发重拉
     let close_and_reload = move |_| {
         modal_state.set(ChannelModalState::Closed);
@@ -236,157 +250,67 @@ pub fn ChannelsPage() -> Element {
 
     rsx! {
         div { class: "flex flex-col gap-6",
-                // 通知条(成功/错误/进行中)
-                if let Some(msg) = notice() {
-                    div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
-                        "{msg}"
-                        if busy() { " ···" }
-                    }
-                }
-
-                // 1. 概览统计区
-                section { id: "channels-sec-stats", class: "scroll-mt-8 space-y-3",
-                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
-                    div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                        for (value, label) in stats {
-                            StatCard { value, label }
-                        }
-                    }
-                }
-
-                // 2. 筛选与操作区
-                section {
-                    id: "channels-sec-filter",
-                    class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
-                    div { class: "flex items-center justify-between gap-3",
-                        div { class: "flex items-center gap-2",
-                            h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                            span { class: "text-xs text-zinc-500", "按状态或关键词筛选" }
-                        }
-                        div { class: "flex items-center gap-2",
-                            button {
-                                class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
-                                "data-testid": "refresh-channels",
-                                onclick: move |_| reload.set(reload() + 1),
-                                "刷新"
-                            }
-                            button {
-                                class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
-                                "data-testid": "new-channel",
-                                onclick: open_new,
-                                "✚ 新建渠道"
-                            }
-                        }
-                    }
-
-                    input {
-                        class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
-                        r#type: "text",
-                        placeholder: "搜索渠道名称、类型、分组或 API 目标地址...",
-                        value: "{search}",
-                        oninput: move |e| search.set(e.value()),
-                    }
-                    div { class: "flex flex-wrap gap-2",
-                        SegmentedCapsule {
-                            items: filter_options,
-                            active: filter_tier(),
-                            on_select: move |i: usize| filter_tier.set(i),
-                        }
-                    }
-                }
-
-                // 3. 卡片网格区
-                section { id: "channels-sec-list", class: "scroll-mt-8 space-y-4",
-                    div { class: "flex items-center justify-between",
-                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
-                        span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                            if loading() { "加载中…" } else { "{filtered.len()} 个渠道" }
-                        }
-                    }
-
-                    if let Some(e) = err() {
-                        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-                            p { class: "text-sm text-red-300", "加载渠道失败" }
-                            p { class: "mt-1 text-xs text-red-400/70", "{e}" }
-                            button {
-                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
-                                onclick: move |_| reload.set(reload() + 1),
-                                "重试"
-                            }
-                        }
-                    } else if loading() {
-                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                            p { class: "text-zinc-400", "正在加载渠道…" }
-                        }
-                    } else if filtered.is_empty() {
-                        div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                            p { class: "text-zinc-400", "没有匹配的渠道" }
-                        }
-                    } else {
-                        if let Some(channel) = filtered.first().cloned() {
-                            {
-                                rsx! {
-                                    div {
-                                        class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                                        role: "region",
-                                        "aria-label": "新卡示例",
-                                        "data-testid": "channel-card-prototype",
-                                        PrototypeChannelCard {
-                                            channel,
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            "data-testid": "channels-list",
-                            for c in filtered {
-                                {
-                                    let edit_key = c.key.clone();
-                                    let toggle_key = c.key.clone();
-                                    let delete_key = c.key.clone();
-                                    // 后端 status 语义: 1=启用 2=停用 (channels status 校验 [1,2])
-                                    let target = if c.status == 1 { 2 } else { 1 };
-                                    rsx! {
-                                        ChannelCard {
-                                            key: "{c.key}",
-                                            channel: c,
-                                            on_edit: move |_| open_edit(edit_key.clone()),
-                                            on_toggle: move |_| write_toggle(toggle_key.clone(), WriteOp::Toggle(target)),
-                                            on_delete: move |_| write_delete(delete_key.clone(), WriteOp::Delete),
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            // 通知条(成功/错误/进行中)
+            if let Some(msg) = notice() {
+                div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                    "{msg}"
+                    if busy() { " ···" }
                 }
             }
 
-            // 新建 / 编辑弹窗
-            if matches!(modal_state(), ChannelModalState::New | ChannelModalState::Edit(_)) {
-                ChannelFormModal {
-                    editing: matches!(modal_state(), ChannelModalState::Edit(_)),
-                    channel_key: match modal_state() {
-                        ChannelModalState::Edit(k) => Some(k),
-                        _ => None,
-                    },
-                    name: f_name,
-                    ctype: f_ctype,
-                    url: f_url,
-                    keys: f_keys,
-                    group: f_group,
-                    group_options: group_options,
-                    group_err: group_err,
-                    existing_keys: existing_keys,
-                    model_pool: model_pool,
-                    models_touched: models_touched,
-                    fetching_models: fetching_models,
-                    remark: f_remark,
-                    test_model: f_test_model,
-                    on_cancel: move |_| modal_state.set(ChannelModalState::Closed),
-                    on_submit: close_and_reload,
-                }
+            // 统计区(编号段 1):五张概览卡(总数/启用/停用/密钥/分组)。
+            // 纯渲染,stats 由上方派生块算好传入;组件零状态,见 stats.rs。
+            ChannelsStatsSection { stats: stats.to_vec() }
+
+            // 筛选与操作区(编号段 2):刷新/新建按钮 + 搜索框 + 状态胶囊。
+            // search/filter_tier/reload 以 Signal 绑定 —— 页面要拿它们算 filtered
+            // 并触发重拉,组件就地读写同一份状态;on_new 开弹窗属跨组件交互,页面闭包。
+            ChannelsToolbarSection {
+                search,
+                filter_tier,
+                reload,
+                filter_options,
+                on_new: open_new,
             }
+
+            // 卡片网格区(编号段 3):四态(错误/加载/空/网格)+ 新卡示例 + ChannelCard 网格。
+            // 数据以值传入(filtered 已在上方按 search/filter_tier 筛好);
+            // on_toggle 收 (key, 目标状态 1|2),页面落成 WriteOp::Toggle 走 API。
+            ChannelsListSection {
+                loading: *loading.read(),
+                err: err(),
+                filtered,
+                on_edit: open_edit,
+                on_toggle: on_toggle_card,
+                on_delete: on_delete_card,
+                on_retry: move |_| reload.set(reload() + 1),
+            }
+        }
+
+        // 新建 / 编辑弹窗
+        if matches!(modal_state(), ChannelModalState::New | ChannelModalState::Edit(_)) {
+            ChannelFormModal {
+                editing: matches!(modal_state(), ChannelModalState::Edit(_)),
+                channel_key: match modal_state() {
+                    ChannelModalState::Edit(k) => Some(k),
+                    _ => None,
+                },
+                name: f_name,
+                ctype: f_ctype,
+                url: f_url,
+                keys: f_keys,
+                group: f_group,
+                group_options: group_options,
+                group_err: group_err,
+                existing_keys: existing_keys,
+                model_pool: model_pool,
+                models_touched: models_touched,
+                fetching_models: fetching_models,
+                remark: f_remark,
+                test_model: f_test_model,
+                on_cancel: move |_| modal_state.set(ChannelModalState::Closed),
+                on_submit: close_and_reload,
+            }
+        }
     }
 }

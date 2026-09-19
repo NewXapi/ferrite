@@ -175,6 +175,8 @@ pub fn GatewayHealthPanel() -> Element {
                             "网关只上报发生过错的渠道;全部健康时列表为空" }
                     }
                 } else {
+                    // 数据态:每个上报过错的渠道一行;行渲染与状态徽标在 row.rs,
+                    // 页面只负责拉取/轮询与四态分支。
                     for item in list {
                         {
                             rsx! {

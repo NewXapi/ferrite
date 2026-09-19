@@ -258,7 +258,7 @@ impl NodeKey {
     }
 }
 
-# [doc(hidden)]
+#[doc(hidden)]
 pub const MARGIN: f64 = 110.0;
 pub const COL_GAP: f64 = 130.0;
 // 三层收紧成地图式分层；横向空间留给节点本身，宽层再折行。
@@ -272,13 +272,13 @@ pub fn band_y(layer: u8) -> (f64, f64) {
     )
 }
 // 9 个调度模型按两排显示，避免用过宽 viewBox 把节点缩小。
-# [doc(hidden)]
+#[doc(hidden)]
 pub const VIEW_W: f64 = MARGIN * 2.0 + 7.0 * COL_GAP;
-# [doc(hidden)]
+#[doc(hidden)]
 pub const VIEW_H: f64 = 700.0;
-# [doc(hidden)]
+#[doc(hidden)]
 pub const NODE_W: f64 = 104.0;
-# [doc(hidden)]
+#[doc(hidden)]
 pub const NODE_H: f64 = 36.0;
 
 /// Deterministic startup layout, computed from the graph — no physics involved:
@@ -671,7 +671,7 @@ pub fn now_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
-# [doc(hidden)]
+#[doc(hidden)]
 pub fn fit_view(pts: &[(f64, f64)]) -> ((f64, f64), f64) {
     let pad = NODE_W / 2.0 + 24.0;
     let (minx, maxx) = pts
@@ -734,4 +734,3 @@ pub const BTN_SETTINGS: &str = "设置";
 pub const BTN_FIT: &str = "适配";
 pub const FIELD_DISPLAY: &str = "展示名";
 pub const EXAMPLE_CHANNEL: &str = "OpenAI 官方";
-

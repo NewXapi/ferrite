@@ -5,17 +5,15 @@
 //!
 use dioxus::prelude::*;
 
-
 use client::ApiClient;
 use contract::api::admin::GroupDto;
 
-use crate::api::{
-    delete_group_api, list_groups_api, set_group_status_api, update_group_ratio_api,
-};
 use super::list::GroupsList;
-use super::modal::{GroupFormModal, StatCard};
-use super::shared::{parse_whitelist, ModalState, SEC_STATS, WriteOp};
+use super::modal::GroupFormModal;
+use super::shared::{ModalState, WriteOp, parse_whitelist};
+use super::stats::GroupsStatsSection;
 use super::toolbar::GroupsToolbar;
+use crate::api::{delete_group_api, list_groups_api, set_group_status_api, update_group_ratio_api};
 
 #[component]
 pub fn GroupsPage() -> Element {
@@ -296,17 +294,13 @@ pub fn GroupsPage() -> Element {
                 }
             }
 
-            // 1. 概览统计区
-            section { id: "groups-sec-stats", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
-                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                    for (value, label) in stats {
-                        StatCard { value, label }
-                    }
-                }
-            }
+            // 统计区(编号段 1):五张概览卡(总数/启用/停用/白名单/默认分组)。
+            // 纯渲染,stats 由上方派生块算好传入;组件零状态,见 stats.rs。
+            GroupsStatsSection { stats: stats.to_vec() }
 
-            // 2. 筛选与操作区(搜索 / 分级胶囊 / 批量点选与动作条)
+            // 筛选与操作区(编号段 2):搜索 / 分级胶囊 / 批量点选与动作条。
+            // search/filter_tier/selected 以 Signal 绑定(页面要算 filtered 并批量写);
+            // on_refresh/on_new/on_bulk_* 都是跨组件交互,由页面闭包处理。
             GroupsToolbar {
                 groups: groups(),
                 filter_options,
@@ -320,7 +314,9 @@ pub fn GroupsPage() -> Element {
                 on_bulk_clear: move |_| selected.set(Vec::new()),
             }
 
-            // 3. 卡片网格区(四态 + GroupCard 网格)
+            // 卡片网格区(编号段 3):四态(错误/加载/空/网格)+ 首卡示例 + GroupCard 网格。
+            // 数据以值传入(filtered 已在上方筛好);on_write 把卡片操作落成
+            // WriteOp 走 API,on_edit 开编辑弹窗,均为跨组件交互。
             GroupsList {
                 filtered,
                 loading: loading(),

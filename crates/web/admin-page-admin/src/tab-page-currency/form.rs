@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 
-use super::shared::{SEC_FORM, Kind};
+use super::shared::{Kind, SEC_FORM};
 
 /// 货币新增/编辑表单。
 ///

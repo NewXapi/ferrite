@@ -5,17 +5,19 @@
 //! - `modal`：StatCard / Badge / GroupCard / GroupFormModal / Modal
 //! - `shared`：`ModalState` / `WriteOp` / 白名单解析 + 区段文案
 
-#[path = "page.rs"]
-pub mod page;
-#[path = "modal.rs"]
-pub mod modal;
-#[path = "toolbar.rs"]
-pub mod toolbar;
 #[path = "list.rs"]
 pub mod list;
+#[path = "modal.rs"]
+pub mod modal;
+#[path = "page.rs"]
+pub mod page;
 #[path = "shared.rs"]
 pub mod shared;
+#[path = "stats.rs"]
+pub mod stats;
+#[path = "toolbar.rs"]
+pub mod toolbar;
 
+pub use modal::*;
 pub use page::*;
 pub use shared::*;
-pub use modal::*;

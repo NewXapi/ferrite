@@ -8,18 +8,20 @@
 //! - `proxy_runtime`:代理节点运行态面板 + report DTO
 //!   (三个 DTO 原先即 pub)+ 冷却/延迟格式化
 
-#[path = "page.rs"]
-pub mod page;
-#[path = "shared.rs"]
-pub mod shared;
 #[path = "options.rs"]
 pub mod options;
+#[path = "overview.rs"]
+pub mod overview;
+#[path = "page.rs"]
+pub mod page;
 #[path = "proxy-nodes.rs"]
 pub mod proxy_nodes;
 #[path = "proxy-runtime.rs"]
 pub mod proxy_runtime;
+#[path = "shared.rs"]
+pub mod shared;
 
-pub use page::*;
 pub use options::*;
+pub use page::*;
 pub use proxy_nodes::*;
 pub use proxy_runtime::*;

@@ -7,7 +7,7 @@ pub const BTN_NEW: &str = "新增";
 pub const BTN_UPDATE: &str = "更新";
 pub const BTN_CANCEL: &str = "取消";
 
- // ============ 共享小件 ============
+// ============ 共享小件 ============
 
 #[component]
 pub fn CardPanel(

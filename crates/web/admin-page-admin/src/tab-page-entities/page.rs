@@ -6,9 +6,9 @@
 //! 成功后由调用方重拉 `network::load_network_data` 刷新画布——
 //! #183 起画布不再由 store 行驱动，本地 store 行仅作启动布局兜底。
 
-use dioxus::prelude::*;
-use super::cards::{GroupsCard, AliasesCard};
+use super::cards::{AliasesCard, GroupsCard};
 use super::channels::ChannelsCard;
+use dioxus::prelude::*;
 
 #[component]
 pub fn EntitiesPanel() -> Element {
@@ -18,6 +18,9 @@ pub fn EntitiesPanel() -> Element {
         // 滚动由外层容器（拓扑抽屉）负责，这里别自带 overflow，
         // 否则锚点/滚动事件会对不上元素。
         div { class: "flex flex-col gap-3",
+            // 三张可折叠实体卡:各占一行,上半录入行 + 下半拓扑节点内容。
+            // open 数组在页面持有(手风琴互斥与否由页面决定);卡片写路径走
+            // drawer_write 真实端点,成功后 bump_topo_refresh 刷拓扑画布。
             GroupsCard {
                 open: open()[0],
                 on_toggle: move |_| { let mut o = open(); o[0] = !o[0]; open.set(o); },
@@ -33,4 +36,3 @@ pub fn EntitiesPanel() -> Element {
         }
     }
 }
-

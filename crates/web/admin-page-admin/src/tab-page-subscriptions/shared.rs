@@ -84,4 +84,3 @@ pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
         }
     }
 }
-

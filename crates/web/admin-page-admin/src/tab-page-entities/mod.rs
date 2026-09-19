@@ -1,12 +1,12 @@
-#[path = "page.rs"]
-pub mod page;
 #[path = "cards.rs"]
 pub mod cards;
 #[path = "channels.rs"]
 pub mod channels;
+#[path = "page.rs"]
+pub mod page;
 #[path = "shared.rs"]
 pub mod shared;
-pub use page::EntitiesPanel;
 pub use cards::*;
 pub use channels::*;
+pub use page::EntitiesPanel;
 pub use shared::*;

@@ -1,10 +1,12 @@
-use dioxus::prelude::*;
-use crate::drawer_write::{DrawerNotice, DrawerNoticeBar, create_channel_import, delete_channel, find_channel_by_name, set_channel_status, update_channel};
-use crate::tab_page_network::bump_topo_refresh;
-use crate::state::EntityStore;
 use super::shared::*;
+use crate::drawer_write::{
+    DrawerNotice, DrawerNoticeBar, create_channel_import, delete_channel, find_channel_by_name,
+    set_channel_status, update_channel,
+};
+use crate::state::EntityStore;
+use crate::tab_page_network::bump_topo_refresh;
+use dioxus::prelude::*;
 use ui::dialog::Dialog;
-
 
 // ============ 卡片 3：渠道 ============
 
@@ -490,4 +492,3 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
         }
     }
 }
-
