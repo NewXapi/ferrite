@@ -7,6 +7,10 @@
 
 use dioxus::prelude::*;
 
+use super::shared::{
+    DASH, ERRORS_EMPTY, ERRORS_EMPTY_HINT, ERRORS_LOADING, ERRORS_TOTAL_LABEL, NEUTRAL_NO_DATA,
+    SEC_ERRORS,
+};
 use crate::api;
 use contract::api::usage::UsageErrorStatPage;
 use ui::components::card::{Card, CardAction, CardContent, CardHeader, CardTitle};
@@ -50,7 +54,7 @@ pub fn ErrorsPanel() -> Element {
     let as_of_time = data.as_ref().and_then(|p| api::as_of_local_time(&p.as_of));
     // 大数字诚实三态：拉数中 / 失败时没有合计可亮，以 — 占位不亮假 0
     let total_text = if loading || err.is_some() {
-        "—".to_string()
+        DASH.to_string()
     } else {
         total_errors.to_string()
     };
@@ -59,13 +63,13 @@ pub fn ErrorsPanel() -> Element {
         Card {
             hoverable: true,
             CardHeader {
-                CardTitle { class: "text-lg text-foreground", "近 24 小时错误" }
+                CardTitle { class: "text-lg text-foreground", "{SEC_ERRORS}" }
                 CardAction {
                     div { class: "flex items-center gap-3",
                         // 合计错误数大数字 + asOf 本地时间（裸值，不写「数据截至」）
                         div { class: "text-right", "data-testid": "errors-total",
                             p { class: "text-xl font-semibold leading-none font-mono tabular-nums text-foreground", "{total_text}" }
-                            p { class: "mt-0.5 text-[10px] text-muted-foreground", "错误合计" }
+                            p { class: "mt-0.5 text-[10px] text-muted-foreground", "{ERRORS_TOTAL_LABEL}" }
                         }
                         if let Some(t) = as_of_time {
                             span {
@@ -86,16 +90,16 @@ pub fn ErrorsPanel() -> Element {
                     // 重新执行即重新拉取);err 仅留在内存不渲染。
                     if err.is_some() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-sm text-zinc-500", "暂无数据" }
+                            p { class: "text-sm text-zinc-500", "{NEUTRAL_NO_DATA}" }
                         }
                     } else if loading {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-muted-foreground", "正在加载错误统计…" }
+                            p { class: "text-muted-foreground", "{ERRORS_LOADING}" }
                         }
                     } else if items.is_empty() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-muted-foreground", "近 24 小时无错误记录" }
-                            p { class: "mt-1 text-xs text-muted-foreground/70", "渠道调用开始产生错误流水后，这里会按模型聚合展示" }
+                            p { class: "text-muted-foreground", "{ERRORS_EMPTY}" }
+                            p { class: "mt-1 text-xs text-muted-foreground/70", "{ERRORS_EMPTY_HINT}" }
                         }
                     } else {
                         for r in items {
@@ -112,7 +116,7 @@ pub fn ErrorsPanel() -> Element {
                                 span { class: "min-w-0 flex-1 truncate text-sm text-foreground", "{r.model_name}" }
                                 span { class: "shrink-0 text-xs font-mono tabular-nums text-muted-foreground", "{r.count}" }
                                 span { class: "w-12 shrink-0 text-right text-xs font-mono tabular-nums text-muted-foreground/70",
-                                    {api::last_seen_local_time(&r.last_seen_at).unwrap_or_else(|| "—".into())}
+                                    {api::last_seen_local_time(&r.last_seen_at).unwrap_or_else(|| DASH.into())}
                                 }
                             }
                         }

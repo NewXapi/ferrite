@@ -5,6 +5,10 @@
 
 use dioxus::prelude::*;
 
+use super::shared::{
+    CHANNEL_FALLBACK, DASH, HEALTH_AVAIL, HEALTH_EMPTY, HEALTH_EMPTY_HINT, HEALTH_LATENCY,
+    HEALTH_LOADING, HEALTH_MONITORED, HEALTH_PROBES, NEUTRAL_NO_DATA, SEC_HEALTH,
+};
 use crate::api;
 use client::ApiClient;
 use ui::components::card::{Card, CardContent, CardHeader, CardTitle};
@@ -45,7 +49,9 @@ pub fn ChannelHealth() -> Element {
                             .iter()
                             .find(|c| c.key == key)
                             .map(|c| c.name.clone())
-                            .unwrap_or_else(|| format!("渠道 {}", &key[..8.min(key.len())]))
+                            .unwrap_or_else(|| {
+                                format!("{CHANNEL_FALLBACK} {}", &key[..8.min(key.len())])
+                            })
                     };
                     let mut out: Vec<ChannelHealthRow> = items
                         .into_iter()
@@ -104,19 +110,19 @@ pub fn ChannelHealth() -> Element {
     };
 
     let summary: [(String, &str); 4] = [
-        (n.to_string(), "受监控渠道"),
+        (n.to_string(), HEALTH_MONITORED),
         (
             avg_avail
                 .map(|v| format!("{:.1}%", v * 100.0))
-                .unwrap_or_else(|| "—".into()),
-            "平均可用率(7天)",
+                .unwrap_or_else(|| DASH.into()),
+            HEALTH_AVAIL,
         ),
-        (total_probes.to_string(), "探活总数(7天)"),
+        (total_probes.to_string(), HEALTH_PROBES),
         (
             avg_latency
                 .map(|v| format!("{:.0}ms", v))
-                .unwrap_or_else(|| "—".into()),
-            "平均延迟",
+                .unwrap_or_else(|| DASH.into()),
+            HEALTH_LATENCY,
         ),
     ];
 
@@ -124,7 +130,7 @@ pub fn ChannelHealth() -> Element {
         Card {
             hoverable: true,
             CardHeader {
-                CardTitle { class: "text-lg text-foreground", "渠道健康 (近 7 天)" }
+                CardTitle { class: "text-lg text-foreground", "{SEC_HEALTH}" }
             }
             CardContent {
                 section { "data-testid": "channel-health",
@@ -135,16 +141,16 @@ pub fn ChannelHealth() -> Element {
                     // 执行即重新拉取),时间窗切换亦触发;err 仅留在内存不渲染。
                     if err.is_some() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-sm text-zinc-500", "暂无数据" }
+                            p { class: "text-sm text-zinc-500", "{NEUTRAL_NO_DATA}" }
                         }
                     } else if loading {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-muted-foreground", "正在加载渠道健康…" }
+                            p { class: "text-muted-foreground", "{HEALTH_LOADING}" }
                         }
                     } else if n == 0 {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-muted-foreground", "暂无探活数据" }
-                            p { class: "mt-1 text-xs text-muted-foreground/70", "monitor_history 为空 —— 渠道探活开始产生记录后这里会展示真实可用率" }
+                            p { class: "text-muted-foreground", "{HEALTH_EMPTY}" }
+                            p { class: "mt-1 text-xs text-muted-foreground/70", "{HEALTH_EMPTY_HINT}" }
                         }
                     } else {
                         // 汇总卡
@@ -168,13 +174,13 @@ pub fn ChannelHealth() -> Element {
                                         }
                                     }
                                     span { class: "w-14 shrink-0 text-right text-xs font-mono text-muted-foreground",
-                                        {r.availability.map(|v| format!("{:.1}%", v * 100.0)).unwrap_or_else(|| "—".into())}
+                                        {r.availability.map(|v| format!("{:.1}%", v * 100.0)).unwrap_or_else(|| DASH.into())}
                                     }
                                     span { class: "w-24 shrink-0 text-right text-xs font-mono text-muted-foreground/70",
                                         "{r.ok_count}/{r.total}"
                                     }
                                     span { class: "w-16 shrink-0 text-right text-xs font-mono text-muted-foreground/70",
-                                        {r.avg_latency_ms.map(|v| format!("{:.0}ms", v)).unwrap_or_else(|| "—".into())}
+                                        {r.avg_latency_ms.map(|v| format!("{:.0}ms", v)).unwrap_or_else(|| DASH.into())}
                                     }
                                 }
                             }

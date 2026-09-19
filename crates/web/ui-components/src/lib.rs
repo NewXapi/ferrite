@@ -11,6 +11,7 @@
 //! - scroll_spy — 滚动监听导航 (ScrollSpyNav)
 //! - segmented — 分段胶囊选择器 (SegmentedCapsule)
 //! - action_buttons — 卡片底部操作按钮组 (ActionButtonGroup, ActionSpec, ActionTone)
+//! - i18n — 跨 crate 文案抽象 (Locale, LOCALE, t, t_in, plural)
 
 pub mod action_buttons;
 pub mod auth_modal;
@@ -20,6 +21,7 @@ pub mod components;
 pub mod dialog;
 pub mod feedback;
 pub mod form;
+pub mod i18n;
 pub mod icons;
 pub mod scroll_spy;
 pub mod segmented;
@@ -38,6 +40,7 @@ pub use components::stat_card::{StatCard, StatSize};
 pub use dialog::Dialog;
 pub use feedback::{Avatar, EmptyState, IconButton, Loading};
 pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};
+pub use i18n::{LOCALE, Locale, plural, t, t_in};
 pub use icons::{IconChartBar, IconLogOut, IconUser};
 pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
