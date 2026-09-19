@@ -8,12 +8,14 @@ use dioxus::prelude::*;
 use ui::StatCard;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
-use contract::api::token::{CreateTokenRequest, CreateTokenResult, TokenDto};
+use contract::api::token::{CreateTokenResult, TokenDto};
 use contract::api::user::{UserDto, role_label};
 
 use crate::api;
-use crate::usage_support::{fmt_quota, short_key, used_pct};
-use crate::tab_page_keys::{CreatedKeyView, DeleteKeyModal, EditKeyModal, KeyCard, NewKeyForm, ProfileItem};
+use crate::tab_page_keys::{
+    CreatedKeyView, DeleteKeyModal, EditKeyModal, KeyCard, NewKeyForm, ProfileItem,
+};
+use crate::usage_support::{fmt_quota, short_key};
 
 /// 拉取当前用户的密钥列表 (GET /api/token, owner 模式) 并写回三个 Signal。
 /// 首次加载与 create/update/delete 成功后刷新共用此入口。

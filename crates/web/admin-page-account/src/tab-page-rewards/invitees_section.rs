@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::{InviteeView, WalletView};
+use crate::api::InviteeView;
 use crate::usage_support::{fmt_num, fmt_time};
 
 #[component]

@@ -16,14 +16,11 @@
 //! 空数组是正常空态。邀请链接由钱包 user_key 现拼,无需后端链接端点。
 
 use dioxus::prelude::*;
-use gloo_timers::future::TimeoutFuture;
 
-use crate::api::{
-    self, AffiliateOverviewView, InviteeView, OpenTopupRequest, RedeemRequest, TopupOrderView,
-    WalletView,
+use crate::api::{self, AffiliateOverviewView, InviteeView, TopupOrderView, WalletView};
+use crate::tab_page_rewards::{
+    InviteSection, InviteesSection, RechargesSection, TopupSection, WalletSection,
 };
-use crate::usage_support::{fmt_num, fmt_quota, fmt_time};
-use crate::tab_page_rewards::{InviteSection, InviteesSection, TopupSection, WalletSection};
 
 /// 拉取钱包 (GET /api/user/wallet) 并写回三个 Signal。
 /// 首载与兑换码入账后的刷新共用此入口;`Signal` 是 Rc 句柄 (Copy),按值传。
@@ -169,6 +166,12 @@ pub fn RewardsPanel() -> Element {
                 topup_busy: topup_busy,
                 topup_ok: topup_ok,
                 topup_err: topup_err,
+            }
+
+            RechargesSection {
+                recharges: recharges,
+                recharges_loaded: recharges_loaded,
+                recharges_err: recharges_err,
             }
 
             InviteSection {
