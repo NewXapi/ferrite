@@ -433,6 +433,78 @@ async fn forward_once_routes_claude_client_to_openai_endpoint() {
     );
 }
 
+/// 跨格式 + 上游 4xx 的真实契约: forward_once 必须把上游的 400 原样传播为
+/// Err(NormalizedError{status:400, retryable:false}), 而不是转成可重试 502。
+///
+/// 这条路径上有一个容易踩错的点: 两个生产 Egress (ReqwestEgress / AdapterEgress)
+/// 都在 execute 内把非 2xx 归类成 Err 后由 `?` 传播, translate_response 因此
+/// 永远只见到 2xx。本测试锁住这个契约 —— 若哪天有 Egress 改成透传非 2xx 的
+/// Ok(ForwardedResponse), 错误体就会落到 translate_response 被成功形状 decoder
+/// 解析失败, 上游的 400 就会退化成 ferrite 的可重试 502 (诱导重试已被拒绝的请求)。
+#[tokio::test]
+async fn cross_format_upstream_400_propagates_as_400_not_502() {
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let _ = stream.read(&mut buf).expect("read");
+        let err = r#"{"error":{"message":"invalid_api_key","type":"invalid_request_error","code":"invalid_api_key"}}"#;
+        let resp = format!(
+            "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\n\
+             content-length: {}\r\nconnection: close\r\n\r\n{}",
+            err.len(),
+            err
+        );
+        use std::io::Write;
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+    });
+
+    let mut task = ForwardTask {
+        candidate: candidate("openai"),
+        path: "/v1/messages".to_string(),
+        headers: vec![("accept".to_string(), "application/json".to_string())],
+        body: Bytes::from(
+            serde_json::json!({"model":"m","max_tokens":16,"messages":[{"role":"user","content":"hi"}]})
+                .to_string(),
+        ),
+        stream: false,
+        provider_type: "openai".to_string(),
+        extra_headers: vec![],
+        inbound_format: ProtocolKind::Anthropic,
+    };
+    task.candidate.base_url = format!("http://127.0.0.1:{port}");
+
+    // 客户端说 Anthropic、渠道是 openai: 跨格式。真实 reqwest 链路。
+    let result = forward::pipeline::forward_once(
+        &task,
+        &ReqwestEgress::new(),
+        &Arc::new(FormatRegistry::with_defaults()),
+        &Timeouts::default(),
+    )
+    .await;
+
+    let err = match result {
+        Ok(forwarded) => panic!(
+            "上游 4xx 必须传播为 Err, 不该是 Ok(Forwarded): status={}",
+            forwarded.status
+        ),
+        Err(e) => e,
+    };
+
+    assert_eq!(err.status, 400, "上游 400 必须保持 400, 不该变成 502");
+    assert!(!err.retryable, "4xx 是请求本身坏, 不该可重试");
+    assert!(
+        err.message.contains("invalid_api_key"),
+        "上游错误体应进 message 供 error_mapping 转成客户端格式, 实际: {}",
+        err.message
+    );
+}
+
 /// model 直接进 URL 路径段, 客户端可发任意串 — 非法值必须被拒, 不能改写上游路径。
 #[test]
 fn resolve_upstream_model_rejects_unsafe_for_url() {
