@@ -39,7 +39,7 @@ pub fn CardShell(
             class: CARD_SHELL_CLASS,
             role: "region",
             "aria-label": "{title}",
-            "data-testid": testid.unwrap_or_default(),
+            "data-testid": testid.as_deref(),
             {children}
         }
     }
@@ -63,7 +63,7 @@ pub fn AdminSection(
     let extra = class.unwrap_or_default();
     rsx! {
         section {
-            id: id.unwrap_or_default(),
+            id: id,
             class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 {extra}",
             {children}
         }
@@ -101,7 +101,7 @@ pub fn CardGrid(
             class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
             role: "list",
             "aria-label": "{aria_label}",
-            "data-testid": testid.unwrap_or_default(),
+            "data-testid": testid.as_deref(),
             {children}
         }
     }
@@ -129,6 +129,7 @@ pub fn PlaceholderBlock(
     rsx! {
         div {
             class: "rounded-2xl border {border} border-zinc-700 bg-zinc-900/50 {pad} text-center",
+            p { class: "text-sm text-zinc-500", "{message}" }
             {children}
         }
     }
@@ -179,7 +180,7 @@ pub fn GhostButton(
     rsx! {
         button {
             class: "mt-3 {grow_cls}rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
-            "data-testid": testid.unwrap_or_default(),
+            "data-testid": testid.as_deref(),
             onclick: move |e| onclick.call(e),
             "{label}"
         }

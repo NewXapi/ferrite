@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::api;
-use crate::usage_support::{fmt_time_minute, summarize_ua};
+use crate::tab_page_sessions::{ConfirmRevokeCurrentModal, SessionRow};
 
 /// 拉取会话列表, 结果写入 sessions / err 信号。信号按值 (clone 句柄) 接收并 `mut`。
 /// 首次加载与吊销成功后的刷新共用此入口。
@@ -185,114 +185,6 @@ pub fn SessionsPanel() -> Element {
                             .await;
                         });
                     },
-                }
-            }
-        }
-    }
-}
-
-/// 单条会话卡片。`on_revoke` 由父面板发起 DELETE 请求并刷新列表。
-/// 「当前设备」走 `on_request_current_revoke` 先弹确认 (吊销即本机立即登出),
-/// 其他设备维持行内直接吊销。
-#[component]
-fn SessionRow(
-    session: SessionDto,
-    busy: bool,
-    on_revoke: EventHandler<String>,
-    on_request_current_revoke: EventHandler<String>,
-) -> Element {
-    // UA 归纳为「浏览器 · OS」短标签, 完整 UA 挂 title 悬停可见 (不截断丢信息)。
-    let ua_label = summarize_ua(&session.user_agent);
-    // 时间展示: 本地时区分钟精度 (含年份); 解析失败时 fmt_time_minute 原样返回,
-    // 保证后端异常数据仍诚实可见而不是变成空串。
-    let last_active = fmt_time_minute(&session.last_active);
-    let expires_at = fmt_time_minute(&session.expires_at);
-
-    rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4",
-            div { class: "flex items-start justify-between gap-3",
-                div { class: "min-w-0",
-                    div { class: "flex items-center gap-2",
-                        p {
-                            class: "truncate text-sm text-zinc-200",
-                            title: "{session.user_agent}",
-                            "{ua_label}"
-                        }
-                        if session.current {
-                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400", "当前设备" }
-                        }
-                    }
-                    div { class: "mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2",
-                        span { "IP: {session.ip}" }
-                        span { "登录方式: {session.login_method}" }
-                        // 时间悬停可见原始 RFC3339 (与上方 UA 短标签同款处理)
-                        span { title: "{session.last_active}", "最后活跃: {last_active}" }
-                        span { title: "{session.expires_at}", "到期: {expires_at}" }
-                    }
-                }
-                Button {
-                    variant: ButtonVariant::Ghost,
-                    size: ButtonSize::Xs,
-                    class: "shrink-0 text-red-400",
-                    disabled: busy,
-                    "data-testid": "revoke-session-{session.sid}",
-                    "aria-label": "吊销此会话",
-                    onclick: move |_| {
-                        if session.current {
-                            on_request_current_revoke.call(session.sid.clone());
-                        } else {
-                            on_revoke.call(session.sid.clone());
-                        }
-                    },
-                    "吊销"
-                }
-            }
-        }
-    }
-}
-
-/// 吊销「当前设备」确认弹窗 — 视觉仿 keys.rs 的删除确认弹窗 (DeleteKeyModal)。
-/// 只负责确认交互, 真正的 DELETE 由父面板在 on_confirmed 里执行;
-/// 「吊销其他设备」不弹窗, 维持现状。
-#[component]
-fn ConfirmRevokeCurrentModal(
-    on_cancel: EventHandler<()>,
-    on_confirmed: EventHandler<()>,
-) -> Element {
-    rsx! {
-        div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
-            role: "dialog",
-            "aria-modal": "true",
-            "aria-label": "吊销当前设备确认",
-            "data-testid": "confirm-revoke-current-modal",
-            onclick: move |_| on_cancel.call(()),
-            div {
-                class: "w-full max-w-md rounded-2xl border border-red-500/40 bg-zinc-900 p-5 shadow-xl",
-                onclick: move |e| e.stop_propagation(),
-
-                h3 { class: "text-base font-semibold text-zinc-100", "吊销当前设备" }
-                p { class: "mt-3 text-sm text-zinc-400",
-                    "确认吊销当前设备的会话吗？吊销后本设备将立即退出登录, 且无法恢复。"
-                }
-
-                div { class: "mt-6 flex gap-3",
-                    Button {
-                        variant: ButtonVariant::Outline,
-                        class: "flex-1",
-                        "data-testid": "cancel-revoke-current",
-                        "aria-label": "取消吊销当前设备",
-                        onclick: move |_| on_cancel.call(()),
-                        "取消"
-                    }
-                    Button {
-                        variant: ButtonVariant::Destructive,
-                        class: "flex-1",
-                        "data-testid": "confirm-revoke-current",
-                        "aria-label": "确认吊销当前设备",
-                        onclick: move |_| on_confirmed.call(()),
-                        "确认吊销"
-                    }
                 }
             }
         }

@@ -55,9 +55,9 @@ apps/admin-web（main.rs:9 init_auth() 注册 401 静默刷新 → 挂 RootApp�
     ├── 桌面悬浮顶栏：品牌 + TopNavMeter + 主题切换 + UserMenu   # lib.rs:410
     ├── ConsolePanel（页签头 + 滚动体）                   # lib.rs:198
     │   ├── Section::Dashboard（#overview/#models/#leaderboard）
-    │   │   ├── OverviewPanel     总览：趋势/健康度/统计卡/Top10  # overview.rs:17  真实 API
-    │   │   ├── ModelsPanel       模型卡片网格             # models.rs:65  真实 API
-    │   │   └── LeaderboardPanel  模型实力排行榜           # leaderboard/mod.rs:14  静态数据
+    │   │   ├── OverviewPanel     总览：趋势/健康度/统计卡/Top10  # tab-page-overview/page.rs  真实 API
+    │   │   ├── ModelsPanel       模型卡片网格             # tab-page-models/page.rs  真实 API
+    │   │   └── LeaderboardPanel  模型实力排行榜           # tab-page-leaderboard/page.rs  静态数据
     │   ├── Section::Account（#account/#usage/#rewards/#sessions/#settings）
     │   │   ├── KeysPanel         密钥·资料                # keys.rs:32  真实 API
     │   │   ├── UsageLogsPanel    用量·日志                # usage_logs.rs:87  真实 API
@@ -111,7 +111,7 @@ crates/web/
   - 现状：稳定
 - **admin-page-auth**（内部依赖：client, contract, ui；src：lib.rs / api.rs / form.rs / state.rs / view.rs）
   - 认证页：登录、注册（已接真实 API）；2FA / 密码重置未实现（api 侧 `verify_2fa` 亦为占位，crates/api/auth/src/service.rs:793）
-- **admin-page-overview**（内部依赖：client, contract, ui；src：lib.rs / api.rs / overview.rs / models.rs / leaderboard/ / health.rs）
+- **admin-page-overview**（内部依赖：client, contract, ui；src：lib.rs / api.rs / shared.rs + 三个 tab 目录 tab-page-{overview,models,leaderboard}/）
   - 总览：OverviewPanel 与 ModelsPanel 均接真实 API（/api/dashboard、/api/models）；LeaderboardPanel 静态数据
 - **admin-page-account**（内部依赖：client, contract, ui；src：lib.rs / api.rs / keys.rs / usage_logs.rs / usage_support.rs / sessions.rs / settings.rs / rewards.rs）
   - 个人中心：API Key 列表增删、用量日志、会话、奖励；现状：**已接真实 API**（仅 rewards「立即充值」为占位成功，见 §7）
