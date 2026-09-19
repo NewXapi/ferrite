@@ -72,6 +72,41 @@ pub fn candidates_from_snapshot<'a>(
         .collect()
 }
 
+/// 兜底候选：组内**没有**该模型的路由单元时，回落到 settings 标了
+/// `fallback: true` 的启用渠道（api-hub `[aliases] default` 的 PG 版）。
+///
+/// 模型名原样透传（不 rename）——兜底渠道的语义就是「什么都接下来自己分发」。
+/// key_index 固定 0：多 key 渠道兜底走哪把 key 由运维在 settings 里显式控制
+/// 超出本次范围（TODO(#158)）。未标 fallback 的渠道不参与，保持旧行为。
+fn fallback_units(snap: &Snapshot, group: &str, public_model: &str) -> Vec<RouteUnitRecord> {
+    snap.channels
+        .values()
+        .filter(|c| {
+            c.status == STATUS_ENABLED
+                && !c.keys.is_empty()
+                && c.groups.iter().any(|g| g == group)
+                && c.settings.get("fallback").and_then(|v| v.as_bool()) == Some(true)
+        })
+        .map(|c| RouteUnitRecord {
+            meta: contract::records::SyncMeta {
+                key: format!("{}#fallback", c.meta.key),
+                schema_version: c.meta.schema_version,
+                logical_version: c.meta.logical_version,
+                origin: c.meta.origin.clone(),
+                updated_at: c.meta.updated_at,
+            },
+            group: group.to_string(),
+            public_model: public_model.to_string(),
+            channel_key: c.meta.key.clone(),
+            key_index: 0,
+            upstream_model: public_model.to_string(),
+            priority: 0,
+            weight: 1,
+            status: STATUS_ENABLED,
+        })
+        .collect()
+}
+
 pub struct Dispatcher {
     snapshot: ArcSwap<Option<Arc<Snapshot>>>,
     health: Arc<MemoryHealthTable>,
@@ -158,9 +193,18 @@ impl Dispatch for Dispatcher {
             None => return Err(DispatchError::SnapshotNotReady),
         };
         let cands = candidates_from_snapshot(&snap.units, group, public_model);
-        if cands.is_empty() {
-            return Err(no_candidate(group, public_model));
-        }
+        // 无该模型的路由单元 → 兜底渠道（settings.fallback，见 fallback_units）。
+        // 有单元但全被禁用不兜底：那是运维主动下线，静默改道会掩盖配置错误。
+        let fallback_owned: Vec<RouteUnitRecord>;
+        let cands: Vec<&RouteUnitRecord> = if cands.is_empty() {
+            fallback_owned = fallback_units(snap, group, public_model);
+            if fallback_owned.is_empty() {
+                return Err(no_candidate(group, public_model));
+            }
+            fallback_owned.iter().collect()
+        } else {
+            cands
+        };
         let cands: Vec<&RouteUnitRecord> = cands
             .into_iter()
             .filter(|u| {
@@ -169,9 +213,6 @@ impl Dispatch for Dispatcher {
                     .is_some_and(|c| c.status == STATUS_ENABLED)
             })
             .collect();
-        if cands.is_empty() {
-            return Err(no_candidate(group, public_model));
-        }
         let limits = self.limits.load();
         let mut rng = rand::rngs::StdRng::from_entropy();
         let unit = if limits.is_empty() {

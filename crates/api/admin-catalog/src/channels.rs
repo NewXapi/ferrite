@@ -37,6 +37,7 @@ pub struct ChannelView {
     pub weight: i32,
     pub status: i16,
     pub tags: Value,
+    pub settings: Value,
     pub test_model: Option<String>,
     pub remark: String,
     pub created_at: DateTime<Utc>,
@@ -56,14 +57,14 @@ struct ChannelRow {
     weight: i32,
     status: i16,
     tags: Value,
+    settings: Value,
     test_model: Option<String>,
     remark: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
-
 const SELECT_COLS: &str = "key, name, channel_type, base_url, keys, models, groups, \
-     priority, weight, status, tags, test_model, remark, created_at, updated_at";
+    priority, weight, status, settings, tags, test_model, remark, created_at, updated_at";
 
 fn row_to_view(r: ChannelRow, include_keys: bool) -> ChannelView {
     let keys: Vec<String> = serde_json::from_value(r.keys.clone()).unwrap_or_else(|e| {
@@ -84,6 +85,7 @@ fn row_to_view(r: ChannelRow, include_keys: bool) -> ChannelView {
         weight: r.weight,
         status: r.status,
         tags: r.tags,
+        settings: r.settings,
         test_model: r.test_model,
         remark: r.remark,
         created_at: r.created_at,
@@ -112,8 +114,9 @@ impl ChannelService {
         weight: i32,
         test_model: Option<String>,
         remark: &str,
+        settings: Value,
     ) -> Result<ChannelView, AuthError> {
-        validate(name, channel_type, base_url, &keys, &models)?;
+        validate(name, channel_type, base_url, &keys, &models, &settings)?;
         // groups 为空 → snapshot 展开零路由单元，渠道上线即"永不通"。
         // 写侧必须拦（ocr：validate 此前未覆盖 groups）。
         if groups.is_empty() || groups.iter().any(|g| g.trim().is_empty()) {
@@ -123,8 +126,8 @@ impl ChannelService {
         let res = sqlx::query(
             r#"INSERT INTO api_channels
                (key, name, channel_type, base_url, keys, models, groups,
-                priority, weight, test_model, remark)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
+                priority, weight, test_model, remark, settings)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
         )
         .bind(key)
         .bind(name.trim())
@@ -137,6 +140,7 @@ impl ChannelService {
         .bind(weight)
         .bind(test_model)
         .bind(remark.trim())
+        .bind(settings)
         .execute(&self.pool)
         .await;
         if let Err(sqlx::Error::Database(db)) = &res
@@ -199,6 +203,7 @@ impl ChannelService {
         test_model: Option<Option<String>>,
         remark: Option<&str>,
         status: Option<i16>,
+        settings: Option<Value>,
     ) -> Result<ChannelView, AuthError> {
         let existing = self.fetch(key).await?;
         let mn = name.unwrap_or(&existing.name);
@@ -209,7 +214,10 @@ impl ChannelService {
             None => serde_json::from_value(existing.keys.clone()).unwrap_or_default(),
         };
         let mm = models.clone().unwrap_or_else(|| existing.models.clone());
-        validate(mn, mt, mu, &mk, &mm)?;
+        let ms = settings
+            .clone()
+            .unwrap_or_else(|| existing.settings.clone());
+        validate(mn, mt, mu, &mk, &mm, &ms)?;
         let cur_keys = serde_json::to_value(&mk).map_err(|e| AuthError::Crypto(e.to_string()))?;
         sqlx::query(
             r#"UPDATE api_channels SET
@@ -218,7 +226,8 @@ impl ChannelService {
                models = COALESCE($6, models), groups = COALESCE($7, groups),
                priority = COALESCE($8, priority), weight = COALESCE($9, weight),
                test_model = $10, remark = COALESCE($11, remark),
-               status = COALESCE($12, status), updated_at = now() WHERE key = $1"#,
+               status = COALESCE($12, status), settings = COALESCE($13, settings),
+               updated_at = now() WHERE key = $1"#,
         )
         .bind(key)
         .bind(name.map(str::trim))
@@ -232,6 +241,7 @@ impl ChannelService {
         .bind(test_model)
         .bind(remark.map(str::trim))
         .bind(status)
+        .bind(settings)
         .execute(&self.pool)
         .await?;
         Ok(row_to_view(self.fetch(key).await?, true))
@@ -646,6 +656,8 @@ struct CreateChannelRequest {
     test_model: Option<String>,
     #[serde(default)]
     remark: String,
+    #[serde(default)]
+    settings: Value,
 }
 fn default_ct() -> String {
     "openai".into()
@@ -668,6 +680,7 @@ struct UpdateChannelRequest {
     test_model: Option<Option<String>>,
     remark: Option<String>,
     status: Option<i16>,
+    settings: Option<Value>,
 }
 #[derive(Debug, Deserialize)]
 struct StatusRequest {
@@ -745,6 +758,7 @@ async fn create(
             req.weight,
             req.test_model,
             &req.remark,
+            req.settings,
         )
         .await
         .map(|c| Json(json!(c)))
@@ -787,6 +801,7 @@ async fn update(
             req.test_model,
             req.remark.as_deref(),
             req.status,
+            req.settings,
         )
         .await
         .map(|c| Json(json!(c)))
@@ -969,6 +984,7 @@ fn validate(
     base_url: &str,
     keys: &[String],
     models: &Value,
+    settings: &Value,
 ) -> Result<(), AuthError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 64 {
@@ -1000,6 +1016,41 @@ fn validate(
         }
     } else if !models.is_null() {
         return Err(AuthError::BadRequest("models must be an array".into()));
+    }
+    // settings：null 或对象。写侧拦非法结构，避免请求期才 502。
+    // - headers：对象，键须是合法 HeaderName，值须是 string
+    //   （forward::extra_headers_from_settings 只认 string 值）
+    // - fallback：bool（dispatch 兜底路由开关，见 fallback_units）
+    if !settings.is_null() {
+        let Some(obj) = settings.as_object() else {
+            return Err(AuthError::BadRequest("settings must be an object".into()));
+        };
+        if let Some(headers) = obj.get("headers") {
+            let Some(hmap) = headers.as_object() else {
+                return Err(AuthError::BadRequest(
+                    "settings.headers must be an object".into(),
+                ));
+            };
+            for (k, v) in hmap {
+                if !v.is_string() {
+                    return Err(AuthError::BadRequest(format!(
+                        "settings.headers[{k}] must be a string"
+                    )));
+                }
+                if axum::http::HeaderName::try_from(k).is_err() {
+                    return Err(AuthError::BadRequest(format!(
+                        "settings.headers[{k}] is not a valid header name"
+                    )));
+                }
+            }
+        }
+        if let Some(fb) = obj.get("fallback")
+            && !fb.is_boolean()
+        {
+            return Err(AuthError::BadRequest(
+                "settings.fallback must be a boolean".into(),
+            ));
+        }
     }
     Ok(())
 }

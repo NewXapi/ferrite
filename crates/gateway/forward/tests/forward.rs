@@ -78,13 +78,18 @@ fn adapter_extra_headers_carried_into_merge() {
     assert_eq!(p.auth_header.0, "Authorization");
     assert_eq!(p.auth_header.1, "Bearer sk-openai-secret");
     assert_eq!(p.extra_headers.len(), 1);
-    // merge_headers: 顺序 = auth_header → extra_headers → client_headers, 重复键后者胜
+    // merge_headers: 渠道 settings 头盖过 adapter 鉴权头，且同名头去重
+    // （大小写无关）——不双发 Authorization。
     let merged = forward::pipeline::merge_headers(&p, &[]);
-    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.len(), 1);
     assert_eq!(
-        merged.iter().find(|(k, _)| k == "authorization").unwrap().1,
+        merged
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+            .unwrap()
+            .1,
         "Bearer override",
-        "extra_headers 应在 merge 时覆盖 auth_header"
+        "extra_headers 应在 merge 时覆盖 auth_header 且不重复"
     );
 }
 

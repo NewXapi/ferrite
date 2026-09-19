@@ -33,15 +33,29 @@ use std::future::Future;
 use std::sync::Arc;
 
 /// 合并后的请求头 (adapter 鉴权 + 渠道覆盖 + 客户端已过滤头)。
+///
+/// 同名头**首个**胜出（大小写无关）——渠道用 `settings.headers` 覆盖
+/// 鉴权头键名时不能双发，adapter.rs 文档承诺的「settings 可覆盖」靠这里兑现。
 pub fn merge_headers(
     prepared: &PreparedRequest,
     client_headers: &[(String, String)],
 ) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> =
         Vec::with_capacity(2 + client_headers.len() + prepared.extra_headers.len());
-    out.push(prepared.auth_header.clone());
-    out.extend(prepared.extra_headers.iter().cloned());
-    out.extend(client_headers.iter().cloned());
+    let mut seen: Vec<String> = Vec::with_capacity(out.capacity());
+    for (k, v) in prepared
+        .extra_headers
+        .iter()
+        .chain(std::iter::once(&prepared.auth_header))
+        .chain(client_headers.iter())
+    {
+        let key = k.to_ascii_lowercase();
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        out.push((k.clone(), v.clone()));
+    }
     out
 }
 
