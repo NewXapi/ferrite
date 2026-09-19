@@ -94,6 +94,39 @@ fn adapter_extra_headers_carried_into_merge() {
 }
 
 #[test]
+fn merge_headers_channel_settings_win_over_client_headers() {
+    // 渠道 settings 头 vs 客户端已过滤头同名（大小写不一致）时，渠道头胜出
+    // 且不重复——这是 merge_headers 三段链（extra > auth > client）的最后一段，
+    // 前两段由 adapter_extra_headers_carried_into_merge 覆盖。
+    let c = candidate("openai");
+    let p = prepare(
+        &c,
+        "/chat/completions",
+        "openai",
+        vec![("x-custom".to_string(), "from-channel".to_string())],
+    );
+    let client = vec![("X-Custom".to_string(), "from-client".to_string())];
+    let merged = forward::pipeline::merge_headers(&p, &client);
+    assert_eq!(
+        merged
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("x-custom"))
+            .unwrap()
+            .1,
+        "from-channel",
+        "渠道 settings 头应胜过客户端头",
+    );
+    assert_eq!(
+        merged
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("x-custom"))
+            .count(),
+        1,
+        "同名头不得重复",
+    );
+}
+
+#[test]
 fn sanitize_strips_hop_by_hop_and_credentials() {
     let headers = vec![
         ("authorization".to_string(), "Bearer sk-xxx".to_string()),
