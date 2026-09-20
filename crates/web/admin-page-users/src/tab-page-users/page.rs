@@ -1,8 +1,11 @@
 //! 用户管理面板 —— 统计 / 筛选 / 用户卡片三区。
 //!
+//! 文件名按 spec §1.4 统一为 `page.rs`(跨 crate 重构要按统一文件名定位页面层);
+//! 公开组件符号名仍保持 `UsersPanel` 不变(公开面逐字保留)。
+//!
 //! 本文件只放「状态 + 拉取 effect + 区段组合」,不含渲染细节:
 //! 卡片内部展示在 `user_card`,两个弹窗分别在 `user_form` / `topup_form`,
-//! 分组与角色选择器在 `group_chips` / `role_chips`。
+//! 分组与角色选择器在 `group_chips` / `role_chips`,文案常量在 `shared`。
 //!
 //! 数据来自真实后端:挂载时 `use_effect` 拉 `list_users_api`,写入
 //! `users` signal;筛选项(搜索 / 分组 / 状态 / 角色)在前端对返回列表过滤,
@@ -19,6 +22,12 @@ use contract::api::admin::{AdminUserDto, ManageUserRequest};
 use crate::api::{self, current_month_prefix, list_users_api, manage_user_api};
 use crate::data::fmt_cny;
 
+use super::shared::{
+    BTN_NEW_USER, BTN_REFRESH, BTN_RETRY, LBL_CONSUMED_TOTAL, LBL_ENABLED_USERS, LBL_GRANTED_TOTAL,
+    LBL_NEW_THIS_MONTH, LBL_PERSON, LBL_TOTAL_USERS, MSG_ACTION_ERR, MSG_ACTION_OK, MSG_CREATE_ERR,
+    MSG_LOAD_USERS_FAIL, MSG_LOADING, MSG_LOADING_USERS, MSG_NO_MATCH, MSG_SEARCH_HINT,
+    MSG_USER_CREATED, OPT_ALL, SEC_FILTER, SEC_LIST, SEC_STATS,
+};
 use super::topup_form::TopUpForm;
 use super::user_card::UserCard;
 use super::user_form::UserForm;
@@ -34,8 +43,6 @@ enum Form {
 #[component]
 pub fn UsersPanel() -> Element {
     // —— 区段标题 ——
-    const SEC_STATS: &str = "用户概览";
-    const SEC_LIST: &str = "用户列表";
     let mut search = use_signal(String::new);
     let mut group_idx = use_signal(|| 0usize);
     let mut status_idx = use_signal(|| 0usize);
@@ -104,7 +111,7 @@ pub fn UsersPanel() -> Element {
 
     // 筛选项:分组走真实列表 + 首项「全部」;状态/角色仍是固定枚举
     let filter_groups = {
-        let mut v = vec![("全部".to_string(), String::new())];
+        let mut v = vec![(OPT_ALL.to_string(), String::new())];
         v.extend(groups().clone());
         v
     };
@@ -122,11 +129,11 @@ pub fn UsersPanel() -> Element {
     let consumed: i64 = all.iter().map(|u| u.used_quota).sum();
 
     let stats: [(String, &str); 5] = [
-        (total.to_string(), "总用户"),
-        (enabled.to_string(), "启用中"),
-        (new_this_month.to_string(), "本月新增"),
-        (fmt_cny(granted), "总发放额度"),
-        (fmt_cny(consumed), "总消耗"),
+        (total.to_string(), LBL_TOTAL_USERS),
+        (enabled.to_string(), LBL_ENABLED_USERS),
+        (new_this_month.to_string(), LBL_NEW_THIS_MONTH),
+        (fmt_cny(granted), LBL_GRANTED_TOTAL),
+        (fmt_cny(consumed), LBL_CONSUMED_TOTAL),
     ];
 
     let filtered: Vec<AdminUserDto> = {
@@ -195,10 +202,10 @@ pub fn UsersPanel() -> Element {
                 let req = ManageUserRequest { key, action, value };
                 match manage_user_api(&client, &req).await {
                     Ok(_) => {
-                        n.set(Some("操作成功".to_string()));
+                        n.set(Some(MSG_ACTION_OK.to_string()));
                         r.set(r() + 1);
                     }
-                    Err(e) => n.set(Some(format!("操作失败:{e}"))),
+                    Err(e) => n.set(Some(format!("{MSG_ACTION_ERR}:{e}"))),
                 }
                 b.set(false);
             });
@@ -225,7 +232,7 @@ pub fn UsersPanel() -> Element {
             // 通知条(成功/错误/进行中)
             if let Some(msg) = notice() {
                 div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
-                    role: if msg.starts_with("操作失败") { "alert" } else { "status" },
+                    role: if msg.starts_with(MSG_ACTION_ERR) { "alert" } else { "status" },
                     "{msg}"
                     if busy() { " ···" }
                 }
@@ -247,19 +254,19 @@ pub fn UsersPanel() -> Element {
                 id: "users-sec-filter",
                 class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
                 div { class: "flex items-center justify-between gap-3",
-                    h2 { class: "text-sm font-medium text-zinc-300", "筛选用户" }
+                    h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
                     div { class: "flex gap-2",
                         button {
                             class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
                             "data-testid": "refresh-users",
                             onclick: move |_| reload.set(reload() + 1),
-                            "刷新"
+                            "{BTN_REFRESH}"
                         }
                         button {
                             class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                             "data-testid": "new-user",
                             onclick: open_new,
-                            "✚ 新建用户"
+                            "{BTN_NEW_USER}"
                         }
                     }
                 }
@@ -267,7 +274,7 @@ pub fn UsersPanel() -> Element {
                 input {
                     class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                     r#type: "text",
-                    placeholder: "搜索用户名或邮箱",
+                    placeholder: MSG_SEARCH_HINT,
                     "data-testid": "users-search",
                     value: "{search}",
                     oninput: move |e| search.set(e.value()),
@@ -299,27 +306,27 @@ pub fn UsersPanel() -> Element {
                     h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
                     span {
                         class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                        if loading() { "加载中…" } else { "{filtered.len()} 人" }
+                        if loading() { "{MSG_LOADING}" } else { "{filtered.len()} {LBL_PERSON}" }
                     }
                 }
 
                 if let Some(e) = err() {
                     div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-                        p { class: "text-sm text-red-300", "加载用户失败" }
+                        p { class: "text-sm text-red-300", "{MSG_LOAD_USERS_FAIL}" }
                         p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                         button {
                             class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                             onclick: move |_| reload.set(reload() + 1),
-                            "重试"
+                            "{BTN_RETRY}"
                         }
                     }
                 } else if loading() {
                     div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "正在加载用户…" }
+                        p { class: "text-zinc-400", "{MSG_LOADING_USERS}" }
                     }
                 } else if filtered.is_empty() {
                     div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "没有匹配的用户" }
+                        p { class: "text-zinc-400", "{MSG_NO_MATCH}" }
                     }
                 } else {
                     if let Some(user) = filtered.first() {
@@ -380,10 +387,10 @@ pub fn UsersPanel() -> Element {
                         let client = ApiClient::shared().clone();
                         match api::create_user_api(&client, &req).await {
                             Ok(_) => {
-                                n.set(Some("用户已创建".to_string()));
+                                n.set(Some(MSG_USER_CREATED.to_string()));
                                 r.set(r() + 1);
                             }
-                            Err(e) => n.set(Some(format!("创建失败:{e}"))),
+                            Err(e) => n.set(Some(format!("{MSG_CREATE_ERR}:{e}"))),
                         }
                         b.set(false);
                     });

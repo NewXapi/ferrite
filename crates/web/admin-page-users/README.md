@@ -6,7 +6,7 @@
 - `src/api.rs` — 用户列表 / 用户编辑 / 用户创建 / 分组列表 API 薄壳。
 - `src/data.rs` — 展示格式化助手(额度换算、日期截断、key 截断、百分比)。
 - `src/tab-page-users/` — 用户管理 tab,目录内文件不带前缀:
-  - `panel.rs` — 状态 + 拉取 effect + 统计 / 筛选 / 卡片网格三区组合。
+  - `page.rs` — 页面层:状态 + 拉取 effect + 统计 / 筛选 / 卡片网格三区组合(spec §1.4 统一页面层文件名)。
   - `user_card.rs` — 单张用户卡(徽标行、额度进度条、计数行、操作区)。
   - `badge.rs` — 分组 / 角色 / 状态共用的胶囊徽标。
   - `modal.rs` — 弹窗外壳与输入框样式(表单弹窗与充值弹窗共用)。
@@ -14,7 +14,7 @@
   - `group_chips.rs` — 生效分组多选 chips(列表经 context 注入)。
   - `role_chips.rs` — 角色权限单选 chips。
   - `topup_form.rs` — 额度充值弹窗。
-  - `labels.rs` — 跨组件共用的文案常量。
+  - `shared.rs` — 本 tab 独占的共享层:文案常量(spec §3.2 前缀)与共用类型。
 - `tests/api_shapes.rs` — 筛选标签约定 + 创建请求 wire 形状。
 - `tests/format.rs` — 格式化助手不变量。
 

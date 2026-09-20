@@ -14,9 +14,14 @@ use crate::api;
 use crate::data::fmt_cny;
 
 use super::group_chips::GroupChips;
-use super::labels::{BTN_CANCEL, LBL_EMAIL, LBL_QUOTA};
 use super::modal::{MODAL_INPUT, Modal};
 use super::role_chips::RoleChips;
+use super::shared::{
+    BTN_CANCEL, BTN_CREATE, BTN_SAVE, FIELD_GROUP_HINT, FIELD_GROUPS, FIELD_INIT_PASSWORD,
+    FIELD_NOTE, FIELD_NOTE_HINT, FIELD_PASSWORD_HINT, FIELD_ROLE, FIELD_USERNAME,
+    FIELD_USERNAME_HINT, LBL_EMAIL, LBL_QUOTA, MSG_BINDING_READONLY, MSG_QUOTA_HINT, TAB_BASIC,
+    TAB_BINDING, TAB_GROUP, TTL_EDIT_USER, TTL_NEW_USER,
+};
 
 /// 编辑弹窗内的真实页签。
 ///
@@ -32,9 +37,9 @@ pub enum FormTab {
 
 /// 页签顺序与文案;`data-testid` 直接取这里的 label。
 pub const TAB_LABELS: [(FormTab, &str); 3] = [
-    (FormTab::Basic, "基本信息"),
-    (FormTab::Group, "分组与备注"),
-    (FormTab::Binding, "绑定"),
+    (FormTab::Basic, TAB_BASIC),
+    (FormTab::Group, TAB_GROUP),
+    (FormTab::Binding, TAB_BINDING),
 ];
 
 #[component]
@@ -53,16 +58,8 @@ pub fn UserForm(
     on_create: EventHandler<api::CreateUserRequest>,
 ) -> Element {
     let _ = edit_key;
-    let title = if editing {
-        "编辑用户"
-    } else {
-        "新建用户"
-    };
-    let submit_label = if editing {
-        "保存修改"
-    } else {
-        "创建用户"
-    };
+    let title = if editing { TTL_EDIT_USER } else { TTL_NEW_USER };
+    let submit_label = if editing { BTN_SAVE } else { BTN_CREATE };
     // 额度输入的元换算提示:内部单位 → 人民币,不暴露 quota 字样
     let quota_hint = quota()
         .trim()
@@ -137,10 +134,10 @@ pub fn UserForm(
             if tab() == FormTab::Basic {
                 div { class: "space-y-4",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "用户名" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_USERNAME}" }
                         input {
                             class: MODAL_INPUT,
-                            placeholder: "例如: zhangna",
+                            placeholder: FIELD_USERNAME_HINT,
                             value: "{username}",
                             oninput: move |e| username.set(e.value()),
                         }
@@ -148,11 +145,11 @@ pub fn UserForm(
                     // 初始密码仅新建时填写;编辑态改密走独立 reset_password 动作
                     if !editing {
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "初始密码" }
+                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_INIT_PASSWORD}" }
                             input {
                                 class: MODAL_INPUT,
                                 r#type: "password",
-                                placeholder: "至少 8 位",
+                                placeholder: FIELD_PASSWORD_HINT,
                                 value: "{password}",
                                 oninput: move |e| password.set(e.value()),
                             }
@@ -169,7 +166,7 @@ pub fn UserForm(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "角色权限" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_ROLE}" }
                         RoleChips { role, on_change: move |v: u16| role.set(v) }
                     }
                     div {
@@ -180,7 +177,7 @@ pub fn UserForm(
                             value: "{quota}",
                             oninput: move |e| quota.set(e.value()),
                         }
-                        p { class: "mt-1 text-xs text-zinc-500", "折合 {quota_hint}" }
+                        p { class: "mt-1 text-xs text-zinc-500", "{MSG_QUOTA_HINT} {quota_hint}" }
                     }
                 }
             }
@@ -189,15 +186,15 @@ pub fn UserForm(
             if tab() == FormTab::Group {
                 div { class: "space-y-4",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "生效分组" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_GROUPS}" }
                         GroupChips { group, on_change: move |v: Vec<String>| group.set(v) }
-                        p { class: "mt-1 text-xs text-zinc-500", "点击分组切换选中,可多选;首个分组为计费生效分组。" }
+                        p { class: "mt-1 text-xs text-zinc-500", "{FIELD_GROUP_HINT}" }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "管理员备注(仅管理员可见)" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_NOTE}" }
                         textarea {
                             class: "{MODAL_INPUT} h-24 resize-none",
-                            placeholder: "例如: 连续 30 天无登录,待清退",
+                            placeholder: FIELD_NOTE_HINT,
                             value: "{remark}",
                             oninput: move |e| remark.set(e.value()),
                         }
@@ -208,7 +205,7 @@ pub fn UserForm(
             // —— Tab 3:绑定(只读) ——
             if tab() == FormTab::Binding {
                 div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
-                    p { class: "mb-2 text-[11px] text-zinc-500", "第三方账号绑定(后端暂未返回,只读)" }
+                    p { class: "mb-2 text-[11px] text-zinc-500", "{MSG_BINDING_READONLY}" }
                     div { class: "space-y-1.5",
                         for (label, value) in [("GitHub", "-"), ("Discord", "-"), ("OIDC", "-"), ("WeChat", "-"), ("Telegram", "-"), (LBL_EMAIL, email_bound)] {
                             div { class: "flex justify-between gap-2",

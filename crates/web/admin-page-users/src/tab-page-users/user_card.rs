@@ -9,7 +9,9 @@ use dioxus::prelude::*;
 use crate::data::{fmt_cny, fmt_created_date, fmt_num, role_label, short_key, used_pct};
 
 use super::badge::Badge;
-use super::labels::{LBL_QUOTA, STATUS_DISABLED, STATUS_ENABLED};
+use super::shared::{
+    BTN_EDIT, BTN_TOPUP, LBL_CREATED, LBL_QUOTA, LBL_REQUESTS, STATUS_DISABLED, STATUS_ENABLED,
+};
 
 #[component]
 pub fn UserCard(
@@ -125,7 +127,7 @@ pub fn UserCard(
             // 计数行:创建时间以日期为主,悬停看完整时刻
             div { class: "mt-3 space-y-1.5 text-xs",
                 div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-400", "请求数" }
+                    span { class: "shrink-0 text-zinc-400", "{LBL_REQUESTS}" }
                     span {
                         class: "font-medium text-zinc-200",
                         // 后端 UserView 无此列 → 缺省 0;有值时千分位
@@ -134,7 +136,7 @@ pub fn UserCard(
                     }
                 }
                 div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-400", "创建" }
+                    span { class: "shrink-0 text-zinc-400", "{LBL_CREATED}" }
                     span {
                         class: "whitespace-nowrap font-medium text-zinc-200",
                         title: "{user.created_at}",
@@ -148,12 +150,12 @@ pub fn UserCard(
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white",
                     onclick: move |_| on_edit.call(edit_key.clone()),
-                    "编辑"
+                    "{BTN_EDIT}"
                 }
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300",
                     onclick: move |_| on_topup.call(topup_key.clone()),
-                    "充值"
+                    "{BTN_TOPUP}"
                 }
                 button {
                     class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",

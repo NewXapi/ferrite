@@ -8,6 +8,8 @@
 
 use dioxus::prelude::*;
 
+use super::shared::MSG_NO_GROUPS;
+
 #[component]
 pub fn GroupChips(group: Signal<Vec<String>>, on_change: EventHandler<Vec<String>>) -> Element {
     // 分组列表由面板拉取后注入;本组件只读,不认识来源
@@ -22,7 +24,7 @@ pub fn GroupChips(group: Signal<Vec<String>>, on_change: EventHandler<Vec<String
             "aria-label": "生效分组选择",
 
             if list.is_empty() {
-                p { class: "text-xs text-zinc-500", "暂无分组(后端 /api/group 为空)" }
+                p { class: "text-xs text-zinc-500", "{MSG_NO_GROUPS}" }
             } else {
                 div { class: "flex flex-wrap gap-1.5",
                     for (label, value) in list.iter() {
