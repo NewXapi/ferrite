@@ -30,7 +30,7 @@ main ──merge（单向同步）──> web-dev ──PR merge-commit（单向
 
 ```bash
 cd /home/hathaway/projects/ferrite          # 仓库根，防 .wt 嵌套事故
-git checkout main && git pull --ff-only
+git checkout refs/heads/main && git pull --ff-only
 git branch web-dev main                     # 建分支但不要 checkout：主检出停在 web-dev 会占住分支，
 git push -u origin web-dev main:web-dev     # 后续 worktree add 报 "already used by worktree"（实测踩过）
 git worktree add .wt/web-dev web-dev        # 开发角色
@@ -51,7 +51,7 @@ cargo 用文件锁串行化并发构建；registry 依赖（dioxus 等）只编�
 
 ```bash
 cd /home/hathaway/projects/ferrite/.wt/web-dev
-git checkout web-dev && git merge main          # 同步干线：每轮开发开始前必做
+git checkout web-dev && git merge refs/heads/main          # 同步干线：每轮开发开始前必做
 git checkout -b feat/xxx                        # 从 web-dev 切（内容 ≈ 刚同步过的 main）
 # 改 → just dev-web-rebuild <port> debug → 浏览器强刷验证
 git commit ...                                  # conventional commit，message 写清「为什么」
@@ -80,7 +80,7 @@ PR 正文和汇报；审查循环靠它界定「这一轮要审什么」。
 ```bash
 cd /home/hathaway/projects/ferrite/.wt/web-dev
 git checkout web-dev && git pull --ff-only
-git merge main                                   # 先同步 main（其他域的提交），冲突双保留
+git merge refs/heads/main                                   # 先同步 main（其他域的提交），冲突双保留
 git push origin web-dev
 # 建 PR：base = main，head = web-dev，merge commit（不 squash），挂 type label
 # PR 正文：改动清单 + base_sha + 审查结论（CRG comment，由 review 角色产出）
@@ -119,6 +119,8 @@ merge 期跑 `github/pr_gates` + clippy 等。结论：
 
 ## 已知坑
 
+- 裸 `main` 在本仓库有歧义（`origin` / `newxapi` 双 remote 指向同一仓库，`git log main` 直接
+  fatal）——车道命令一律写 `refs/heads/main` 或 `origin/main`。
 - ainotation 标注一次只服务一个 origin（桥单例 `:44090` + grant 绑 origin）；车道里起桥必须带
   `AINO_DIRECTORY=<主检出目录>`，否则 MCP 读不到。详见两份任务书。
 - `.wt/web-fix` 常驻 detached HEAD（git 不允许同一分支进两个 worktree），

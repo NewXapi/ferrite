@@ -15,7 +15,7 @@ export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target   # 共享主检�
 cd /home/hathaway/projects/ferrite/.wt/web-dev                        # 全局绝对路径，别自己推路径
 git status                       # 必须干净
 git checkout web-dev && git pull --ff-only
-git merge main                   # 同步干线：把其他域合进 main 的提交吃进来（单向，只此一次）
+git merge refs/heads/main                   # 同步干线：把其他域合进 main 的提交吃进来（单向，只此一次）
 git checkout -b feat/xxx         # xxx = 短名，如 wheel-tab-fix
 ```
 
