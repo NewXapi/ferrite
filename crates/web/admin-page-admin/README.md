@@ -22,8 +22,8 @@
 
 现有 tab 目录：
 
-- `tab-page-aliases/` — 别名管理：比率语义色卡、定价模式切换（每 token / 每次调用）、四态列表。
-- `tab-page-channels/` — 渠道 CRUD（凭据掩码、测试按钮）。
+- `tab-page-aliases/` — 别名管理：比率语义色卡、定价模式切换（每 token / 每次调用）、四态列表；单字段走卡片行内 Popover 编辑（`ui::AliasCard`），弹窗仅剩新建。
+- `tab-page-channels/` — 渠道 CRUD（凭据掩码、测试按钮）；网格为 `ui::ChannelCard` 新卡牌，单字段行内 Popover 编辑（最小 diff PUT），弹窗管新建与完整编辑（密钥/模型/分组）。
 - `tab-page-currency/` — 货币管理面板（定义列表 + 新增/编辑/停用；`kind` 切 points/fiat，fiat 必带 symbol，USD 基准锁 rate=1）。
 - `tab-page-entities/` — 实体设置页：分组 / 模型别名 / 渠道三张可折叠卡（`cards.rs` + `channels.rs`；别名卡为演示态本地行）。
 - `tab-page-gateway/` — 网关渠道健康面板（实时冷却/慢启动观测，5s 条件轮询）。

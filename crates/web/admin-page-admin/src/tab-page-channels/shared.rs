@@ -139,9 +139,6 @@ pub const LBL_BASE_URL: &str = "接口地址";
 pub const LBL_WEIGHT: &str = "权重";
 /// 卡片指标行:备注。
 pub const LBL_REMARK: &str = "备注";
-/// 新卡示例区的 aria-label。
-pub const LBL_PROTOTYPE_REGION: &str = "新卡示例";
-
 // ---- BTN_* : 按钮文案 ----
 
 /// 筛选区刷新按钮。
@@ -206,6 +203,8 @@ pub const MSG_OP_OK: &str = "操作成功";
 pub const MSG_OP_FAILED: &str = "操作失败:";
 /// 保存失败提示前缀(后接错误详情)。
 pub const MSG_SAVE_FAILED: &str = "保存失败:";
+/// 行内 Popover 提交名称为空时的提示。
+pub const MSG_NAME_REQUIRED: &str = "渠道名称不能为空";
 /// 拉取上游模型失败提示前缀(后接错误详情)。
 pub const MSG_FETCH_MODELS_FAILED: &str = "拉取上游模型失败：";
 /// 拉取上游模型按钮的加载态文案。

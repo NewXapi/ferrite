@@ -17,8 +17,8 @@
 //! 状态归属约定(页面层持有的都是跨组件交互的):
 //! - 列表状态(rows/loading/err/reload/groups):effect 拉取 + stats/list 组件共享
 //! - 筛选状态(search/filter_tier):页面算 filtered,toolbar 就地读写
-//! - 弹窗表单状态(f_*/p_*/c_*):open_new/open_edit 重置 → 弹窗读写 →
-//!   卡片读 c_*(通道开关),跨三处,必须放页面层
+//! - 弹窗表单状态(f_*/p_*/c_*):open_new 重置 → 弹窗读写(仅新建) →
+//!   卡片读 c_*(通道开关),跨两处,必须放页面层
 //! - 写回状态(busy/notice/submitting):通知条与各写回闭包共享
 
 use client::ApiClient;
@@ -30,8 +30,9 @@ use super::list::AliasesListSection;
 use super::modal::AliasFormModal;
 use super::shared::{
     AliasItem, AliasModalState, LBL_STAT_AVG, LBL_STAT_CUSTOM, LBL_STAT_FREE, LBL_STAT_STANDARD,
-    LBL_STAT_TOTAL, MSG_CREATE_REJECTED, MSG_DELETE_FAILED, MSG_DELETED, MSG_SAVE_FAILED, OPT_ALL,
-    OPT_CUSTOM, OPT_FREE, OPT_STANDARD, PriceMode, SEC_DATA_NOTE,
+    LBL_STAT_TOTAL, MSG_CREATE_REJECTED, MSG_DELETE_FAILED, MSG_DELETED, MSG_NAME_REQUIRED,
+    MSG_NUM_INVALID, MSG_SAVE_FAILED, OPT_ALL, OPT_CUSTOM, OPT_FREE, OPT_STANDARD, PriceMode,
+    SEC_DATA_NOTE,
 };
 use super::stats::AliasesStatsSection;
 use super::toolbar::AliasesToolbarSection;
@@ -52,10 +53,11 @@ use crate::state::AliasRow;
 ///   再拉别名列表(`list_model_aliases_api`),把结果映射为 `AliasItem` 并按别名排序后写 `rows`。
 /// - 搜索/切档 → toolbar 就地写 `search` / `filter_tier`,本文件重算 `filtered`(无网络)。
 /// - 卡片切定价模式 → 写回 `rows` 中该条的 `price_mode`(纯 UI 本地状态,不发网络)。
-/// - 提交弹窗 → 编辑走 `update_model_alias_api`(PUT,请求体只带 `name`);新建不造数据,
-///   置 `notice = MSG_CREATE_REJECTED` 诚实拒绝。
-/// - 请求删除 → `delete_model_alias_api`(DELETE),成功后本地从 `rows` 移除,
-///   不整体重拉,避免列表闪 loading 骨架与高度跳动。
+/// - 卡片行内 Popover 保存 → 按字段写回:Name 走 `update_model_alias_api`
+///   (PUT /api/models/{key},请求体只带 `name`,UI 决策记录 §2.2 的单字段编辑路径);
+///   display/价格/倍率后端无列,就地更新 `rows`,数值解析失败保留旧值并提示。
+/// - 卡片删除(Dialog 确认后) → `delete_model_alias_api`(DELETE),成功后本地从 `rows` 移除。
+/// - 提交弹窗(仅剩新建) → 不造数据,置 `notice = MSG_CREATE_REJECTED` 诚实拒绝。
 ///
 /// 【样式】顶层 `div.flex flex-col gap-6`;通知条为 `rounded-xl border-zinc-700
 /// bg-zinc-900`,数据来源说明条为 `bg-zinc-900/60` 的窄横幅。页面自身不写卡片/网格样式。
@@ -246,16 +248,74 @@ pub fn AliasesPage() -> Element {
         modal_state.set(AliasModalState::New);
     };
 
-    let open_edit = move |key: String| {
-        if let Some(it) = rows().iter().find(|it| it.key == key) {
-            f_name.set(it.row.alias.clone());
-            f_display.set(it.row.display.clone());
-            f_input.set(format!("{}", it.row.input_per_1k));
-            f_output.set(format!("{}", it.row.output_per_1k));
-            f_mult.set(format!("{}", it.row.multiplier));
-            f_price_mode.set(it.price_mode);
-            f_modal_tab.set(0);
-            modal_state.set(AliasModalState::Edit(key));
+    // 行内 Popover 保存(替代原「编辑弹窗」路径,UI 决策记录 §2.2):
+    // 点击卡片行 → 浮层输入 → 保存抛 (key, 字段, 原始字符串)。Name 走后端
+    // PUT(后端 models 域唯一可落地列);display/价格/倍率后端无列,仅就地更新
+    // rows(与数据说明条 SEC_DATA_NOTE 的口径一致),数值解析失败保留旧值并提示。
+    let commit_alias_field = move |(key, field, value): (String, ui::AliasEditField, String)| {
+        let raw = value.trim().to_string();
+        match field {
+            ui::AliasEditField::Name => {
+                if raw.is_empty() {
+                    notice.set(Some(MSG_NAME_REQUIRED.to_string()));
+                    return;
+                }
+                let (mut b, mut n, mut items_sig) = (busy, notice, rows);
+                let name_for_local = raw.clone();
+                spawn(async move {
+                    b.set(true);
+                    n.set(None);
+                    let client = ApiClient::shared().clone();
+                    let req = AliasUpsertRequest {
+                        name: raw,
+                        ..Default::default()
+                    };
+                    match update_model_alias_api(&client, &key, &req).await {
+                        Ok(_) => {
+                            let mut items = items_sig().to_vec();
+                            if let Some(it) = items.iter_mut().find(|it| it.key == key) {
+                                it.row.alias = name_for_local;
+                            }
+                            items_sig.set(items);
+                        }
+                        Err(e) => n.set(Some(format!("{MSG_SAVE_FAILED}{e}"))),
+                    }
+                    b.set(false);
+                });
+            }
+            ui::AliasEditField::Display => {
+                let mut items = rows().to_vec();
+                if let Some(it) = items.iter_mut().find(|it| it.key == key) {
+                    it.row.display = raw;
+                }
+                rows.set(items);
+            }
+            ui::AliasEditField::InputPrice | ui::AliasEditField::OutputPrice => {
+                let parsed = raw.parse::<f64>();
+                match parsed {
+                    Ok(v) => {
+                        let mut items = rows().to_vec();
+                        if let Some(it) = items.iter_mut().find(|it| it.key == key) {
+                            match field {
+                                ui::AliasEditField::InputPrice => it.row.input_per_1k = v,
+                                _ => it.row.output_per_1k = v,
+                            }
+                        }
+                        rows.set(items);
+                    }
+                    Err(_) => notice.set(Some(MSG_NUM_INVALID.to_string())),
+                }
+            }
+            ui::AliasEditField::Multiplier => match raw.parse::<f64>() {
+                Ok(v) => {
+                    let mut items = rows().to_vec();
+                    if let Some(it) = items.iter_mut().find(|it| it.key == key) {
+                        it.row.multiplier = v;
+                    }
+                    rows.set(items);
+                }
+                Err(_) => notice.set(Some(MSG_NUM_INVALID.to_string())),
+            },
         }
     };
 
@@ -292,48 +352,12 @@ pub fn AliasesPage() -> Element {
         });
     };
 
-    // 弹窗提交:校验 + 网络写回都在本闭包里,弹窗组件只抛事件(见
-    // modal)。编辑走真实 PUT /api/models/{key},新建走诚实拒绝。
+    // 弹窗提交(仅剩新建):后端 CreateModelRequest 必填 owner 与 api_key,
+    // 表单没有这两个字段的来源 — 诚实拒绝,不造数据、不假成功。
+    // 编辑路径已改为卡片行内 Popover(commit_alias_field),不再走弹窗。
     let submit_alias = move |_| {
-        let name = f_name.peek().trim().to_string();
-        if name.is_empty() {
-            return;
-        }
-        // 先取出现有状态再 match,避免读锁未释放就 set
-        let editing_key = match modal_state() {
-            AliasModalState::Edit(k) => Some(k),
-            AliasModalState::New => None,
-            AliasModalState::Closed => return,
-        };
-        match editing_key {
-            // 编辑:PUT /api/models/{key}。请求体只带 name — 后端 models 域
-            // 唯一与别名页对应的列只有 name,display/价格/倍率/定价模式无对应列,
-            // 由后端 UpdateModelRequest(全 Option)忽略,不写库。定价字段为 UI
-            // 层本地状态,后端落地时再扩展 models 域。
-            Some(k) => {
-                let (mut sub, mut n, mut ms) = (submitting, notice, modal_state);
-                spawn(async move {
-                    sub.set(true);
-                    n.set(None);
-                    let client = ApiClient::shared().clone();
-                    let req = AliasUpsertRequest {
-                        name,
-                        ..Default::default()
-                    };
-                    if let Err(e) = update_model_alias_api(&client, &k, &req).await {
-                        n.set(Some(format!("{MSG_SAVE_FAILED}{e}")));
-                    }
-                    sub.set(false);
-                    ms.set(AliasModalState::Closed);
-                });
-            }
-            // 新建:后端 CreateModelRequest 必填 owner 与 api_key,表单没有
-            // 这两个字段的来源 — 诚实拒绝,不造数据、不假成功。
-            None => {
-                notice.set(Some(MSG_CREATE_REJECTED.to_string()));
-                modal_state.set(AliasModalState::Closed);
-            }
-        }
+        notice.set(Some(MSG_CREATE_REJECTED.to_string()));
+        modal_state.set(AliasModalState::Closed);
     };
 
     rsx! {
@@ -381,15 +405,14 @@ pub fn AliasesPage() -> Element {
                 c_cache_write_on: c_cache_write_on(),
                 c_completion_on: c_completion_on(),
                 on_mode_change,
-                on_edit: open_edit,
+                on_edit: commit_alias_field,
                 on_delete: write_delete,
                 on_retry: move |_| reload.set(reload() + 1),
             }
         }
 
-        if matches!(modal_state(), AliasModalState::New | AliasModalState::Edit(_)) {
+        if matches!(modal_state(), AliasModalState::New) {
             AliasFormModal {
-                editing: matches!(modal_state(), AliasModalState::Edit(_)),
                 alias: f_name,
                 display: f_display,
                 input_rate: f_input,

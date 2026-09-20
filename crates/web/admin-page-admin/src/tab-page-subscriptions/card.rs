@@ -34,10 +34,10 @@ use crate::state::PlanRow;
 /// 改用 UUID 前缀(行 `key` 的前 8 字符),保证每行有稳定可辨识的标识;
 /// hover 时 `title` 显示完整 key。
 ///
-/// 【样式】卡片 `group flex flex-col rounded-xl border border-zinc-800
-/// bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-700
-/// hover:bg-zinc-900/90 shadow-md`;头部 `flex flex-wrap items-start
-/// justify-between gap-2.5`;状态徽标按 `enabled` 切绿/灰两套圆角 pill;
+/// 【样式】外壳用共用样式壳 `ui::CardShell`(`CARD_SHELL_CLASS`:根节点
+/// `role="region"` + `aria-label="{套餐标题}"` + `data-testid="subscription-card"`);
+/// 头部 `flex flex-wrap items-start justify-between gap-2.5`;状态徽标按 `enabled`
+/// 切绿/灰两套圆角 pill;
 /// 指标条 `grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3
 /// border-t border-zinc-800/70`(手机 2 / sm 3 / md 5 列)。
 ///
@@ -90,9 +90,9 @@ pub fn PlanCard(
     let del_id = format!("subscriptions-delete-{}", plan.key);
 
     rsx! {
-        div {
-            key: "{row_key}",
-            class: "group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-900/90 shadow-md",
+        ui::CardShell {
+            title: title_txt.clone(),
+            testid: Some("subscription-card".to_string()),
 
             // 卡片头部行: 标识 + 标题 + 状态/分组徽标 + 操作按钮
             div { class: "flex flex-wrap items-start justify-between gap-2.5",

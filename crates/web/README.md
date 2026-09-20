@@ -156,7 +156,7 @@ crates/web/
 - **ui-components**（内部依赖：contract；src：lib.rs / card.rs / bubble.rs / dialog.rs / feedback.rs / form.rs / segmented.rs / scroll_spy.rs / auth_modal.rs / session.rs / components/{badge,button,card,input} / components/admin_card/）
   - 跨端通用组件层；**只依赖 contract，不依赖任何 client/page**
   - `session.rs`：localStorage 令牌存取与 auth 请求（`get_cached_token` / `refresh_access_token` / `clear_cached_session`），storage key：`ferrite_access_token` / `ferrite_current_user` / `ferrite_refresh_token`
-  - `components/admin_card/`：管理区可复用卡牌族。`card.rs`（`AdminCard` 四态面板叠放 + `DotTabBar`）、`shell.rs`（语义化样式壳：`CARD_SHELL_CLASS` / `CardShell` / `AdminSection` / `SectionHeader` / `CardGrid` / `PlaceholderBlock` / `DangerBlock` / `GhostButton`）、`price_mode.rs`（`PriceMode` + `PriceModeToggle`）、`dot_tab.rs`，以及各实体卡 `aliases.rs` / `channels.rs` / `groups.rs` / `redemptions.rs` / `users.rs`
+  - `components/admin_card/`：管理区可复用卡牌族。`card.rs`（`AdminCard` 四态面板叠放 + `DotTabBar`）、`shell.rs`（语义化样式壳：`CARD_SHELL_CLASS` / `CardShell` / `AdminSection` / `SectionHeader` / `CardGrid` / `PlaceholderBlock` / `DangerBlock` / `GhostButton`）、`pager.rs`（`CARD_PAGE_SIZE` / `Pager` / `page_slice` / `page_count`）、`price_mode.rs`（`PriceMode` + `PriceModeToggle`）、`dot_tab.rs`，以及真实实体卡 `aliases.rs` / `channels.rs` / `users.rs`；分组与兑换码卡不建副本，直接用 `CardShell` / `CARD_SHELL_CLASS` 外壳承载页面自己的交互
   - **判定点约束**：卡牌搬运以「零行为漂移」为准——testid / aria / class / 四态分支逐字保留，`specs/ui/*.yaml` 会断言这些
 
 ## 3. 依赖规则与改名映射

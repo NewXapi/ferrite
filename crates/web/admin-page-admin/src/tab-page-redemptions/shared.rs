@@ -110,8 +110,6 @@ pub const LBL_REDEEMED_AT: &str = "核销时间";
 pub const LBL_CARD_ARIA_PREFIX: &str = "兑换码 ";
 /// 列表区域的 aria-label。
 pub const LBL_LIST_ARIA: &str = "兑换码列表";
-/// 新建卡示例区的 aria-label。
-pub const LBL_PROTOTYPE_REGION: &str = "新卡示例";
 /// 列表错误态区域的 aria-label。
 pub const LBL_ERROR_ARIA: &str = "兑换码加载失败";
 /// 生成弹窗中的批次测算行标签。

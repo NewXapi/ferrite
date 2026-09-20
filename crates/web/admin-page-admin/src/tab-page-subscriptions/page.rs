@@ -23,7 +23,7 @@ use super::modal::SubscriptionFormModal;
 use super::shared::{
     BTN_NEW_PLAN, MSG_CREATED, MSG_DELETED, MSG_EMPTY, MSG_ERR_NAME_REQUIRED, MSG_ERR_QUOTA,
     MSG_LOAD_FAIL_PREFIX, MSG_LOAD_FAIL_SUFFIX, MSG_LOADING, MSG_SAVING, MSG_UPDATED,
-    SEC_NAME_DEDUP,
+    OPT_BADGE_LOADING, SEC_LIST, SEC_NAME_DEDUP,
 };
 
 /// 以某行现有值重建 upsert 请求体(启停切换用):后端按 name 定位行
@@ -81,6 +81,11 @@ pub fn SubscriptionsPage() -> Element {
     let reload = use_signal(|| 0u32);
     // 「升级分组」下拉候选项(真实分组名)。
     let mut group_names = use_signal(Vec::<String>::new);
+
+    // 分页:列表内部 UI 状态(不跨组件);写回重拉后条数变小时 clamp 到最后一页,
+    // 不落空页(与 aliases / groups 列表同款约定)。
+    let mut page = use_signal(|| 0usize);
+    let visible = ui::page_slice(&plans.read(), page(), ui::CARD_PAGE_SIZE).to_vec();
 
     use_effect(move || {
         let _ = reload();
@@ -343,17 +348,33 @@ pub fn SubscriptionsPage() -> Element {
                     "{MSG_EMPTY}"
                 }
             } else {
-                // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
-                div { class: "flex flex-col gap-3",
-                    "data-testid": "subscriptions-list",
-                    for (i, _p) in plans.read().iter().enumerate() {
-                        PlanCard {
-                            key: "{i}",
-                            plan: plans.read()[i].clone(),
-                            index: i,
-                            on_edit: open_edit,
-                            on_toggle: toggle_row,
-                            on_delete: delete_row,
+                section { class: "scroll-mt-8 space-y-4",
+                    ui::SectionHeader {
+                        title: SEC_LIST.to_string(),
+                        badge: if loading() { OPT_BADGE_LOADING.to_string() } else { format!("{} 个", plans.read().len()) },
+                        trailing: rsx! {
+                            ui::Pager {
+                                total: plans.read().len(),
+                                page,
+                                on_change: move |p| page.set(p),
+                                testid: "subscriptions-pager",
+                            }
+                        },
+                    }
+                    // 单栏卡牌列表容器 (Web / 平板 / 手机统一一栏优雅排布)
+                    div { class: "flex flex-col gap-3",
+                        "data-testid": "subscriptions-list",
+                        for (idx, p) in visible.iter().enumerate() {
+                            PlanCard {
+                                // key 用套餐 key(稳定标识):按下标会在翻页/排序后错配
+                                key: "{p.key}",
+                                plan: p.clone(),
+                                // 回调按 plans 全表下标定位行,翻页后要加回页偏移
+                                index: page() * ui::CARD_PAGE_SIZE + idx,
+                                on_edit: open_edit,
+                                on_toggle: toggle_row,
+                                on_delete: delete_row,
+                            }
                         }
                     }
                 }

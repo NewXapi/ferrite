@@ -472,14 +472,6 @@ pub fn HomePage() -> Element {
                     }
                 },
                 top_nav: rsx! {
-                    // 移动端 rail 隐藏 → section 横条作为替代入口(对齐"手机上下横栏"决定)
-                    div {
-                        class: "flex w-full justify-center md:hidden",
-                        div {
-                            class: "flex items-center rounded-full border border-zinc-800/80 bg-zinc-900/90 px-2 py-1 shadow-lg shadow-black/20 backdrop-blur",
-                            TopNavMeter { active: section(), on_select: move |s| section.set(s) }
-                        }
-                    }
                     TopNavBar {
                         tabs: labels.clone(),
                         active: active_tab as usize,

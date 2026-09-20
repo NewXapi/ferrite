@@ -70,18 +70,26 @@ pub fn AdminSection(
     }
 }
 
-/// 区段标题行：左标题 + 右侧计数/状态胶囊。
+/// 区段标题行：左标题 + 右侧计数/状态胶囊 + 可选分页器插槽。
 #[component]
 pub fn SectionHeader(
     /// 区段标题文案
     title: String,
     /// 右侧胶囊文案（计数或加载状态）
     badge: String,
+    /// 标题行右侧、计数胶囊之后的可选插槽（分页器等）
+    #[props(default)]
+    trailing: Option<Element>,
 ) -> Element {
     rsx! {
-        div { class: "flex items-center justify-between",
+        div { class: "flex flex-wrap items-center justify-between gap-2",
             h2 { class: "text-lg font-medium text-zinc-100", "{title}" }
-            span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{badge}" }
+            div { class: "flex items-center gap-2",
+                span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{badge}" }
+                if let Some(extra) = trailing {
+                    {extra}
+                }
+            }
         }
     }
 }
