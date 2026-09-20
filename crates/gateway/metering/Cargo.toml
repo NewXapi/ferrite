@@ -17,3 +17,9 @@ bytes    = { workspace = true }
 futures-util = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+shuttle = "0.9"
+
+[features]
+shuttle = []
