@@ -131,3 +131,27 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check ${{ matrix.variant.name }} variant
         run: cargo check -p api ${{ matrix.variant.flags }}
+
+  # 部署镜像构建验证：deploy/ 的 Dockerfile 只在切 tag 时由 release.yml 真正
+  # 构建推送，PR 期必须先验过，否则 Dockerfile 错误要等到切 tag 才暴露。
+  # 只构建不推送（本 job 无 packages:write 权限）。这是 ci.yml 里最慢的 job
+  # （全 workspace 编译 + cargo install dioxus-cli），接受。
+  deploy-images:
+    name: Deploy Images (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, admin-web, tavern-web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/${{ matrix.image }}/Dockerfile
+          push: false
+          cache-from: type=gha
+          tags: ferrite-${{ matrix.image }}:ci
