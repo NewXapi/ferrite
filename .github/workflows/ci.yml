@@ -38,6 +38,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
@@ -59,11 +61,14 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run Affected Crates Tests
         run: bash scripts/ci-affected.sh --base "origin/${{ github.base_ref }}"
 
   # 合并到 main：跑全量，作为动态选包的兜底。
+
   full-test:
     name: Full Workspace Test
     if: github.event_name == 'push'
@@ -78,6 +83,8 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Build all targets
         run: cargo build --all-targets
@@ -96,9 +103,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install cmake (BoringSSL build requirement)
-        run: sudo apt-get update && sudo apt-get install -y cmake
+      - name: Install cmake + mold (BoringSSL + fast linker)
+        run: sudo apt-get update && sudo apt-get install -y cmake mold
       - name: Check with utls feature
         run: cargo check -p gateway-proxy --features utls
       - name: Check with no default features
