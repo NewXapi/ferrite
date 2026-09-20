@@ -10,6 +10,8 @@ pub mod card;
 pub mod channels;
 /// 圆点页签切换器。
 pub mod dot_tab;
+/// 行内 Popover 编辑原语（展示行 → 点击编辑 → 保存）。
+pub mod editable;
 /// 分组实体卡原型。
 pub mod groups;
 /// 别名定价模式（按量 / 按次）及分段 toggle。
@@ -23,12 +25,20 @@ pub mod users;
 
 /// 供管理页展示别名摘要的卡片组件。
 pub use aliases::AliasCard;
+/// 别名卡行内 Popover 可编辑字段枚举。
+pub use aliases::AliasEditField;
 /// 提供标题与只读圆点页签的共享卡片组件。
 pub use card::AdminCard;
 /// 供管理页展示渠道摘要的卡片组件。
 pub use channels::ChannelCard;
+/// 渠道卡行内 Popover 可编辑字段枚举。
+pub use channels::ChannelEditField;
 /// 用普通按钮呈现只读内容页签的圆点切换组件。
 pub use dot_tab::DotTabBar;
+/// 行内 Popover 编辑原语：展示行点击编辑与危险操作确认行。
+pub use editable::{
+    DANGER_ROW_CLASS, DangerActionRow, EDIT_POPOVER_CLASS, EDITABLE_ROW_CLASS, EditableRow,
+};
 /// 供管理页展示分组摘要的卡片组件。
 pub use groups::GroupCard;
 /// 定价模式枚举与分段 toggle（卡片 / 弹窗共用）。

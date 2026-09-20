@@ -12,13 +12,13 @@
 use dioxus::prelude::*;
 
 use super::shared::{
-    BTN_CANCEL, BTN_CREATE_ALIAS, BTN_SAVE_CHANGES, FIELD_ALIAS_ID, FIELD_DISPLAY,
-    FIELD_INPUT_PRICE, FIELD_MULTIPLIER, FIELD_PER_CALL_PRICE, FIELD_PRICE_MODE, LBL_CH_CACHE_READ,
+    BTN_CANCEL, BTN_CREATE_ALIAS, FIELD_ALIAS_ID, FIELD_DISPLAY, FIELD_INPUT_PRICE,
+    FIELD_MULTIPLIER, FIELD_PER_CALL_PRICE, FIELD_PRICE_MODE, LBL_CH_CACHE_READ,
     LBL_CH_CACHE_READ_DESC, LBL_CH_CACHE_WRITE, LBL_CH_CACHE_WRITE_DESC, LBL_CH_COMPLETION,
     LBL_CH_COMPLETION_DESC, LBL_CH_OUTPUT, LBL_CH_OUTPUT_DESC, LBL_INPUT_PRICE_DESC,
     LBL_MODAL_TABLIST, LBL_PER_CALL_DESC, MSG_PH_ALIAS_ID, MSG_PH_DISPLAY, MSG_PH_PER_CALL,
     PriceMode, PriceModeToggle, SEC_MODE_NOTE, SEC_PER_CALL_NOTE, TAB_BASIC, TAB_PER_CALL,
-    TAB_PER_TOKEN, TTL_EDIT, TTL_NEW,
+    TAB_PER_TOKEN, TTL_NEW,
 };
 use crate::tab_page_groups::Modal;
 /// 别名新建/编辑弹窗
@@ -49,8 +49,7 @@ use crate::tab_page_groups::Modal;
 /// 开关),不是独立的 `#[component]`。
 ///
 /// 【数据流】
-/// - 对内(入):`editing`(决定标题 `TTL_EDIT`/`TTL_NEW` 与提交按钮文案);
-///   表单 Signal —— `alias` / `display` / `input_rate` / `output_rate` / `multiplier` /
+/// - 对内(入):表单 Signal —— `alias` / `display` / `input_rate` / `output_rate` / `multiplier` /
 ///   `price_mode` / `active_tab`;价格 Signal —— `p_input` / `p_output` /
 ///   `p_cache_read` / `p_cache_write` / `p_completion` / `p_per_call`;通道开关 ——
 ///   `c_output_on` / `c_cache_read_on` / `c_cache_write_on` / `c_completion_on`;
@@ -59,7 +58,6 @@ use crate::tab_page_groups::Modal;
 ///   `on_submit` 抛回页面,由页面走 PUT 或「新建被拒」提示。
 #[component]
 pub fn AliasFormModal(
-    editing: bool,
     alias: Signal<String>,
     display: Signal<String>,
     input_rate: Signal<String>,
@@ -81,12 +79,8 @@ pub fn AliasFormModal(
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
-    let title = if editing { TTL_EDIT } else { TTL_NEW };
-    let submit_label = if editing {
-        BTN_SAVE_CHANGES
-    } else {
-        BTN_CREATE_ALIAS
-    };
+    let title = TTL_NEW;
+    let submit_label = BTN_CREATE_ALIAS;
 
     // 弹窗内 tab 信号:由页面持有(active_tab),弹窗内切换只影响弹窗本体
     let mut modal_tab = active_tab;

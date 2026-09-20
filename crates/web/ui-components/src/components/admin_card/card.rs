@@ -25,7 +25,8 @@ pub(crate) fn short_key(key: &str) -> String {
 /// `title` 和可选的 `subtitle` 用作卡片标题；`tabs` 是只读内容页签的标签，
 /// `active_tab` 指明当前圆点，`on_tab_change` 接收用户选择的索引。
 ///
-/// `panel_0` 到 `panel_3` 是四个页签各自的内容。四个 panel 始终同格渲染
+/// `panel_0` 到 `panel_2` 是前三个页签的内容，`panel_3` 可选（不传即该槽位
+/// 不渲染，供最多 3 个页签的实体卡使用）。各 panel 始终同格渲染
 /// （grid 叠加在 `col-start-1 row-start-1`），非激活的加 `invisible`
 /// （`visibility:hidden`，仍占布局高度）与 `pointer-events-none`，因此容器
 /// 高度由最高的 panel 决定，切换页签时卡片高度不跳动。`testid` 可为整张
@@ -47,8 +48,10 @@ pub fn AdminCard(
     panel_1: Element,
     /// 页签 2 的内容。
     panel_2: Element,
-    /// 页签 3（系统类页签）的内容。
-    panel_3: Element,
+    /// 页签 3（系统类页签）的内容；不传（或显式 None）时该槽位不渲染，
+    /// 供 ≤3 页签的实体卡使用（决策记录 §2.3：卡牌内 tab 最多 3 个）。
+    #[props(default)]
+    panel_3: Option<Element>,
     /// 整张卡片的可选测试标识；未传时渲染空值。
     #[props(default)]
     testid: Option<String>,
@@ -94,11 +97,14 @@ pub fn AdminCard(
             }
 
             // Tab content: 四个 panel 同格叠加，容器高度取最高者，切页签不跳动。
+            // panel_3 缺省不渲染（≤3 tab 的卡），空槽位不占高度。
             div { class: "mt-3 grid grid-cols-1",
                 div { class: "{c0}", {panel_0} }
                 div { class: "{c1}", {panel_1} }
                 div { class: "{c2}", {panel_2} }
-                div { class: "{c3}", {panel_3} }
+                if let Some(p3) = panel_3 {
+                    div { class: "{c3}", {p3} }
+                }
             }
         }
     }

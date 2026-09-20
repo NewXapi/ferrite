@@ -24,15 +24,16 @@ use client::ApiClient;
 use contract::api::admin::{ChannelDto, GroupDto};
 
 use crate::api::{
-    delete_channel_api, get_channel_api, list_channels_api, list_groups_api, set_channel_status_api,
+    UpdateChannelBody, delete_channel_api, get_channel_api, list_channels_api, list_groups_api,
+    set_channel_status_api, update_channel_api,
 };
 
 use super::list::ChannelsListSection;
 use super::modal::ChannelFormModal;
 use super::shared::{
     ChannelModalState, LBL_STAT_DISABLED, LBL_STAT_ENABLED, LBL_STAT_GROUPS, LBL_STAT_KEYS,
-    LBL_STAT_TOTAL, MSG_OP_FAILED, MSG_OP_OK, OPT_ALL, OPT_DISABLED, OPT_ENABLED, WriteOp,
-    filter_channels,
+    LBL_STAT_TOTAL, MSG_NAME_REQUIRED, MSG_OP_FAILED, MSG_OP_OK, MSG_SAVE_FAILED, OPT_ALL,
+    OPT_DISABLED, OPT_ENABLED, WriteOp, filter_channels,
 };
 use super::stats::ChannelsStatsSection;
 use super::toolbar::ChannelsToolbarSection;
@@ -118,7 +119,7 @@ pub fn ChannelsPage() -> Element {
     // 跨组件共享,故放页面层。
     // 写操作进行中 / 成功提示
     let busy = use_signal(|| false);
-    let notice = use_signal(|| None::<String>);
+    let mut notice = use_signal(|| None::<String>);
 
     // 挂载即拉取真实列表;reload 变化时重拉。
     // 首屏(列表为空)走 `loading` → 渲染占位卡;已有数据的重拉走 `refreshing`
@@ -282,6 +283,69 @@ pub fn ChannelsPage() -> Element {
     let on_toggle_card = move |pair: (String, i16)| write_toggle(pair.0, WriteOp::Toggle(pair.1));
     let on_delete_card = move |key: String| write_delete(key, WriteOp::Delete);
 
+    // 行内 Popover 保存(UI 决策记录 §2.2):单字段走 UpdateChannelBody 最小 diff
+    // PUT(name/channel_type/base_url/groups/remark/test_model 恒带现值,被改字段
+    // 换成新值;keys/models 缺席 = 后端保持现值)。priority/weight/status 该 body
+    // 不收(COALESCE 保持),启停走专用 status 端点,均不在此处理。
+    let commit_channel_field =
+        move |(key, field, value): (String, ui::ChannelEditField, String)| {
+            let raw = value.trim().to_string();
+            let Some(current) = channels().iter().find(|c| c.key == key).cloned() else {
+                return;
+            };
+            // 名称为空 = 放弃这次保存(不发请求,保留旧值)
+            if matches!(field, ui::ChannelEditField::Name) && raw.is_empty() {
+                notice.set(Some(MSG_NAME_REQUIRED.to_string()));
+                return;
+            }
+            let body = UpdateChannelBody {
+                name: match field {
+                    ui::ChannelEditField::Name if !raw.is_empty() => raw.clone(),
+                    _ => current.name.clone(),
+                },
+                channel_type: current.channel_type.clone(),
+                base_url: match field {
+                    ui::ChannelEditField::BaseUrl => raw.clone(),
+                    _ => current.base_url.clone(),
+                },
+                groups: current.groups.clone(),
+                remark: match field {
+                    ui::ChannelEditField::Remark => raw.clone(),
+                    _ => current.remark.clone(),
+                },
+                test_model: match field {
+                    ui::ChannelEditField::TestModel => {
+                        if raw.is_empty() {
+                            None
+                        } else {
+                            Some(raw.clone())
+                        }
+                    }
+                    _ => current.test_model.clone(),
+                },
+                keys: None,
+                models: None,
+            };
+            let (mut b, mut n) = (busy, notice);
+            spawn(async move {
+                b.set(true);
+                n.set(None);
+                let client = ApiClient::shared().clone();
+                match update_channel_api(&client, &key, &body).await {
+                    Ok(updated) => {
+                        // 就地替换该行(后端返回更新后的完整 DTO),不整体重拉
+                        let mut list = channels().to_vec();
+                        if let Some(slot) = list.iter_mut().find(|c| c.key == key) {
+                            *slot = updated;
+                        }
+                        channels.set(list);
+                    }
+                    Err(e) => n.set(Some(format!("{MSG_SAVE_FAILED}{e}"))),
+                }
+                b.set(false);
+            });
+        };
+
     // 弹窗关闭并触发重拉
     let close_and_reload = move |_| {
         modal_state.set(ChannelModalState::Closed);
@@ -313,14 +377,16 @@ pub fn ChannelsPage() -> Element {
                 on_new: open_new,
             }
 
-            // 卡片网格区(编号段 3):四态(错误/加载/空/网格)+ 新卡示例 + ChannelCard 网格。
+            // 卡片网格区(编号段 3):四态(错误/加载/空/网格)+ 新卡牌网格。
             // 数据以值传入(filtered 已在上方按 search/filter_tier 筛好);
-            // on_toggle 收 (key, 目标状态 1|2),页面落成 WriteOp::Toggle 走 API。
+            // on_edit 收 (key, 字段, 原始值) 走最小 diff PUT;on_full_edit 开弹窗
+            // (密钥/模型/分组等多字段能力只在弹窗);on_toggle 收 (key, 目标状态 1|2)。
             ChannelsListSection {
                 loading: *loading.read(),
                 err: err(),
                 filtered,
-                on_edit: open_edit,
+                on_edit: commit_channel_field,
+                on_full_edit: open_edit,
                 on_toggle: on_toggle_card,
                 on_delete: on_delete_card,
                 on_retry: move |_| reload.set(reload() + 1),

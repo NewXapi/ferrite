@@ -32,12 +32,14 @@ pub use auth_modal::{AuthModal, UserBadge};
 pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
 pub use components::admin_card::{
-    AdminCard, AliasCard, ChannelCard, DotTabBar, GroupCard, RedemptionCard, UserCard,
+    AdminCard, AliasCard, AliasEditField, ChannelCard, ChannelEditField, DotTabBar, GroupCard,
+    RedemptionCard, UserCard,
 };
 pub use components::admin_card::{
     AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
     PlaceholderBlock, SectionHeader,
 };
+pub use components::admin_card::{DangerActionRow, EditableRow};
 pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};

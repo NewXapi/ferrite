@@ -124,7 +124,7 @@ pub fn GroupCard(
             panel_0: panel_basic,
             panel_1: panel_ratio,
             panel_2: panel_whitelist,
-            panel_3: panel_system,
+            panel_3: Some(panel_system),
         }
     }
 }
