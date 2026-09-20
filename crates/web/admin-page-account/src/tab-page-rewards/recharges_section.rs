@@ -1,15 +1,15 @@
-//! 充值记录区 — GET /api/user/topup/orders 三态渲染 (error 红边卡 / loading 骨架 /
-//! 空态虚线 / 真数据)。数据与三态信号由 `RewardsPanel` 持有并经 `load_recharges`
-//! 填充;本组件只负责渲染,订单倒序,provider 空串回落 manual,状态机字符串原样展示。
+//! 最近充值记录列表 — GET /api/user/topup/orders (真实端点,本人订单倒序)。
+//!
+//! 三态渲染 (error 红边卡 / loading 骨架 / 空态虚线 / 真数据);state 原样展示,
+//! provider 空串展示为 manual。
 
 use dioxus::prelude::*;
 
 use crate::api::TopupOrderView;
 use crate::usage_support::{fmt_num, fmt_time};
 
-/// 最近充值记录区:订单倒序,最近在前;`provider` 为空时展示 manual。
-///
-/// `recharges` 为 `None` 或空数组是正常空态,非错误;仅 `recharges_err` 非空才走错误红边卡。
+use super::shared::ErrCard;
+
 #[component]
 pub fn RechargesSection(
     recharges: Signal<Option<Vec<TopupOrderView>>>,
@@ -17,17 +17,14 @@ pub fn RechargesSection(
     recharges_err: Signal<String>,
 ) -> Element {
     rsx! {
+        // 最近充值记录 — GET /api/user/topup/orders (真实端点)
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
             div { class: "mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between",
                 h3 { class: "text-sm font-medium text-zinc-200", "最近充值记录" }
                 span { class: "text-xs text-zinc-500", "订单倒序,最近在前" }
             }
             if !recharges_err().is_empty() {
-                ErrCard {
-                    testid: "recharge-error",
-                    what: "充值记录",
-                    msg: recharges_err(),
-                }
+                ErrCard { testid: "recharge-error", what: "充值记录", msg: recharges_err() }
             } else if !recharges_loaded() {
                 div { class: "space-y-3", "data-testid": "recharge-skeleton",
                     div { class: "h-12 w-full animate-pulse rounded bg-zinc-800" }
@@ -65,18 +62,6 @@ pub fn RechargesSection(
                     }
                 }
             }
-        }
-    }
-}
-
-/// 错误态统一渲染:柔和红边卡片 (非满屏红),对齐 rewards 各区的诚实降级文案。
-#[component]
-fn ErrCard(testid: &'static str, what: &'static str, msg: String) -> Element {
-    rsx! {
-        div {
-            class: "rounded-xl border border-red-500/40 bg-zinc-900 p-4",
-            "data-testid": testid,
-            p { class: "text-sm text-red-300", "无法加载{what} (未登录或请求失败): {msg}" }
         }
     }
 }

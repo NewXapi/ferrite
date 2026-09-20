@@ -247,7 +247,7 @@ pub fn TopupSection(
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
             div { role: "group", "aria-label": "兑换码充值",
                 p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
-                div { class: "flex flex-col gap-3 sm:flex_row",
+                div { class: "flex flex-col gap-3 sm:flex-row",
                     input {
                         class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
                         placeholder: "请输入兑换码",

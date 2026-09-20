@@ -5,6 +5,8 @@ use dioxus::prelude::*;
 use crate::api::InviteeView;
 use crate::usage_support::{fmt_num, fmt_time};
 
+use super::shared::ErrCard;
+
 #[component]
 pub fn InviteesSection(
     invitees: Signal<Option<Vec<InviteeView>>>,
@@ -60,18 +62,6 @@ pub fn InviteesSection(
                     }
                 }
             }
-        }
-    }
-}
-
-/// 错误态统一渲染
-#[component]
-fn ErrCard(testid: &'static str, what: &'static str, msg: String) -> Element {
-    rsx! {
-        div {
-            class: "rounded-xl border border-red-500/40 bg-zinc-900 p-4",
-            "data-testid": testid,
-            p { class: "text-sm text-red-300", "无法加载{what} (未登录或请求失败): {msg}" }
         }
     }
 }
