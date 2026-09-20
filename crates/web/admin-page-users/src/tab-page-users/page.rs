@@ -4,8 +4,10 @@
 //! 公开组件符号名仍保持 `UsersPanel` 不变(公开面逐字保留)。
 //!
 //! 本文件只放「状态 + 拉取 effect + 区段组合」,不含渲染细节:
-//! 卡片内部展示在 `user_card`,两个弹窗分别在 `user_form` / `topup_form`,
-//! 分组与角色选择器在 `group_chips` / `role_chips`,文案常量在 `shared`。
+//! 卡片内部展示在 ui-components 的共享 `ui::UserCard`(AdminCard 三页签),
+//! `user_card` 只做页面上下文映射与操作插槽,两个弹窗分别在 `user_form` /
+//! `topup_form`,分组与角色选择器在 `group_chips` / `role_chips`,文案常量在
+//! `shared`。
 //!
 //! 数据来自真实后端:挂载时 `use_effect` 拉 `list_users_api`,写入
 //! `users` signal;筛选项(搜索 / 分组 / 状态 / 角色)在前端对返回列表过滤,
@@ -14,7 +16,7 @@
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 use ui::StatCard;
-use ui::UserCard as PrototypeUserCard;
+use ui::{CARD_PAGE_SIZE, CardGrid, Pager, SectionHeader, page_slice};
 
 use client::ApiClient;
 use contract::api::admin::{AdminUserDto, ManageUserRequest};
@@ -167,6 +169,11 @@ pub fn UsersPanel() -> Element {
             .collect()
     };
 
+    // 分页：列表内部 UI 状态（不跨组件）；筛选后条数变小时 clamp 到最后一页，
+    // 不落空页（与 admin-page-admin 各列表同款策略）。
+    let mut page = use_signal(|| 0usize);
+    let visible = page_slice(&filtered, page(), CARD_PAGE_SIZE).to_vec();
+
     // 打开新建/编辑弹窗时预填字段
     let open_new = move |_: MouseEvent| {
         f_username.set(String::new());
@@ -305,12 +312,17 @@ pub fn UsersPanel() -> Element {
 
             // 3. 用户卡片网格
             section { id: "users-sec-list", class: "scroll-mt-8 space-y-4",
-                div { class: "flex items-center justify-between",
-                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
-                    span {
-                        class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                        if loading() { "{MSG_LOADING}" } else { "{filtered.len()} {LBL_PERSON}" }
-                    }
+                SectionHeader {
+                    title: SEC_LIST.to_string(),
+                    badge: if loading() { MSG_LOADING.to_string() } else { format!("{} {LBL_PERSON}", filtered.len()) },
+                    trailing: rsx! {
+                        Pager {
+                            total: filtered.len(),
+                            page,
+                            on_change: move |p| page.set(p),
+                            testid: "users-pager",
+                        }
+                    },
                 }
 
                 if let Some(e) = err() {
@@ -332,19 +344,8 @@ pub fn UsersPanel() -> Element {
                         p { class: "text-zinc-400", "{MSG_NO_MATCH}" }
                     }
                 } else {
-                    if let Some(user) = filtered.first() {
-                        div {
-                            class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                            role: "region",
-                            "aria-label": "新卡示例",
-                            "data-testid": "user-card-prototype",
-                            PrototypeUserCard {
-                                user: user.clone(),
-                            }
-                        }
-                    }
-                    div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                        for user in filtered {
+                    CardGrid { aria_label: SEC_LIST.to_string(), testid: "users-list".to_string(),
+                        for user in visible {
                             UserCard {
                                 key: "{user.key}",
                                 user,
