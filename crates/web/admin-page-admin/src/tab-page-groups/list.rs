@@ -45,8 +45,8 @@ use super::shared::{
 /// `rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16`;示例区与
 /// 网格均为 `grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///
-/// 【子组件组成】`ui::GroupCard`(别名 `PrototypeGroupCard`,只读原型示例)、
-/// `modal::GroupCard`(可操作分组卡);四态块为原生 `div` / `p` / `button`。
+/// 【子组件组成】`modal::GroupCard`(可操作分组卡,外壳用共用样式壳
+/// `ui::CardShell`);四态块为原生 `div` / `p` / `button`。
 ///
 /// 【数据流】
 /// - 对内(入):`filtered`(页面按关键词 + 分级筛好的 `GroupDto`,用于计数与渲染)、
