@@ -24,11 +24,17 @@ pub struct LoginResponse {
 }
 
 /// 真实调用: POST /api/user/login
+///
+/// 必须走 `post_once`（不走 `request` 的 401 恢复链）：后端对密码错误同样返回
+/// 401（`AuthError::InvalidCredentials => UNAUTHORIZED`，见 crates/api/auth/src/error.rs），
+/// 走通用链会把它当成"access token 过期"→ 尝试刷新（登录页没有 refresh token，
+/// 必然失败）→ `dispatch_unauthorized` 清空 storage 并把 hash 打到 #signup，
+/// 登录表单连同样式被卸载、输入内容丢失，用户看到的就是"点了登录没反应/被踢走"。
 pub async fn login_api(
     client: &ApiClient,
     req: &contract_auth::LoginRequest,
 ) -> ApiResult<contract_auth::LoginResponse> {
-    client.post("/api/user/login", req).await
+    client.post_once("/api/user/login", req, None).await
 }
 
 /// 真实调用: POST /api/user/register

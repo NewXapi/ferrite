@@ -150,7 +150,13 @@ pub fn AuthPage() -> Element {
                 }
                 Err(e) => {
                     state.busy.set(false);
-                    state.error.set(Some(e.to_string()));
+                    // 密码错误等凭据问题：后端已给中文/可读 message（Http 变体），
+                    // 原样展示；只有刷新链无法恢复的 Unauthorized 才译成"登录态已过期"。
+                    let msg = match &e {
+                        ApiError::Unauthorized => "登录态已过期，请重新登录".to_string(),
+                        other => other.to_string(),
+                    };
+                    state.error.set(Some(msg));
                 }
             }
         });

@@ -1,8 +1,5 @@
 //! Web entry. Mounts the original console shell.
 
-// 不用 manganis 的 asset!() 内联：Firefox 下内联注入会阻塞主线程导致白屏
-// （wasm 启动后 DOM 永不挂载，实测 wasm 编译/实例化均成功、app 的 /api/*
-// 请求能发出、但 DOM 零挂载）。改普通 <link>，由浏览器异步拉取。
 use admin_web::RootApp;
 use dioxus::prelude::*;
 
