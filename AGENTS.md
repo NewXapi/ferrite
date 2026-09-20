@@ -174,6 +174,7 @@ crates/web/<prefix-feature>/
 | 提交 / 推送被拦、创建 PR 被拒、要查检查规则 | `.agent/rules/gates.md` |
 | 启动后端 / 数据库 / 前端，或前端报错、构建卡住 | `.agent/rules/dev-env.md` |
 | 写前端界面、写 Rust 公共接口、调查或审查代码 | `.agent/rules/conventions.md` |
+| 要跑 web 双车道（快速开发 / 审查修复 / 发布） | `.agent/rules/web-lanes.md` + 任务书 `.agent/tasks/dev-web-lane.md` / `.agent/tasks/webfix-lane.md` |
 | 要派一件具体的事给某个 agent（写任务书） | 开发任务用 `.agent/tasks/dev.md`，收尾合并用 `.agent/tasks/closeout-pr.md`；空白模板 `.agent/tasks/TEMPLATE.md` |
 | 想了解 `.agent/` 目录本身怎么组织 | `.agent/README.md` |
 
@@ -184,9 +185,9 @@ crates/web/<prefix-feature>/
 > 要写测试、跑测试、看 CI 结果，或怀疑「CI 绿了但没验东西」时 → 读
 > **`.agent/rules/testing-ci.md`**（含三种「看起来通过、其实没验证」的情况的判据和处理方法）。
 
-- 本地只做 `cargo check -p <crate>`（编译验证）和极小的单用例调试（3 秒内跑完的
+- 本地只做 `cargo check -p <crate>`（编译验证）和极小的单用例调试（3 秒内跑完的（注意：除非需要快速测试，不然不准在本地跑测试，把测试放到PR的 CI 上进行）
   `cargo test -p <crate> -- <测试名>`）；所有 `cargo test` 交给 PR 的 CI 按 `git diff` 动态选包。
-  本机可用内存常年不足 2GB，**严禁**本地跑 `cargo test --all` 或整个 workspace 编译（会假死）。
+  本机可用内存不多，**严禁**本地跑 `cargo test --all` 或整个 workspace 编译（会假死）。
 - 「通过」= CI 全绿；CI 未全绿不得 closeout / merge。
   本地 clippy 必须与 CI 同版本（改动前先 `rustup update stable`）。
 - **注意三种「看起来通过、其实没验证」的情况**（新增测试前必须读 `.agent/rules/testing-ci.md`）：
@@ -237,6 +238,23 @@ crates/web/<prefix-feature>/
 > 要开 PR 干活，或要派子代理分担任务时 → 读 **`.agent/rules/pr-workflow.md`**
 > （完整的九个阶段：准备 → 摸清范围 → 拆任务 → 开发审查循环 → 测试 → 工具审查 →
 > 冒烟验证 → 清理 → 汇报；以及下面这些门禁的完整说明）。
+
+### UI 快车道（web 双车道）
+
+改动**只落在** `crates/web/*` 与 `apps/admin-web` / `apps/tavern-web`，不碰 `crates/contract` /
+`crates/api` / `crates/gateway` / `crates/harness` 时，走 web 双车道
+（**权威规则：`.agent/rules/web-lanes.md`**），跳过本节重型流程：
+
+- 开发角色（任务书 `dev-web-lane.md`）：不派子代理、不做 CRG、不建 PR；
+  短分支 `feat/xxx` 从 `web-dev` 切、squash 合回即走人。
+- 审查修复角色（任务书 `webfix-lane.md`）：短分支 `webfix/xxx` 审 `base_sha..web-dev`，
+  修 + 测试/e2e，`--no-ff` 合回，并为发布 PR 产出 CRG 结论评论。
+- 唯一 PR = `web-dev → main`（merge commit，禁 squash），发布前先 `merge main` 同步；
+  推 web-dev / 建 PR 时 `.githooks` 闸门照跑（FAIL 清零，闸门不绕）。
+- 验证 = dev 浏览器自测（`just dev-web-rebuild <port> [debug]` → 强刷）；
+  车道内不单写 PR 评论。
+- 车道用固定 worktree `.wt/web-dev` / `.wt/web-fix`，共享 `CARGO_TARGET_DIR`；
+  不为小改动新开一次性 worktree。
 
 你是**主控** agent：编排任务、派子代理执行、审查子代理产出，**不要亲自把核心实现写完**。
 
