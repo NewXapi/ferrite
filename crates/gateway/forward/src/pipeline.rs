@@ -105,6 +105,19 @@ pub async fn forward_once(
 
     // 响应方向：上游格式 → 入站格式。流式逐帧转换，非流式整体转换。
     if task.stream {
+        // 非 2xx 守卫：上游在 SSE content-type 下回 4xx/5xx 时，错误体根本不是
+        // SSE 帧序列——喂给 SseScanner/StreamEncoder 只会让客户端拿到 4xx +
+        // 空或坏的 SSE。两个生产 Egress 已在 execute 内把非 2xx 归类成 Err，但
+        // ForwardedResponse 的公开构造器允许任何 Egress 透传非 2xx 的 Ok；守卫
+        // 放在管道层（所有出口的汇聚点）一次兜住，且在 body 被消费前读出错误体，
+        // 走与非流式一致的 classify_status 链（#238 锁定的错误形状契约）。
+        if !(200..=299).contains(&status) {
+            let preview = match read_all_body(resp).await {
+                Ok(b) => String::from_utf8_lossy(&b[..b.len().min(2048)]).into_owned(),
+                Err(_) => String::new(),
+            };
+            return Err(crate::egress::classify_status(status, preview));
+        }
         // 同格式 = 零转换透传：完全不建 encoder（客户端与渠道说同一协议时不该被
         // 重写字节，也不该在流尾补终止帧——上游的 [DONE] 已经原样透传了，再补一个
         // 就是两次流终止，e2e 的逐字保真断言实锤过这个坑）。
