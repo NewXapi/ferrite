@@ -28,6 +28,9 @@ pub fn AuthPageRoot() -> Element {
 
     // hash → tab：#signup 进入注册表单，#login/#auth 进入登录表单。
     // 否则默认 SignIn，用户从 #signup 进来却看到登录表单，会以为注册坏了。
+    // 只认认证页自己的三个 hash：登录成功 / 401 清理会把 hash 改掉（"" / "#signup"），
+    // 那时 RootApp 已安排本组件卸载，无差别回写 tab 只是给即将销毁的 scope 标记脏渲染，
+    // 与 HomePage 的 is_console 早退守卫保持同一策略。
     let _listener = use_signal(|| {
         let mut tab_sig = tab;
         let to_tab = |h: &str| {
@@ -39,7 +42,11 @@ pub fn AuthPageRoot() -> Element {
         };
         tab_sig.set(to_tab(&current_hash()));
         let cb = Closure::<dyn FnMut()>::new(move || {
-            tab_sig.set(to_tab(&current_hash()));
+            let h = current_hash();
+            if h != "#auth" && h != "#signup" && h != "#login" {
+                return;
+            }
+            tab_sig.set(to_tab(&h));
         });
         if let Some(w) = web_sys::window() {
             let _ = w.add_event_listener_with_callback("hashchange", cb.as_ref().unchecked_ref());

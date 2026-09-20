@@ -3,8 +3,6 @@
 use dioxus::prelude::*;
 use tavern_web_app::TavernApp;
 
-const TAILWIND_CSS: Asset = asset!("/assets/tailwind.out.css");
-
 fn main() {
     dioxus::launch(App);
 }
@@ -12,7 +10,7 @@ fn main() {
 #[component]
 fn App() -> Element {
     rsx! {
-        document::Stylesheet { href: TAILWIND_CSS }
+        document::Stylesheet { href: "/assets/tailwind.out.css" }
         // 全局 toast 出口：组件内 ui::components::toast::toast() 触发。
         ui_components::components::toast::Toaster {}
         TavernApp {}

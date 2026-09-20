@@ -145,18 +145,44 @@ fn debug_auto_login_after_unauthorized() {
     }
 }
 
+/// 会话不可恢复时该走哪条导航路径(纯函数,不碰 window,供 `tests/unauthorized_recovery.rs` 单测)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnauthorizedRecovery {
+    /// 曾经有会话: 整页 reload,让下一次启动直接走"无 token"这条已验证可用的路径。
+    Reload,
+    /// 本来就没有会话: 原地切 #signup。**绝不 reload** —— 无 token → 401 → reload
+    /// 会变成无限循环,把浏览器的刷新按钮变成陷阱。
+    ToSignUp,
+}
+
+/// 判据只有一个: 这次 401 是否来自一个已存在的会话(存储里还有 token)。
+/// 为 true 才 Reload;为 false 必须 ToSignUp。
+#[must_use]
+pub fn unauthorized_recovery(had_session: bool) -> UnauthorizedRecovery {
+    if had_session {
+        UnauthorizedRecovery::Reload
+    } else {
+        UnauthorizedRecovery::ToSignUp
+    }
+}
+
 /// 刷新不可恢复时的统一清理: 4 个登录态存储 key + client 内存 token 全部清空,
-/// 并把 hash 切到 #signup 让 RootApp 渲染登录页。
-/// debug-auto-login 开启时: 清空后先用 dev 种子账号尝试自动重登（成功 reload
-/// 停留当前页）；失败纯静默回落，跳 #signup 由下方尾部/后续 401 兜底。
+/// 然后按 `unauthorized_recovery` 的判据决定 reload 还是切 #signup。
+/// 启动时带着缓存 token 会先挂 HomePage, 再由 hydrate 的 401 风暴把它拆掉重挂到
+/// AuthPageRoot —— 这轮拆/挂在 Zen(Firefox) 上会把整棵树卸成白屏(实测: localStorage
+/// 留有过期 token 时页面纯白且不恢复, 清掉同一组 key 后立即正常渲染)。reload 让
+/// 下一次启动直接走"无 token"这条已验证可用的路径, 不碰飞行中的渲染树。
+/// debug-auto-login 开启时: 清空后先用 dev 种子账号尝试自动重登(成功 reload
+/// 停留当前页);失败纯静默回落,由下方尾部负责。
 fn handle_unauthorized() {
+    let had_session = ui::get_cached_token().is_some();
     ui::remove_storage_item("ferrite_access_token");
     ui::remove_storage_item("ferrite_refresh_token");
     ui::remove_storage_item("ferrite_username");
     ui::remove_storage_item("ferrite_current_user");
     client::ApiClient::shared().set_token(None);
-    // 登录态刚被清空，has_token 恒 false；hash 取当前值（登录页本身不会走到这里，
-    // 判据自会拦下 #login/#signup/#auth）。本块仅 feature 开时编译，无 feature 零变化。
+    // 登录态刚被清空,has_token 恒 false;hash 取当前值(登录页本身不会走到这里,
+    // 判据自会拦下 #login/#signup/#auth)。本块仅 feature 开时编译,无 feature 零变化。
     #[cfg(feature = "debug-auto-login")]
     {
         if should_debug_auto_login(true, false, &current_hash()) {
@@ -164,8 +190,17 @@ fn handle_unauthorized() {
             return;
         }
     }
-    if let Some(w) = web_sys::window() {
-        let _ = w.location().set_hash("#signup");
+    match unauthorized_recovery(had_session) {
+        UnauthorizedRecovery::Reload => {
+            if let Some(w) = web_sys::window() {
+                let _ = w.location().reload();
+            }
+        }
+        UnauthorizedRecovery::ToSignUp => {
+            if let Some(w) = web_sys::window() {
+                let _ = w.location().set_hash("#signup");
+            }
+        }
     }
 }
 
