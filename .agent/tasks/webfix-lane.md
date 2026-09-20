@@ -14,7 +14,7 @@
 你没有 dev 角色的对话历史，以下四样是全部事实来源，缺一项就可能审漏：
 
 ```bash
-export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target-web
+export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target
 cd /home/hathaway/projects/ferrite/.wt/web-fix
 git fetch origin
 git log --oneline <base_sha>..origin/web-dev      # 本轮要审的 commit 清单

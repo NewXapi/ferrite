@@ -31,19 +31,21 @@ main ──merge（单向同步）──> web-dev ──PR merge-commit（单向
 ```bash
 cd /home/hathaway/projects/ferrite          # 仓库根，防 .wt 嵌套事故
 git checkout main && git pull --ff-only
-git checkout -b web-dev && git push -u origin web-dev
+git branch web-dev main                     # 建分支但不要 checkout：主检出停在 web-dev 会占住分支，
+git push -u origin web-dev main:web-dev     # 后续 worktree add 报 "already used by worktree"（实测踩过）
 git worktree add .wt/web-dev web-dev        # 开发角色
 git worktree add --detach .wt/web-fix       # 审查角色：常驻 detached（同一分支不能同时 checkout 两个 worktree），每轮循环切 webfix/xxx
 git worktree list                            # 自检：新条目路径必须是 .wt/ 下且不出现第二个 .wt/
 ```
 
-两个 web worktree **共享一个编译目录**（避免每开一个 worktree 付一次冷 wasm target）：
+两个 web worktree **共享主检出的编译目录**（避免每开一个 worktree 付一次冷 wasm target，
+磁盘也只有一份）：
 
 ```bash
-export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target-web   # 两个车道的会话各自 export
+export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target   # 两个车道的会话各自 export
 ```
 
-cargo 用文件锁串行化并发构建；registry 依赖（dioxus 等）只编一次。
+cargo 用文件锁串行化并发构建；registry 依赖（dioxus 等）只编一次，工作区 crate 按内容指纹命中缓存。
 
 ## 循环 A：开发（角色 = dev agent）
 

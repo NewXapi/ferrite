@@ -103,8 +103,8 @@ dev-backend *args:
 #     手动调试登录页, 主动「退出登录」不会被自动重登顶掉。彻底关闭用普通档重新起。
 #   全部 --watch false (仓库已知 dx watch 重建卡死)。
 #   ⚠️ 改了依赖 crate（ui-components 等）后页面没变：dx 不会自动重编 wasm，
-#      必须 `kill <dx pid> && just dev-web <port>`（或 `just dev-web <port> debug`）重启，
-#      浏览器再强刷一次；仅 touch src 文件不会触发结构变更的重建。
+#      跑 `just dev-web-rebuild <port>`（或 `just dev-web-rebuild <port> debug`）一键重编+重启，
+#      浏览器再强刷一次。
 dev-web port="8090" mode="":
     #!/usr/bin/env bash
     # 锚定 justfile 所在目录（= 仓库根），使配方可从任意 cwd 调用
@@ -115,6 +115,80 @@ dev-web port="8090" mode="":
     else
       dx serve --platform web --port {{port}} --watch false
     fi
+
+# 改完代码一键重编 wasm + 重启 dx（替代手动的 kill+restart 仪式）
+#   普通: just dev-web-rebuild 8090     |  免登录调试档: just dev-web-rebuild 8090 debug
+#   档位（debug 与否）要和当前跑着的 dx 一致；重启后浏览器强刷一次。
+#   ponytail: 配交互 dev 循环（人等自己的构建），这里不套 cpulimit；agent 会话发起的构建仍按 AGENTS.md 套
+dev-web-rebuild port="8090" mode="":
+    #!/usr/bin/env bash
+    set -e
+    cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
+    echo "== rebuild wasm (dev profile) =="
+    cargo build --target wasm32-unknown-unknown
+    echo "== restart dx (port {{port}}, mode {{mode}}) =="
+    pid="$(ss -ltnp 2>/dev/null | grep ":{{port}} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
+    if [ -n "$pid" ]; then kill "$pid"; sleep 1; fi
+    if [ "{{mode}}" = "debug" ]; then
+      dx serve --platform web --port {{port}} --watch false --features debug-auto-login
+    else
+      dx serve --platform web --port {{port}} --watch false
+    fi
+    echo "== done: hard-refresh the browser (wasm/js are cached) =="
+
+# ---------- Ainotation 视觉标注反馈栈 (用法详见 .agent/skills/ainotation-web/SKILL.md) ----------
+#   重打 SDK bundle : just aino-bundle   (改了 ainotation-entry.ts / 升级 SDK 后; 改完需重启 dx)
+#   起 service      : just aino-service  (用运行时后台任务启动; 就绪判据 ~/.ainotation/service/connection.json)
+#   起同步桥        : just aino-bridge   (同上; 就绪判据日志 "project ready" + :44090 端点)
+#   体检            : just aino-check    (service 注册表 + 桥端点 + 前端连通)
+#   顺序硬约束: service 必须先于 agent 的 ainotation MCP 可用, 否则 MCP 工具调用会挂起
+#   端口不一致时: AINO_ORIGIN=http://127.0.0.1:<端口> just aino-bridge
+aino-bundle:
+    #!/usr/bin/env bash
+    cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
+    bun install
+    bun run aino
+    echo "✓ bundle 已重打: assets/ainotation/ainotation.iife.js (内容变化会改指纹, 记得重启 dx)"
+
+aino-service:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f "$HOME/.ainotation/service/connection.json" ]; then
+      url=$(jq -r .url "$HOME/.ainotation/service/connection.json")
+      token=$(jq -r .token "$HOME/.ainotation/service/connection.json")
+      if curl -sf -m 3 "$url/control/health" -H "Authorization: Bearer $token" >/dev/null 2>&1; then
+        echo "service 已在运行: $url"; exit 0
+      fi
+    fi
+    CLI=$(ls "$HOME"/.npm/_npx/*/node_modules/@ainotation/mcp/dist/cli.mjs 2>/dev/null | head -1)
+    if [ -n "$CLI" ]; then exec node "$CLI" service; else exec npx --yes @ainotation/mcp@beta service; fi
+
+aino-bridge:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
+    exec node scripts/ainotation-bridge.mjs
+
+aino-check port="8090":
+    #!/usr/bin/env bash
+    echo "== service =="
+    if [ -f "$HOME/.ainotation/service/connection.json" ]; then
+      url=$(jq -r .url "$HOME/.ainotation/service/connection.json")
+      token=$(jq -r .token "$HOME/.ainotation/service/connection.json")
+      curl -sf -m 3 "$url/control/health" -H "Authorization: Bearer $token" >/dev/null 2>&1 \
+        && echo "  ✓ $url" || echo "  ✗ $url 不健康 (just aino-service 重启)"
+      curl -sf -m 3 "$url/control/projects" -H "Authorization: Bearer $token" 2>/dev/null \
+        | jq -r '.projects[] | "  project: \(.name) (\(.projectId[0:8]))"' 2>/dev/null || true
+    else
+      echo "  ✗ 未运行 (just aino-service)"
+    fi
+    echo "== 同步桥 (:44090) =="
+    curl -sf -m 3 http://127.0.0.1:44090/connection.json 2>/dev/null \
+      | jq -e -r '"  ✓ 桥活跃 service=" + .url + " token=" + (.token[0:8])' \
+      || echo "  ✗ 未运行 (just aino-bridge)"
+    echo "== 前端 (:{{port}}) =="
+    curl -s -o /dev/null -m 3 -w '  :{{port}} -> %{http_code}\n' http://127.0.0.1:{{port}}/ \
+      || echo "  :{{port}} 未监听 (just dev-web {{port}} debug)"
 
 # dev 环境体检：查共享后端(3211)/前端 serve(8090) 监听 + 打印进程卫生提醒
 # 场景: 前端页面报 500/连不上, 或 agent 开工前确认环境活着
@@ -141,7 +215,8 @@ dev-check:
 #   → 多半是别的会话构建被 cpulimit 遗留的 SIGSTOP 僵进程持锁。
 #     诊断: ps -eo pid,stat,args | awk '$2 ~ /^T/' 找 T 态; readlink /proc/<pid>/cwd 确认归属;
 #     无主的才 kill, 活会话的用 kill -CONT 恢复。绝不无脑 pkill cargo/rustc。
-# 症状: dx serve 改了依赖 crate 但页面没变
-#   → dx 对依赖 crate 改动不自动重建 wasm。手动 cargo rustc --profile wasm-dev 重编 wasm,
-#     再 touch 任一 src 文件让 dx 重跑 bindgen, 或直接重启 dx serve。
+# 症状: dx serve 改了代码（含依赖 crate）但页面没变
+#   → dx 对改动不自动重建 wasm（--watch false）。跑 `just dev-web-rebuild <port> [debug]`
+#     一键重编 + 重启，浏览器强刷一次。（旧的 cargo rustc --profile wasm-dev 命令已失效：
+#     仓库没有 wasm-dev profile，是 dx 0.6 的遗留提示。）
 

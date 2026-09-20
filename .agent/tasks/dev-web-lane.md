@@ -11,7 +11,7 @@
 ## 0. 开工（每个会话一次）
 
 ```bash
-export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target-web   # 共享编译目录，必设
+export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target   # 共享主检出编译目录，必设
 cd /home/hathaway/projects/ferrite/.wt/web-dev                        # 全局绝对路径，别自己推路径
 git status                       # 必须干净
 git checkout web-dev && git pull --ff-only
@@ -30,14 +30,15 @@ cd /home/hathaway/projects/ferrite && just dev-backend status || just dev-backen
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3211/api/dashboard   # 401 = 活着
 
 # 标注栈（硬顺序：service 先于 bridge 先于前端；全用运行时托管后台任务，禁止 nohup &）：
+# 本例端口 8092（8090 被占；换端口时下面全文替换，bridge 的 AINO_ORIGIN 必须同步改）
 just aino-service                 # 就绪判据 ~/.ainotation/service/connection.json
-just aino-bridge                  # 端口非 8090 时：AINO_ORIGIN=http://127.0.0.1:<port> just aino-bridge
-just dev-web 8090 debug           # 免登录自动登 admin_dev；起后 ss -ltn 验证 8090 在听
-just aino-check                   # 体检：service + 桥 + 前端三绿
+AINO_ORIGIN=http://127.0.0.1:8092 just aino-bridge   # 同步桥 :44090
+just dev-web 8092 debug           # 免登录自动登 admin_dev；起后 ss -ltn 验证 8092 在听
+just aino-check 8092              # 体检：service + 桥 + :8092 前端三绿
 ```
 
 端口被占就换（8091/8092…），**换端口必须同步改 bridge 的 `AINO_ORIGIN`**，并在汇报里写实际端口。
-只用普通预览不起标注栈时：`just dev-web 8090`。
+只用普通预览不起标注栈时：`just dev-web <port>`。
 
 ## 2. 开发循环（改 → 一条命令 → 强刷）
 
