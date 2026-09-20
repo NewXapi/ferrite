@@ -12,6 +12,7 @@
 use dioxus::prelude::*;
 
 use super::HOVER_BORDER_BRIGHT;
+use crate::on_tab_wheel;
 
 /// 价格三元组(输入 / 输出 / 缓存), 概览价格行与分组报价行共用。
 #[derive(Clone, PartialEq)]
@@ -156,6 +157,8 @@ pub fn StatTabsCard(
                 div { class: "flex shrink-0 gap-1.5",
                     role: "tablist",
                     "aria-label": "卡内视图切换",
+                    // 滚轮竖向滚动 → 循环切换卡内 tab(概览/分组价格/待定)
+                    onwheel: move |e: WheelEvent| on_tab_wheel(e, 3, tab() as usize, |i| tab.set(i as u8)),
                     for i in 0..3u8 {
                         button {
                             role: "tab",
