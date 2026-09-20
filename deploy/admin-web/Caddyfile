@@ -9,6 +9,11 @@
 	handle @api {
 		reverse_proxy api:3000
 	}
+	# Dioxus live-reload WebSocket：必须 404，运行时据此判定无 dev server。
+	# 若被 SPA 回落成 index.html(200)，app 会无限重连；Firefox/Zen 直接白屏。
+	handle /_dioxus* {
+		respond "no dev server" 404
+	}
 	handle {
 		try_files {path} /index.html
 		file_server
