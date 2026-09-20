@@ -13,11 +13,15 @@ RUN cargo install dioxus-cli --locked --version 0.7.9
 WORKDIR /app
 # 工作区成员必须完整，否则根 Cargo.toml 的 members 解析失败。
 COPY Cargo.toml Cargo.lock ./
+COPY apps ./apps
+COPY crates ./crates
+COPY tests ./tests
+COPY db ./db
 RUN rustup target add wasm32-unknown-unknown
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cd apps/admin-web && dx build --release --platform web \
-    && cp target/dx/admin-web/release/web/public /out
+     && cp /app/target/dx/admin-web/release/web/public /out
 
 # ---- runtime ----
 FROM caddy:2-alpine

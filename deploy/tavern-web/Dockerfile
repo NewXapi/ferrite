@@ -15,11 +15,14 @@ RUN cargo install dioxus-cli --locked --version 0.7.9
 WORKDIR /app
 RUN rustup target add wasm32-unknown-unknown
 COPY Cargo.toml Cargo.lock ./
-COPY apps crates tests db ./
+COPY apps ./apps
+COPY crates ./crates
+COPY tests ./tests
+COPY db ./db
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cd apps/tavern-web && dx build --release --platform web \
-    && cp target/dx/tavern-web-app/release/web/public /out
+     && cp /app/target/dx/tavern-web-app/release/web/public /out
 
 # ---- runtime ----
 FROM caddy:2-alpine

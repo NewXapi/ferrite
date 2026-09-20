@@ -18,7 +18,10 @@ WORKDIR /app
 # db/migrations 由 db-bootstrap 的 sqlx::migrate! 在编译期嵌入
 # （路径 ../../../db/migrations 相对该 crate），必须进构建上下文。
 COPY Cargo.toml Cargo.lock ./
-COPY apps crates tests db ./
+COPY apps ./apps
+COPY crates ./crates
+COPY tests ./tests
+COPY db ./db
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cargo build --release -p api ${FEATURES} && cp target/release/ferrite /ferrite
