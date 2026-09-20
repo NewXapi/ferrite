@@ -172,7 +172,7 @@ pub fn DropdownMenu(
     // 用响应式 effect 订阅该信号（effect 内读 `close()` 即建立依赖），请求到 true 时收关。
     // 切勿改回 `poll_fn(|_| Ready(()))` 之类的「立即就绪」轮询：wasm 单线程协作调度下，
     // 立即就绪的 await 不会让出事件循环，循环体会在同一次 task poll 内无限重入，把主线程
-    // 钉死——这是控制台首屏整页白屏（总览/模型/管理等登录后路由全部不可见）的真凶。
+    // 钉死——这是登录后整页白屏、headless 渲染必崩（`#main` 永远为空）的真凶。
     use_effect(move || {
         if let Some(close) = close_signal
             && close()

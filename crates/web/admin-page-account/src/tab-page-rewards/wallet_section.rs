@@ -4,6 +4,8 @@ use dioxus::prelude::*;
 
 use crate::usage_support::{fmt_num, fmt_quota};
 
+use super::shared::ErrCard;
+
 #[component]
 pub fn WalletSection(
     wallet: Signal<Option<crate::api::WalletView>>,
@@ -67,18 +69,6 @@ pub fn WalletSection(
                     }
                 }
             }
-        }
-    }
-}
-
-/// 错误态统一渲染:柔和红边卡片 (非满屏红),对齐 keys.rs 的诚实降级文案。
-#[component]
-fn ErrCard(testid: &'static str, what: &'static str, msg: String) -> Element {
-    rsx! {
-        div {
-            class: "rounded-xl border border-red-500/40 bg-zinc-900 p-4",
-            "data-testid": testid,
-            p { class: "text-sm text-red-300", "无法加载{what} (未登录或请求失败): {msg}" }
         }
     }
 }

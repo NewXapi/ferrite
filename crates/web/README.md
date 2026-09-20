@@ -66,7 +66,7 @@ apps/admin-web（main.rs:9 init_auth() 注册 401 静默刷新 → 挂 RootApp�
     │   │   └── SettingsPanel     偏好设置                 # settings.rs:11  真实 API
     │   └── Section::Manage（#manage/#network/#users/#groups/#aliases/#channels/#subscriptions/#redemptions/#system）
     │       ├── NetworkPanel       调度拓扑画布            # network.rs:641  mock
-    │       ├── UsersPanel         用户管理卡片            # (admin-page-users) panel.rs:26  mock
+    │       ├── UsersPanel         用户管理卡片            # (admin-page-users) tab-page-users/page.rs  真实 API
     │       ├── GroupsPage / AliasesPage / ChannelsPage / SubscriptionsPage / RedemptionsPage / SystemPage
     │       │                      分组/别名/渠道/订阅/兑换/系统  # (admin-page-admin) 各文件  mock
     └── SectionPill（左侧圆点导航，已定义未挂载）          # lib.rs:109
@@ -119,7 +119,7 @@ crates/web/
   - 管理操作：渠道 CRUD（凭据掩码、测试按钮）、模型+分组到渠道的路由映射、令牌、分组倍率、兑换码、网络、系统
   - **按 tab 目录化**：每个 tab 独占 `tab-page-<name>/`，内含 `page.rs`（入口，组装） / `stats.rs` / `toolbar.rs` / `list.rs` / `shared.rs` / `modal.rs`；页面 rsx 只做组装，组件内部细节不外泄到页面
   - 现状：**UI 就绪、未接线**——api.rs 已实现真实调用，但 channels/groups/aliases/redemptions/system/network 各页面零消费（页面用内联演示数据）
-- **admin-page-users**（内部依赖：client, contract, ui；src：lib.rs / api.rs / data.rs / panel.rs）
+- **admin-page-users**（内部依赖：client, contract, ui；src：lib.rs / api.rs / data.rs / tab-page-users/）
   - 用户管理：列表与操作；现状：**页面未接线**（api.rs 数据层已备真实调用，panel 暂用内联演示常量）
 
 ### 酒馆端（消费 `/tavern/*` API，含 SSE 流式）
