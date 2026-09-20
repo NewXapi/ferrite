@@ -34,6 +34,11 @@ pub use card::{ChoiceCard, ChoiceOption, StatusCard};
 pub use components::admin_card::{
     AdminCard, AliasCard, ChannelCard, DotTabBar, GroupCard, RedemptionCard, UserCard,
 };
+pub use components::admin_card::{
+    AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
+    PlaceholderBlock, SectionHeader,
+};
+pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
