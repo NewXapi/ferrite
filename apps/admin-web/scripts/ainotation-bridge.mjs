@@ -12,6 +12,9 @@
 // 可用环境变量覆盖（默认值对齐 justfile 的 `dev-web` 端口与仓库布局）：
 //   AINO_ORIGIN  前端 origin，默认 http://127.0.0.1:8090（= `just dev-web` 默认端口）
 //   AINO_PORT    桥端点端口，默认 44090
+//   AINO_DIRECTORY 项目注册目录，默认脚本位置派生的仓库根。.wt/ 车道里必须显式指向
+//                 主检出目录，否则项目按 worktree 路径注册，agent 的 MCP
+//                 （connect --directory 主检出）读不到车道里产生的标注。
 import { readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +27,10 @@ const FILE_PORT = Number(process.env.AINO_PORT ?? 44090);
 const PROJECT_NAME = 'ferrite-admin';
 // 仓库根由脚本位置派生（scripts/ 位于 apps/admin-web/ 下，即根往上三级），
 // 不写死绝对路径——换机器 / 换 clone 路径都不用改。
-const PROJECT_DIRECTORY = fileURLToPath(new URL('../../..', import.meta.url));
+// AINO_DIRECTORY 覆盖：.wt/ 车道里指向主检出目录，让标注落进 MCP 能读到的同一项目。
+const PROJECT_DIRECTORY =
+  process.env.AINO_DIRECTORY ??
+  fileURLToPath(new URL('../../..', import.meta.url));
 const RENEW_INTERVAL_MS = 2 * 60 * 1000;
 
 async function api(url, token, path, method = 'GET', body) {

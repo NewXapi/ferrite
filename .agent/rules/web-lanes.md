@@ -119,7 +119,9 @@ merge 期跑 `github/pr_gates` + clippy 等。结论：
 
 ## 已知坑
 
-- `.wt/web-fix` 常驻 detached HEAD（git 不允许同一分支 checkout 进两个 worktree），
+- ainotation 标注一次只服务一个 origin（桥单例 `:44090` + grant 绑 origin）；车道里起桥必须带
+  `AINO_DIRECTORY=<主检出目录>`，否则 MCP 读不到。详见两份任务书。
+- `.wt/web-fix` 常驻 detached HEAD（git 不允许同一分支进两个 worktree），
   每轮循环从 `origin/web-dev` 切新 `webfix/xxx`，不在旧 webfix 分支上续。
 - 共享 target 时两个车道同时构建会互相等锁（cargo 串行），属预期，不要 kill 对方的 cargo。
 - dx / ainotation / 后端的具体启动命令在任务书里，不在本文件重复。

@@ -27,7 +27,9 @@ git checkout -b webfix/xxx origin/web-dev         # base_sha = 上次发布记�
 - `.wt/web-fix` 是常驻 detached HEAD 的 worktree（git 不允许同一分支进两个 worktree），
   每轮循环从 `origin/web-dev` 切新 `webfix/xxx`，不在旧 webfix 分支上续。
 - **用户原话/视觉意见**：读 ainotation 反馈（MCP `ainotation_get_feedback` /
-  `ainotation_get_image`）——那是 dev 为什么改的直接依据。
+  `ainotation_get_image`）——那是 dev 为什么改的直接依据。MCP 直连共享 service，
+  **不需要起桥**；桥只在用户要贴本车道端口标注时才起（且会抢走别的 origin 的标注
+  能力，约束见 dev 任务书 §1）。
 - **功能真貌**：自己把环境跑起来看实际页面（启动命令同 dev 任务书 §1），
   审查结论必须包含「跑过的路径 + 看到的行为」，不许只读 diff 下结论。
 

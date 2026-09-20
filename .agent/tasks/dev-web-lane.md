@@ -32,13 +32,23 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3211/api/dashboard   #
 # 标注栈（硬顺序：service 先于 bridge 先于前端；全用运行时托管后台任务，禁止 nohup &）：
 # 本例端口 8092（8090 被占；换端口时下面全文替换，bridge 的 AINO_ORIGIN 必须同步改）
 just aino-service                 # 就绪判据 ~/.ainotation/service/connection.json
-AINO_ORIGIN=http://127.0.0.1:8092 just aino-bridge   # 同步桥 :44090
+AINO_ORIGIN=http://127.0.0.1:8092 AINO_DIRECTORY=/home/hathaway/projects/ferrite just aino-bridge   # 同步桥 :44090
 just dev-web 8092 debug           # 免登录自动登 admin_dev；起后 ss -ltn 验证 8092 在听
 just aino-check 8092              # 体检：service + 桥 + :8092 前端三绿
 ```
 
 端口被占就换（8091/8092…），**换端口必须同步改 bridge 的 `AINO_ORIGIN`**，并在汇报里写实际端口。
 只用普通预览不起标注栈时：`just dev-web <port>`。
+
+**标注栈三个硬约束（实测踩过）**：
+
+- **一次只服务一个 origin**：页面 SDK 端点端口写死 `127.0.0.1:44090`，grant 绑 origin。
+  别的会话（含主检出 8090）占着桥时，本车道页面的标注**静默不工作**——要么协商停掉
+  对方的桥用本车道端口重启，要么本车道只开发、不发标注。
+- **车道里起桥必须带 `AINO_DIRECTORY=/home/hathaway/projects/ferrite`**：否则项目按
+  worktree 路径注册，agent 的 MCP（connect 的是主检出目录）**读不到**车道里的标注。
+- service 是共享单例（`just aino-service` 幂等）；MCP 读标注不经过桥——只读标注的
+  会话（如 webfix 车道）不起桥。
 
 ## 2. 开发循环（改 → 一条命令 → 强刷）
 
