@@ -65,13 +65,14 @@ pub fn Pager(
     let current = page().min(pages - 1);
     rsx! {
         nav {
-            class: "flex items-center gap-1",
+            class: "flex flex-wrap items-center gap-1",
             role: "navigation",
             "aria-label": "分页",
             "data-testid": "{testid}",
             button {
                 class: "rounded-lg border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40",
                 "data-testid": "{testid}-prev",
+                "aria-label": "上一页",
                 disabled: current == 0,
                 onclick: move |_| on_change.call(current - 1),
                 "‹"
@@ -88,6 +89,7 @@ pub fn Pager(
                                 "rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800"
                             },
                             "data-testid": "{testid}-page-{i}",
+                            "aria-label": "第 {i + 1} 页",
                             "aria-current": if is_active { "page" } else { "" },
                             onclick: move |_| on_change.call(i),
                             "{i + 1}"
@@ -98,6 +100,7 @@ pub fn Pager(
             button {
                 class: "rounded-lg border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40",
                 "data-testid": "{testid}-next",
+                "aria-label": "下一页",
                 disabled: current + 1 >= pages,
                 onclick: move |_| on_change.call(current + 1),
                 "›"

@@ -32,8 +32,7 @@ pub use auth_modal::{AuthModal, UserBadge};
 pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
 pub use components::admin_card::{
-    AdminCard, AliasCard, AliasEditField, ChannelCard, ChannelEditField, DotTabBar, GroupCard,
-    RedemptionCard, UserCard,
+    AdminCard, AliasCard, AliasEditField, ChannelCard, ChannelEditField, DotTabBar, UserCard,
 };
 pub use components::admin_card::{
     AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,

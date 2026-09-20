@@ -1,5 +1,5 @@
 //! 分组卡片网格区(编号段 3):标题计数 + 四态分支(loading / error / empty / data)
-//! + 首卡示例 + `GroupCard` 网格。
+//! + `GroupCard` 网格。
 //!
 //! 纯展示组件:数据与写回回调由 page 注入,自身零 `use_signal`、不发网络请求;
 //! 卡片独有的交互(滑条拖拽、按钮组)全在 `modal.rs` 的 `GroupCard` 内。
@@ -11,14 +11,12 @@
 //! 不在本文件定义,由 `modal.rs::GroupCard` 承载。
 
 use dioxus::prelude::*;
-use ui::GroupCard as PrototypeGroupCard;
 
 use contract::api::admin::GroupDto;
 
 use super::modal::GroupCard;
 use super::shared::{
-    BTN_RETRY, LBL_PROTOTYPE_REGION, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST,
-    OPT_BADGE_LOADING, SEC_LIST, WriteOp,
+    BTN_RETRY, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST, OPT_BADGE_LOADING, SEC_LIST, WriteOp,
 };
 
 /// 分组列表(四态 + 卡片网格)。
@@ -106,24 +104,6 @@ pub fn GroupsList(
                     p { class: "text-zinc-400", "{MSG_EMPTY}" }
                 }
             } else {
-                // 首卡示例 (ui crate 的原型 GroupCard, 只读展示)
-                if let Some(group) = filtered.first().cloned() {
-                    {
-                        let is_default = group.name == "default";
-                        rsx! {
-                            div {
-                                class: "mb-4 grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                                role: "region",
-                                "aria-label": LBL_PROTOTYPE_REGION,
-                                "data-testid": "group-card-prototype",
-                                PrototypeGroupCard {
-                                    group,
-                                    is_default,
-                                }
-                            }
-                        }
-                    }
-                }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                     "data-testid": "groups-list",
                     for g in visible {

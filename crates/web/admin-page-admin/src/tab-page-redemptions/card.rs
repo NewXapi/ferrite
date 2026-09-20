@@ -34,10 +34,13 @@ use crate::tab_page_groups::Badge;
 /// - 已在「已核销」/「已停用」态时,第二个按钮为 `disabled` 占位,不可点。
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
-/// 【样式】外壳 `group flex flex-col justify-between rounded-xl border border-zinc-800
+/// 【样式】外壳 class 取自共用样式壳 `ui::CARD_SHELL_CLASS`
+/// (`group flex flex-col justify-between rounded-xl border border-zinc-800
 /// bg-zinc-900/60 p-4`,悬停 `hover:border-zinc-600 hover:bg-zinc-900/80` 且
-/// `transition-all duration-200`,带 `data-testid="redemption-card"`、`role="listitem"`;
-/// 头像圈 `h-9 w-9 rounded-full border border-zinc-700 bg-zinc-800`;卡密预览为
+/// `transition-all duration-200`),带 `data-testid="redemption-card"`、
+/// `role="listitem"`(父容器 `redemptions-list` 是 `role="list"`,故保留
+/// listitem 而不用 CardShell 的 region);头像圈 `h-9 w-9 rounded-full border
+/// border-zinc-700 bg-zinc-800`;卡密预览为
 /// `truncate font-mono text-sm text-zinc-100`;面额条 `h-1.5 w-full rounded-full
 /// bg-zinc-800` 内嵌 `transition-all duration-300` 的彩色进度;底部操作区
 /// `mt-4 flex gap-1.5 border-t border-zinc-800 pt-3`;复制按钮常态 zinc 系、复制后
@@ -99,7 +102,9 @@ pub fn RedemptionCard(
             "data-testid": "redemption-card",
             role: "listitem",
             "aria-label": "{LBL_CARD_ARIA_PREFIX}{item.key}",
-            class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            // 外壳 class 与分组/用户卡共用 shell::CARD_SHELL_CLASS(逐字一致),
+            // 不再在本文件复制一份字面量。
+            class: "{ui::CARD_SHELL_CLASS}",
             div { class: "space-y-3",
                 // 头部
                 div { class: "flex items-start gap-3",
