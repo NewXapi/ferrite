@@ -7,7 +7,7 @@
 - `src/data.rs` — 展示格式化助手(额度换算、日期截断、key 截断、百分比)。
 - `src/tab-page-users/` — 用户管理 tab,目录内文件不带前缀:
   - `page.rs` — 页面层:状态 + 拉取 effect + 统计 / 筛选 / 卡片网格三区组合(spec §1.4 统一页面层文件名)。
-  - `user_card.rs` — 单张用户卡(徽标行、额度进度条、计数行、操作区)。
+  - `user_card.rs` — 单张用户卡的页面适配层：分组名 → remark 展示标签的 context 映射 + 编辑 / 充值 / 启停操作插槽；卡片展示（AdminCard 三页签、额度换算、用量配色）复用 ui-components 的共享 `ui::UserCard`，本文件不保留整套渲染树。
   - `badge.rs` — 分组 / 角色 / 状态共用的胶囊徽标。
   - `modal.rs` — 弹窗外壳与输入框样式(表单弹窗与充值弹窗共用)。
   - `user_form.rs` — 新建 / 编辑弹窗,含弹窗内三个真实页签。
@@ -33,6 +33,24 @@
   reset_password。编辑弹窗按 tab 回写单字段;启用/禁用按钮的**文案**是中文,
   提交的 action 是 snake_case 英文(后端枚举拒中文变体)。
 - `POST /api/user/users` — admin 创建用户(用户名/初始密码/邮箱/角色/额度/分组数组)。
+
+## 用户卡片
+
+列表网格用 `ui::CardGrid`（`role="list"`，testid `users-list`，1/3/5 列），
+分页是页面本地 UI 状态（`ui::Pager`，testid `users-pager`，每页 15 张），不
+跨组件、不改拉取逻辑。单卡是共享 `ui::UserCard`（`AdminCard` 外壳，无头像字母
+圈），三个页签：
+
+- **基本信息**：用户名 / 邮箱 / 角色 / 状态 / 分组徽标（标签取分组列表 remark，
+  回落裸名，与弹窗 chips 同口径）+ 底部操作按钮组
+- **额度**：已用 / 总额（`500_000` 内部单位 = `¥1`）/ 进度条（用量 ≥70% 琥珀、
+  ≥90% 红，否则绿）/ 请求数
+- **系统**：截断 key / 创建时间
+
+测试标识：卡根 `user-card`，操作按钮 `user-edit` / `user-topup` /
+`user-toggle`。启停按钮提交的 action 是 snake_case 英文（`enable` / `disable`，
+后端枚举拒中文变体），按钮文案仍是中文；编辑 / 充值分别开 `UserForm` 编辑态与
+`TopUpForm`。卡片只经 props 收数据、经回调抛事件，不发起网络请求。
 
 ## 编辑弹窗页签
 

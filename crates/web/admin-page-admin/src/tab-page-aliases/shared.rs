@@ -26,12 +26,11 @@ pub struct AliasItem {
     pub price_mode: PriceMode,
 }
 
-/// 弹窗状态(Edit 携带后端模型 UUID key)
+/// 弹窗状态（仅剩新建：编辑已改走卡片行内 Popover，见决策记录 §2.2）
 #[derive(Clone, PartialEq)]
 pub enum AliasModalState {
     Closed,
     New,
-    Edit(String),
 }
 
 /// 计算「可用此别名的分组及其倍率」。
@@ -80,8 +79,6 @@ pub const SEC_PER_CALL_NOTE: &str = "后端落地前按次价格暂存于倍率�
 
 // ---- TTL_* : 弹窗标题 ----
 
-/// 编辑已有别名时的弹窗标题。
-pub const TTL_EDIT: &str = "编辑模型别名";
 /// 新建别名时的弹窗标题。
 pub const TTL_NEW: &str = "新建模型别名";
 
@@ -169,8 +166,6 @@ pub const BTN_NEW_ALIAS: &str = "✚ 新建别名";
 pub const BTN_RETRY: &str = "重试";
 /// 弹窗取消按钮。
 pub const BTN_CANCEL: &str = "取消";
-/// 弹窗编辑态提交按钮。
-pub const BTN_SAVE_CHANGES: &str = "保存修改";
 /// 弹窗新建态提交按钮。
 pub const BTN_CREATE_ALIAS: &str = "创建别名";
 
@@ -194,6 +189,10 @@ pub const MSG_EMPTY: &str = "没有匹配的模型别名";
 pub const MSG_DELETED: &str = "已删除";
 /// 保存失败提示前缀(后接错误详情)。
 pub const MSG_SAVE_FAILED: &str = "保存失败:";
+/// 行内 Popover 提交别名为空时的提示。
+pub const MSG_NAME_REQUIRED: &str = "别名不能为空";
+/// 行内 Popover 提交数值字段解析失败时的提示。
+pub const MSG_NUM_INVALID: &str = "数值无效,已保留原值";
 /// 删除失败提示前缀(后接错误详情)。
 pub const MSG_DELETE_FAILED: &str = "删除失败:";
 /// 新建被诚实拒绝的提示。

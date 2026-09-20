@@ -29,6 +29,11 @@ pub const LBL_UNLIMITED: &str = "无限制";
 /// 套餐卡分组徽标前缀(后接分组名)。
 pub const LBL_GROUP_PREFIX: &str = "分组: ";
 
+/// 卡片列表区标题(分页器旁的标题)。
+pub const SEC_LIST: &str = "套餐列表";
+/// 卡片列表计数徽标:加载中替代文案。
+pub const OPT_BADGE_LOADING: &str = "加载中…";
+
 // ---- BTN_* : 按钮文案 ----
 
 /// 页面顶栏新建套餐按钮。

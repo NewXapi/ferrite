@@ -271,35 +271,6 @@ fn wheel_step(e: WheelEvent, active: Section, on_select: &EventHandler<Section>)
     on_select.call(step(active, if dy > 0.0 { 1 } else { -1 }));
 }
 
-/// Top-bar segmented pill: one capsule split into slots.
-#[component]
-pub fn TopNavMeter(active: Section, on_select: EventHandler<Section>) -> Element {
-    let len = SECTIONS.len();
-    let wheel = on_select;
-    rsx! {
-        nav {
-            class: "flex h-8 items-center gap-0.5 px-1.5",
-            onwheel: move |e: WheelEvent| wheel_step(e, active, &wheel),
-            for i in 0..len {
-                button {
-                    key: "{SECTIONS[i].label()}",
-                    class: if active == SECTIONS[i] {
-                        if i == 0 { "flex h-6 items-center rounded-l-full bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
-                        else if i == len - 1 { "flex h-6 items-center rounded-r-full bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
-                        else { "flex h-6 items-center bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
-                    } else {
-                        if i == 0 { "flex h-6 items-center rounded-l-full px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
-                        else if i == len - 1 { "flex h-6 items-center rounded-r-full px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
-                        else { "flex h-6 items-center px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
-                    },
-                    onclick: move |_| on_select.call(SECTIONS[i]),
-                    "{SECTIONS[i].label()}"
-                }
-            }
-        }
-    }
-}
-
 /// 面板头部文字 tab:激活项底部白色下划线(激活态用底部 0.5px 白色横条指示)
 #[component]
 pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
@@ -483,14 +454,6 @@ pub fn HomePage() -> Element {
                     }
                 },
                 top_nav: rsx! {
-                    // 移动端 rail 隐藏 → section 横条作为替代入口(对齐"手机上下横栏"决定)
-                    div {
-                        class: "flex w-full justify-center md:hidden",
-                        div {
-                            class: "flex items-center rounded-full border border-zinc-800/80 bg-zinc-900/90 px-2 py-1 shadow-lg shadow-black/20 backdrop-blur",
-                            TopNavMeter { active: section(), on_select: move |s| section.set(s) }
-                        }
-                    }
                     TopNavBar {
                         tabs: labels.clone(),
                         active: active_tab as usize,

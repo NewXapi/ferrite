@@ -1,0 +1,14 @@
+{
+  "name": "@ferrite/e2e",
+  "private": true,
+  "type": "module",
+  "description": "管理页浏览器 E2E（Playwright）：wasm 渲染、行内 Popover 编辑、请求稳定性",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

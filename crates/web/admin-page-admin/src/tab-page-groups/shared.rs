@@ -117,8 +117,6 @@ pub const LBL_MULT_BASELINE_PREFIX: &str = "基准 ";
 pub const LBL_MULT_DISCOUNT_PREFIX: &str = "优惠 ";
 /// 卡片倍率徽标:溢价倍率前缀(后接 `{m:.2}× (+{markup}%)`)。
 pub const LBL_MULT_MARKUP_PREFIX: &str = "溢价 ";
-/// 新建卡示例区的 aria-label。
-pub const LBL_PROTOTYPE_REGION: &str = "新卡示例";
 /// 弹窗关闭按钮的 aria-label。
 pub const LBL_CLOSE: &str = "关闭";
 /// 计费预览行:该分组实际扣费。

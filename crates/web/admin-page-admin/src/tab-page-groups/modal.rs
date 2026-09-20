@@ -109,9 +109,11 @@ pub fn Badge(text: String, tone: &'static str) -> Element {
 ///   三者均只抛 `EventHandler`,网络请求由页面闭包完成。
 /// 数据交互:本组件自身**不发任何网络请求**;滑条拖动全程只改本地 signal。
 ///
-/// 【样式】外壳 `group flex flex-col justify-between rounded-xl border border-zinc-800
+/// 【样式】外壳用共用样式壳 `ui::CardShell`(`CARD_SHELL_CLASS`:
+/// `group flex flex-col justify-between rounded-xl border border-zinc-800
 /// bg-zinc-900/60 p-4`,悬停 `hover:border-zinc-600 hover:bg-zinc-900/80` 且
-/// `transition-all duration-200`,`data-testid="group-card"`;默认标签为蓝底
+/// `transition-all duration-200`),根节点 `role="region"` +
+/// `aria-label="{group.name}"` + `data-testid="group-card"`;默认标签为蓝底
 /// `bg-blue-950/60 border-blue-800/60 text-blue-300`;滑条轨道 `h-4 w-full`,
 /// 灰底 `h-1.5 ... bg-zinc-800` 上叠彩色进度条,调整态才渲染 thumb
 /// (`h-3.5 w-3.5 rounded-full border-2 border-zinc-100 bg-zinc-900 shadow`,
@@ -193,8 +195,9 @@ pub fn GroupCard(
     let example_cost = (100.0 * m).round() as i64;
 
     rsx! {
-        div { class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-            "data-testid": "group-card",
+        ui::CardShell {
+            title: group.name.clone(),
+            testid: Some("group-card".to_string()),
 
             div { class: "space-y-3",
                 // 头部:分组名 + 默认标签 (卡内勾选框已移除, 多选改到列表外的 chips 区)
