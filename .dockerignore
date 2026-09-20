@@ -1,0 +1,9 @@
+# docker 构建上下文裁剪：本地 target/ 有 GB 级编译产物（含 dx web 产物），
+# 传上去会把构建拖死。Cargo.lock 必须进上下文（workspace 精确重现）。
+target/
+**/target/
+.wt/
+.git/
+*.log
+logs/
+node_modules/

@@ -1,0 +1,10 @@
+# Ferrite 酒馆前端 caddy 配置。
+# 静态资源 SPA 回落 + /tavern、/v1 反代到 api 容器（compose 服务名）。
+# 独立运行时需能解析主机名 api —— 请改 Caddyfile 里的上游地址。
+:8081 {
+	root * /srv
+	file_server
+	try_files {path} /index.html
+	reverse_proxy /tavern/* api:3000
+	reverse_proxy /v1/* api:3000
+}

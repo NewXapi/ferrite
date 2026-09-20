@@ -1,0 +1,9 @@
+# Ferrite 后台管理前端 caddy 配置。
+# 静态资源 SPA 回落 + /api 反代到 api 容器（compose 服务名）。
+# 独立运行时需能解析主机名 api —— 请改 Caddyfile 里的上游地址。
+:8080 {
+	root * /srv
+	file_server
+	try_files {path} /index.html
+	reverse_proxy /api/* api:3000
+}

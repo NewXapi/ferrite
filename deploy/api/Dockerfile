@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # Ferrite 后端镜像（apps/api，bin 名 ferrite）。
-# 双入口由 cargo feature 决定形态：
-#   docker build .                                          # 全功能（default = tavern + billing）
-#   docker build . --build-arg FEATURES=--no-default-features        # 个人形态
-#   docker build . --build-arg FEATURES="--no-default-features --features tavern"
+# 双入口由 cargo feature 决定形态（构建上下文是仓库根，-f 指向本文件）：
+#   docker build -f deploy/api/Dockerfile .                                         # 全功能（default = tavern + billing）
+#   docker build -f deploy/api/Dockerfile --build-arg FEATURES=--no-default-features .   # 个人形态
+#   docker build -f deploy/api/Dockerfile --build-arg FEATURES="--no-default-features --features tavern" .
 # 运行时必须提供 /app/config/config.toml（示例见 config/config.toml.example，
 # 真实文件 gitignore，挂卷或 COPY 进去）与 FERRITE_JWT_SECRET 环境变量；
 # database_url 也写在配置里，指向可达的 Postgres。
