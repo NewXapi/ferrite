@@ -96,7 +96,9 @@ gate check                        # FAIL 必须清零再 push，WARN 说明理�
 ## 禁止
 
 - 禁止派子代理 / 建 PR / 写 PR 评论 / 跑 CRG（那是 webfix 角色和发布流程的事）
-- 禁止新建 `.wt/<xxx>` worktree、禁止在仓库根或其他 worktree 落文件
+- **web 改动的落点只有一个：`.wt/web-dev`**（车道固定 worktree，初始化时已建好）。
+  禁止为单个改动另开 `.wt/<xxx>` 一次性 worktree（每开一个付一份冷 wasm target），
+  也禁止在仓库根目录或其他会话的 worktree 落文件
 - 禁止 `pkill -f cargo` / `pkill -f rustc` / `rm` / `git clean`；删文件用 `gio trash`
 - 禁止停共享 3211 后端、禁止对共享库 `db-reset`
 - 禁止 force push 任何共享分支
