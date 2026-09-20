@@ -69,6 +69,11 @@ pub fn RedemptionsListSection(
     // 不参与任何跨组件交互,组件内部持有。
     let mut copied_key = use_signal(|| None::<String>);
 
+    // 分页：列表内部 UI 状态（不跨组件）；筛选后条数变小时 clamp 到最后一页，
+    // 不落空页（详见 aliases list 同款注释）。
+    let mut page = use_signal(|| 0usize);
+    let visible = ui::page_slice(&filtered_rows, page(), ui::CARD_PAGE_SIZE).to_vec();
+
     rsx! {
         section {
             id: "reds-sec-list",
@@ -76,15 +81,17 @@ pub fn RedemptionsListSection(
             role: "list",
             "aria-label": LBL_LIST_ARIA,
             class: "scroll-mt-8 space-y-4",
-            div { class: "flex items-center justify-between",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
-                if loading {
-                    span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{OPT_BADGE_LOADING}" }
-                } else {
-                    span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                        "{filtered_rows.len()} 张"
+            ui::SectionHeader {
+                title: SEC_LIST.to_string(),
+                badge: if loading { OPT_BADGE_LOADING.to_string() } else { format!("{} 张", filtered_rows.len()) },
+                trailing: rsx! {
+                    ui::Pager {
+                        total: filtered_rows.len(),
+                        page,
+                        on_change: move |p| page.set(p),
+                        testid: "redemptions-pager",
                     }
-                }
+                },
             }
 
             if let Some(e) = err {
@@ -136,7 +143,7 @@ pub fn RedemptionsListSection(
                     }
                 }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                    for r in filtered_rows {
+                    for r in visible {
                         {
                             let is_just_copied = copied_key() == Some(r.key.clone());
                             rsx! {

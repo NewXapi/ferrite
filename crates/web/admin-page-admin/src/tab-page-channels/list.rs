@@ -72,13 +72,24 @@ pub fn ChannelsListSection(
     /// 错误态「重试」
     on_retry: EventHandler<MouseEvent>,
 ) -> Element {
+    // 分页：列表内部 UI 状态（不跨组件）；筛选后条数变小时 clamp 到最后一页，
+    // 不落空页（详见 aliases list 同款注释）。
+    let mut page = use_signal(|| 0usize);
+    let visible = ui::page_slice(&filtered, page(), ui::CARD_PAGE_SIZE).to_vec();
+
     rsx! {
         section { id: "channels-sec-list", class: "scroll-mt-8 space-y-4",
-            div { class: "flex items-center justify-between",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
-                span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                    if loading { "{OPT_BADGE_LOADING}" } else { "{filtered.len()} 个渠道" }
-                }
+            ui::SectionHeader {
+                title: SEC_LIST.to_string(),
+                badge: if loading { OPT_BADGE_LOADING.to_string() } else { format!("{} 个渠道", filtered.len()) },
+                trailing: rsx! {
+                    ui::Pager {
+                        total: filtered.len(),
+                        page,
+                        on_change: move |p| page.set(p),
+                        testid: "channels-pager",
+                    }
+                },
             }
 
             if let Some(e) = err {
@@ -102,7 +113,7 @@ pub fn ChannelsListSection(
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                     "data-testid": "channels-list",
-                    for c in filtered {
+                    for c in visible {
                         {
                             let edit_key = c.key.clone();
                             let full_key = c.key.clone();

@@ -14,6 +14,8 @@ pub mod dot_tab;
 pub mod editable;
 /// 分组实体卡原型。
 pub mod groups;
+/// 卡片网格分页器（tab 式页码条）与切片纯函数。
+pub mod pager;
 /// 别名定价模式（按量 / 按次）及分段 toggle。
 pub mod price_mode;
 /// 兑换码实体卡原型。
@@ -41,6 +43,8 @@ pub use editable::{
 };
 /// 供管理页展示分组摘要的卡片组件。
 pub use groups::GroupCard;
+/// 卡片网格分页器与分页纯函数（页大小常量 / 切片 / 页数）。
+pub use pager::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
 /// 定价模式枚举与分段 toggle（卡片 / 弹窗共用）。
 pub use price_mode::{PriceMode, PriceModeToggle};
 /// 供管理页展示兑换码摘要的卡片组件。

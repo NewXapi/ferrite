@@ -93,6 +93,12 @@ pub fn AliasesListSection(
         on_delete,
     );
 
+    // 分页：列表内部 UI 状态（不跨组件）。筛选后条数变小时 page_slice 会
+    // clamp 到最后一页，不会落在空页；因此不需要「筛选变化重置页码」的
+    // effect（filtered 是普通 prop，effect 也不会因它重跑）。
+    let mut page = use_signal(|| 0usize);
+    let visible = ui::page_slice(&filtered, page(), ui::CARD_PAGE_SIZE).to_vec();
+
     let badge = if loading {
         OPT_BADGE_LOADING.to_string()
     } else {
@@ -101,7 +107,18 @@ pub fn AliasesListSection(
 
     rsx! {
         section { id: "aliases-sec-list", class: "scroll-mt-8 space-y-4",
-            SectionHeader { title: SEC_LIST, badge: badge }
+            SectionHeader {
+                title: SEC_LIST,
+                badge,
+                trailing: rsx! {
+                    ui::Pager {
+                        total: filtered.len(),
+                        page,
+                        on_change: move |p| page.set(p),
+                        testid: "aliases-pager",
+                    }
+                },
+            }
 
             if let Some(e) = err {
                 DangerBlock {
@@ -115,7 +132,7 @@ pub fn AliasesListSection(
                 PlaceholderBlock { message: MSG_EMPTY }
             } else {
                 CardGrid { aria_label: LBL_ALIAS_LIST, testid: "aliases-list",
-                    for (idx, it) in filtered {
+                    for (idx, it) in visible {
                         {
                             let key_ref = it.key.clone();
                             let usable = usable_groups_for(&it.row.alias, &groups);

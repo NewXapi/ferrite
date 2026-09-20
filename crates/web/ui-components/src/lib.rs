@@ -39,6 +39,7 @@ pub use components::admin_card::{
     AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
     PlaceholderBlock, SectionHeader,
 };
+pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
 pub use components::admin_card::{DangerActionRow, EditableRow};
 pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};

@@ -15,6 +15,7 @@ use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 use ui::StatCard;
 use ui::UserCard as PrototypeUserCard;
+use ui::{CARD_PAGE_SIZE, Pager, SectionHeader, page_slice};
 
 use client::ApiClient;
 use contract::api::admin::{AdminUserDto, ManageUserRequest};
@@ -167,6 +168,11 @@ pub fn UsersPanel() -> Element {
             .collect()
     };
 
+    // 分页：列表内部 UI 状态（不跨组件）；筛选后条数变小时 clamp 到最后一页，
+    // 不落空页（与 admin-page-admin 各列表同款策略）。
+    let mut page = use_signal(|| 0usize);
+    let visible = page_slice(&filtered, page(), CARD_PAGE_SIZE).to_vec();
+
     // 打开新建/编辑弹窗时预填字段
     let open_new = move |_: MouseEvent| {
         f_username.set(String::new());
@@ -305,12 +311,17 @@ pub fn UsersPanel() -> Element {
 
             // 3. 用户卡片网格
             section { id: "users-sec-list", class: "scroll-mt-8 space-y-4",
-                div { class: "flex items-center justify-between",
-                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LIST}" }
-                    span {
-                        class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
-                        if loading() { "{MSG_LOADING}" } else { "{filtered.len()} {LBL_PERSON}" }
-                    }
+                SectionHeader {
+                    title: SEC_LIST.to_string(),
+                    badge: if loading() { MSG_LOADING.to_string() } else { format!("{} {LBL_PERSON}", filtered.len()) },
+                    trailing: rsx! {
+                        Pager {
+                            total: filtered.len(),
+                            page,
+                            on_change: move |p| page.set(p),
+                            testid: "users-pager",
+                        }
+                    },
                 }
 
                 if let Some(e) = err() {
@@ -344,7 +355,7 @@ pub fn UsersPanel() -> Element {
                         }
                     }
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                        for user in filtered {
+                        for user in visible {
                             UserCard {
                                 key: "{user.key}",
                                 user,
