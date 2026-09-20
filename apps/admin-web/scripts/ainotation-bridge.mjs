@@ -8,15 +8,23 @@
 //
 // 用法：先起本地服务 `npx --yes @ainotation/mcp@beta service`（或由 omp 的 MCP connect 自动拉起），
 // 然后 `node scripts/ainotation-bridge.mjs`（保持前台运行即持续续租）。
+//
+// 可用环境变量覆盖（默认值对齐 justfile 的 `dev-web` 端口与仓库布局）：
+//   AINO_ORIGIN  前端 origin，默认 http://127.0.0.1:8090（= `just dev-web` 默认端口）
+//   AINO_PORT    桥端点端口，默认 44090
 import { readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
-const SERVICE_USER_FILE = '/home/hathaway/.ainotation/service/connection.json';
+const SERVICE_USER_FILE = `${homedir()}/.ainotation/service/connection.json`;
 const SDK_CONNECTION = new URL('../assets/ainotation/connection.json', import.meta.url);
-const ORIGIN = 'http://127.0.0.1:8092';
-const FILE_PORT = 44090;
+const ORIGIN = process.env.AINO_ORIGIN ?? 'http://127.0.0.1:8090';
+const FILE_PORT = Number(process.env.AINO_PORT ?? 44090);
 const PROJECT_NAME = 'ferrite-admin';
-const PROJECT_DIRECTORY = '/home/hathaway/projects/ferrite';
+// 仓库根由脚本位置派生（scripts/ 位于 apps/admin-web/ 下，即根往上三级），
+// 不写死绝对路径——换机器 / 换 clone 路径都不用改。
+const PROJECT_DIRECTORY = fileURLToPath(new URL('../../..', import.meta.url));
 const RENEW_INTERVAL_MS = 2 * 60 * 1000;
 
 async function api(url, token, path, method = 'GET', body) {
