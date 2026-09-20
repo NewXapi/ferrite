@@ -14,7 +14,7 @@
   - `group_chips.rs` — 生效分组多选 chips(列表经 context 注入)。
   - `role_chips.rs` — 角色权限单选 chips。
   - `topup_form.rs` — 额度充值弹窗。
-  - `shared.rs` — 本 tab 独占的共享层:文案常量(spec §3.2 前缀)与共用类型。
+  - `shared.rs` — 本 tab 独占的共享文案常量(spec §3.2 前缀)。
 - `tests/api_shapes.rs` — 筛选标签约定 + 创建请求 wire 形状。
 - `tests/format.rs` — 格式化助手不变量。
 
@@ -23,6 +23,8 @@
 - `GET /api/user/users?page=1&size=100` — 用户列表(items 信封)。size=100 是
   必须的:后端默认 20 会静默截断,统计卡「总用户」会少算。响应含 `groups`
   数组(迁移 0016 起),`groups[1]` 为生效分组。
+  列表仅在挂载、手动刷新/重试或写操作成功后重新拉取;响应写回不触发新请求。
+  刷新期间保留已有卡片,首次加载才显示占位符。
 - `GET /api/group` — 分组列表(items 信封)。筛选胶囊与弹窗分组 chips 共用这一份,
   不再用 `mock::users::GROUPS` 常量(那里只有 default/vip/svip/internal,与后端
   实际分组不符)。chips 与卡片徽标的展示标签取 `remark`(remark 为空才回落

@@ -84,12 +84,15 @@ pub fn UsersPanel() -> Element {
         });
     });
 
+    // 拉取触发依赖:仅 reload 计数(挂载 + 写操作成功后的刷新)。
+    // 列表长度必须 `peek()`:`.read()` 会让本 effect 订阅自己即将写入的 `users`
+    // signal,每条响应 set 都重跑 effect → 重拉死循环(对齐 channels.rs 同款 effect)。
     use_effect(move || {
         let _ = reload();
         // stale-while-revalidate:只有首次(列表为空)才显示「加载中」占位符;
         // 写操作(禁用/充值/编辑)触发的刷新保留旧列表原地更新,不整片闪掉。
         // 闪烁根因:loading=true 会把已渲染的卡片网格换成占位符,拉完再换回。
-        if users.read().is_empty() {
+        if users.peek().is_empty() {
             loading.set(true);
         }
         err.set(None);

@@ -66,7 +66,7 @@ apps/admin-web（main.rs:9 init_auth() 注册 401 静默刷新 → 挂 RootApp�
     │   │   └── SettingsPanel     偏好设置                 # settings.rs:11  真实 API
     │   └── Section::Manage（#manage/#network/#users/#groups/#aliases/#channels/#subscriptions/#redemptions/#system）
     │       ├── NetworkPanel       调度拓扑画布            # network.rs:641  mock
-    │       ├── UsersPanel         用户管理卡片            # (admin-page-users) tab-page-users/panel.rs  mock
+    │       ├── UsersPanel         用户管理卡片            # (admin-page-users) tab-page-users/page.rs  真实 API
     │       ├── GroupsPage / AliasesPage / ChannelsPage / SubscriptionsPage / RedemptionsPage / SystemPage
     │       │                      分组/别名/渠道/订阅/兑换/系统  # (admin-page-admin) 各文件  mock
     └── SectionPill（左侧圆点导航，已定义未挂载）          # lib.rs:109
