@@ -1,9 +1,16 @@
 # Ferrite 后台管理前端 caddy 配置。
-# 静态资源 SPA 回落 + /api 反代到 api 容器（compose 服务名）。
-# 独立运行时需能解析主机名 api —— 请改 Caddyfile 里的上游地址。
+# SPA 回落 + /api 反代到 api 容器（compose 服务名）。
+# 注意：try_files 属 rewrite 类，默认先于 reverse_proxy 执行，会把 /api/*
+# 也重写成 index.html。必须用 handle 互斥块把 API 路径排除在回落之外。
+# 独立运行时需能解析主机名 api —— 请改 handle 块里的上游地址。
 :8080 {
 	root * /srv
-	file_server
-	try_files {path} /index.html
-	reverse_proxy /api/* api:3000
+	@api path /api/*
+	handle @api {
+		reverse_proxy api:3000
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
 }
