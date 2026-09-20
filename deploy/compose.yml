@@ -16,7 +16,7 @@
 
 services:
   postgres:
-    image: postgres:17
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: ferrite
       POSTGRES_PASSWORD: ${FERRITE_DB_PASSWORD:-ferrite}
@@ -30,7 +30,7 @@ services:
       retries: 10
 
   api:
-    image: ghcr.io/newxapi/ferrite-api:full
+    image: ghcr.io/newxapi/ferrite-api:latest
     build:
       context: ..
       dockerfile: deploy/api/Dockerfile

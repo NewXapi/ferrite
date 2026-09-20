@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 
 # Ferrite 酒馆前端（apps/tavern-web，Dioxus 0.7 web）。
 # 构建：dx build --release --platform web。

@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 
 # Ferrite 后端镜像（apps/api，bin 名 ferrite）。
 # 双入口由 cargo feature 决定形态（构建上下文是仓库根，-f 指向本文件）：
@@ -27,9 +26,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release -p api ${FEATURES} && cp target/release/ferrite /ferrite
 
 # ---- runtime ----
-# cc-debian12 提供 glibc/libgcc；全链路 rustls（reqwest rustls-tls、sqlx 无 TLS
+# debian:bookworm-slim 提供 glibc/libgcc（与 builder 同代 glibc，避免 ABI 不匹配）；全链路 rustls（reqwest rustls-tls、sqlx 无 TLS
 # feature），无 openssl 动态依赖，无需额外运行时库。
-FROM gcr.io/distroless/cc-debian12
+FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /ferrite /app/ferrite
 COPY config/config.toml.example /app/config/config.toml.example

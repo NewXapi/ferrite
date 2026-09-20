@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 
 # Ferrite 后台管理前端（apps/admin-web，Dioxus 0.7 web）。
 # 构建：dx build --release --platform web。
