@@ -42,13 +42,14 @@ git checkout -b webfix/xxx origin/web-dev         # base_sha = 上次发布记�
 - **交互改动必跑浏览器**：点一遍改动路径；涉及请求回路的（轮询、effect、分页）必须看
   真实后端回路——本仓库的忙轮询白屏、effect 自循环都只在真实回路复现。
 - **测试补齐规则**：逻辑层改动补 Rust 测试进 `tests/`（本地只跑 <2min 针对性单测，
-  全量交给 CI）；**交互层**分支若已有 `e2e/`（Playwright，见 #241），补/改 spec：
+  全量交给 CI）；**交互层**补/改 `e2e/`（Playwright，已在车道；chromium 用本机
+  `~/.cache/ms-playwright` 现有构建，不额外下载）：
   ```bash
   just dev-web 8091 debug                          # 审查车道自己的 debug 预览（免登录）
   cd e2e && bun install                            # 仅首次
   E2E_BASE_URL=http://127.0.0.1:8091 bunx playwright test
   ```
-  分支没有 `e2e/` → 浏览器自测 + 汇报里注明「本分支无 e2e 套件」，不新建套件（维护者决策）。
+  e2e 不在 CI 里（无 browser job），只本地跑；汇报里贴结果。套件规则见 `e2e/README.md`。
 
 ## 2. 修复协议
 
