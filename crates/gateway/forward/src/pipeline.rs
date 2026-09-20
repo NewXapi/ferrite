@@ -31,6 +31,7 @@ use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::sse::SseScanner;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// 合并后的请求头 (adapter 鉴权 + 渠道覆盖 + 客户端已过滤头)。
 pub fn merge_headers(
@@ -105,6 +106,37 @@ pub async fn forward_once(
 
     // 响应方向：上游格式 → 入站格式。流式逐帧转换，非流式整体转换。
     if task.stream {
+        // 纵深防御守卫：两个生产 Egress 都已在 execute 内把非 2xx 归类为 Err，
+        // 正常走不到这里；它兜的是「Ok(非 2xx) 透传」——ForwardedResponse 的公开
+        // 构造器允许任何 Egress 这么做，而流式分支一旦把错误体喂给
+        // passthrough/SseScanner，客户端就拿到 4xx + 空/坏 SSE。守卫位于所有出口
+        // 的汇聚点、且在 passthrough 之前，错误体走与非流式一致的 classify_status
+        // 链（#238 锁定的错误形状契约）。
+        if !(200..=299).contains(&status) {
+            // 有界收集错误预览：最多 2048 字节、total_ms 超时兜底，绝不无限等流；
+            // 超时或读错只让预览降级（为空/截断），状态码分类不受影响。
+            let mut body = resp.into_body_stream();
+            let preview =
+                match tokio::time::timeout(Duration::from_millis(timeouts.total_ms), async {
+                    use futures_util::TryStreamExt;
+                    let mut buf = Vec::new();
+                    while let Some(chunk) = body.try_next().await? {
+                        buf.extend_from_slice(&chunk);
+                        if buf.len() >= 2048 {
+                            break;
+                        }
+                    }
+                    Ok::<Vec<u8>, std::io::Error>(buf)
+                })
+                .await
+                {
+                    Ok(Ok(buf)) => {
+                        String::from_utf8_lossy(&buf[..buf.len().min(2048)]).into_owned()
+                    }
+                    _ => String::new(),
+                };
+            return Err(crate::egress::classify_status(status, preview));
+        }
         // 同格式 = 零转换透传：完全不建 encoder（客户端与渠道说同一协议时不该被
         // 重写字节，也不该在流尾补终止帧——上游的 [DONE] 已经原样透传了，再补一个
         // 就是两次流终止，e2e 的逐字保真断言实锤过这个坑）。

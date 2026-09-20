@@ -505,6 +505,94 @@ async fn cross_format_upstream_400_propagates_as_400_not_502() {
     );
 }
 
+/// 流式上游非 2xx 的真实回环契约：上游以 SSE content-type 回 413 时，客户端
+/// 必须拿到 413（不是可重试的 502），错误体经 error_mapping 转成入站格式形状。
+///
+/// 注意：这条回环**不验证管道守卫本身**——ReqwestEgress 已在 execute 内把非 2xx
+/// 归类为 Err（见上一条非流式测试的说明），请求根本走不到守卫；守卫的故障注入
+/// 覆盖在 adaptor_wiring.rs。本测试锁的是「413 不退化成 502、错误形状按入站
+/// 格式回出」这条面向客户端的契约。
+#[tokio::test]
+async fn stream_upstream_413_propagates_as_413_not_sse() {
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let _ = stream.read(&mut buf).expect("read");
+        // 关键: content-type 是 text/event-stream, 状态码却是 413 ——
+        // 这正是会骗过流式分支、让错误字节进 SSE scanner 的场景。
+        let err = r#"{"error":{"message":"context_length_exceeded","type":"invalid_request_error","code":"context_length_exceeded"}}"#;
+        let resp = format!(
+            "HTTP/1.1 413 Payload Too Large\r\ncontent-type: text/event-stream\r\n\
+             content-length: {}\r\nconnection: close\r\n\r\n{}",
+            err.len(),
+            err
+        );
+        use std::io::Write;
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+    });
+
+    // 客户端说 Anthropic (SSE)、渠道是 openai: 跨格式流式, 必须过
+    // inbound != upstream_format 的 SSE 转换分支, 不能走同格式透传捷径。
+    let mut task = ForwardTask {
+        candidate: candidate("openai"),
+        path: "/v1/messages".to_string(),
+        headers: vec![("accept".to_string(), "text/event-stream".to_string())],
+        body: Bytes::from(
+            serde_json::json!({"model":"m","max_tokens":16,"stream":true,
+                "messages":[{"role":"user","content":"hi"}]})
+            .to_string(),
+        ),
+        stream: true,
+        provider_type: "openai".to_string(),
+        extra_headers: vec![],
+        inbound_format: ProtocolKind::Anthropic,
+    };
+    task.candidate.base_url = format!("http://127.0.0.1:{port}");
+
+    let result = forward::pipeline::forward_once(
+        &task,
+        &ReqwestEgress::new(),
+        &Arc::new(FormatRegistry::with_defaults()),
+        &Timeouts::default(),
+    )
+    .await;
+
+    let err = match result {
+        Ok(forwarded) => panic!(
+            "流式上游 4xx 必须传播为 Err, 不该把错误体当 SSE 透传: status={} content_type={}",
+            forwarded.status, forwarded.content_type
+        ),
+        Err(e) => e,
+    };
+
+    assert_eq!(err.status, 413, "上游 413 必须保持 413, 不该变成 502");
+    assert!(
+        !err.retryable,
+        "4xx 是请求本身坏, 不该可重试 (会诱导重试已拒绝的请求)"
+    );
+    assert!(
+        err.message.contains("context_length_exceeded"),
+        "上游错误体应进 message 供 error_mapping 转成客户端格式, 实际: {}",
+        err.message
+    );
+
+    // 客户端侧: 入站格式是 Anthropic, 错误体必须是 Anthropic 形状
+    // (不是上游的 OpenAI 形状) —— 这条链路由 error_mapping::map_error 收口。
+    let shape = gateway_protocol_bridge::error_mapping::to_anthropic_shape(&err);
+    assert_eq!(
+        shape["type"], "error",
+        "Anthropic 错误体顶层 type 必须是 error"
+    );
+    // 不 pin 整条 message：classify_status 把预览截断成最多 200 字符，客户端
+    // 侧的精确错误文本由上游决定，只锁可观测的形状。
+}
+
 /// model 直接进 URL 路径段, 客户端可发任意串 — 非法值必须被拒, 不能改写上游路径。
 #[test]
 fn resolve_upstream_model_rejects_unsafe_for_url() {
