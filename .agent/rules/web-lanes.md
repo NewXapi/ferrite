@@ -85,6 +85,7 @@ git push origin web-dev
 # 建 PR：base = main，head = web-dev，merge commit（不 squash），挂 type label
 # PR 正文：改动清单 + base_sha + 审查结论（CRG comment，由 review 角色产出）
 # CI 全绿 + gate 无 FAIL → merge；merge 后记录新 base_sha（新 web-dev tip）
+# merge 后跑一轮收尾：`.agent/tasks/lane-closeout.md`（进程/分支/工作树/垃圾，可逆清理）
 ```
 
 **squash 禁令**：web-dev → main **禁止 squash**。squash 不记录祖先关系：下一次再合
