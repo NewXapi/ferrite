@@ -51,10 +51,7 @@ fn out_of_range_current_is_clamped_not_panicking() {
     for len in 1usize..=5 {
         for current in [len, len + 1, len + 7] {
             let next = cycle_index(len, current, 1);
-            assert!(
-                next < len,
-                "len={len} current={current} 越界: 得到 {next}"
-            );
+            assert!(next < len, "len={len} current={current} 越界: 得到 {next}");
         }
     }
 }
