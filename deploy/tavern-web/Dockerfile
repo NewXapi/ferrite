@@ -22,7 +22,7 @@ COPY db ./db
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cd apps/tavern-web && dx build --release --platform web \
-     && cp /app/target/dx/tavern-web-app/release/web/public /out
+      && cp -r /app/target/dx/tavern-web-app/release/web/public /out
 
 # ---- runtime ----
 FROM caddy:2-alpine

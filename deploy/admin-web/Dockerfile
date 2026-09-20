@@ -21,7 +21,7 @@ RUN rustup target add wasm32-unknown-unknown
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cd apps/admin-web && dx build --release --platform web \
-     && cp /app/target/dx/admin-web/release/web/public /out
+      && cp -r /app/target/dx/admin-web/release/web/public /out
 
 # ---- runtime ----
 FROM caddy:2-alpine
