@@ -1,60 +1,16 @@
-//! 用户管理 tab 的共享层:类型、常量、纯函数与该 tab 全部用户可见文案常量。
+//! 用户管理 tab 的共享层:该 tab 全部用户可见文案常量。
 //!
-//! 文案常量按 spec §3.2 的前缀分层:`LBL_` 标签 / `BTN_` 按钮 /
-//! `SEC_` 区段标题 / `FIELD_` 表单字段 / `MSG_` 提示错误空态 /
-//! `OPT_` 下拉选项 / `STATUS_` 状态徽标 / `TTL_` 弹窗标题 / `TAB_` 页签。
+//! 按 spec §3.2 前缀分层:`LBL_` 标签 / `BTN_` 按钮 / `SEC_` 区段标题 /
+//! `FIELD_` 表单字段 / `MSG_` 提示错误空态 / `OPT_` 下拉选项 /
+//! `STATUS_` 状态徽标 / `TTL_` 弹窗标题 / `TAB_` 页签。
 //! 常量值即原字面量,一个字符不改(H1 零渲染变化)。
 //!
 //! 边界:不放网络调用(在 `page.rs`)、不放组件(在各业务文件)。
 
-/// 弹窗底部取消按钮文案。
-pub const BTN_CANCEL: &str = "取消";
-
-/// 启用态文案。
-///
-/// 两处含义相反、共用同一串字:卡片徽标表示**当前**是启用态,卡片操作按钮
-/// 表示**点击后**变为启用态(禁用卡才显示)。
-pub const STATUS_ENABLED: &str = "启用";
-
-/// 禁用态文案(同上,徽标与操作按钮共用)。
-pub const STATUS_DISABLED: &str = "禁用";
-
-/// 邮箱字段标签(表单输入框与绑定页只读行共用)。
-pub const LBL_EMAIL: &str = "邮箱";
-
-/// 额度字段标签(卡片进度条 / 表单输入框 / 充值弹窗三处同口径)。
-pub const LBL_QUOTA: &str = "额度";
-
-// ---- SEC_* : 区段标题 / 说明条 ----
-
-/// 页面顶部统计区标题。
-pub const SEC_STATS: &str = "用户概览";
-/// 用户列表区标题。
-pub const SEC_LIST: &str = "用户列表";
-/// 筛选区标题。
-pub const SEC_FILTER: &str = "筛选用户";
-
-// ---- LBL_* : 标签 / 表头 / 字段名 ----
-
-/// 统计卡:总用户数。
-pub const LBL_TOTAL_USERS: &str = "总用户";
-/// 统计卡:启用中用户数。
-pub const LBL_ENABLED_USERS: &str = "启用中";
-/// 统计卡:本月新增数。
-pub const LBL_NEW_THIS_MONTH: &str = "本月新增";
-/// 统计卡:累计发放额度。
-pub const LBL_GRANTED_TOTAL: &str = "总发放额度";
-/// 统计卡:累计消耗额度。
-pub const LBL_CONSUMED_TOTAL: &str = "总消耗";
-/// 卡片计数行:请求数标签。
-pub const LBL_REQUESTS: &str = "请求数";
-/// 卡片计数行:创建时间标签。
-pub const LBL_CREATED: &str = "创建";
-/// 列表条数:人数单位。
-pub const LBL_PERSON: &str = "人";
-
 // ---- BTN_* : 按钮文案 ----
 
+/// 弹窗底部取消按钮文案。
+pub const BTN_CANCEL: &str = "取消";
 /// 卡片操作区:编辑。
 pub const BTN_EDIT: &str = "编辑";
 /// 卡片操作区:充值。
@@ -74,23 +30,45 @@ pub const BTN_TOPUP_CONFIRM: &str = "确认充值";
 
 // ---- STATUS_* : 状态徽标 ----
 
-// ---- TTL_* : 弹窗标题 ----
+/// 启用态文案。
+///
+/// 两处含义相反、共用同一串字:卡片徽标表示**当前**是启用态,卡片操作按钮
+/// 表示**点击后**变为启用态(禁用卡才显示)。
+pub const STATUS_ENABLED: &str = "启用";
+/// 禁用态文案(同上,徽标与操作按钮共用)。
+pub const STATUS_DISABLED: &str = "禁用";
 
-/// 用户编辑弹窗标题。
-pub const TTL_EDIT_USER: &str = "编辑用户";
-/// 用户新建弹窗标题。
-pub const TTL_NEW_USER: &str = "新建用户";
-/// 额度充值弹窗标题。
-pub const TTL_TOPUP: &str = "额度充值";
+// ---- LBL_* : 标签 / 表头 / 字段名 ----
 
-// ---- TAB_* : 弹窗内页签 ----
+/// 邮箱字段标签(表单输入框与绑定页只读行共用)。
+pub const LBL_EMAIL: &str = "邮箱";
+/// 额度字段标签(卡片进度条 / 表单输入框 / 充值弹窗三处同口径)。
+pub const LBL_QUOTA: &str = "额度";
+/// 统计卡:总用户数。
+pub const LBL_TOTAL_USERS: &str = "总用户";
+/// 统计卡:启用中用户数。
+pub const LBL_ENABLED_USERS: &str = "启用中";
+/// 统计卡:本月新增数。
+pub const LBL_NEW_THIS_MONTH: &str = "本月新增";
+/// 统计卡:累计发放额度。
+pub const LBL_GRANTED_TOTAL: &str = "总发放额度";
+/// 统计卡:累计消耗额度。
+pub const LBL_CONSUMED_TOTAL: &str = "总消耗";
+/// 卡片计数行:请求数标签。
+pub const LBL_REQUESTS: &str = "请求数";
+/// 卡片计数行:创建时间标签。
+pub const LBL_CREATED: &str = "创建";
+/// 列表条数:人数单位。
+pub const LBL_PERSON: &str = "人";
 
-/// 用户表单页签:基本信息。
-pub const TAB_BASIC: &str = "基本信息";
-/// 用户表单页签:分组与备注。
-pub const TAB_GROUP: &str = "分组与备注";
-/// 用户表单页签:绑定。
-pub const TAB_BINDING: &str = "绑定";
+// ---- SEC_* : 区段标题 / 说明条 ----
+
+/// 页面顶部统计区标题。
+pub const SEC_STATS: &str = "用户概览";
+/// 用户列表区标题。
+pub const SEC_LIST: &str = "用户列表";
+/// 筛选区标题。
+pub const SEC_FILTER: &str = "筛选用户";
 
 // ---- FIELD_* : 表单字段标签 ----
 
@@ -114,6 +92,9 @@ pub const FIELD_NOTE: &str = "管理员备注(仅管理员可见)";
 pub const FIELD_NOTE_HINT: &str = "例如: 连续 30 天无登录,待清退";
 /// 充值金额字段。
 pub const FIELD_TOPUP_AMOUNT: &str = "充值金额 (元)";
+
+// ---- MSG_* : 提示 / 错误 / 空态 ----
+
 /// 第三方绑定区说明条。
 pub const MSG_BINDING_READONLY: &str = "第三方账号绑定(后端暂未返回,只读)";
 /// 额度输入框旁说明(与卡片进度条同口径)。
@@ -122,9 +103,6 @@ pub const MSG_QUOTA_HINT: &str = "折合";
 pub const MSG_CUR_QUOTA: &str = "当前";
 /// 充值弹窗:充值后额度前缀。
 pub const MSG_AFTER_QUOTA: &str = "充值后";
-
-// ---- MSG_* : 提示 / 错误 / 空态 ----
-
 /// 列表搜索框占位。
 pub const MSG_SEARCH_HINT: &str = "搜索用户名或邮箱";
 /// 列表加载中。
@@ -150,3 +128,21 @@ pub const MSG_NO_GROUPS: &str = "暂无分组(后端 /api/group 为空)";
 
 /// 筛选下拉:全部用户。
 pub const OPT_ALL: &str = "全部";
+
+// ---- TTL_* : 弹窗标题 ----
+
+/// 用户编辑弹窗标题。
+pub const TTL_EDIT_USER: &str = "编辑用户";
+/// 用户新建弹窗标题。
+pub const TTL_NEW_USER: &str = "新建用户";
+/// 额度充值弹窗标题。
+pub const TTL_TOPUP: &str = "额度充值";
+
+// ---- TAB_* : 弹窗内页签 ----
+
+/// 用户表单页签:基本信息。
+pub const TAB_BASIC: &str = "基本信息";
+/// 用户表单页签:分组与备注。
+pub const TAB_GROUP: &str = "分组与备注";
+/// 用户表单页签:绑定。
+pub const TAB_BINDING: &str = "绑定";
