@@ -54,9 +54,12 @@ just aino-check 8092              # 体检：service + 桥 + :8092 前端三绿
 
 ```bash
 # 改代码（含 ui-components 等依赖 crate，dx 不会自动重编）
-just dev-web-rebuild 8090 debug   # 一键：重编 wasm → 杀旧 dx → 原档位重启
+just dev-web-rebuild 8092 debug   # 一键：杀旧 dx → 原档位重启（dx 启动时自会重编 wasm）
 # 浏览器强刷一次（wasm/js 有缓存）；功能不对就继续改，循环同上
 ```
+
+实测耗时（共享 target 的 `.wt` 车道）：新 worktree 首建 ~54s，无改动重启 ~20s，
+带改动重启取决于改动面。改一次 = 一条命令 + 一次强刷，分钟级。
 
 用户的视觉意见来自 ainotation：MCP 工具 `ainotation_get_feedback` /
 `ainotation_get_image` 读标注（comment 是原话、`targets[].selector` 直接定位代码）。

@@ -116,17 +116,16 @@ dev-web port="8090" mode="":
       dx serve --platform web --port {{port}} --watch false
     fi
 
-# 改完代码一键重编 wasm + 重启 dx（替代手动的 kill+restart 仪式）
+# 改完代码一键重启 dx（dx 启动时自会用 wasm 配置重编，预编 dev profile 白等——实测移除）
 #   普通: just dev-web-rebuild 8090     |  免登录调试档: just dev-web-rebuild 8090 debug
 #   档位（debug 与否）要和当前跑着的 dx 一致；重启后浏览器强刷一次。
+#   实测（共享 target 的 .wt 车道）：新 worktree 首建 ~54s，无改动重启 ~20s。
 #   ponytail: 配交互 dev 循环（人等自己的构建），这里不套 cpulimit；agent 会话发起的构建仍按 AGENTS.md 套
 dev-web-rebuild port="8090" mode="":
     #!/usr/bin/env bash
     set -e
     cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
-    echo "== rebuild wasm (dev profile) =="
-    cargo build --target wasm32-unknown-unknown
-    echo "== restart dx (port {{port}}, mode {{mode}}) =="
+    echo "== restart dx (port {{port}}, mode {{mode}}; dx 启动时自会重编 wasm) =="
     pid="$(ss -ltnp 2>/dev/null | grep ":{{port}} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
     if [ -n "$pid" ]; then kill "$pid"; sleep 1; fi
     if [ "{{mode}}" = "debug" ]; then
