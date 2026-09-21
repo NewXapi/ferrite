@@ -265,6 +265,7 @@ dependencies = [
  "hex",
  "metering",
  "observe",
+ "ops",
  "rand 0.8.8",
  "reqwest",
  "serde",

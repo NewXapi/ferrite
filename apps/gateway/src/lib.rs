@@ -5,7 +5,6 @@ pub mod observability;
 
 use crate::config::GatewayConfig;
 use crate::config::{build_proxy_snapshot, build_route_snapshot, build_token_snapshot};
-use dispatch::health::HealthSetting;
 use dispatch::{Dispatcher, MemoryHealthTable, Snapshot};
 use forward::egress::ReqwestEgress;
 use forward::stage::ForwardStage;
@@ -20,22 +19,19 @@ use gateway_pipeline::pipeline::Pipeline;
 use gateway_protocol_bridge::format_codec::FormatRegistry;
 use gateway_protocol_bridge::stage::ProtocolBridgeStage;
 use gateway_proxy::ProxyManager;
-use metering::pricing::{ConfigPriceTable, PriceTable};
 use std::sync::Arc;
 
 /// 按配置组装 axum router。
 ///
 /// `cfg.channels` 变成 dispatch 的路由快照，`cfg.keys` 变成 gate 的 token 快照；
-/// `cfg.proxy_nodes` 注入 `ProxyManager`（仅 HTTP/SOCKS5）；`cfg.dispatch` 决定健康表
-/// 的冷却参数；`cfg.metering.prices` 非空时装配价格表并挂上额度闸（空 = 本地单机
-/// 不计费）；`cfg.retry.max_attempts` 是转发的尝试预算。
+/// `cfg.proxy_nodes` 注入 `ProxyManager`（仅 HTTP/SOCKS5）；`cfg.metering.prices`
+/// 非空时装配价格表并挂上额度闸（空 = 本地单机不计费）。
+///
+/// 调度健康参数与重试预算**不再来自配置文件**：单机模式由 PG `options`
+/// 表统一管理（`apps/api` 装配侧读取），此二进制用内置默认
+/// （[`HealthSetting::default`] 阈值 5、[`dispatch::RetryPolicy::default`] 3 次）。
 pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
-    let health = Arc::new(MemoryHealthTable::with_config(HealthSetting {
-        cooldown_threshold: cfg.dispatch.cooldown_threshold,
-        cooldown_base_seconds: cfg.dispatch.cooldown_base_seconds,
-        cooldown_max_seconds: cfg.dispatch.cooldown_max_seconds,
-        ..HealthSetting::default()
-    }));
+    let health = Arc::new(MemoryHealthTable::new());
     let adaptors = Arc::new(FormatRegistry::with_defaults());
     let egress = Arc::new(ReqwestEgress::new());
     let proxies = Arc::new(ProxyManager::new());
@@ -45,7 +41,7 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
     let gates = build_gates(cfg);
     let forward_stage = ForwardStage::new(egress, adaptors.clone())
         .with_proxies(proxies)
-        .with_retry(dispatcher.clone(), build_retry_policy(cfg));
+        .with_retry(dispatcher.clone(), dispatch::RetryPolicy::default());
     // 全局并发闸（v2 挂载）：cfg.channels 的 max_concurrency 求和作为整体
     // 并发上限；和为 0（含全部渠道未配置）= 不挂闸。这是**全局**上限而非
     // per-channel——分渠道挂载属后续项（需 per-channel DashMap，见
@@ -65,19 +61,13 @@ pub fn build_app(cfg: &GatewayConfig) -> axum::Router {
 }
 
 /// 价格表：`[metering.prices]` 为空返回 `None`（本地单机不计费，转发不受影响）。
-pub fn build_price_table(cfg: &GatewayConfig) -> Option<Arc<dyn PriceTable>> {
+pub fn build_price_table(cfg: &GatewayConfig) -> Option<Arc<dyn metering::pricing::PriceTable>> {
     if cfg.metering.prices.is_empty() {
         return None;
     }
-    Some(Arc::new(ConfigPriceTable::new(cfg.metering.prices.clone())))
-}
-
-/// 转发重试预算。
-pub fn build_retry_policy(cfg: &GatewayConfig) -> dispatch::RetryPolicy {
-    dispatch::RetryPolicy {
-        max_attempts: cfg.retry.max_attempts,
-        ..dispatch::RetryPolicy::default()
-    }
+    Some(Arc::new(metering::pricing::ConfigPriceTable::new(
+        cfg.metering.prices.clone(),
+    )))
 }
 
 /// 全局并发上限：所有渠道 `max_concurrency` 之和（`None` = 不挂闸）。

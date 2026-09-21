@@ -48,6 +48,43 @@ pub fn registry() -> Vec<OptionSpec> {
             },
         },
         OptionSpec {
+            key: "gateway.dispatch.cooldown_threshold",
+            // 默认 2（比 dispatch::health::HealthSetting 的 5 更紧）：坏渠道少吃
+            // 3 个用户请求就进冷却，failover 更早触发。
+            default: serde_json::json!(2),
+            validate: |v| {
+                v.as_i64()
+                    .filter(|n| (1..=20).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=20".into())
+            },
+        },
+        OptionSpec {
+            key: "gateway.dispatch.cooldown_base_seconds",
+            default: serde_json::json!(10),
+            validate: |v| {
+                v.as_i64()
+                    .filter(|n| (1..=600).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=600".into())
+            },
+        },
+        OptionSpec {
+            key: "gateway.dispatch.cooldown_max_seconds",
+            // max 的下限取 base 的注册表默认值（10）：写一个比 base 默认还小的
+            // max 是配置错误（冷却上限低于起步时长，递增无处可去），按校验
+            // 拒绝；管理台先把 base 调大，再放大 max。不查库——两个键的
+            // 合法组合有数据库级的依赖，值域校验只兜单键合理性。
+            default: serde_json::json!(60),
+            validate: |v| {
+                let base = spec_default_u64("gateway.dispatch.cooldown_base_seconds");
+                v.as_i64()
+                    .filter(|n| (base as i64..=3600).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=3600 and >= cooldown_base_seconds default".into())
+            },
+        },
+        OptionSpec {
             key: "gateway.retry.max_attempts",
             default: serde_json::json!(3),
             validate: |v| {
@@ -59,7 +96,9 @@ pub fn registry() -> Vec<OptionSpec> {
         },
         OptionSpec {
             key: "gateway.timeout.first_byte_ms",
-            default: serde_json::json!(30000),
+            // 默认 10s（原 30s）：假死上游 10s 就判失败换候选，"慢"的体感
+            // 主要来自首字节等待，30s 太宽松。
+            default: serde_json::json!(10000),
             validate: |v| {
                 v.as_i64()
                     .filter(|n| *n >= 1000)
@@ -78,6 +117,16 @@ pub fn registry() -> Vec<OptionSpec> {
             },
         },
     ]
+}
+
+/// 取注册表默认值的 u64 形态（校验器内部比较用）。
+///
+/// 仅用于 max-vs-base 这类注册表内已知的静态默认比较，不读库——
+/// 库里实际存的 base 由 [`OptionsService::get`] 在装配侧自行处理。
+fn spec_default_u64(key: &str) -> u64 {
+    spec_of(key)
+        .and_then(|s| s.default.as_u64())
+        .expect("registry() must define a u64 default for the compared key")
 }
 
 fn spec_of(key: &str) -> Option<OptionSpec> {
