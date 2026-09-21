@@ -27,7 +27,7 @@ impl From<SignUpPayload> for SubmitPayload {
             username: p.username,
             email: p.email,
             password: p.password,
-            remember: false,
+            remember: p.remember,
         }
     }
 }
@@ -225,7 +225,7 @@ pub fn AuthPage() -> Element {
                     // Form content
                     match active {
                         AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
-                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()) } },
+                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()), remember: remember_signal } },
                     }
 
                     // Footer — placed clearly BELOW the form, inside the card, separated by a hairline.
