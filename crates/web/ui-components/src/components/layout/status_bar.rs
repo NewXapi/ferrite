@@ -1,13 +1,14 @@
 //! StatusBar — 底部细状态条（无背景胶囊，整条一个字高）。
 //!
-//! 契约（维护者拍板）：不做任何背景/边框/阴影包装，左下角=用户头像+额度占位，
+//! 契约（维护者拍板）：不做任何背景/边框/阴影包装，左下角=用户头像（仅头像，
+//! 用户名进头像下拉的 Label——2026-09-21 批注：同行名称/占位文本已删），
 //! 右下角=系统状态纯数字占位（CPU·MEM 顺序，含义走 title 悬停提示）；
 //! 真实数据后续通过 hover popover 注入（组件留 `StatusItem.hint` 槽位）。
 //! 用户下拉复用 crate 的 DropdownMenu（含外部点击/Escape 关闭，选中即关对齐 Radix 默认）。
 
 use dioxus::prelude::*;
 
-use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuSeparator};
+use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator};
 
 /// 底部状态条目：占位名称 + 可选 hint（popover 接入前的静态说明）。
 #[derive(Clone, PartialEq)]
@@ -19,8 +20,9 @@ pub struct StatusItem {
 }
 
 /// 用户头像 chip class（16px 圆点 + 首字母，对齐单字行高）。
+/// 渐变底是维护者批注的「美化」：无边框纯色块 → 蓝紫渐变 + 轻投影。
 fn avatar_chip_class() -> &'static str {
-    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-[9px] font-semibold text-zinc-200 hover:bg-zinc-600"
+    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-[9px] font-semibold text-white shadow-sm transition-[filter] hover:brightness-115"
 }
 
 /// 底部细状态条（无背景，单行文字高度）。
@@ -66,6 +68,12 @@ pub fn StatusBar(
                                     }
                                 },
                                 content: rsx! {
+                                    // 用户名进下拉 (维护者批注: 状态条只留头像)
+                                    DropdownMenuLabel {
+                                        class: "text-zinc-300",
+                                        "{name}"
+                                    }
+                                    DropdownMenuSeparator {}
                                     DropdownMenuItem {
                                         onclick: move |_| close_signal.set(true),
                                         "data-testid": "menu-account",
@@ -91,7 +99,8 @@ pub fn StatusBar(
                                 close_signal: Some(close_request),
                             }
                         }
-                        span { class: "text-zinc-500", "¥——.--" }
+                        // 维护者批注: 只显示头像, 名称进下拉菜单 (DropdownMenuLabel)
+                        // —— 原「¥——.--」占位与头像同行展示已删除
                     },
                     None => rsx! {
                         span { class: "text-zinc-500", "未登录" }

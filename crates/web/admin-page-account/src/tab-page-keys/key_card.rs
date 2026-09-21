@@ -1,7 +1,9 @@
 //! 密钥卡片 — 数据来自 TokenDto (GET /api/token)。
 //! 操作: 编辑 (改名) / 停用·启用 (status 1↔2) / 删除, 成功后由父面板刷新列表。
-//! 已用额度走 $ 口径 (fmt_quota, 500_000 ≈ $1) + used_pct 进度条,
+//! 已用额度走 $ 口径 (fmt_quota, 500_000 ≈ $1, 小数≤1位) + used_pct 进度条,
 //! 无限额度显示「无限」徽标且不渲染进度条。
+//! 维护者批注 (2026-09-21): 状态徽标可点切换 (绿=启用/红=停用, 与底部按钮同出口);
+//! 额度两个金额左右分置 + truncate, 「已用额度」说明移入 hover/点击 popover。
 
 use contract::api::token::TokenDto;
 use dioxus::prelude::*;
@@ -17,14 +19,21 @@ pub fn KeyCard(
     on_delete: EventHandler<TokenDto>,
 ) -> Element {
     let enabled = entry.status == 1;
+    // 维护者批注: 徽标本身可点 (绿=启用 / 红=停用), 与底部操作按钮同一 on_toggle 出口
     let status_color = if enabled {
         "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
     } else {
-        "bg-amber-500/20 text-amber-400 border-amber-500/30"
+        "bg-red-500/20 text-red-400 border-red-500/30"
     };
+    // 额度 popover 钉住态 (点击切换; hover 常显由 group-hover 承担, 触屏无 hover)
+    let mut quota_tip = use_signal(|| false);
+    // popover 可见性 class: hover 常显 + 点击钉住时强制可见 (important 覆盖 opacity-0)
+    let quota_tip_class = if quota_tip() { "opacity-100!" } else { "" };
     // 每个 handler 闭包各持一份 clone, 避免 3 个 move 闭包连环占用 entry
     let e_edit = entry.clone();
     let e_toggle = entry.clone();
+    // 徽标按钮与底部操作按钮是两个独立闭包, 各持一份 (共享会 move 冲突)
+    let e_badge = entry.clone();
     let e_del = entry.clone();
     // RFC3339 → 展示取日期段 (无数据时不渲染)
     let created: String = entry
@@ -56,23 +65,38 @@ pub fn KeyCard(
                     // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
                     p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
                 }
-                span {
-                    class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
+                button {
+                    class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-[filter] {status_color} hover:brightness-125",
+                    "data-testid": "key-status-toggle",
+                    "aria-label": if enabled { "停用此密钥" } else { "启用此密钥" },
+                    onclick: move |_| on_toggle.call(e_badge.clone()),
                     if enabled { "启用" } else { "停用" }
                 }
             }
 
             div { class: "space-y-2 text-xs",
-                div { class: "flex items-center justify-between gap-2",
-                    span { class: "shrink-0 whitespace-nowrap text-zinc-400", "已用额度" }
+                // 额度行 (维护者批注): 删「已用额度」标题 (移进 popover), 两个金额
+                // 左右分置 + truncate 折行兜底 —— 旧实现 nowrap 单行撑出卡牌边界
+                div { class: "group relative flex items-center justify-between gap-2",
                     if unlimited {
                         span {
-                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium text-sky-300",
+                            class: "rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium text-sky-300",
                             "无限"
                         }
                     } else {
-                        span { class: "whitespace-nowrap font-medium text-zinc-200",
-                            "{fmt_quota(entry.used_quota)} / {fmt_quota(entry.quota)}"
+                        button {
+                            class: "flex min-w-0 flex-1 items-center justify-between gap-2 text-left",
+                            "data-testid": "key-quota",
+                            "aria-label": "已用额度 {fmt_quota(entry.used_quota)}, 总额度 {fmt_quota(entry.quota)}",
+                            onclick: move |_| quota_tip.set(!quota_tip()),
+                            span { class: "min-w-0 truncate font-medium text-zinc-200", "{fmt_quota(entry.used_quota)}" }
+                            span { class: "shrink-0 text-zinc-600", "/" }
+                            span { class: "min-w-0 shrink-0 text-zinc-400", "{fmt_quota(entry.quota)}" }
+                        }
+                        // popover: hover 即显 (group-hover), 点击钉住 (触屏无 hover)
+                        div {
+                            class: "pointer-events-none absolute left-0 top-full z-50 mt-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 {quota_tip_class}",
+                            "已用额度 {fmt_quota(entry.used_quota)} · 总额度 {fmt_quota(entry.quota)}"
                         }
                     }
                 }
