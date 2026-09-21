@@ -155,11 +155,15 @@ def main():
     emit(f"DELETE FROM auth_users WHERE key IN ({','.join(q(k) for k in [ADMIN_KEY, *USER_KEYS])}) OR username IN ('admin_dev', {','.join(q(n) for n in USER_NAMES)});\n\n")
 
     # ---- 账号 ----
-    emit(f"INSERT INTO auth_users (key, username, display_name, email, password_hash, role, status, quota, group_id) VALUES\n")
-    emit(f"  ({q(ADMIN_KEY)}, 'admin_dev', 'Dev Admin', 'admin@dev.local', {q(ADMIN_HASH)}, 100, 1, 5000000000, 'default')")
+    # groups 多值列与 group_id 同步写入: 后端 UserView 只读 groups(多值列),
+    # 只写 group_id 会让种子用户在前端显示「无分组」(2026-09-21 批注 d1ae72f1)。
+    emit("INSERT INTO auth_users (key, username, display_name, email, password_hash, role, status, quota, group_id, groups) VALUES\n")
+    emit(f"  ({q(ADMIN_KEY)}, 'admin_dev', 'Dev Admin', 'admin@dev.local', {q(ADMIN_HASH)}, 100, 1, 5000000000, 'default', {q('{\"default\"}')})")
     for i, name in enumerate(USER_NAMES):
         quota = int(USERS[i][1] * 200_000_000)
-        emit(f",\n  ({q(USER_KEYS[min(i, len(USER_KEYS) - 1)])}, {q(name)}, {q(name)}, {q(f'{name}@dev.local')}, {q(ADMIN_HASH)}, 1, 1, {quota}, {q('vip' if i < 3 else 'default')})")
+        group = 'vip' if i < 3 else 'default'
+        group_arr = q('{"%s"}' % group)
+        emit(f",\n  ({q(USER_KEYS[min(i, len(USER_KEYS) - 1)])}, {q(name)}, {q(name)}, {q(f'{name}@dev.local')}, {q(ADMIN_HASH)}, 1, 1, {quota}, {q(group)}, {group_arr})")
     emit(";\n\n")
 
     # ---- 分组 / 渠道 / 令牌 ----

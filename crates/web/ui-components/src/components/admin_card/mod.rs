@@ -37,12 +37,16 @@ pub use channels::ChannelCard;
 pub use channels::ChannelEditField;
 /// 用普通按钮呈现只读内容页签的圆点切换组件。
 pub use dot_tab::DotTabBar;
-/// 行内 Popover 编辑原语：展示行点击编辑与危险操作确认行。
+/// 行内 Popover 编辑原语：展示行点击编辑、危险操作确认行与浮层壳。
 pub use editable::{
     DANGER_ROW_CLASS, DangerActionRow, EDIT_POPOVER_CLASS, EDITABLE_ROW_CLASS, EditableRow,
+    PopoverPanel,
 };
 /// 原地编辑原语：可编辑行与无边框输入框 class。
-pub use inline_edit::{INLINE_INPUT_CLASS, InlineEdit};
+pub use inline_edit::{
+    INLINE_ROW_CLASS, INLINE_ROW_INPUT_CLASS, INLINE_TITLE_INPUT_CLASS, INLINE_TITLE_ROW_CLASS,
+    InlineEdit,
+};
 /// 卡片网格分页器与分页纯函数（页大小常量 / 切片 / 页数）。
 pub use pager::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
 /// 定价模式枚举与分段 toggle（卡片 / 弹窗共用）。

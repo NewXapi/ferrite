@@ -40,7 +40,7 @@ pub use components::admin_card::{
     PlaceholderBlock, SectionHeader,
 };
 pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
-pub use components::admin_card::{DangerActionRow, EditableRow, INLINE_INPUT_CLASS, InlineEdit};
+pub use components::admin_card::{DangerActionRow, EditableRow, InlineEdit};
 pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};

@@ -180,3 +180,72 @@ pub fn DangerActionRow(
         }
     }
 }
+
+/// Popover 浮层壳：外点收关遮罩 + 固定定位浮层面板（[`EditableRow`] 同款交互契约）。
+///
+/// 【是什么】卡牌内弹出面板的最小外壳——遮罩（fixed inset-0 z-40，点击收关）
+/// 与面板（fixed z-50，`role="dialog"`）。面板内容由 `content` 插槽自由组成
+/// （单选选项行 / 多选 chips / 表单等），开合由调用方持有的 `open` 信号控制。
+///
+/// 【定位】打开时用 document::eval 量**行容器**（面板 parentElement）的视口坐标，
+/// 把面板 `position: fixed` 锚到行下方（右侧对齐）；下方空间不足（< 140px）时
+/// 翻到行上方。**必须 fixed**：页面主区是 `overflow-y-auto` 滚动容器，absolute
+/// 面板会被其底边裁剪（2026-09-21 实测：面板 DOM 在、rect 在，命中测试却落在
+/// 遮罩上）；fixed 子元素不受祖先 overflow 裁剪影响。
+///
+/// 【做什么】只负责「开着时：遮罩拦外点 + 面板浮起 + 锚定定位」；选中语义、
+/// 是否开完即关归调用方（`content_class` 只传宽度 / 圆角 / 边框等外观 class）。
+#[component]
+pub fn PopoverPanel(
+    /// 受控开合信号（调用方持有；遮罩点击置 false 收关）
+    open: Signal<bool>,
+    /// 面板 aria-label（同时是触发语义的无障碍名）
+    label: String,
+    /// 面板测试标识（`data-testid`；同时是锚定 JS 的查找键）
+    testid: String,
+    /// 面板内容插槽（选项行 / chips / 表单）
+    content: Element,
+    /// 面板外观 class（宽度 / 圆角 / 边框 / 底色 / 阴影；定位由本组件负责）
+    #[props(default)]
+    content_class: Option<String>,
+) -> Element {
+    // 打开时锚定：面板 fixed 到行容器下方（或上方翻转），右侧对齐行右缘。
+    let tid_for_effect = testid.clone();
+    use_effect(move || {
+        if open() {
+            let tid = tid_for_effect.clone();
+            spawn(async move {
+                let js = format!(
+                    r#"{{ const p = document.querySelector('[data-testid="{tid}"]'); if (p) {{
+                        const r = p.parentElement.getBoundingClientRect();
+                        const flip = window.innerHeight - r.bottom < 140 && r.top > 140;
+                        p.style.top = flip ? '' : (r.bottom + 4) + 'px';
+                        p.style.bottom = flip ? (window.innerHeight - r.top + 4) + 'px' : '';
+                        p.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+                        p.style.left = 'auto';
+                    }} }}"#
+                );
+                let _ = document::eval(&js).await;
+            });
+        }
+    });
+
+    if !open() {
+        return rsx! {};
+    }
+    rsx! {
+        // 外点收关遮罩（WCAG dismissible）；浮层在其上，点击浮层不触发。
+        div {
+            class: "fixed inset-0 z-40",
+            "aria-hidden": "true",
+            onclick: move |_| open.set(false),
+        }
+        div {
+            class: "fixed z-50 {content_class.clone().unwrap_or_default()}",
+            role: "dialog",
+            "aria-label": "{label}",
+            "data-testid": "{testid}",
+            {content}
+        }
+    }
+}

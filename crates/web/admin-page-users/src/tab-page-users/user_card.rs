@@ -25,25 +25,14 @@ use dioxus::prelude::*;
 /// - 对外(出)：无（卡片零网络；行内编辑的草稿留卡内，保存入口待卡牌外按钮）。
 #[component]
 pub fn UserCard(user: AdminUserDto) -> Element {
-    // 分组名 → 展示标签:取分组列表里的 remark(与分组管理页同口径),
-    // 取不到回落裸名 —— 卡片与弹窗 chips 必须显示同一套文案
+    // 全部分组选项 (标签, 分组名)：取分组列表里的 remark 口径(与分组管理页同
+    // 口径)，直接交给共享卡——卡内 chip 文案映射与 popover 全选项都由它驱动。
     let groups_ctx = use_context::<Signal<Vec<(String, String)>>>();
-    let group_labels: Vec<String> = user
-        .groups
-        .iter()
-        .map(|name| {
-            groups_ctx()
-                .iter()
-                .find(|(_, n)| n == name)
-                .map(|(l, _)| l.clone())
-                .unwrap_or_else(|| name.clone())
-        })
-        .collect();
 
     rsx! {
         ui::UserCard {
             user,
-            group_labels,
+            all_groups: groups_ctx(),
         }
     }
 }

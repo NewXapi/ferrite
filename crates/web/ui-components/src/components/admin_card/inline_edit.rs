@@ -1,22 +1,21 @@
-//! 卡牌内「原地编辑」原语：点值 → 值节点原地变成输入框，标签浮动缩小，底部横条标示编辑态。
+//! 卡牌内「原地编辑」原语：点行/标题 → 值原地变输入框（标签留原地不浮动），
+//! 底部横条展开标示编辑态。编辑块绝对定位覆盖展示行（展示行 invisible 保高），
+//! **模式切换零布局位移（CLS=0）**——维护者批注（2026-09-21 f57ad76a /
+//! 214aa194）：编辑不得改变卡牌宽高，横条不得覆盖文字。
 //!
-//! 设计来源：Quasar `QField` **standard 变体**（参考实现克隆在
-//! `todo/web-ui-ref/quasar`，`ui/src/components/field/QField.sass`）——
-//! 维护者描述的「点击后标签变小缩放到输入框头顶 + 底部出现横条」就是它：
-//! - 浮动标签：`.q-field--float .q-field__label { transform: translateY(-40%)
-//!   scale(.75); transform-origin: left top; transition: transform .36s }`
-//!   （`QField.sass:198`）——标签缩到 75% 并浮到输入框上方；
+//! 视觉源自 Quasar `QField` **standard 变体**（参考实现克隆在
+//! `todo/web-ui-ref/quasar`，`ui/src/components/field/QField.sass`）：
 //! - 底部横条：`.q-field__control:after { height: 2px; transform: scaleX(0);
 //! background: currentColor; transition: transform }`，聚焦（--highlighted）时
 //!   `scaleX(1)`（`QField.sass:289-323`）——2px 横条从中心展开标示编辑态；
-//! - 输入框本体**无盒型边框**（standard 变体只有底栏，没有四周边框），深色主题
-//!   标签色 `rgba(255,255,255,.7)`、聚焦提亮（`QField.sass:337-347`）。
+//! - 输入框本体**无盒型边框**（standard 变体只有底栏，没有四周边框）。
 //!
-//! 注意：Quasar 的 `borderless` 变体是**连底栏一起去掉**的那个（`QField.sass:444`），
-//! 与维护者要的交互正相反——本原语实现的是 standard 变体。
+//! 注意：Quasar 的「浮动标签」（缩到 75% 浮到输入框上方，`QField.sass:198`）在
+//! 卡牌场景会让行高跳变（批注明令禁止），已弃用——标签保持原地不动。
 //!
 //! 交互契约（v1，维护者 2026-09-21 确认）：
-//! - 点行（label + 值整行可点）→ 值原地变输入框，标签浮动缩小，底部横条展开；
+//! - 点行（label + 值整行可点，标题模式整条标题可点）→ 值原地变输入框，底部
+//!   横条展开；点行外任意处（遮罩）→ 退出且草稿保留（同 Enter）；
 //! - Enter → 退出编辑态；`on_commit` 可选，未传时草稿仅留卡内（"先不提交"）；
 //! - Escape → 退出并还原进入编辑前的值（stash 机制）；
 //! - blur → 不提交不退出（Quasar 默认的「点开即保存」在卡牌网格里会误触，
@@ -25,34 +24,29 @@
 use super::card::CARD_TITLE_CLASS;
 use dioxus::prelude::*;
 
-/// 原地编辑输入框 class：Quasar standard 变体——无盒型边框（四周边框全删），
-/// 只有编辑态底部横条（独立元素做 scaleX 动画，见组件内 `bar`）。
-pub const INLINE_INPUT_CLASS: &str =
-    "w-full border-0 bg-transparent p-0 pb-1 pt-1.5 text-xs font-medium text-zinc-100 outline-none focus:ring-0";
-
 /// 展示态行 class：与卡内其他只读行（角色 / 状态 / 分组）逐字对齐——无
 /// padding、无圆角、无 hover 底色（批注：用户名/邮箱行与后面的列表对不齐）。
 /// 可编辑性由 `cursor-pointer` 暗示； Enter 提交语义不变。
 pub const INLINE_ROW_CLASS: &str =
     "flex w-full cursor-pointer items-center justify-between gap-2 text-left text-xs";
 
+/// 行模式编辑态输入框：右侧对齐（与展示态值同位，CLS=0），`leading-3 + pb-1`
+/// 让文字抬离底部横条（批注 214aa194：横条不得覆盖文字）。
+pub const INLINE_ROW_INPUT_CLASS: &str =
+    "min-w-0 flex-1 border-0 bg-transparent p-0 pb-1 text-right text-xs font-medium leading-3 text-zinc-100 outline-none focus:ring-0";
+
 /// 标题模式展示态：整条标题可点，字号/字重/截断与卡牌静态标题逐字同款
 /// （`CARD_TITLE_CLASS`），行高固定 20px（`h-5`）——编辑态不撑卡。
 pub const INLINE_TITLE_ROW_CLASS: &str =
     "flex h-5 w-full cursor-pointer items-center text-left";
 
-/// 标题模式输入框：与展示态同字号（text-sm/font-medium，零高度差），仅允许
-/// 轻微缩小（scale-[0.98]，批注：可以出现一点缩小）——宽高都不变。
+/// 标题模式输入框：与展示态同字号（text-sm，`leading-4 + pb-1` 凑足 20px 零高度
+/// 差、文字抬离横条），仅允许轻微缩小（scale-[0.98]，批注：可以出现一点缩小）。
 pub const INLINE_TITLE_INPUT_CLASS: &str =
-    "w-full border-0 bg-transparent p-0 text-sm font-medium text-zinc-100 outline-none focus:ring-0 scale-[0.98] origin-left transition-transform";
-
-/// 浮动后的标签 class：缩到 ~75%（text-[10px] vs 展示态 text-xs）、上浮到输入框
-/// 头顶、左对齐、变暗（Quasar 深色主题 `rgba(255,255,255,.7)` 的 zinc 等价）。
-pub const INLINE_LABEL_FLOAT_CLASS: &str =
-    "block origin-left truncate text-[10px] leading-none text-zinc-500 transition-all duration-200";
+    "w-full border-0 bg-transparent p-0 pb-1 text-sm font-medium leading-4 text-zinc-100 outline-none focus:ring-0 scale-[0.98] origin-left transition-transform";
 
 /// 卡牌内的原地可编辑行：展示态是「label + 值」文本行，点击后值的位置变成
-/// 输入框——标签浮动缩小到头顶，底部横条展开标示编辑态（Quasar standard 变体）。
+/// 输入框——标签留在原地（不浮动、零位移），底部横条展开标示编辑态。
 ///
 /// 【是什么】「展示即可修改」的最小单元，替代「编辑按钮 → 弹窗」路径。
 ///
@@ -73,7 +67,7 @@ pub const INLINE_LABEL_FLOAT_CLASS: &str =
 // 调用方持有的 signal（on_commit 已留出口），届时组件改受控即可。
 #[component]
 pub fn InlineEdit(
-    /// 行标签（展示态常显；编辑态浮动到输入框头顶，同时作输入框 `aria-label`）
+    /// 行标签（展示态常显、编辑态留原地不浮动，同时作输入框 `aria-label`）
     label: String,
     /// 外部当前值：仅作草稿初值（组件挂载时同步一次）
     value: String,
@@ -85,7 +79,7 @@ pub fn InlineEdit(
     /// 值为空时的占位提示（展示态与编辑态 input 共用）
     #[props(default)]
     placeholder: String,
-    /// 标题模式：整条标题即编辑入口——无浮动标签、固定 20px 行高（编辑不撑卡）、
+    /// 标题模式：整条标题即编辑入口——无标签、固定 20px 行高（编辑不撑卡）、
     /// 输入框同字号并轻微缩小，底部横条标示编辑态。用于卡牌标题（用户名）。
     #[props(default)]
     title_mode: bool,
@@ -103,41 +97,6 @@ pub fn InlineEdit(
         } else {
             bar_in.set(false);
         }
-    });
-
-    // 编辑态点击行外 → 退出编辑（草稿保留，同 Enter 语义；批注：点击输入框以外的
-    // 位置应该让输入框变回去）。repo 既有 document::eval 外点监听模式，见 dropdown_menu。
-    let root_id = format!("{testid}-row");
-    use_effect(move || {
-        if editing() {
-            let rid = root_id.clone();
-            spawn(async move {
-                let js = format!(
-                    r#"{{
-                        if (window.__dioxusInlineEditGuard === undefined) {{
-                            const fn = (event) => {{
-                                const root = document.getElementById('{rid}');
-                                dioxus.send(root && root.contains(event.target) ? 1 : 0);
-                            }};
-                            window.addEventListener('click', fn, true);
-                            window.__dioxusInlineEditGuard = fn;
-                        }}
-                    }}"#
-                );
-                let mut ev = document::eval(&js);
-                while let Ok(v) = ev.recv::<f64>().await {
-                    if v < 0.5 {
-                        editing.set(false);
-                    }
-                }
-            });
-        }
-    });
-    // 卸载时拆掉 JS 侧监听，防止对已死通道持续 dioxus.send（同 dropdown_menu 约定）。
-    use_drop(move || {
-        let _ = document::eval(
-            r#"if (window.__dioxusInlineEditGuard) { window.removeEventListener('click', window.__dioxusInlineEditGuard, true); delete window.__dioxusInlineEditGuard; }"#,
-        );
     });
 
     // 进入编辑态：聚焦并全选（repo 既有 document::eval 模式，见 dropdown_menu）。
@@ -159,35 +118,27 @@ pub fn InlineEdit(
         draft()
     };
 
-    // 横条 class：展开信号置真后 scaleX 0→1（在 rsx 外算好，避免属性串里嵌 if）。
+    // 横条 class：绝对定位贴容器底边（不占布局），展开信号置真后 scaleX 0→1
+    // （Quasar :after 机制）。标题/行两模式同款。
     let bar_class = if bar_in() {
-        "h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-100"
+        "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-100"
     } else {
-        "h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-0"
+        "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-0"
     };
-    // 编辑块入场：淡入 + 上移一小步（批注：输入框的变化缺少动态效果）。
-    let enter_class = if bar_in() {
-        "px-2 py-1.5 transition-all duration-200 opacity-100 translate-y-0"
+    // 编辑块：绝对定位覆盖展示行（不占布局 → 卡牌宽高零变化，CLS=0），入场淡入
+    // 不位移（批注 f57ad76a：编辑不得让标签跳上去、卡牌高度不得变化）。
+    let edit_class = if bar_in() {
+        "absolute inset-0 z-50 flex items-center gap-2 transition-opacity duration-200 opacity-100"
     } else {
-        "px-2 py-1.5 transition-all duration-200 opacity-0 -translate-y-1"
+        "absolute inset-0 z-50 flex items-center gap-2 transition-opacity duration-200 opacity-0"
     };
-
-    // 标题模式 chrome：固定 20px 行高容器 + 绝对定位编辑块/横条（不占布局，
-    // 编辑不撑卡）；行模式维持原浮动标签 + 流内编辑块。
+    // 展示行编辑时隐身保高（同 AdminCard 面板叠加的 invisible 约定）。
+    let display_suffix = if editing() { " invisible" } else { "" };
+    // 容器：标题模式固定 20px 行高；行模式随内容。
     let root_class = if title_mode {
         "relative flex h-5 items-center"
     } else {
         "relative"
-    };
-    let title_edit_class = if bar_in() {
-        "absolute inset-x-0 bottom-0 h-5 transition-all duration-200 opacity-100"
-    } else {
-        "absolute inset-x-0 bottom-0 h-5 transition-all duration-200 opacity-0"
-    };
-    let title_bar_class = if bar_in() {
-        "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-100"
-    } else {
-        "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-0"
     };
 
     rsx! {
@@ -199,14 +150,47 @@ pub fn InlineEdit(
                     editing.set(false);
                 }
             },
+            // 展示态（常驻渲染保高；编辑时 invisible，宽高零变化）。
+            if title_mode {
+                // 标题模式：整条标题即编辑入口（与静态标题同字号同款）。
+                button {
+                    class: "{INLINE_TITLE_ROW_CLASS} {CARD_TITLE_CLASS}{display_suffix}",
+                    "data-testid": "{testid}",
+                    "aria-label": "{label}",
+                    onclick: move |_| {
+                        stash.set(draft());
+                        editing.set(true);
+                    },
+                    span { class: "truncate", "{display}" }
+                }
+            } else {
+                // 行模式：整行可点；行 class 与卡内其他只读行逐字对齐（批注：对不齐）。
+                button {
+                    class: "{INLINE_ROW_CLASS}{display_suffix}",
+                    "data-testid": "{testid}",
+                    onclick: move |_| {
+                        stash.set(draft());
+                        editing.set(true);
+                    },
+                    span { class: "text-zinc-400", "{label}" }
+                    span { class: "font-medium text-zinc-200 truncate", "{display}" }
+                }
+            }
             if editing() {
-                // 编辑态：标签浮动缩小到头顶 → 无盒型边框输入框 → 底部横条（展开动画）。
-                div { class: if title_mode { "{title_edit_class}" } else { "{enter_class}" },
+                // 外点收关遮罩（EditableRow 同款，WCAG dismissible）：点行外任意处
+                // 退出编辑、草稿保留（同 Enter 语义；批注 214aa194：点其他范围要能退出）。
+                div {
+                    class: "fixed inset-0 z-40",
+                    "aria-hidden": "true",
+                    onclick: move |_| editing.set(false),
+                }
+                // 编辑态：标签留在原地（行模式，不浮动）→ 无盒型边框输入框 → 底部横条。
+                div { class: "{edit_class}",
                     if !title_mode {
-                        span { class: INLINE_LABEL_FLOAT_CLASS, "{label}" }
+                        span { class: "shrink-0 text-zinc-400", "{label}" }
                     }
                     input {
-                        class: if title_mode { INLINE_TITLE_INPUT_CLASS } else { INLINE_INPUT_CLASS },
+                        class: if title_mode { INLINE_TITLE_INPUT_CLASS } else { INLINE_ROW_INPUT_CLASS },
                         "data-testid": "{testid}-input",
                         "aria-label": "{label}",
                         value: "{draft}",
@@ -223,38 +207,13 @@ pub fn InlineEdit(
                             }
                         },
                     }
-                    // 底部横条：2px，从中心展开（scaleX 0→1）；Quasar standard 的
-                    // control:after（--highlighted 时 scaleX(1)）。标题模式绝对定位
-                    // 贴在标题行底边（不占布局）。
+                    // 底部横条：2px，从中心展开（scaleX 0→1）；输入框留了底部间距，
+                    // 横条不覆盖文字（批注 214aa194）。
                     div {
-                        class: if title_mode { "{title_bar_class}" } else { "{bar_class}" },
+                        class: "{bar_class}",
                         "data-testid": "{testid}-bar",
                         "aria-hidden": "true",
                     }
-                }
-            } else if title_mode {
-                // 标题模式展示态：整条标题即编辑入口（与静态标题同字号同款）。
-                button {
-                    class: "{INLINE_TITLE_ROW_CLASS} {CARD_TITLE_CLASS}",
-                    "data-testid": "{testid}",
-                    "aria-label": "{label}",
-                    onclick: move |_| {
-                        stash.set(draft());
-                        editing.set(true);
-                    },
-                    span { class: "truncate", "{display}" }
-                }
-            } else {
-                // 展示态：整行可点；行 class 与卡内其他只读行逐字对齐（批注：对不齐）。
-                button {
-                    class: INLINE_ROW_CLASS,
-                    "data-testid": "{testid}",
-                    onclick: move |_| {
-                        stash.set(draft());
-                        editing.set(true);
-                    },
-                    span { class: "text-zinc-400", "{label}" }
-                    span { class: "font-medium text-zinc-200 truncate", "{display}" }
                 }
             }
         }
