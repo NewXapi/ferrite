@@ -11,7 +11,10 @@ use uuid::Uuid;
 /// - `pool`: 数据库连接池
 /// - `provider_slug`: identity_providers 表的 slug（如 "google"）
 /// - `subject`: ID token 的 `sub` 字段（OIDC provider 为用户分配的唯一标识）
-/// - `email`: 可选，ID token 的 `email` 或 `preferred_username`（若 provider 返回）
+/// - `email`: 可选，ID token 的 `email` claim
+/// - `email_verified`: IdP 是否确认了该邮箱归属。**`false` 时禁止按 email
+///   匹配已有账号**——未验证邮箱可被任意人写入 claim，按它 Bind 等于把
+///   他人账号拱手让人（账号劫持）。此情形只能走 subject 精确命中或新建账号。
 /// - `display_name`: 可选，ID token 的 `name` 或 `preferred_username`
 /// - `default_role`: 首次自动建号时赋予的角色（默认 1 = 普通用户）
 ///
@@ -25,13 +28,14 @@ use uuid::Uuid;
 ///
 /// # 并发首登防护
 /// 1. `SELECT ... FOR UPDATE` 锁定 `user_identities` (provider_slug, subject) 组合
-/// 2. 不存在时再 `SELECT ... FOR UPDATE` 锁定 `auth_users` 按 email 查找行
+/// 2. 不存在且 `email_verified` 时再 `SELECT ... FOR UPDATE` 锁定 `auth_users` 按 email 查找行
 /// 3. 再次不存在时 `INSERT` 新用户 + `INSERT` user_identities
 pub async fn resolve_identity_user(
     pool: &PgPool,
     provider_slug: &str,
     subject: &str,
     email: Option<&str>,
+    email_verified: bool,
     display_name: Option<&str>,
     default_role: u16,
 ) -> Result<(String, u16, i64), AuthError> {
@@ -43,15 +47,17 @@ pub async fn resolve_identity_user(
         return Ok((user_key, role, auth_version));
     }
 
-    // 2) 未命中且有 email -> 按 email 查找已有 auth_users（可能是已注册的本地账号）
-    if let Some(e) = email {
+    // 2) 未命中且邮箱已获 IdP 验证 -> 按 email 查找已有 auth_users 并绑定
+    //    （可能是已注册的本地账号，登录即自动关联）
+    if email_verified && let Some(e) = email {
         if let Some((user_key, role, auth_version)) = try_find_by_email_and_bind(&mut tx, provider_slug, subject, e).await? {
             tx.commit().await.map_err(AuthError::Db)?;
             return Ok((user_key, role, auth_version));
         }
     }
 
-    // 3) 都没有 -> 自动建号（需 auto_create_user 为 true，但在调用端由 provider 配置控制；这里直接建）
+    // 3) 都没有 -> 自动建号（auto_create_user 由 provider 配置在调用端控制；
+    //    此处 email 仍如实落库，只是不参与「匹配已有账号」）
     let (user_key, role, auth_version) = create_user_and_bind(
         &mut tx,
         provider_slug,
@@ -101,7 +107,9 @@ async fn try_find_by_subject(
 
         return Ok(Some((
             row.user_key.to_string(),
-            row.role as u16,
+            // role 是 SMALLINT(i16)。负值/越界值是脏数据，不能 `as u16`
+            // 静默放大（-1 -> 65535 = 越权成 root）；一律按普通用户兜底。
+            u16::try_from(row.role).unwrap_or(1),
             row.auth_version,
         )));
     }
@@ -151,7 +159,8 @@ async fn try_find_by_email_and_bind(
 
         return Ok(Some((
             user.key.to_string(),
-            user.role as u16,
+            // 同 try_find_by_subject：负值不静默放大成高权限。
+            u16::try_from(user.role).unwrap_or(1),
             user.auth_version,
         )));
     }
@@ -227,7 +236,10 @@ async fn create_user_and_bind(
 
                 return Ok((
                     key.to_string(),
-                    default_role,
+                    // default_role 来自 identity_providers 表（admin 可写）。
+                    // 夹到普通用户：provider 配错不该能造出 admin/root 账号；
+                    // 确需提权走管理台显式改该用户的 role。
+                    default_role.min(1),
                     1, // auth_version 默认 1
                 ));
             }
