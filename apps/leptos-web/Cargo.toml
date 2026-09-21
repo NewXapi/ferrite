@@ -1,0 +1,28 @@
+[package]
+name = "leptos-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# 试用应用：SSR-only（不编 wasm，不做 hydrate），所以不在 wasm32 硬约束范围内。
+# 目的是量 leptos + axum 的 dev 期 CPU / 内存，与 dx serve 做对比。
+[[bin]]
+name = "leptos-web"
+path = "src/main.rs"
+
+[dependencies]
+leptos      = { version = "=0.8.20", features = ["ssr"] }
+leptos_axum = "=0.8.10"
+axum        = { workspace = true }
+tokio       = { workspace = true, features = ["net"] }
+serde       = { workspace = true }
+anyhow      = { workspace = true }
+
+[package.metadata.leptos]
+output-name = "leptos-web"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+site-addr = "127.0.0.1:8081"
+reload-port = 8091
+env = "DEV"
