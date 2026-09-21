@@ -257,7 +257,7 @@ async fn quota_rejects_insufficient_remaining() {
         "gpt-4o".into(),
         "default".into(),
         PriceRow {
-            input_per_m: 5_000_000.0,
+            input_per_m: 10_000_000.0,
             output_per_m: 15_000_000.0,
             cache_per_m: 0.0,
         },
@@ -292,8 +292,9 @@ async fn quota_rejects_insufficient_remaining() {
     ctx.requested_model = Some("gpt-4o".into());
     ctx.requested_max_tokens = Some(1024);
 
+    // 15_000_000 * 1024 / 1_000_000 = 15_360 -> ceil = 15_360
     let r = gate.check(&mut ctx).await.unwrap_err();
-    assert!(matches!(r, Rejection::InsufficientQuota { .. }));
+    assert!(matches!(r, Rejection::InsufficientQuota { cost } if cost == 15_360));
 }
 
 #[test]
