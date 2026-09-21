@@ -74,6 +74,10 @@ impl Gate for QuotaGate {
 ///
 /// ponytail: 只估 output_per_m × max_tokens；input/cache 真实消耗由 metering 层
 /// 完成后写回余额。
+///
+/// 单位约定：`output_per_m` 是内部单位/M（`$1/500_000 = 500_000` 内部单位/M），
+/// `max_tokens` 为 token 数，除 1e6 后结果即内部单位。ceil 保证非零消耗
+/// 至少 1 单位，与 [`crate::metering::pricing::price_of`] 的向上取整语义对齐。
 pub fn estimate_cost(price: &PriceRow, max_tokens: u32) -> i64 {
-    ((price.output_per_m * max_tokens as f64) / 1_000_000.0) as i64 * 1_000_000
+    (price.output_per_m * max_tokens as f64 / 1_000_000.0).ceil() as i64
 }

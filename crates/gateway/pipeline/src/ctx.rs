@@ -226,7 +226,7 @@ impl RequestCtx {
         }
     }
 
-    /// 从 axum Request 构造（apps/gateway 入口）
+    /// 从 axum Request 构造（apps/api 入口）
     ///
     /// 提取 method / path / headers / body / client_ip / request_id，
     /// 按路径推断协议类型。

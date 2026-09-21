@@ -7,7 +7,7 @@
 //!
 //! 降层在重试循环里的行为（switch / 最后一个候选才透传 / Neutral 回报）见
 //! `channel_downgrade.rs`；端到端双渠道降层见
-//! `apps/gateway/tests/route_resolution.rs` P0-2。
+//! `apps/api/tests/route_resolution.rs` P0-2。
 
 use dispatch::{FailureScope, classify_channel_scope};
 

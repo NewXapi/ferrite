@@ -1,0 +1,7 @@
+# Ferrite 后端配置（compose 用）。
+# database_url 指向 compose 内的 postgres 服务（容器名即主机名）。
+# 正式部署请改密码，并同时改 postgres 服务的 POSTGRES_PASSWORD。
+
+listen = "0.0.0.0:3000"
+database_url = "postgres://ferrite:ferrite@postgres:5432/ferrite"
+log_level = "info"

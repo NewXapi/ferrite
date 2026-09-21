@@ -127,4 +127,10 @@ merge 期跑 `github/pr_gates` + clippy 等。结论：
 - `.wt/web-fix` 常驻 detached HEAD（git 不允许同一分支进两个 worktree），
   每轮循环从 `origin/web-dev` 切新 `webfix/xxx`，不在旧 webfix 分支上续。
 - 共享 target 时两个车道同时构建会互相等锁（cargo 串行），属预期，不要 kill 对方的 cargo。
+- **共享 target 只在两个 worktree 内容一致时安全**。内容不同（并行第二实例、带着未提交
+  改动、或分支基线不同）时，任一方的构建都会覆盖共享编译目录里另一方 dx 正在 serve 的
+  wasm / dx bundle；且 cargo 的 mtime fresh 判定可能直接复用对方产物、跳过编译你的代码
+  ——症状是「UI 回退到旧版本」且不自愈。并行第二实例必须用独立
+  `CARGO_TARGET_DIR`（各自冷编一次 wasm，约 10 分钟）；只有同一分支 lineage 的会话
+  才共享同一个编译目录。
 - dx / ainotation / 后端的具体启动命令在任务书里，不在本文件重复。

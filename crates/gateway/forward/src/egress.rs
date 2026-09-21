@@ -38,7 +38,7 @@ impl Default for Timeouts {
 /// SOCKS/HTTP 代理与按 base_url 分片留给 TODO(#522) 池化阶段。
 ///
 /// 返回 `Pin<Box<dyn Future>>` 而非 `impl Future`, 满足 trait 的 dyn 兼容性
-/// (apps/gateway 通过 `Arc<dyn Egress>` 注入)。
+/// (apps/api 通过 `Arc<dyn Egress>` 注入)。
 pub trait Egress: Send + Sync {
     /// 发送已准备好的请求, 返回原始响应 (含响应流)。
     ///

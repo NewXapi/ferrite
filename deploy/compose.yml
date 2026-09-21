@@ -1,0 +1,72 @@
+# Ferrite 全功能形态 compose（postgres + api + admin-web + tavern-web）。
+# 双入口由镜像形态决定；这是 tavern + billing 的完整形态。
+# 个人形态用 compose.personal.yml 覆盖（无 tavern-web，api 换个人镜像）。
+#
+# 用法（镜像已发布到 GHCR）：
+#   cd deploy
+#   cp .env.example .env && $EDITOR .env   # 至少填 FERRITE_JWT_SECRET
+#   docker compose up -d
+#   open http://localhost:8080              # 后台管理
+#   open http://localhost:8081              # 酒馆
+#
+# 本地现编镜像（无 GHCR 镜像时）：docker compose up -d --build
+#
+# 默认数据库口令是开发占位值 ferrite；正式部署请同时改
+# postgres 服务的 POSTGRES_PASSWORD 与 config/config.toml 的 database_url。
+
+services:
+  postgres:
+    # 大版本升级不能直接换 tag：PG 18 的二进制拒绝在 17 的数据目录上启动。
+    # 已有 pgdata 卷时必须先 dump/reload（pg_dumpall → 新卷 → 恢复），
+    # 或者 `docker compose down -v` 删卷重建（丢数据）。全新部署无此问题。
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ferrite
+      POSTGRES_PASSWORD: ${FERRITE_DB_PASSWORD:-ferrite}
+      POSTGRES_DB: ferrite
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ferrite -d ferrite"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ghcr.io/newxapi/ferrite-api:latest
+    build:
+      context: ..
+      dockerfile: deploy/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FERRITE_JWT_SECRET: ${FERRITE_JWT_SECRET:?FERRITE_JWT_SECRET 必须设置（见 .env.example）}
+    volumes:
+      - ./config/config.toml:/app/config/config.toml:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  admin-web:
+    image: ghcr.io/newxapi/ferrite-admin-web:latest
+    build:
+      context: ..
+      dockerfile: deploy/admin-web/Dockerfile
+    depends_on: [api]
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  tavern-web:
+    image: ghcr.io/newxapi/ferrite-tavern-web:latest
+    build:
+      context: ..
+      dockerfile: deploy/tavern-web/Dockerfile
+    depends_on: [api]
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

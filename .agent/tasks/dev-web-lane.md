@@ -11,7 +11,10 @@
 ## 0. 开工（每个会话一次）
 
 ```bash
-export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target   # 共享主检出编译目录，必设
+export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target   # 共享主检出编译目录；仅限与 web-dev 内容一致的会话
+                                                                 # 并行第二实例/带未提交改动必须换独立目录
+                                                                 # （如 target-web-parallel），否则产物互覆盖
+                                                                 # + mtime 竞争 → 对方 dx serve 到你的旧 wasm
 cd /home/hathaway/projects/ferrite/.wt/web-dev                        # 全局绝对路径，别自己推路径
 git status                       # 必须干净
 git checkout web-dev && git pull --ff-only

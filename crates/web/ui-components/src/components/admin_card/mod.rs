@@ -14,6 +14,8 @@ pub mod channels;
 pub mod dot_tab;
 /// 行内 Popover 编辑原语（展示行 → 点击编辑 → 保存）。
 pub mod editable;
+/// 原地编辑原语（点值 → 值变无边框输入框，Quasar borderless 等价物）。
+pub mod inline_edit;
 /// 卡片网格分页器（tab 式页码条）与切片纯函数。
 pub mod pager;
 /// 别名定价模式（按量 / 按次）及分段 toggle。
@@ -39,6 +41,8 @@ pub use dot_tab::DotTabBar;
 pub use editable::{
     DANGER_ROW_CLASS, DangerActionRow, EDIT_POPOVER_CLASS, EDITABLE_ROW_CLASS, EditableRow,
 };
+/// 原地编辑原语：可编辑行与无边框输入框 class。
+pub use inline_edit::{INLINE_INPUT_CLASS, InlineEdit};
 /// 卡片网格分页器与分页纯函数（页大小常量 / 切片 / 页数）。
 pub use pager::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
 /// 定价模式枚举与分段 toggle（卡片 / 弹窗共用）。

@@ -22,7 +22,9 @@ function start(mcp) {
 }
 
 async function loadConnection() {
-  for (const url of ['http://127.0.0.1:44090/connection.json', '/assets/ainotation/connection.json']) {
+  // 44091 = 并行第二开发实例的专属桥（AINO_ORIGIN 指向该实例端口）；
+  // 没有该桥时 fetch 失败，自动落到 44090 默认桥。
+  for (const url of ['http://127.0.0.1:44091/connection.json', 'http://127.0.0.1:44090/connection.json', '/assets/ainotation/connection.json']) {
     try {
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) continue;

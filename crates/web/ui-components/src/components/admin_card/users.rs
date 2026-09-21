@@ -1,4 +1,5 @@
 use super::card::{AdminCard, short_key};
+use super::inline_edit::InlineEdit;
 use contract::api::admin::AdminUserDto;
 use dioxus::prelude::*;
 
@@ -40,6 +41,10 @@ fn usage_tone(used_pct: f64) -> &'static str {
 /// 的 remark），卡片本身不感知页面数据源。操作按钮（编辑 / 充值 / 启停）以
 /// `actions` 插槽传入，渲染在基本信息页签底部；插槽内的回调语义与 testid 由
 /// 调用方（页面）决定。卡片只做展示，不发任何网络请求。
+///
+/// 用户名 / 邮箱两行是原地编辑行（[`InlineEdit`]，Quasar `borderless` 思路）：
+/// 点行 → 值变无边框输入框，Enter 收关、Escape 还原；v1 草稿只留卡内前端状态，
+/// 不提交后端——卡牌外「保存」按钮上线后经 `on_commit` 抛回页面统一写回。
 #[component]
 pub fn UserCard(
     /// The administrative user DTO displayed by this card.
@@ -71,13 +76,18 @@ pub fn UserCard(
     // 容器高度取最高者，切页签时卡片高度不跳动。
     let panel_basic = rsx! {
         div { class: "space-y-2.5",
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "用户名" }
-                span { class: "font-medium text-zinc-200 truncate", "{user.username}" }
+            // 用户名 / 邮箱：原地编辑（点行 → 值变无边框输入框；Enter 收关，
+            // 草稿留卡内——v1 不提交后端，保存按钮上线后经 on_commit 抛回页面）。
+            InlineEdit {
+                label: "用户名".to_string(),
+                value: user.username.clone(),
+                testid: "user-inline-username".to_string(),
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "邮箱" }
-                span { class: "font-medium text-zinc-200 truncate", "{user.email}" }
+            InlineEdit {
+                label: "邮箱".to_string(),
+                value: user.email.clone(),
+                testid: "user-inline-email".to_string(),
+                placeholder: "未填写".to_string(),
             }
             div { class: "flex justify-between gap-2 text-xs",
                 span { class: "text-zinc-400", "角色" }
