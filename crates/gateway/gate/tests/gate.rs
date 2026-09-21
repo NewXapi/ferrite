@@ -294,7 +294,7 @@ async fn quota_rejects_insufficient_remaining() {
 
     // 15_000_000 * 1024 / 1_000_000 = 15_360 -> ceil = 15_360
     let r = gate.check(&mut ctx).await.unwrap_err();
-    assert!(matches!(r, Rejection::InsufficientQuota { cost } if cost == 15_360));
+    assert!(matches!(r, Rejection::InsufficientQuota { cost, .. } if cost == 15_360));
 }
 
 #[test]
