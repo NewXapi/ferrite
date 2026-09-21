@@ -12,7 +12,6 @@
 #     → 两者同时成立 = squash-merge 后远端分支已删、main 已吸收该提交
 #   - 有未提交改动的 worktree: 先 git diff 备份到 .wt/<name>.dirty.patch 再删, 不静默丢工作
 #   - 有 cargo/rustc/vite 等编译进程在跑的 worktree: 跳过(多会话并发保护)
-#   - 目录删除一律 gio trash(回收站可恢复), 分支删除 git branch -D(提交仍在 main 里)
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -43,6 +42,13 @@ for wt in .wt/*/; do
   name=$(basename "${wt%/}")
   [[ "$name" == *.patch ]] && continue
   dir="${wt%/}"
+
+  # 车道固定 worktree（.agent/rules/web-lanes.md）：永久基础设施，任何自动清理都不许碰。
+  # .wt/web-fix 常驻 detached 且无远端分支（remote_gone 恒真），唯一屏障是合并判定；
+  # 首次发布后其 HEAD 即成为 main 祖先，只靠 merge-base 判定必被误清——必须硬排除。
+  case "$name" in
+    web-dev|web-fix) KEPT+=("$name [车道固定 worktree，永不自动清]"); continue ;;
+  esac
 
   # 在跑进程 → 跳过
   if hit=$(is_running_in "$PWD/$dir"); then
@@ -97,29 +103,29 @@ fi
 echo "== 回收 worktree 目录 (${#CLEANABLE[@]}) =="
 for n in "${CLEANABLE[@]}"; do
   if [[ $DRY -eq 1 ]]; then
-    echo "  [dry] git worktree remove + gio trash .wt/$n"
+    echo "  [dry] git worktree remove .wt/$n"
   else
+    # 目录由 git worktree remove 直接删除；可回收性靠"已合并"判定（提交都在 main 里），
+    # 脏改动已在上方备份 .wt/<name>.dirty.patch。曾经在此多走一步 gio trash——
+    # remove 之后目录已不存在，必报 "No such file"，已移除。
     git worktree remove --force ".wt/$n" 2>/dev/null || true
-    gio trash ".wt/$n" && echo "  ✓ trashed .wt/$n"
+    echo "  ✓ removed .wt/$n"
   fi
 done
 
-# 删已合并本地分支
+# 删已合并本地分支。直接扫分支表：上面的 remove 已删掉 .git/worktrees/<n> 元数据，
+# 从元数据反推分支名永远空转（实测该循环一次都没触发过）。-d 自带合并校验，
+# 被其他 worktree checkout 的分支 git 会拒绝删，双保险。
 if [[ $DRY -eq 0 ]]; then
   echo "== 删除已合并本地分支 =="
-  for wt in .git/worktrees/*/; do
-    [[ -d "$wt" ]] || continue
-    bn=$(basename "$wt")
-    head=$(sed 's|refs/heads/||' "$wt/HEAD" 2>/dev/null || true)
-    [[ -z "$head" ]] && continue
-    if git rev-parse --verify -q "refs/heads/$head" >/dev/null 2>&1; then
-      # 仅当远端 ref 不在 + main 领先时才删
-      if ! git rev-parse --verify -q "refs/remotes/newxapi/$head" >/dev/null 2>&1 \
-         && git rev-list --count "refs/heads/$head..HEAD" 2>/dev/null | grep -qE '^[1-9]'; then
-        git branch -D "$head" >/dev/null 2>&1 && echo "  ✓ branch -D $head"
-      fi
-    fi
-  done
+  while read -r b; do
+    [[ -z "$b" ]] && continue
+    # 车道干流：发布后即"已合并"，但 .wt/web-dev 常驻其上——永不自动删
+    [[ "$b" == "web-dev" ]] && continue
+    git rev-parse --verify -q "refs/remotes/newxapi/$b" >/dev/null 2>&1 && continue
+    git rev-parse --verify -q "refs/remotes/origin/$b" >/dev/null 2>&1 && continue
+    git branch -d "$b" >/dev/null 2>&1 && echo "  ✓ branch -d $b"
+  done < <(git branch --merged refs/heads/main --format='%(refname:short)' | grep -vE '^(main|web-dev)$')
   git worktree prune
 fi
 [[ $DRY -eq 1 ]] || echo
