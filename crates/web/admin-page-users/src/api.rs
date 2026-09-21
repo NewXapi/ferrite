@@ -6,7 +6,9 @@
 //! 静态兜底仅「全部」(写死的 default/vip/svip/internal 与后端实际分组不符)。
 
 use client::{ApiClient, ApiResult};
-use contract::api::admin::{AdminUserPage, GroupDto, ManageUserRequest};
+use contract::api::admin::{AdminUserPage, GroupDto};
+
+pub use contract::api::admin::ManageUserRequest;
 use contract::api::user::UserDto;
 
 /// 分组筛选项的静态兜底:仅「全部」。真实分组由 `list_groups_api`

@@ -24,7 +24,7 @@ use contract::api::admin::AdminUserDto;
 use crate::api::{self, current_month_prefix, list_users_api};
 use crate::data::fmt_cny;
 
-use super::shared::{
+use super::shared::{MSG_MANAGED, MSG_MANAGE_ERR, MSG_MANAGING, 
     BTN_NEW_USER, BTN_REFRESH, BTN_RETRY, LBL_CONSUMED_TOTAL, LBL_ENABLED_USERS, LBL_GRANTED_TOTAL,
     LBL_NEW_THIS_MONTH, LBL_PERSON, LBL_TOTAL_USERS, MSG_ACTION_ERR, MSG_CREATE_ERR,
     MSG_LOAD_USERS_FAIL, MSG_LOADING, MSG_LOADING_USERS, MSG_NO_MATCH, MSG_SEARCH_HINT,
@@ -71,6 +71,18 @@ pub fn UsersPanel() -> Element {
     // 写操作进行中 / 成功提示
     let busy = use_signal(|| false);
     let notice = use_signal(|| None::<String>);
+    // 当前登录用户 key：self 卡禁用竖条「停用」（防自锁）
+    let self_key = use_signal(|| None::<String>);
+    {
+        let mut self_key = self_key;
+        use_effect(move || {
+            spawn(async move {
+                if let Ok(me) = api::get_user_self_api(&ApiClient::shared().clone()).await {
+                    self_key.set(Some(me.key));
+                }
+            });
+        });
+    }
     // reload 计数:触发一次即重拉列表(写操作后刷新)
     let mut reload = use_signal(|| 0u32);
 
@@ -302,6 +314,33 @@ pub fn UsersPanel() -> Element {
                             UserCard {
                                 key: "{user.key}",
                                 user,
+                                // 竖条按钮：启停走 manage 接口（enable/disable），
+                                // 刷新重拉列表；删除后端暂无动作（共享卡内禁用）。
+                                on_toggle: move |(key, action): (String, String)| {
+                                    let mut n = notice;
+                                    let mut r = reload;
+                                    n.set(Some(format!("{MSG_MANAGING}:{action}")));
+                                    spawn(async move {
+                                        let client = ApiClient::shared().clone();
+                                        match api::manage_user_api(
+                                            &client,
+                                            &api::ManageUserRequest { key, action, value: None },
+                                        )
+                                        .await
+                                        {
+                                            Ok(_) => {
+                                                n.set(Some(MSG_MANAGED.to_string()));
+                                                r.set(r() + 1);
+                                            }
+                                            Err(e) => n.set(Some(format!("{MSG_MANAGE_ERR}:{e}"))),
+                                        }
+                                    });
+                                },
+                                on_refresh: move |_| {
+                                    let mut r = reload;
+                                    r.set(r() + 1);
+                                },
+                                self_key: self_key(),
                             }
                         }
                     }

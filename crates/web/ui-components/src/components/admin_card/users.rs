@@ -60,6 +60,15 @@ pub fn UserCard(
     /// 全部分组选项 (展示标签, 分组名)，来自页面上下文（分组列表 remark 口径）；
     /// 用于分组多选 popover 的全部选项与 chip 文案映射。
     all_groups: Vec<(String, String)>,
+    /// 启停回调：(用户 key, 动作 `enable` | `disable`)。由页面统一调
+    /// `POST /api/user/users/manage` 与刷新。
+    on_toggle: EventHandler<(String, String)>,
+    /// 刷新回调（用户 key；页面侧触发列表重拉）。
+    on_refresh: EventHandler<String>,
+    /// 当前登录用户 key：等于本卡用户时禁用「停用」（防止把自己停用导致会话
+    /// 403——2026-09-21 实测 admin_dev 停用自己后列表重拉全 403）。
+    #[props(default)]
+    self_key: Option<String>,
     /// 整张卡片的测试标识；默认 `user-card`。
     #[props(default = "user-card".to_string())]
     testid: String,
@@ -73,7 +82,16 @@ pub fn UserCard(
     let mut groups_draft: Signal<Vec<String>> = use_signal(|| user.groups.clone());
     let mut role_open = use_signal(|| false);
     let mut groups_open = use_signal(|| false);
+    // 右侧竖条操作面板（启停 / 删除 / 刷新）。
+    let mut strip_open = use_signal(|| false);
+    // 当前登录账号即本卡用户 → 禁用启停（防自锁）
+    let is_self = self_key.as_deref() == Some(user.key.as_str());
 
+    let user_key = user.key.clone();
+    let user_status = user.status;
+    // 竖条两个 move 闭包各自捕获独立克隆（toggle / refresh）
+    let toggle_key = user_key.clone();
+    let refresh_key = user_key.clone();
     let role_str = role_label(role_draft()).to_string();
     let status_str = if user.status == 1 { "启用" } else { "停用" }.to_string();
     let short_k = short_key(&user.key);
@@ -121,7 +139,11 @@ pub fn UserCard(
                     "aria-label": "选择角色",
                     onclick: move |_| role_open.toggle(),
                     span { class: "text-zinc-400", "角色" }
-                    span { class: "font-medium text-zinc-200", "{role_str}" }
+                    span {
+                        class: "font-medium text-zinc-200",
+                        "data-testid": "user-role-popover-anchor",
+                        "{role_str}"
+                    }
                 }
                 PopoverPanel {
                     open: role_open,
@@ -167,7 +189,6 @@ pub fn UserCard(
                     "aria-expanded": "{groups_open()}",
                     "aria-label": "选择分组",
                     onclick: move |_| groups_open.toggle(),
-                    onmouseenter: move |_| groups_open.set(true),
                     p { class: "text-[11px] text-zinc-400", "分组" }
                     div { class: "mt-1.5 flex flex-wrap gap-1.5",
                         for name in groups_draft() {
@@ -254,6 +275,99 @@ pub fn UserCard(
 
     rsx! {
         AdminCard {
+            // 右侧竖条操作面板（批注 64a64e03）：标题栏右上 ⋮ 触发，点击后
+            // 竖排 icon 按钮条从卡牌右上出现（shadcn Ghost icon + divide 分隔）。
+            header_action: rsx! {
+                div { class: "relative",
+                    onkeydown: move |e: KeyboardEvent| {
+                        if e.key() == Key::Escape {
+                            strip_open.set(false);
+                        }
+                    },
+                    button {
+                        class: "flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                        "data-testid": "user-actions-trigger",
+                        "aria-label": "操作菜单",
+                        "aria-expanded": "{strip_open()}",
+                        onclick: move |_| strip_open.toggle(),
+                        svg {
+                            class: "size-4", view_box: "0 0 24 24", fill: "none",
+                            stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
+                            circle { cx: "12", cy: "5", r: "1" }
+                            circle { cx: "12", cy: "12", r: "1" }
+                            circle { cx: "12", cy: "19", r: "1" }
+                        }
+                    }
+                    PopoverPanel {
+                        open: strip_open,
+                        label: "用户操作".to_string(),
+                        testid: "user-actions-popover".to_string(),
+                        content_class: Some("w-10 divide-y divide-zinc-800 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black/50".to_string()),
+                        content: rsx! {
+                            // 启停：icon 表达目标动作（启用中 → 停用）；自己不能停自己
+                            button {
+                                class: if is_self {
+                                    "flex h-8 w-10 items-center justify-center text-zinc-600"
+                                } else {
+                                    "flex h-8 w-10 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                                },
+                                "data-testid": "user-action-toggle",
+                                title: if is_self {
+                                    "不能停用当前登录账号"
+                                } else if user_status == 1 {
+                                    "停用"
+                                } else {
+                                    "启用"
+                                },
+                                disabled: is_self,
+                                onclick: move |_| {
+                                    let action = if user_status == 1 { "disable" } else { "enable" };
+                                    on_toggle.call((toggle_key.clone(), action.to_string()));
+                                    strip_open.set(false);
+                                },
+                                svg {
+                                    class: "size-4", view_box: "0 0 24 24", fill: "none",
+                                    stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
+                                    path { d: "M12 2v10" }
+                                    path { d: "M18.4 6.6a9 9 0 1 1-12.77.04" }
+                                }
+                            }
+                            // 删除：后端 manage 动作集暂无 delete，先禁用占位
+                            button {
+                                class: "flex h-8 w-10 items-center justify-center text-red-400/60",
+                                "data-testid": "user-action-delete",
+                                title: "删除（后端暂未支持）",
+                                disabled: true,
+                                svg {
+                                    class: "size-4", view_box: "0 0 24 24", fill: "none",
+                                    stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
+                                    path { d: "M3 6h18" }
+                                    path { d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" }
+                                    path { d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" }
+                                    line { x1: "10", x2: "10", y1: "11", y2: "17" }
+                                    line { x1: "14", x2: "14", y1: "11", y2: "17" }
+                                }
+                            }
+                            // 刷新：页面侧重拉列表
+                            button {
+                                class: "flex h-8 w-10 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                                "data-testid": "user-action-refresh",
+                                title: "刷新",
+                                onclick: move |_| {
+                                    on_refresh.call(refresh_key.clone());
+                                    strip_open.set(false);
+                                },
+                                svg {
+                                    class: "size-4", view_box: "0 0 24 24", fill: "none",
+                                    stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
+                                    path { d: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" }
+                                    path { d: "M21 3v5h-5" }
+                                }
+                            }
+                        },
+                    }
+                }
+            },
             // 标题（用户名）本身即原地编辑入口：与邮箱行共用同一个 InlineEdit 组件
             // （title_mode chrome），卡上不再有第二处用户名。
             title_slot: rsx! {

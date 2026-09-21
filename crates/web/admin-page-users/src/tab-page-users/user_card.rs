@@ -21,10 +21,19 @@ use dioxus::prelude::*;
 /// 展示结构、额度换算、页签与外壳（都在 `ui::UserCard`），也不负责任何网络请求。
 ///
 /// 【数据流】
-/// - 对内(入)：`user`（单条 `AdminUserDto`）。
-/// - 对外(出)：无（卡片零网络；行内编辑的草稿留卡内，保存入口待卡牌外按钮）。
+/// - 对内(入)：`user`（单条 `AdminUserDto`）、`on_toggle` / `on_refresh`（页面闭包）。
+/// - 对外(出)：竖条按钮的启停 / 刷新意图抛回页面；行内编辑的草稿留卡内。
 #[component]
-pub fn UserCard(user: AdminUserDto) -> Element {
+pub fn UserCard(
+    user: AdminUserDto,
+    /// 启停回调：(用户 key, `enable` | `disable`)，页面统一调 manage 接口。
+    on_toggle: EventHandler<(String, String)>,
+    /// 刷新回调（页面侧重拉列表）。
+    on_refresh: EventHandler<String>,
+    /// 当前登录用户 key（self 卡禁用启停）。
+    #[props(default)]
+    self_key: Option<String>,
+) -> Element {
     // 全部分组选项 (标签, 分组名)：取分组列表里的 remark 口径(与分组管理页同
     // 口径)，直接交给共享卡——卡内 chip 文案映射与 popover 全选项都由它驱动。
     let groups_ctx = use_context::<Signal<Vec<(String, String)>>>();
@@ -33,6 +42,9 @@ pub fn UserCard(user: AdminUserDto) -> Element {
         ui::UserCard {
             user,
             all_groups: groups_ctx(),
+            on_toggle,
+            on_refresh,
+            self_key,
         }
     }
 }

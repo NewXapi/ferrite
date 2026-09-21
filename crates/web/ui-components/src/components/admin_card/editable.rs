@@ -187,11 +187,13 @@ pub fn DangerActionRow(
 /// 与面板（fixed z-50，`role="dialog"`）。面板内容由 `content` 插槽自由组成
 /// （单选选项行 / 多选 chips / 表单等），开合由调用方持有的 `open` 信号控制。
 ///
-/// 【定位】打开时用 document::eval 量**行容器**（面板 parentElement）的视口坐标，
-/// 把面板 `position: fixed` 锚到行下方（右侧对齐）；下方空间不足（< 140px）时
-/// 翻到行上方。**必须 fixed**：页面主区是 `overflow-y-auto` 滚动容器，absolute
-/// 面板会被其底边裁剪（2026-09-21 实测：面板 DOM 在、rect 在，命中测试却落在
-/// 遮罩上）；fixed 子元素不受祖先 overflow 裁剪影响。
+/// 【定位】打开时用 document::eval 量锚元素的视口坐标，把面板 `position: fixed`
+/// **水平居中**到锚上（clamp 进视口 8px 边距），垂直贴锚下方 4px（下方空间
+/// < 140px 且上方充足时翻到上方）。锚元素取面板容器（parentElement）内带
+/// `[data-testid="{testid}-anchor"]` 的后代（如角色值文本），取不到用容器本身。
+/// **必须 fixed**：页面主区是 `overflow-y-auto` 滚动容器，absolute 面板会被其
+/// 底边裁剪（2026-09-21 实测：面板 DOM 在、rect 在，命中测试却落在遮罩上）；
+/// fixed 子元素不受祖先 overflow 裁剪影响。
 ///
 /// 【做什么】只负责「开着时：遮罩拦外点 + 面板浮起 + 锚定定位」；选中语义、
 /// 是否开完即关归调用方（`content_class` 只传宽度 / 圆角 / 边框等外观 class）。
@@ -209,7 +211,8 @@ pub fn PopoverPanel(
     #[props(default)]
     content_class: Option<String>,
 ) -> Element {
-    // 打开时锚定：面板 fixed 到行容器下方（或上方翻转），右侧对齐行右缘。
+    // 打开时锚定：面板 fixed、水平居中到锚（角色值等 `-anchor` 后代或容器本身），
+    // 垂直贴锚下方 4px（空间不足翻上方）。
     let tid_for_effect = testid.clone();
     use_effect(move || {
         if open() {
@@ -217,12 +220,21 @@ pub fn PopoverPanel(
             spawn(async move {
                 let js = format!(
                     r#"{{ const p = document.querySelector('[data-testid="{tid}"]'); if (p) {{
-                        const r = p.parentElement.getBoundingClientRect();
-                        const flip = window.innerHeight - r.bottom < 140 && r.top > 140;
+                        const row = p.parentElement;
+                        const anchor = row.querySelector('[data-testid="{tid}-anchor"]') || row;
+                        const r = anchor.getBoundingClientRect();
+                        const pw = p.offsetWidth || 160;
+                        const ph = p.offsetHeight || 100;
+                        let left = r.left + r.width / 2 - pw / 2;
+                        left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+                        // 仅当下方真放不下 且 上方严格更优时才翻转（避免不必要地
+                        // 盖住锚上方内容——批注 685f7f2f：不要遮挡角色）
+                        const below = window.innerHeight - r.bottom;
+                        const flip = below < ph + 6 && r.top > below + ph;
+                        p.style.left = left + 'px';
+                        p.style.right = 'auto';
                         p.style.top = flip ? '' : (r.bottom + 4) + 'px';
                         p.style.bottom = flip ? (window.innerHeight - r.top + 4) + 'px' : '';
-                        p.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
-                        p.style.left = 'auto';
                     }} }}"#
                 );
                 let _ = document::eval(&js).await;

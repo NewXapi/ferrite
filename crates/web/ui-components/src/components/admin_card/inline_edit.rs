@@ -30,10 +30,11 @@ use dioxus::prelude::*;
 pub const INLINE_ROW_CLASS: &str =
     "flex w-full cursor-pointer items-center justify-between gap-2 text-left text-xs";
 
-/// 行模式编辑态输入框：右侧对齐（与展示态值同位，CLS=0），`leading-3 + pb-1`
-/// 让文字抬离底部横条（批注 214aa194：横条不得覆盖文字）。
+/// 行模式编辑态输入框：右侧对齐（与展示态值同位），`leading-4 + pb-1` 与标题
+/// 模式同款间距——文字抬离底部横条 2px（批注 91631469：两种形态样式要一致，
+/// 横线不贴文字底）。
 pub const INLINE_ROW_INPUT_CLASS: &str =
-    "min-w-0 flex-1 border-0 bg-transparent p-0 pb-1 text-right text-xs font-medium leading-3 text-zinc-100 outline-none focus:ring-0";
+    "min-w-0 flex-1 border-0 bg-transparent p-0 pb-1 text-right text-xs font-medium leading-4 text-zinc-100 outline-none focus:ring-0";
 
 /// 标题模式展示态：整条标题可点，字号/字重/截断与卡牌静态标题逐字同款
 /// （`CARD_TITLE_CLASS`），行高固定 20px（`h-5`）——编辑态不撑卡。
@@ -125,12 +126,12 @@ pub fn InlineEdit(
     } else {
         "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-0"
     };
-    // 编辑块：绝对定位覆盖展示行（不占布局 → 卡牌宽高零变化，CLS=0），入场淡入
-    // 不位移（批注 f57ad76a：编辑不得让标签跳上去、卡牌高度不得变化）。
+    // 编辑块：绝对定位、固定 20px 高（与标题模式同款，行模式下探 4px 入栈间隙，
+    // 不占布局 → 卡牌宽高零变化），入场淡入不位移（批注 f57ad76a）。
     let edit_class = if bar_in() {
-        "absolute inset-0 z-50 flex items-center gap-2 transition-opacity duration-200 opacity-100"
+        "absolute inset-x-0 bottom-0 h-5 z-50 flex items-center gap-2 transition-opacity duration-200 opacity-100"
     } else {
-        "absolute inset-0 z-50 flex items-center gap-2 transition-opacity duration-200 opacity-0"
+        "absolute inset-x-0 bottom-0 h-5 z-50 flex items-center gap-2 transition-opacity duration-200 opacity-0"
     };
     // 展示行编辑时隐身保高（同 AdminCard 面板叠加的 invisible 约定）。
     let display_suffix = if editing() { " invisible" } else { "" };

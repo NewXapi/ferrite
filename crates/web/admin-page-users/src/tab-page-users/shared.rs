@@ -100,6 +100,12 @@ pub const MSG_ACTION_OK: &str = "操作成功";
 pub const MSG_ACTION_ERR: &str = "操作失败";
 /// 用户创建成功提示。
 pub const MSG_USER_CREATED: &str = "用户已创建";
+/// 竖条操作(启停)进行中提示(带动作名)。
+pub const MSG_MANAGING: &str = "正在执行";
+/// 竖条操作(启停)成功提示。
+pub const MSG_MANAGED: &str = "操作成功";
+/// 竖条操作(启停)失败提示(带原因)。
+pub const MSG_MANAGE_ERR: &str = "操作失败";
 /// 用户创建失败提示前缀。
 pub const MSG_CREATE_ERR: &str = "创建失败";
 /// 分组选择器空态。
