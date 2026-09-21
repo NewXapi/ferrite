@@ -72,6 +72,9 @@ pub struct HealthState {
     pub cooldown_streak: u32,
     /// 冷却截止时刻 (unix ms); 0 = 未在冷却。
     pub cooldown_until_ms: u64,
+    /// 退火起点 (unix ms): 最近一次冷却结束时刻; 0 = 无空闲退火锚点。
+    /// 空闲期间 cooldown_streak 以此为起点按 base 窗口衰减 (见 anneal_streak)。
+    pub anneal_since_ms: u64,
     /// 最近一次触发冷却时的 outcome（P1-A 差异化冷却依据：401-run 升级的 Fatal
     /// → max 档；5xx streak → 现行曲线；429 → base 短冷却）。None = 尚未冷却过。
     pub last_cooling_outcome: Option<ChannelOutcome>,
@@ -88,6 +91,7 @@ impl Default for HealthState {
             failure_streak: 0,
             cooldown_streak: 0,
             cooldown_until_ms: 0,
+            anneal_since_ms: 0,
             last_cooling_outcome: None,
         }
     }
@@ -156,6 +160,16 @@ pub trait HealthTable: Send + Sync {
 
     /// 门控判定: 候选是否可参与本轮选择 (冷却中 → 否)。
     fn is_selectable(&self, unit_key: &str, now_ms: u64) -> bool;
+
+    /// 剩余冷却时间 — `Some(ms)` 表示该渠道正在冷却 (未到期),
+    /// `None` 表示未冷却或冷却已到期。selector 在池枯竭时用它找出
+    /// 最接近恢复的渠道做紧急召回。
+    fn cooling_remaining_ms(&self, unit_key: &str, now_ms: u64) -> Option<u64>;
+
+    /// 紧急召回 — 强制结束该渠道的冷却 (复用 finish_cooldown 语义:
+    /// 清冷却、重置请求计数、武装 slow-start ramp)。
+    /// **保留 cooldown_streak**: 召回不是宽恕, 下一次失败仍按原档位爬升冷却时长。
+    fn force_recall(&self, unit_key: &str);
 
     /// 路由权重 — phase0 `RoutingWeight` 语义:
     /// 冷却中 → 0 (除非 max-ejection 豁免, V1 未实现 bypass);
@@ -241,8 +255,10 @@ impl HealthTable for MemoryHealthTable {
             return true; // 无历史 = 未冷却
         };
         if st.cooldown_until_ms != 0 && !st.is_cooling(now_ms) {
-            finish_cooldown(st);
+            finish_cooldown(st, now_ms);
         }
+        // 空闲退火: 无活跃流量的渠道冷却连击按 base 窗口衰减。
+        anneal_streak(st, &self.cfg, now_ms);
         !st.is_cooling(now_ms)
     }
 
@@ -258,12 +274,29 @@ impl HealthTable for MemoryHealthTable {
         // 惰性结算过期冷却 (phase0 RoutingWeight 语义): 恢复渠道在此次选择
         // 就重入 slow-start ramp, 而不是等下一次 record。
         if st.cooldown_until_ms != 0 && !st.is_cooling(now_ms) {
-            finish_cooldown(st);
+            finish_cooldown(st, now_ms);
         }
+        anneal_streak(st, &self.cfg, now_ms);
         if st.is_cooling(now_ms) {
             return 0.0;
         }
         f64::from(base_weight) * st.ewma_score * st.slow_start_factor(self.cfg.min_requests)
+    }
+
+    fn cooling_remaining_ms(&self, unit_key: &str, now_ms: u64) -> Option<u64> {
+        // 冷却截止时刻严格大于当前时刻才算冷却中 (与 is_cooling 同一口径);
+        // 未记录 / 从未冷却 (cooldown_until_ms == 0) → None。
+        self.lock()
+            .get(unit_key)
+            .and_then(|st| st.cooldown_until_ms.checked_sub(now_ms))
+    }
+
+    fn force_recall(&self, unit_key: &str) {
+        // 用表内注入的时钟: 召回即"冷却此刻结束", 退火锚点也从此刻起算。
+        let now = (self.now_ms)();
+        if let Some(st) = self.lock().get_mut(unit_key) {
+            finish_cooldown(st, now);
+        }
     }
 }
 
@@ -305,7 +338,7 @@ fn apply_outcome(
 
     // 先结算过期冷却 (post-expiry 结果干净地重入 slow-start ramp)。
     if st.cooldown_until_ms != 0 && !st.is_cooling(now_ms) {
-        finish_cooldown(st);
+        finish_cooldown(st, now_ms);
     }
 
     let outcome = classify(st, outcome);
@@ -313,16 +346,17 @@ fn apply_outcome(
     match outcome {
         ChannelOutcome::Success => {
             st.failure_streak = 0;
+            // 活跃事件重新计期: 退火锚点清零, 空闲窗口从头算。
+            st.anneal_since_ms = 0;
             // 冷却过期后的干净成功递减冷却连击 (下次失败从更短时长起步)。
             if st.cooldown_streak > 0 && st.cooldown_until_ms == 0 {
                 st.cooldown_streak = st.cooldown_streak.saturating_sub(1);
             }
         }
-        ChannelOutcome::Neutral => {
-            // Neutral 不改分不计请求, 但清失败连击 (非渠道之过)。
-            st.failure_streak = 0;
-            return;
-        }
+        // Neutral (400/404/孤立 401): 渠道无责 —— 不改分、不计请求,
+        // 但失败连击保留: 错误码出现即计入连击, 否则 500/404 交替会让
+        // streak 永远在 1↔0 跳, 冷却阈值永不触达。
+        ChannelOutcome::Neutral => return,
         ChannelOutcome::Fatal | ChannelOutcome::Throttled => {
             st.failure_streak += 1;
         }
@@ -449,9 +483,43 @@ fn start_cooldown(st: &mut HealthState, cfg: &HealthSetting, now_ms: u64, outcom
 }
 
 /// 结束冷却 — phase0 `finishCooldownLocked`: 清除冷却, 武装 slow-start ramp。
-fn finish_cooldown(st: &mut HealthState) {
+/// `now_ms` 记为退火起点: 之后若持续空闲, cooldown_streak 按 base 窗口衰减。
+fn finish_cooldown(st: &mut HealthState, now_ms: u64) {
     st.cooldown_until_ms = 0;
     st.request_count = 0;
     st.ramp_exited = false;
     st.ramp_pending = true;
+    st.anneal_since_ms = now_ms;
+}
+
+/// 空闲退火 — 冷却到期后若持续无流量, cooldown_streak 随时间线性回落。
+///
+/// 退火窗口复用 `cooldown_base_seconds` (不加新配置): 每过一个完整窗口
+/// streak -1 (saturating 到 0), 零头留给下一次结算。活跃流量本身会经
+/// apply_outcome 的 Success 分支递减 streak 并清零锚点, 所以退火只管"静默"
+/// 的渠道; 锚点为 0 (成功过) 时休眠, 直到下一次冷却结束重新设锚。
+///
+/// - `st`: 待结算状态, 原地衰减;
+/// - `cfg`: 提供退火窗口时长;
+/// - `now_ms`: 当前时钟。
+///
+/// 仅在读取路径 (is_selectable / routing_weight) 惰性调用 —— record 本身
+/// 就是活跃事件, 不需要退火。
+fn anneal_streak(st: &mut HealthState, cfg: &HealthSetting, now_ms: u64) {
+    if st.cooldown_until_ms != 0 || st.cooldown_streak == 0 || st.anneal_since_ms == 0 {
+        return;
+    }
+    let window_ms = cfg.cooldown_base_seconds.saturating_mul(1000);
+    if window_ms == 0 {
+        return;
+    }
+    let steps = now_ms.saturating_sub(st.anneal_since_ms) / window_ms;
+    if steps == 0 {
+        return;
+    }
+    st.cooldown_streak = st.cooldown_streak.saturating_sub(steps as u32);
+    st.anneal_since_ms += steps * window_ms;
+    if st.cooldown_streak == 0 {
+        st.anneal_since_ms = 0;
+    }
 }

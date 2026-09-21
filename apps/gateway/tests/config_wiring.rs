@@ -21,42 +21,31 @@ fn load_toml(body: &str) -> GatewayConfig {
     let _ = std::fs::remove_file(&path);
     cfg
 }
-/// 空配置走全套默认值。整段 `[dispatch]` / `[retry]` / `[metering]` 可省。
+/// 空配置走全套默认值。整段 `[metering]` 可省；`[dispatch]` / `[retry]`
+/// 已移到 PG options 表，配置文件不再承载。
 #[test]
 fn empty_config_uses_defaults() {
     let cfg = load_toml("");
     assert_eq!(cfg.listen, "0.0.0.0:3000");
     assert_eq!(cfg.log_level, "info");
-    assert_eq!(cfg.dispatch.cooldown_threshold, 5);
-    assert_eq!(cfg.dispatch.cooldown_base_seconds, 10);
-    assert_eq!(cfg.dispatch.cooldown_max_seconds, 60);
-    assert_eq!(cfg.retry.max_attempts, 3);
     assert!(cfg.metering.prices.is_empty());
     assert!(cfg.proxy_nodes.is_empty());
 }
 
-/// `[dispatch].cooldown_threshold` 必须真的改变熔断时机。
+/// `HealthSetting` 的阈值必须真的改变熔断时机。
 ///
-/// 这是接线测试的核心：配置能解析不等于配置起作用。阈值设为 2 时第 2 次
-/// 连续失败就该进冷却；默认 5 时同样两次失败仍可选。
+/// 配置文件已不再承载调度参数（改由 PG options 表经 apps/api 装配），
+/// 但 `HealthSetting` 仍是单机与生产共同的运行期类型；这里钉住它的
+/// 默认阈值（5）与收紧值（2）的行为差异——apps/gateway 走默认，
+/// apps/api 从 options 读到的值与之同一张表。
 #[test]
-fn dispatch_cooldown_threshold_changes_circuit_timing() {
-    let cfg = load_toml(
-        r#"
-[dispatch]
-cooldown_threshold = 2
-cooldown_base_seconds = 30
-cooldown_max_seconds = 30
-"#,
-    );
+fn health_threshold_changes_circuit_timing() {
+    let now = 1_000_000;
+    // 阈值 2：两次连续失败已达标，进冷却。
     let tuned = MemoryHealthTable::with_config(dispatch::health::HealthSetting {
-        cooldown_threshold: cfg.dispatch.cooldown_threshold,
-        cooldown_base_seconds: cfg.dispatch.cooldown_base_seconds,
-        cooldown_max_seconds: cfg.dispatch.cooldown_max_seconds,
+        cooldown_threshold: 2,
         ..Default::default()
     });
-    let now = 1_000_000;
-    // 两次传输层失败 → 阈值 2 已达，进冷却。
     tuned.record("ch1", Err(FailureClass::Retryable));
     tuned.record("ch1", Err(FailureClass::Retryable));
     assert!(
@@ -64,7 +53,7 @@ cooldown_max_seconds = 30
         "cooldown_threshold=2 时两次失败应进冷却"
     );
 
-    // 对照：默认阈值 5，同样两次失败仍可选。证明差异来自配置而非固定行为。
+    // 对照：默认阈值 5，同样两次失败仍可选。证明差异来自阈值而非固定行为。
     let default_table = MemoryHealthTable::new();
     default_table.record("ch1", Err(FailureClass::Retryable));
     default_table.record("ch1", Err(FailureClass::Retryable));
@@ -104,20 +93,18 @@ cache = 1.25
     assert!(table.lookup("unknown-model", "default").is_none());
 }
 
-/// `[retry].max_attempts` 传到 `RetryPolicy`。
+/// 重试预算已由 PG `options` 表管理（apps/api 装配侧读取），配置文件
+/// 不再承载 `[retry]` 段。这里钉住单机二进制的默认值，防止默认被无意
+/// 改掉——options 表的值域/默认在 admin-ops 注册表里另有覆盖。
 #[test]
-fn retry_max_attempts_reaches_policy() {
-    let cfg = load_toml("[retry]\nmax_attempts = 7\n");
-    assert_eq!(gateway::build_retry_policy(&cfg).max_attempts, 7);
-
-    let cfg = load_toml("");
-    assert_eq!(gateway::build_retry_policy(&cfg).max_attempts, 3);
+fn single_machine_uses_default_retry_policy() {
+    assert_eq!(dispatch::RetryPolicy::default().max_attempts, 3);
 }
 
-/// `build_app` 接受配置并成功组装（不 panic），冷却参数走配置路径。
+/// `build_app` 接受配置并成功组装（不 panic）。
 #[test]
 fn build_app_accepts_config() {
-    let cfg = load_toml("[dispatch]\ncooldown_threshold = 1\n");
+    let cfg = load_toml("");
     let _router = gateway::build_app(&cfg);
 }
 

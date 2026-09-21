@@ -521,10 +521,18 @@ fn exclude_and_cooldown_remove_candidates() {
         health2.record("a", Err(FailureClass::Retryable));
         health2.record("b", Err(FailureClass::Retryable));
     }
+    // 全冷却 → 紧急召回剩余冷却时间最短者（a、b 同一时钟同样失败，
+    // 冷却截止相同，取 units 顺序里的第一个 = a）。召回保留连击：
+    // 下次失败仍按原档位爬升冷却时长，不是宽恕。
+    let recalled = assert_pick(&units, &health2, &[]).expect("全冷却 → 召回最早到期渠道");
+    assert_eq!(recalled.meta.key, "a", "同剩余冷却取顺序第一个");
     assert!(
-        assert_pick(&units, &health2, &[]).is_none(),
-        "全冷却 → 整层落空返回 None"
+        health2.is_selectable("a", 0),
+        "召回后渠道立即可选 (slow-start ramp 武装)"
     );
+    let st = health2.get("a");
+    assert_eq!(st.cooldown_streak, 1, "召回不清连击");
+    assert!(st.ramp_pending, "召回武装 slow-start ramp");
 }
 
 #[test]

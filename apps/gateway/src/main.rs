@@ -38,9 +38,7 @@ async fn main() -> ExitCode {
                         server = Some(spawn_server(&config));
                         tracing::info!(
                             listen = %config.listen,
-                            cooldown_threshold = config.dispatch.cooldown_threshold,
                             priced_models = config.metering.prices.len(),
-                            max_attempts = config.retry.max_attempts,
                             "reload complete",
                         );
                     }
@@ -84,9 +82,7 @@ async fn serve(cfg: Arc<GatewayConfig>, mut stop: tokio::sync::watch::Receiver<b
     };
     tracing::info!(
         listen = %cfg.listen,
-        cooldown_threshold = cfg.dispatch.cooldown_threshold,
         priced_models = cfg.metering.prices.len(),
-        max_attempts = cfg.retry.max_attempts,
         "gateway serving",
     );
     // with_graceful_shutdown 才会让 axum 停止接受新连接并释放监听 socket；

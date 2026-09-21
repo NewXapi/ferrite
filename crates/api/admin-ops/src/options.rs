@@ -48,6 +48,43 @@ pub fn registry() -> Vec<OptionSpec> {
             },
         },
         OptionSpec {
+            key: "gateway.dispatch.cooldown_threshold",
+            // 默认 2（比 dispatch::health::HealthSetting 的 5 更紧）：坏渠道少吃
+            // 3 个用户请求就进冷却，failover 更早触发。
+            default: serde_json::json!(2),
+            validate: |v| {
+                v.as_i64()
+                    .filter(|n| (1..=20).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=20".into())
+            },
+        },
+        OptionSpec {
+            key: "gateway.dispatch.cooldown_base_seconds",
+            default: serde_json::json!(10),
+            validate: |v| {
+                v.as_i64()
+                    .filter(|n| (1..=600).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=600".into())
+            },
+        },
+        OptionSpec {
+            key: "gateway.dispatch.cooldown_max_seconds",
+            // max 的下限取 base 的注册表默认值（10）：写一个比 base 默认还小的
+            // max 是配置错误（冷却上限低于起步时长，递增无处可去），按校验
+            // 拒绝；管理台先把 base 调大，再放大 max。不查库——两个键的
+            // 合法组合有数据库级的依赖，值域校验只兜单键合理性。
+            default: serde_json::json!(60),
+            validate: |v| {
+                let base = spec_default_u64("gateway.dispatch.cooldown_base_seconds");
+                v.as_i64()
+                    .filter(|n| (base as i64..=3600).contains(n))
+                    .map(|_| ())
+                    .ok_or("must be 1..=3600 and >= cooldown_base_seconds default".into())
+            },
+        },
+        OptionSpec {
             key: "gateway.retry.max_attempts",
             default: serde_json::json!(3),
             validate: |v| {
@@ -59,7 +96,9 @@ pub fn registry() -> Vec<OptionSpec> {
         },
         OptionSpec {
             key: "gateway.timeout.first_byte_ms",
-            default: serde_json::json!(30000),
+            // 默认 10s（原 30s）：假死上游 10s 就判失败换候选，"慢"的体感
+            // 主要来自首字节等待，30s 太宽松。
+            default: serde_json::json!(10000),
             validate: |v| {
                 v.as_i64()
                     .filter(|n| *n >= 1000)
@@ -78,6 +117,16 @@ pub fn registry() -> Vec<OptionSpec> {
             },
         },
     ]
+}
+
+/// 取注册表默认值的 u64 形态（校验器内部比较用）。
+///
+/// 仅用于 max-vs-base 这类注册表内已知的静态默认比较，不读库——
+/// 库里实际存的 base 由 [`OptionsService::get`] 在装配侧自行处理。
+fn spec_default_u64(key: &str) -> u64 {
+    spec_of(key)
+        .and_then(|s| s.default.as_u64())
+        .expect("registry() must define a u64 default for the compared key")
 }
 
 fn spec_of(key: &str) -> Option<OptionSpec> {
@@ -149,6 +198,11 @@ impl OptionsService {
     }
 
     /// 写入（校验 → 落库；未知 key 拒绝）。
+    ///
+    /// 除单键值域校验外，`gateway.dispatch.cooldown_max_seconds` 还要与
+    /// **库里实际的** base 比较（单键校验只能比注册表默认，挡不住
+    /// base=600 + max=60 的组合——那会让 `cooldown_duration_ms` 的
+    /// `max.max(base)` 把冷却全钉在 600s，运维设的 60s 上限被静默忽略）。
     pub async fn set(
         &self,
         actor: Uuid,
@@ -158,6 +212,7 @@ impl OptionsService {
         let spec = spec_of(key)
             .ok_or_else(|| AuthError::BadRequest(format!("unknown option key: {key}")))?;
         spec.validate_value(&value)?;
+        self.validate_dispatch_pair(key, &value).await?;
         sqlx::query(
             "INSERT INTO options (key, value, updated_by) VALUES ($1, $2, $3)
              ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $3, updated_at = now()",
@@ -168,6 +223,44 @@ impl OptionsService {
         .execute(&self.pool)
         .await?;
         Ok(value)
+    }
+
+    /// `cooldown_max_seconds` 与库里实际的 `cooldown_base_seconds` 配对校验。
+    ///
+    /// 写 max 时读库里的 base（无行则注册表默认 10）比较；写 base 时反向读
+    /// 库里的 max。读库失败不阻塞写入（value 已过单键校验，装配侧的
+    /// `cooldown_duration_ms` 有 `.max(base)` 兜底）——pair 校验是防呆，
+    /// 不是正确性依赖。
+    async fn validate_dispatch_pair(
+        &self,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<(), AuthError> {
+        const BASE_KEY: &str = "gateway.dispatch.cooldown_base_seconds";
+        const MAX_KEY: &str = "gateway.dispatch.cooldown_max_seconds";
+        let (this_key, other_key) = if key == BASE_KEY {
+            (BASE_KEY, MAX_KEY)
+        } else if key == MAX_KEY {
+            (MAX_KEY, BASE_KEY)
+        } else {
+            return Ok(());
+        };
+        let this = value.as_u64();
+        let other = self.get(other_key).await.ok().and_then(|v| v.as_u64());
+        let (Some(this), Some(other)) = (this, other) else {
+            return Ok(());
+        };
+        if this_key == MAX_KEY && this < other {
+            return Err(AuthError::BadRequest(format!(
+                "cooldown_max_seconds ({this}) must be >= cooldown_base_seconds ({other})"
+            )));
+        }
+        if this_key == BASE_KEY && other < this {
+            return Err(AuthError::BadRequest(format!(
+                "cooldown_base_seconds ({this}) must be <= cooldown_max_seconds ({other})"
+            )));
+        }
+        Ok(())
     }
 }
 

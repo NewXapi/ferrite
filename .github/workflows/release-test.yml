@@ -20,8 +20,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install upx
         run: sudo apt-get update && sudo apt-get install -y upx-ucl
-      - name: Build release (lto=fat, codegen-units=1, strip)
-        run: cargo build --release -p gateway
+      # UPX 4.2.2 无法打包 mold 产出的二进制：
+      #   upx: target/release/gateway: CantPackException: bad DT_GNU_HASH
+      #        n_bucket=0x1  n_bitmask=0x1  len=0x20  r=6
+      # 而仓库 .cargo/config.toml 对 x86_64-unknown-linux-gnu 强制 mold。
+      # 已实测两条"覆盖"路都无效：`cargo --config` 和
+      # `CARGO_TARGET_<triple>_RUSTFLAGS` 都不会替换配置里的
+      # `target.<triple>.rustflags`—— mold 参数依旧出现在 rustc 命令行上
+      # （本地对照实验：设了环境变量后 `--ld-path=/usr/bin/mold` 仍出现 64 次）。
+      # 本 job 的契约就是产出 UPX 压缩二进制，所以构建期间把该配置文件临时移开，
+      # 让 cargo 回退到默认链接器（GNU ld）；构建后立刻移回，不留下改动。
+      # ci.yml 各处仍用 mold，只有这个要分发的 job 退出。
+      - name: Build release without the repo linker config (GNU ld, UPX-packable)
+        run: |
+          set -euo pipefail
+          mv .cargo/config.toml .cargo/config.toml.ci-bak
+          trap 'mv .cargo/config.toml.ci-bak .cargo/config.toml' EXIT
+          cargo build --release -p gateway
       - name: UPX compress
         run: upx --best --lzma target/release/gateway
       - name: Show size
