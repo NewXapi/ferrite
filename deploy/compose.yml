@@ -18,14 +18,18 @@ services:
   postgres:
     # 大版本升级不能直接换 tag：PG 18 的二进制拒绝在 17 的数据目录上启动。
     # 已有 pgdata 卷时必须先 dump/reload（pg_dumpall → 新卷 → 恢复），
-    # 或者 `docker compose down -v` 删卷重建（丢数据）。全新部署无此问题。
+    # 或者 `docker compose down -v` 删卷重建（丢数据）。
+    # PG18 镜像把 PGDATA 改到 /var/lib/postgresql/<major>/docker，卷必须挂父目录
+    # /var/lib/postgresql；挂老的 /var/lib/postgresql/data 会让 entrypoint 判为
+    # "旧数据库需 pg_upgrade" 而 exit 1（全新卷也一样）。
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: ferrite
       POSTGRES_PASSWORD: ${FERRITE_DB_PASSWORD:-ferrite}
       POSTGRES_DB: ferrite
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ferrite -d ferrite"]
       interval: 5s
