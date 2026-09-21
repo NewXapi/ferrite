@@ -6,7 +6,7 @@
 //! 本文件只放「状态 + 拉取 effect + 区段组合」,不含渲染细节:
 //! 卡片内部展示在 ui-components 的共享 `ui::UserCard`(AdminCard 三页签),
 //! `user_card` 只做页面上下文映射与操作插槽,两个弹窗分别在 `user_form` /
-//! `topup_form`,分组与角色选择器在 `group_chips` / `role_chips`,文案常量在
+//! 分组与角色选择器在 `group_chips` / `role_chips`,文案常量在
 //! `shared`。
 //!
 //! 数据来自真实后端:挂载时 `use_effect` 拉 `list_users_api`,写入
@@ -19,27 +19,29 @@ use ui::StatCard;
 use ui::{CARD_PAGE_SIZE, CardGrid, Pager, SectionHeader, page_slice};
 
 use client::ApiClient;
-use contract::api::admin::{AdminUserDto, ManageUserRequest};
+use contract::api::admin::AdminUserDto;
 
-use crate::api::{self, current_month_prefix, list_users_api, manage_user_api};
+use crate::api::{self, current_month_prefix, list_users_api};
 use crate::data::fmt_cny;
 
 use super::shared::{
     BTN_NEW_USER, BTN_REFRESH, BTN_RETRY, LBL_CONSUMED_TOTAL, LBL_ENABLED_USERS, LBL_GRANTED_TOTAL,
-    LBL_NEW_THIS_MONTH, LBL_PERSON, LBL_TOTAL_USERS, MSG_ACTION_ERR, MSG_ACTION_OK, MSG_CREATE_ERR,
+    LBL_NEW_THIS_MONTH, LBL_PERSON, LBL_TOTAL_USERS, MSG_ACTION_ERR, MSG_CREATE_ERR,
     MSG_LOAD_USERS_FAIL, MSG_LOADING, MSG_LOADING_USERS, MSG_NO_MATCH, MSG_SEARCH_HINT,
     MSG_USER_CREATED, OPT_ALL, SEC_FILTER, SEC_LIST, SEC_STATS,
 };
-use super::topup_form::TopUpForm;
 use super::user_card::UserCard;
 use super::user_form::UserForm;
 
-/// 弹窗状态:关闭 / 新建 / 编辑某用户(key 标识)
+/// 弹窗状态:关闭 / 新建。
+///
+/// 编辑态入口随卡内「编辑」按钮删除而暂时不可达（批注 2026-09-21）；卡牌外
+/// 图标按钮（含角色 / 分组 Popover 保存）落地后由新入口写回，届时恢复
+/// `Edit(String)` 变体与 open_edit。
 #[derive(Clone, PartialEq)]
 enum Form {
     Closed,
     New,
-    Edit(String),
 }
 
 #[component]
@@ -51,7 +53,6 @@ pub fn UsersPanel() -> Element {
     let mut role_idx = use_signal(|| 0usize);
 
     let mut form = use_signal(|| Form::Closed);
-    let mut topup = use_signal(|| None::<String>);
 
     // 弹窗字段(新建与编辑共用同款表单)
     let mut f_username = use_signal(String::new);
@@ -185,56 +186,8 @@ pub fn UsersPanel() -> Element {
         f_role.set(1);
         form.set(Form::New);
     };
-    let open_edit = move |key: String| {
-        if let Some(u) = users().iter().find(|u| u.key == key) {
-            f_username.set(u.username.clone());
-            f_email.set(u.email.clone());
-            f_quota.set(u.quota.to_string());
-            // 后端 groups 可空(清空分组态),原样回填,chips 全不选即表达
-            f_group.set(u.groups.clone());
-            f_remark.set(String::new());
-            f_role.set(u.role);
-            form.set(Form::Edit(key));
-        }
-    };
-
-    // 写操作助手工厂:返回独立闭包,分别交给 UserCard(启用/禁用)、
-    // UserForm(编辑回写)、TopUpForm(充值)。Signal 是 Copy;每次调用先复制一份
-    // 再 move 进 async,避免把闭包捕获的 signal 移动出去(FnMut 不允许)。
-    let make_manage = || {
-        let captured = (busy, notice, reload);
-        move |key: String, action: String, value: Option<String>| {
-            let (mut b, mut n, mut r) = captured;
-            spawn(async move {
-                b.set(true);
-                n.set(None);
-                let client = ApiClient::shared().clone();
-                let req = ManageUserRequest { key, action, value };
-                match manage_user_api(&client, &req).await {
-                    Ok(_) => {
-                        n.set(Some(MSG_ACTION_OK.to_string()));
-                        r.set(r() + 1);
-                    }
-                    Err(e) => n.set(Some(format!("{MSG_ACTION_ERR}:{e}"))),
-                }
-                b.set(false);
-            });
-        }
-    };
-    let manage_toggle = make_manage();
-    let manage_form = make_manage();
-    let manage_topup = make_manage();
-
-    // 弹窗编辑态:从 form() 派生,放在 rsx! 之外(宏内不允许 let 语句)
-    let editing = matches!(form(), Form::Edit(_));
-    let edit_key = match form() {
-        Form::Edit(k) => Some(k),
-        _ => None,
-    };
-    // 充值弹窗的当前额度:同样放在 rsx! 之外计算
-    let topup_quota = topup()
-        .and_then(|k| users().iter().find(|u| u.key == k).map(|u| u.quota))
-        .unwrap_or(0);
+    // 注：卡内编辑入口（原「编辑」按钮）已按批注删除；编辑态表单暂不可达，
+    // 待卡牌外图标按钮（启停/保存/删除）布局确认后从新入口打开 Form::Edit。
 
     rsx! {
         div { class: "flex flex-col gap-6", "data-testid": "users-panel",
@@ -349,9 +302,6 @@ pub fn UsersPanel() -> Element {
                             UserCard {
                                 key: "{user.key}",
                                 user,
-                                on_edit: open_edit,
-                                on_topup: move |key: String| topup.set(Some(key)),
-                                on_toggle: move |(k, a, v): (String, String, Option<String>)| manage_toggle(k, a, v),
                             }
                         }
                     }
@@ -362,8 +312,8 @@ pub fn UsersPanel() -> Element {
         // 新建 / 编辑弹窗(同款表单)
         if form() != Form::Closed {
             UserForm {
-                editing,
-                edit_key: edit_key.clone(),
+                editing: false,
+                edit_key: None,
                 username: f_username,
                 email: f_email,
                 password: f_password,
@@ -373,12 +323,8 @@ pub fn UsersPanel() -> Element {
                 role: f_role,
                 on_cancel: move |_| form.set(Form::Closed),
                 // 编辑态:按 tab 回写单字段(set_role / set_group)
-                on_submit: move |(action, value): (String, Option<String>)| {
-                    if let Some(k) = edit_key.clone() {
-                        manage_form(k, action, value);
-                    }
-                    form.set(Form::Closed);
-                },
+                // 编辑态暂不可达（见 Form 注释）：卡外图标按钮落地后接 manage_user_api 写回
+                on_submit: move |_| form.set(Form::Closed),
                 // 新建态:一次性 POST /api/user/users 建号
                 on_create: move |req: api::CreateUserRequest| {
                     let mut n = notice;
@@ -399,19 +345,6 @@ pub fn UsersPanel() -> Element {
                         b.set(false);
                     });
                     form.set(Form::Closed);
-                },
-            }
-        }
-
-        // 充值弹窗
-        if let Some(key) = topup() {
-            TopUpForm {
-                user_key: key,
-                current_quota: topup_quota,
-                on_cancel: move |_| topup.set(None),
-                on_submit: move |(k, amount): (String, i64)| {
-                    manage_topup(k, "adjust_quota".to_string(), Some(amount.to_string()));
-                    topup.set(None);
                 },
             }
         }

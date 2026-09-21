@@ -24,12 +24,16 @@
 
 use dioxus::prelude::*;
 
-use super::editable::EDITABLE_ROW_CLASS;
-
 /// 原地编辑输入框 class：Quasar standard 变体——无盒型边框（四周边框全删），
 /// 只有编辑态底部横条（独立元素做 scaleX 动画，见组件内 `bar`）。
 pub const INLINE_INPUT_CLASS: &str =
     "w-full border-0 bg-transparent p-0 pb-1 pt-1.5 text-xs font-medium text-zinc-100 outline-none focus:ring-0";
+
+/// 展示态行 class：与卡内其他只读行（角色 / 状态 / 分组）逐字对齐——无
+/// padding、无圆角、无 hover 底色（批注：用户名/邮箱行与后面的列表对不齐）。
+/// 可编辑性由 `cursor-pointer` 暗示； Enter 提交语义不变。
+pub const INLINE_ROW_CLASS: &str =
+    "flex w-full cursor-pointer items-center justify-between gap-2 text-left text-xs";
 
 /// 浮动后的标签 class：缩到 ~75%（text-[10px] vs 展示态 text-xs）、上浮到输入框
 /// 头顶、左对齐、变暗（Quasar 深色主题 `rgba(255,255,255,.7)` 的 zinc 等价）。
@@ -86,6 +90,41 @@ pub fn InlineEdit(
         }
     });
 
+    // 编辑态点击行外 → 退出编辑（草稿保留，同 Enter 语义；批注：点击输入框以外的
+    // 位置应该让输入框变回去）。repo 既有 document::eval 外点监听模式，见 dropdown_menu。
+    let root_id = format!("{testid}-row");
+    use_effect(move || {
+        if editing() {
+            let rid = root_id.clone();
+            spawn(async move {
+                let js = format!(
+                    r#"{{
+                        if (window.__dioxusInlineEditGuard === undefined) {{
+                            const fn = (event) => {{
+                                const root = document.getElementById('{rid}');
+                                dioxus.send(root && root.contains(event.target) ? 1 : 0);
+                            }};
+                            window.addEventListener('click', fn, true);
+                            window.__dioxusInlineEditGuard = fn;
+                        }}
+                    }}"#
+                );
+                let mut ev = document::eval(&js);
+                while let Ok(v) = ev.recv::<f64>().await {
+                    if v < 0.5 {
+                        editing.set(false);
+                    }
+                }
+            });
+        }
+    });
+    // 卸载时拆掉 JS 侧监听，防止对已死通道持续 dioxus.send（同 dropdown_menu 约定）。
+    use_drop(move || {
+        let _ = document::eval(
+            r#"if (window.__dioxusInlineEditGuard) { window.removeEventListener('click', window.__dioxusInlineEditGuard, true); delete window.__dioxusInlineEditGuard; }"#,
+        );
+    });
+
     // 进入编辑态：聚焦并全选（repo 既有 document::eval 模式，见 dropdown_menu）。
     let testid_for_focus = testid.clone();
     use_effect(move || {
@@ -111,9 +150,15 @@ pub fn InlineEdit(
     } else {
         "h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-0"
     };
+    // 编辑块入场：淡入 + 上移一小步（批注：输入框的变化缺少动态效果）。
+    let enter_class = if bar_in() {
+        "px-2 py-1.5 transition-all duration-200 opacity-100 translate-y-0"
+    } else {
+        "px-2 py-1.5 transition-all duration-200 opacity-0 -translate-y-1"
+    };
 
     rsx! {
-        div { class: "relative",
+        div { class: "relative", id: "{testid}-row",
             // Escape 收关：焦点在行内任意节点按键均可（冒泡到本容器）。
             onkeydown: move |e: KeyboardEvent| {
                 if editing() && e.key() == Key::Escape {
@@ -123,7 +168,7 @@ pub fn InlineEdit(
             },
             if editing() {
                 // 编辑态：标签浮动缩小到头顶 → 无盒型边框输入框 → 底部横条（展开动画）。
-                div { class: "px-2 py-1.5",
+                div { class: "{enter_class}",
                     span { class: INLINE_LABEL_FLOAT_CLASS, "{label}" }
                     input {
                         class: INLINE_INPUT_CLASS,
@@ -152,9 +197,9 @@ pub fn InlineEdit(
                     }
                 }
             } else {
-                // 展示态：整行可点，hover 底色提示可编辑。
+                // 展示态：整行可点；行 class 与卡内其他只读行逐字对齐（批注：对不齐）。
                 button {
-                    class: EDITABLE_ROW_CLASS,
+                    class: INLINE_ROW_CLASS,
                     "data-testid": "{testid}",
                     onclick: move |_| {
                         stash.set(draft());

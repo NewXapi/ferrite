@@ -6,7 +6,6 @@
 //! - `user_form`:新建 / 编辑弹窗(含弹窗内三个真实页签)
 //! - `group_chips`:生效分组多选 chips
 //! - `role_chips`:角色权限单选 chips
-//! - `topup_form`:额度充值弹窗
 //! - `shared`:该 tab 独占的跨组件共用文案常量(按 LBL_/BTN_/SEC_/FIELD_/MSG_/OPT_ 前缀)
 
 pub mod badge;
@@ -15,7 +14,6 @@ pub mod modal;
 pub mod page;
 pub mod role_chips;
 pub mod shared;
-pub mod topup_form;
 pub mod user_card;
 pub mod user_form;
 

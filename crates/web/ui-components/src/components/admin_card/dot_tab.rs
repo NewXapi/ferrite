@@ -1,18 +1,13 @@
 use dioxus::prelude::*;
 
-/// 渲染用于切换卡片内容的圆点按钮组。
+/// 渲染用于切换卡片内容的底部横线页签条。
 ///
-/// `tabs` 为每颗圆点提供可访问名称，`active` 是当前按下的圆点索引，
-/// `on_change` 在用户以 Tab 聚焦后按 Enter 或 Space，或直接点击圆点时接收
-/// 所选索引。圆点是普通按钮，不采用不完整的 ARIA tab 语义。
-///
-/// 在页签容器上滚动鼠标滚轮也会在页签间循环切换：向上滚切换前一个
-/// 页签（首个时回到末尾），向下滚切换后一个页签（末尾时回到首个），
-/// 并阻止事件默认行为以免驱动页面滚动；`tabs` 为空时不做任何事。
-///
-/// 当 `active` 超出范围时不会产生错误：不标记任何按钮为按下。
-///
-/// 例如，可将此组件放入 `AdminCard` 标题栏以切换实体摘要内容。
+/// 维护者批注（2026-09-21）：卡牌 tab 移到底部、占满底部，「一条横线来占位」，
+/// 选中用明暗反映（白 / 灰），高度压低（2px，约 1/4 字高）。因此圆点改为
+/// **等分分段底栏**：每个 tab 一个 `flex-1` 区段，区段底部 2px 横条——
+/// 激活 = `bg-zinc-100`（白），非激活 = `bg-zinc-800`（灰）；整条读起来就是
+/// 一条通栏横线，激活区段提亮。aria / testid / 滚轮循环切换契约与圆点版相同
+/// （`dot-tab-{i}` testid 保留，既有断言不受影响）。
 #[component]
 pub fn DotTabBar(
     tabs: Vec<&'static str>,
@@ -22,7 +17,7 @@ pub fn DotTabBar(
     let n = tabs.len();
     rsx! {
         div {
-            class: "flex items-center gap-1.5",
+            class: "mt-3 flex w-full items-stretch gap-1",
             role: "group",
             "aria-label": "内容页签",
             // 滚轮循环切页签：deltaY < 0 前一个，deltaY > 0 后一个，越界取模回绕。
@@ -48,19 +43,22 @@ pub fn DotTabBar(
                 {
                     let idx = i;
                     let is_active = i == active;
+                    // 横条 class 必须完整字面量出现在源码里，Tailwind 才会生成对应 CSS。
+                    let bar = if is_active {
+                        "absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-zinc-100 transition-colors"
+                    } else {
+                        "absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-zinc-800 transition-colors"
+                    };
                     rsx! {
                         button {
-                            key: "dot-{i}",
-                            class: if is_active {
-                                "h-2 w-2 rounded-full bg-white transition-colors"
-                            } else {
-                                "h-2 w-2 rounded-full border border-white/40 transition-colors hover:border-white/70"
-                            },
+                            key: "tab-{i}",
+                            class: "relative flex-1 pb-2 pt-1.5",
                             "aria-label": "{label}",
                             "aria-pressed": "{is_active}",
                             "data-testid": "dot-tab-{i}",
                             type: "button",
                             onclick: move |_| on_change.call(idx),
+                            span { class: "{bar}", "aria-hidden": "true" }
                         }
                     }
                 }

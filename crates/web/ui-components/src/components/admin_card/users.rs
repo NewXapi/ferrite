@@ -38,11 +38,12 @@ fn usage_tone(used_pct: f64) -> &'static str {
 /// 系统（截断 key / 创建时间）。
 ///
 /// 分组展示标签由调用方按页面上下文映射后经 `group_labels` 传入（如取分组管理页
-/// 的 remark），卡片本身不感知页面数据源。操作按钮（编辑 / 充值 / 启停）以
-/// `actions` 插槽传入，渲染在基本信息页签底部；插槽内的回调语义与 testid 由
-/// 调用方（页面）决定。卡片只做展示，不发任何网络请求。
+/// 的 remark），卡片本身不感知页面数据源。卡片只做展示与行内编辑，不发任何网络
+/// 请求；卡内**不再有操作按钮行**（维护者 2026-09-21 批注删除）——启停 / 保存 /
+/// 删除等操作将由卡牌外的图标按钮承担（布局设计待维护者确认后接入）。
 ///
-/// 用户名 / 邮箱两行是原地编辑行（[`InlineEdit`]，Quasar `borderless` 思路）：
+/// 用户名 / 邮箱两行是原地编辑行（[`InlineEdit`]，Quasar standard 变体：浮动标签
+/// + 底部横条）：
 /// 点行 → 值变无边框输入框，Enter 收关、Escape 还原；v1 草稿只留卡内前端状态，
 /// 不提交后端——卡牌外「保存」按钮上线后经 `on_commit` 抛回页面统一写回。
 #[component]
@@ -52,9 +53,6 @@ pub fn UserCard(
     /// 分组展示标签，与 `user.groups` 同序同长；调用方负责把分组名映射为页面
     /// 口径的展示文案（取不到时传裸名即可）。
     group_labels: Vec<String>,
-    /// 操作区插槽（如编辑 / 充值 / 启停按钮组）；未传时不渲染操作行。
-    #[props(default)]
-    actions: Option<Element>,
     /// 整张卡片的测试标识；默认 `user-card`。
     #[props(default = "user-card".to_string())]
     testid: String,
@@ -110,10 +108,6 @@ pub fn UserCard(
                         span { class: "text-[11px] text-zinc-500", "无分组" }
                     }
                 }
-            }
-            // 操作区插槽（页面构造的按钮组），挂在基本信息页签底部。
-            if let Some(actions) = actions {
-                {actions}
             }
         }
     };

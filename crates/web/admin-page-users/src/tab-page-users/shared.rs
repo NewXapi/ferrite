@@ -11,10 +11,6 @@
 
 /// 弹窗底部取消按钮文案。
 pub const BTN_CANCEL: &str = "取消";
-/// 卡片操作区:编辑。
-pub const BTN_EDIT: &str = "编辑";
-/// 卡片操作区:充值。
-pub const BTN_TOPUP: &str = "充值";
 /// 新建用户按钮。
 pub const BTN_NEW_USER: &str = "✚ 新建用户";
 /// 筛选区刷新按钮。
@@ -25,24 +21,15 @@ pub const BTN_RETRY: &str = "重试";
 pub const BTN_SAVE: &str = "保存修改";
 /// 用户表单提交(新建态)。
 pub const BTN_CREATE: &str = "创建用户";
-/// 充值弹窗确认按钮。
-pub const BTN_TOPUP_CONFIRM: &str = "确认充值";
 
 // ---- STATUS_* : 状态徽标 ----
 
-/// 启用态文案。
-///
-/// 两处含义相反、共用同一串字:卡片徽标表示**当前**是启用态,卡片操作按钮
-/// 表示**点击后**变为启用态(禁用卡才显示)。
-pub const STATUS_ENABLED: &str = "启用";
-/// 禁用态文案(同上,徽标与操作按钮共用)。
-pub const STATUS_DISABLED: &str = "禁用";
 
 // ---- LBL_* : 标签 / 表头 / 字段名 ----
 
 /// 邮箱字段标签(表单输入框与绑定页只读行共用)。
 pub const LBL_EMAIL: &str = "邮箱";
-/// 额度字段标签(卡片进度条 / 表单输入框 / 充值弹窗三处同口径)。
+/// 额度字段标签(卡片进度条 / 表单输入框同口径)。
 pub const LBL_QUOTA: &str = "额度";
 /// 统计卡:总用户数。
 pub const LBL_TOTAL_USERS: &str = "总用户";
@@ -90,8 +77,6 @@ pub const FIELD_GROUP_HINT: &str = "点击分组切换选中,可多选;首个分
 pub const FIELD_NOTE: &str = "管理员备注(仅管理员可见)";
 /// 管理员备注输入框占位。
 pub const FIELD_NOTE_HINT: &str = "例如: 连续 30 天无登录,待清退";
-/// 充值金额字段。
-pub const FIELD_TOPUP_AMOUNT: &str = "充值金额 (元)";
 
 // ---- MSG_* : 提示 / 错误 / 空态 ----
 
@@ -99,10 +84,6 @@ pub const FIELD_TOPUP_AMOUNT: &str = "充值金额 (元)";
 pub const MSG_BINDING_READONLY: &str = "第三方账号绑定(后端暂未返回,只读)";
 /// 额度输入框旁说明(与卡片进度条同口径)。
 pub const MSG_QUOTA_HINT: &str = "折合";
-/// 充值弹窗:当前额度前缀。
-pub const MSG_CUR_QUOTA: &str = "当前";
-/// 充值弹窗:充值后额度前缀。
-pub const MSG_AFTER_QUOTA: &str = "充值后";
 /// 列表搜索框占位。
 pub const MSG_SEARCH_HINT: &str = "搜索用户名或邮箱";
 /// 列表加载中。
@@ -135,8 +116,6 @@ pub const OPT_ALL: &str = "全部";
 pub const TTL_EDIT_USER: &str = "编辑用户";
 /// 用户新建弹窗标题。
 pub const TTL_NEW_USER: &str = "新建用户";
-/// 额度充值弹窗标题。
-pub const TTL_TOPUP: &str = "额度充值";
 
 // ---- TAB_* : 弹窗内页签 ----
 

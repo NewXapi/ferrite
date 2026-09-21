@@ -34,3 +34,4 @@ scripts/smoke/
 /e2e/test-results/
 /e2e/playwright-report/
 /e2e/bun.lock
+apps/admin-web/assets/ainotation/connection.json
