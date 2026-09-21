@@ -1,4 +1,6 @@
 /target
+/target-web/
+/data/
 **/*.rs.bk
 *.pdb
 todo/
