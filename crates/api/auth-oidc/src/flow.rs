@@ -77,9 +77,9 @@ pub async fn authorize_url(
         )
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()))
-        .set_pkce_challenge(PkceCodeChallenge::from(
-            PkceCodeVerifier::new(pkce_verifier),
-        ))
+        .set_pkce_challenge(PkceCodeChallenge::from(PkceCodeVerifier::new(
+            pkce_verifier,
+        )))
         .url();
 
     Ok(auth_url.to_string())
@@ -133,9 +133,7 @@ pub async fn exchange_and_verify(
             .name()
             .and_then(|n| n.get(None))
             .map(|n| n.to_string()),
-        preferred_username: claims
-            .preferred_username()
-            .map(|u| u.to_string()),
+        preferred_username: claims.preferred_username().map(|u| u.to_string()),
     })
 }
 
