@@ -248,26 +248,19 @@ async fn assemble(
 /// 全部失败 → 整体回退 [`HealthSetting::default`]。options 是运维可改的
 /// 软配置，坏值不该让 `build_app` 炸启动（启动失败 = 全量不可用，
 /// 降级到内置默认仍能服务）。
+/// 三个键的 fallback 显式写注册表默认值（threshold 2 / base 10 / max 60），
+/// 不用 `HealthSetting::default()` 的字段——后者 threshold=5，与注册表收紧
+/// 后的 2 不一致。单键读失败会拿到这个 fallback，必须和「库里没行」时
+/// [`ops::OptionsService::get`] 给的注册表默认保持同一口径，否则坏 options
+/// 表会让冷却门槛悄悄回退到旧的宽松行为。
 async fn load_health_setting(opts: &ops::OptionsService) -> dispatch::health::HealthSetting {
     let mut setting = HealthSetting::default();
-    setting.cooldown_threshold = read_option_u32(
-        opts,
-        "gateway.dispatch.cooldown_threshold",
-        setting.cooldown_threshold,
-    )
-    .await;
-    setting.cooldown_base_seconds = read_option_u64(
-        opts,
-        "gateway.dispatch.cooldown_base_seconds",
-        setting.cooldown_base_seconds,
-    )
-    .await;
-    setting.cooldown_max_seconds = read_option_u64(
-        opts,
-        "gateway.dispatch.cooldown_max_seconds",
-        setting.cooldown_max_seconds,
-    )
-    .await;
+    setting.cooldown_threshold =
+        read_option_u32(opts, "gateway.dispatch.cooldown_threshold", 2).await;
+    setting.cooldown_base_seconds =
+        read_option_u64(opts, "gateway.dispatch.cooldown_base_seconds", 10).await;
+    setting.cooldown_max_seconds =
+        read_option_u64(opts, "gateway.dispatch.cooldown_max_seconds", 60).await;
     setting
 }
 
@@ -304,25 +297,31 @@ async fn read_option_u64(opts: &ops::OptionsService, key: &str, fallback: u64) -
     }
 }
 
-/// 读一个 option 键的 u32 值；语义同 [`read_option_u64`]（窄化截断由
-/// 值域校验兜底：注册表三个键的上限都远小于 u32）。
+/// 读一个 option 键的 u32 值；语义同 [`read_option_u64`]。
+///
+/// 超 `u32::MAX` 的值走 `try_from` 失败分支而非 `as` 静默截断：绕过 PUT
+/// 校验直写库时（如 4294967296），`as u32` 会变 0——冷却门槛 0 让渠道
+/// 每次失败即弹射、重试预算 0 让每个请求立即 `RetriesExhausted`。
 async fn read_option_u32(opts: &ops::OptionsService, key: &str, fallback: u32) -> u32 {
-    read_option_u64(opts, key, fallback as u64).await as u32
+    let n = read_option_u64(opts, key, u64::from(fallback)).await;
+    match u32::try_from(n) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::warn!(key, value = n, "option 超出 u32 范围，回退默认");
+            fallback
+        }
+    }
 }
 
 /// 从 PG `options` 表读出口超时配置（[`forward::egress::Timeouts`]）。
 ///
 /// 只接 `first_byte_ms`：连接超时与总超时保持默认（connect 5s / total 300s
-/// 对单次转发仍是合理兜底）。读失败 → `warn!` + 回退默认值，语义同
-/// [`load_health_setting`]：软配置坏了不炸启动。
+/// 对单次转发仍是合理兜底）。fallback 显式写注册表默认 10_000，不用
+/// `Timeouts::default()` 的 30_000——与「库里没行」时的注册表默认同口径
+/// （同 [`load_health_setting`]）。读失败 → `warn!` + 回退，不炸启动。
 async fn load_timeouts(opts: &ops::OptionsService) -> forward::egress::Timeouts {
     let mut timeouts = forward::egress::Timeouts::default();
-    timeouts.first_byte_ms = read_option_u64(
-        opts,
-        "gateway.timeout.first_byte_ms",
-        timeouts.first_byte_ms,
-    )
-    .await;
+    timeouts.first_byte_ms = read_option_u64(opts, "gateway.timeout.first_byte_ms", 10_000).await;
     timeouts
 }
 

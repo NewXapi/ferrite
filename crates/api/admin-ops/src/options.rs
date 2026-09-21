@@ -198,6 +198,11 @@ impl OptionsService {
     }
 
     /// 写入（校验 → 落库；未知 key 拒绝）。
+    ///
+    /// 除单键值域校验外，`gateway.dispatch.cooldown_max_seconds` 还要与
+    /// **库里实际的** base 比较（单键校验只能比注册表默认，挡不住
+    /// base=600 + max=60 的组合——那会让 `cooldown_duration_ms` 的
+    /// `max.max(base)` 把冷却全钉在 600s，运维设的 60s 上限被静默忽略）。
     pub async fn set(
         &self,
         actor: Uuid,
@@ -207,6 +212,7 @@ impl OptionsService {
         let spec = spec_of(key)
             .ok_or_else(|| AuthError::BadRequest(format!("unknown option key: {key}")))?;
         spec.validate_value(&value)?;
+        self.validate_dispatch_pair(key, &value).await?;
         sqlx::query(
             "INSERT INTO options (key, value, updated_by) VALUES ($1, $2, $3)
              ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $3, updated_at = now()",
@@ -217,6 +223,44 @@ impl OptionsService {
         .execute(&self.pool)
         .await?;
         Ok(value)
+    }
+
+    /// `cooldown_max_seconds` 与库里实际的 `cooldown_base_seconds` 配对校验。
+    ///
+    /// 写 max 时读库里的 base（无行则注册表默认 10）比较；写 base 时反向读
+    /// 库里的 max。读库失败不阻塞写入（value 已过单键校验，装配侧的
+    /// `cooldown_duration_ms` 有 `.max(base)` 兜底）——pair 校验是防呆，
+    /// 不是正确性依赖。
+    async fn validate_dispatch_pair(
+        &self,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<(), AuthError> {
+        const BASE_KEY: &str = "gateway.dispatch.cooldown_base_seconds";
+        const MAX_KEY: &str = "gateway.dispatch.cooldown_max_seconds";
+        let (this_key, other_key) = if key == BASE_KEY {
+            (BASE_KEY, MAX_KEY)
+        } else if key == MAX_KEY {
+            (MAX_KEY, BASE_KEY)
+        } else {
+            return Ok(());
+        };
+        let this = value.as_u64();
+        let other = self.get(other_key).await.ok().and_then(|v| v.as_u64());
+        let (Some(this), Some(other)) = (this, other) else {
+            return Ok(());
+        };
+        if this_key == MAX_KEY && this < other {
+            return Err(AuthError::BadRequest(format!(
+                "cooldown_max_seconds ({this}) must be >= cooldown_base_seconds ({other})"
+            )));
+        }
+        if this_key == BASE_KEY && other < this {
+            return Err(AuthError::BadRequest(format!(
+                "cooldown_base_seconds ({this}) must be <= cooldown_max_seconds ({other})"
+            )));
+        }
+        Ok(())
     }
 }
 

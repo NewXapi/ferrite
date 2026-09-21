@@ -73,7 +73,7 @@ apps/api 迁移读这张表后 kv_store JSON blob 可废弃。
 | GET | `/api/option/{key}` | admin 单查 |
 | PUT | `/api/option` | admin 写入（注册表校验，未知 key 拒绝） |
 
-表 `options`（key TEXT PK + JSONB value）；首批 5 项：site.registration_enabled / site.quota_new_user / gateway.retry.max_attempts / gateway.timeout.first_byte_ms / observe.retention.usage_days。
+表 `options`（key TEXT PK + JSONB value）；当前 8 项：site.registration_enabled / site.quota_new_user / gateway.dispatch.cooldown_threshold / gateway.dispatch.cooldown_base_seconds / gateway.dispatch.cooldown_max_seconds / gateway.retry.max_attempts / gateway.timeout.first_byte_ms / observe.retention.usage_days。调度与重试参数由 `apps/api` 装配侧读取（缺键 = 注册表默认），配置文件不再承载。
 ### 已完成 — `ops/` system_info (系统信息诊断，1 端点)
 | 方法 | 路径 | 说明 |
 |------|------|------|
