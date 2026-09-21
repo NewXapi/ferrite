@@ -254,14 +254,14 @@ async fn assemble(
 /// [`ops::OptionsService::get`] 给的注册表默认保持同一口径，否则坏 options
 /// 表会让冷却门槛悄悄回退到旧的宽松行为。
 async fn load_health_setting(opts: &ops::OptionsService) -> dispatch::health::HealthSetting {
-    let mut setting = HealthSetting::default();
-    setting.cooldown_threshold =
-        read_option_u32(opts, "gateway.dispatch.cooldown_threshold", 2).await;
-    setting.cooldown_base_seconds =
-        read_option_u64(opts, "gateway.dispatch.cooldown_base_seconds", 10).await;
-    setting.cooldown_max_seconds =
-        read_option_u64(opts, "gateway.dispatch.cooldown_max_seconds", 60).await;
-    setting
+    dispatch::health::HealthSetting {
+        cooldown_threshold: read_option_u32(opts, "gateway.dispatch.cooldown_threshold", 2).await,
+        cooldown_base_seconds: read_option_u64(opts, "gateway.dispatch.cooldown_base_seconds", 10)
+            .await,
+        cooldown_max_seconds: read_option_u64(opts, "gateway.dispatch.cooldown_max_seconds", 60)
+            .await,
+        ..HealthSetting::default()
+    }
 }
 
 /// 从 PG `options` 表读重试预算（[`dispatch::RetryPolicy`]）。
@@ -320,9 +320,10 @@ async fn read_option_u32(opts: &ops::OptionsService, key: &str, fallback: u32) -
 /// `Timeouts::default()` 的 30_000——与「库里没行」时的注册表默认同口径
 /// （同 [`load_health_setting`]）。读失败 → `warn!` + 回退，不炸启动。
 async fn load_timeouts(opts: &ops::OptionsService) -> forward::egress::Timeouts {
-    let mut timeouts = forward::egress::Timeouts::default();
-    timeouts.first_byte_ms = read_option_u64(opts, "gateway.timeout.first_byte_ms", 10_000).await;
-    timeouts
+    forward::egress::Timeouts {
+        first_byte_ms: read_option_u64(opts, "gateway.timeout.first_byte_ms", 10_000).await,
+        ..forward::egress::Timeouts::default()
+    }
 }
 
 /// /api、/tavern 前缀响应附加 `Cache-Control: no-store`。
