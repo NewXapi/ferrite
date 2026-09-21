@@ -3,7 +3,7 @@
 ## 开始工作前（按顺序读）
 
 1. 读根 `AGENTS.md`（本文件）。
-2. 读所属域目录的 `README.md`，确定当前 MVP 顺序和依赖。
+2. 读根 `README.md` 的 crate 清单，确定当前结构与依赖。
 3. 读任务书 / issue 里的文件实现列表工作，按其验收命令验证后提交 conventional commit。
 
 本文件写**每个会话都必须遵守的硬性约束**，和**遇到什么情况该去读哪份文档**。
@@ -278,4 +278,4 @@ crates/web/<prefix-feature>/
 - `crates/harness/core`、`crates/harness/prompt`、`crates/harness/tools` 必须支持 `wasm32-unknown-unknown`。
 - `crates/web/tavern-*` 和 `crates/web/admin-*` 必须支持 `wasm32-unknown-unknown`。
 - 测试放同层 `tests/` 目录，不在 `src/` 里使用 `#[cfg(test)]`。
-- 新增或移动功能 crate 时，更新根 `Cargo.toml` 的 `workspace.members`（域目录 README 仅在维护者明确要求时更新）。
+- 新增或移动功能 crate 时，更新根 `Cargo.toml` 的 `workspace.members` 与根 `README.md` 的 crate 清单。
