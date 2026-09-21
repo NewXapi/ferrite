@@ -32,6 +32,7 @@ pub mod config;
 pub mod snapshot;
 pub mod tavern;
 
+use dispatch::health::HealthSetting;
 use dispatch::{Dispatcher, MemoryHealthTable};
 use forward::egress::ReqwestEgress;
 use forward::stage::ForwardStage;
@@ -92,7 +93,13 @@ async fn assemble(
     // 从 PG 加载快照 → Dispatcher（#170 渠道健康端点需要与数据面共享同一批 Arc，
     // 故在 admin router 之前构造；gate / 计费 / reload 与 ForwardStage 复用同一批）。
     let snapshots = Arc::new(snapshot::load_snapshots(&pool).await?);
-    let health = Arc::new(MemoryHealthTable::new());
+
+    // 调度/重试旋钮来自 PG options 表（注册表默认兜底），不进 config.toml。
+    // 读失败一律回退默认并 warn——options 坏配置不该让启动失败。
+    let opts = ops::OptionsService::new(pool.clone());
+    let health_setting = load_health_setting(&opts).await;
+    let retry_policy = load_retry_policy(&opts).await;
+    let health = Arc::new(MemoryHealthTable::with_config(health_setting));
     let dispatcher = Arc::new(Dispatcher::new(
         Some(Arc::new(snapshots.dispatch.clone())),
         health.clone(),
@@ -179,6 +186,15 @@ async fn assemble(
     let forward_stage =
         forward_stage.with_price_table(Arc::new(price_table), Arc::new(settle_sink));
 
+    // 出口超时从 PG options 读（first_byte_ms 决定假死上游多久 failover）。
+    let timeouts = load_timeouts(&opts).await;
+    tracing::info!(
+        first_byte_ms = timeouts.first_byte_ms,
+        connect_ms = timeouts.connect_ms,
+        total_ms = timeouts.total_ms,
+        "egress timeouts loaded from options"
+    );
+
     let pipeline = Arc::new(
         Pipeline::new()
             .push(gates)
@@ -186,7 +202,8 @@ async fn assemble(
             // with_retry 后 ForwardStage 自己驱动选路，不再需要 DispatchStage（避免双次 select/限流计数）
             .push(
                 forward_stage
-                    .with_retry(dispatcher.clone(), dispatch::RetryPolicy::default())
+                    .with_timeouts(timeouts)
+                    .with_retry(dispatcher.clone(), retry_policy)
                     // 全局并发闸（v2 挂载）：整体上限常量 64，见 FORWARD_MAX_CONCURRENCY。
                     .with_concurrency(FORWARD_MAX_CONCURRENCY),
             )
@@ -219,6 +236,94 @@ async fn assemble(
         .merge(reload)
         .merge(pipeline_router)
         .layer(axum::middleware::from_fn(no_store_ui_json)))
+}
+
+/// 从 PG `options` 表读调度健康参数（[`dispatch::health::HealthSetting`]）。
+///
+/// 三个键都在 admin-ops 注册表里有默认值：库里没行时 [`ops::OptionsService::get`]
+/// 回退注册表默认，因此**缺键 = 用注册表默认**，不是 `HealthSetting::default()`
+/// （后者 threshold=5，注册表收紧到 2）。
+///
+/// **错误回退**：单键读失败 / 类型不符 → 该键回退注册表默认并 `warn!`；
+/// 全部失败 → 整体回退 [`HealthSetting::default`]。options 是运维可改的
+/// 软配置，坏值不该让 `build_app` 炸启动（启动失败 = 全量不可用，
+/// 降级到内置默认仍能服务）。
+/// 三个键的 fallback 显式写注册表默认值（threshold 2 / base 10 / max 60），
+/// 不用 `HealthSetting::default()` 的字段——后者 threshold=5，与注册表收紧
+/// 后的 2 不一致。单键读失败会拿到这个 fallback，必须和「库里没行」时
+/// [`ops::OptionsService::get`] 给的注册表默认保持同一口径，否则坏 options
+/// 表会让冷却门槛悄悄回退到旧的宽松行为。
+async fn load_health_setting(opts: &ops::OptionsService) -> dispatch::health::HealthSetting {
+    dispatch::health::HealthSetting {
+        cooldown_threshold: read_option_u32(opts, "gateway.dispatch.cooldown_threshold", 2).await,
+        cooldown_base_seconds: read_option_u64(opts, "gateway.dispatch.cooldown_base_seconds", 10)
+            .await,
+        cooldown_max_seconds: read_option_u64(opts, "gateway.dispatch.cooldown_max_seconds", 60)
+            .await,
+        ..HealthSetting::default()
+    }
+}
+
+/// 从 PG `options` 表读重试预算（[`dispatch::RetryPolicy`]）。
+///
+/// 只接 `max_attempts`：可重试状态码由 `forward::egress::classify_status`
+/// 判定，不在 options 里开第二个判定口。读失败 → `warn!` + 回退注册表
+/// 默认（3），语义同 [`load_health_setting`]：软配置坏了不炸启动。
+async fn load_retry_policy(opts: &ops::OptionsService) -> dispatch::RetryPolicy {
+    dispatch::RetryPolicy {
+        max_attempts: read_option_u32(opts, "gateway.retry.max_attempts", 3).await,
+        ..dispatch::RetryPolicy::default()
+    }
+}
+
+/// 读一个 option 键的 u64 值；失败/类型不符时 `warn!` 并返回 `fallback`。
+///
+/// [`ops::OptionsService::get`] 在库中无此键时返回注册表默认，因此这里的
+/// Err 只可能是 DB 故障；JSON 里塞非数字（绕过 PUT 校验直写库）走
+/// `as_u64` 的 None 分支。两条路径都不向上传播。
+async fn read_option_u64(opts: &ops::OptionsService, key: &str, fallback: u64) -> u64 {
+    match opts.get(key).await {
+        Ok(v) => match v.as_u64() {
+            Some(n) => n,
+            None => {
+                tracing::warn!(key, value = ?v, "option 不是非负整数，回退默认");
+                fallback
+            }
+        },
+        Err(e) => {
+            tracing::warn!(key, error = %e, "option 读取失败，回退默认");
+            fallback
+        }
+    }
+}
+
+/// 读一个 option 键的 u32 值；语义同 [`read_option_u64`]。
+///
+/// 超 `u32::MAX` 的值走 `try_from` 失败分支而非 `as` 静默截断：绕过 PUT
+/// 校验直写库时（如 4294967296），`as u32` 会变 0——冷却门槛 0 让渠道
+/// 每次失败即弹射、重试预算 0 让每个请求立即 `RetriesExhausted`。
+async fn read_option_u32(opts: &ops::OptionsService, key: &str, fallback: u32) -> u32 {
+    let n = read_option_u64(opts, key, u64::from(fallback)).await;
+    match u32::try_from(n) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::warn!(key, value = n, "option 超出 u32 范围，回退默认");
+            fallback
+        }
+    }
+}
+
+/// 从 PG `options` 表读出口超时配置（[`forward::egress::Timeouts`]）。
+///
+/// 只接 `first_byte_ms`：连接超时与总超时保持默认（connect 5s / total 300s
+/// 对单次转发仍是合理兜底）。fallback 显式写注册表默认 10_000，不用
+/// `Timeouts::default()` 的 30_000——与「库里没行」时的注册表默认同口径
+/// （同 [`load_health_setting`]）。读失败 → `warn!` + 回退，不炸启动。
+async fn load_timeouts(opts: &ops::OptionsService) -> forward::egress::Timeouts {
+    forward::egress::Timeouts {
+        first_byte_ms: read_option_u64(opts, "gateway.timeout.first_byte_ms", 10_000).await,
+        ..forward::egress::Timeouts::default()
+    }
 }
 
 /// /api、/tavern 前缀响应附加 `Cache-Control: no-store`。

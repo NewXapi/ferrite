@@ -18,13 +18,15 @@ use rand::Rng;
 use std::collections::HashMap;
 
 /// 选择器 trait — 输入候选 + 健康表, 输出唯一选择。
+/// 从候选集中选出一个。所有 priority 层都无正权重候选 (典型: 全部冷却) 时,
+/// 紧急召回剩余冷却最短的渠道; 只有启用渠道全在 exclude 集里时才真正
+/// 返回 None (上层报 NoCandidate)。
+///
+/// 返回借用而非所有权 (ocr #8): 候选在快照中已由 Arc 持有,
+/// 热路径每请求零克隆, 只有上层最终 resolve_candidate 时才产出一个 owned。
+///
+/// `rng` 注入使加权随机的测试完全确定性 (统计断言不再依赖全局随机源)。
 pub trait Selector: Send + Sync {
-    /// 从候选集中选出一个。全部被门控剔除 → None (上层报 NoCandidate)。
-    ///
-    /// 返回借用而非所有权 (ocr #8): 候选在快照中已由 Arc 持有,
-    /// 热路径每请求零克隆, 只有上层最终 resolve_candidate 时才产出一个 owned。
-    ///
-    /// `rng` 注入使加权随机的测试完全确定性 (统计断言不再依赖全局随机源)。
     fn pick<'a>(
         &self,
         units: &[&'a RouteUnitRecord],
@@ -55,7 +57,9 @@ impl Selector for WeightedSelector {
             .filter(|u| health.is_selectable(&u.meta.key, now_ms))
             .collect();
         if eligible.is_empty() {
-            return None;
+            // 池枯竭 (典型: 全部冷却) —— 空等不如让最接近恢复的渠道立刻顶上,
+            // 连击保留, 下次失败仍按原档位爬升冷却时长。
+            return recall_fainted(units, health, exclude, now_ms);
         }
 
         // 按 priority 分层, 高优先层先试 (HashMap 分组避免 O(n²) 查找,
@@ -86,6 +90,35 @@ impl Selector for WeightedSelector {
         }
         None
     }
+}
+
+/// 紧急召回 — 所有 priority 层都没有正权重候选时, 找出剩余冷却时间最短的
+/// 启用渠道 (排除同请求已试过的 exclude 集), 强制结束其冷却并返回。
+///
+/// 返回 `None` 仅当启用渠道全部在 exclude 集里 (真无可选), 或没有任何渠道
+/// 正在冷却。同剩余值取第一个 (units 顺序稳定, 结果确定性)。
+fn recall_fainted<'a>(
+    units: &[&'a RouteUnitRecord],
+    health: &dyn HealthTable,
+    exclude: &[String],
+    now_ms: u64,
+) -> Option<&'a RouteUnitRecord> {
+    let mut best: Option<(&RouteUnitRecord, u64)> = None;
+    for u in units {
+        if u.status != STATUS_ENABLED || exclude.iter().any(|k| k == &u.meta.key) {
+            continue;
+        }
+        let Some(remaining) = health.cooling_remaining_ms(&u.meta.key, now_ms) else {
+            continue;
+        };
+        match best {
+            Some((_, prev)) if prev <= remaining => {}
+            _ => best = Some((u, remaining)),
+        }
+    }
+    let (unit, _) = best?;
+    health.force_recall(&unit.meta.key);
+    Some(unit)
 }
 
 /// 累积加权随机 (new-api selectByWeight / wildtoken weightedIndex 的同一算法)。

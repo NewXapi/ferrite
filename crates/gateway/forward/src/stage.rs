@@ -165,6 +165,15 @@ impl ForwardStage {
         self
     }
 
+    /// 覆盖出口超时配置（默认 [`crate::egress::Timeouts::default`]）。
+    ///
+    /// 装配侧从 PG `options` 表读值后调用；`first_byte_ms` 决定假死上游
+    /// 多久被判失败换候选，是调度体感的关键旋钮。
+    pub fn with_timeouts(mut self, timeouts: crate::egress::Timeouts) -> Self {
+        self.timeouts = timeouts;
+        self
+    }
+
     /// 挂全局并发闸：整个 ForwardStage 共享一个 `Semaphore(max)`（MVP：整体
     /// 并发上限，不分渠道；分渠道挂载属后续项，需 per-channel DashMap）。
     ///

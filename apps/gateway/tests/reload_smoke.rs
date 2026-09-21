@@ -15,12 +15,15 @@ use std::time::{Duration, Instant};
 
 const PORT: u16 = 38472;
 
-fn write_config(dir: &std::path::Path, cooldown_threshold: u32, max_attempts: u32) {
+/// 写单机配置。`[dispatch]` / `[retry]` 是 legacy 段——配置已移到 PG
+/// options 表，这里仍写它们：验证老配置文件里的死段被静默忽略、进程
+/// 照常起，reload 的真实目的（活着的服务 + 端口重绑）不受影响。
+fn write_config(dir: &std::path::Path, legacy_threshold: u32, legacy_attempts: u32) {
     let body = format!(
         "listen = \"127.0.0.1:{PORT}\"\n\
          log_level = \"info\"\n\
-         \n[dispatch]\ncooldown_threshold = {cooldown_threshold}\n\
-         \n[retry]\nmax_attempts = {max_attempts}\n"
+         \n[dispatch]\ncooldown_threshold = {legacy_threshold}\n\
+         \n[retry]\nmax_attempts = {legacy_attempts}\n"
     );
     std::fs::write(dir.join("config/config.toml"), body).expect("write config");
 }
@@ -110,12 +113,12 @@ fn sighup_reload_completes_and_applies_new_values() {
         .expect("spawn gateway");
     let log = spawn_log_reader(child.stdout.take().expect("stdout piped"));
 
-    // 启动日志带生效的配置值，而不是默认 5 / 3。
+    // 启动日志确认服务起来了；legacy 配置段被静默忽略（调度参数已移 PG）。
     let line = wait_for_log(&log, "gateway serving", Duration::from_secs(20))
         .expect("gateway should start");
     assert!(
-        line.contains("cooldown_threshold=2") && line.contains("max_attempts=5"),
-        "启动日志应含配置值，实际: {line}"
+        line.contains(&format!("listen=127.0.0.1:{PORT}")),
+        "启动日志应含监听地址，实际: {line}"
     );
     assert_eq!(probe().expect("probe"), 401, "无 token 应被 AuthGate 拦截");
 
@@ -130,8 +133,8 @@ fn sighup_reload_completes_and_applies_new_values() {
     let line = wait_for_log(&log, "reload complete", Duration::from_secs(20))
         .expect("reload 必须完成——卡住说明 serve 任务没响应停止信号");
     assert!(
-        line.contains("cooldown_threshold=9") && line.contains("max_attempts=2"),
-        "reload 日志应含新配置值，实际: {line}"
+        line.contains(&format!("listen=127.0.0.1:{PORT}")),
+        "reload 日志应含监听地址，实际: {line}"
     );
 
     // 端口必须被重新绑定：旧任务若不释放 socket，新任务 bind 失败，服务就死了。
