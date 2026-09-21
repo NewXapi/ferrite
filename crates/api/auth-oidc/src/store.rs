@@ -95,11 +95,19 @@ impl AuthStateStore {
 
 /// 生成随机 state / nonce / PKCE verifier。
 ///
-/// 用 `uuid::Uuid::new_v4()`（v4 = 122 bit 随机），不自己写随机数发生器。
-/// 三者同源同强度：被猜到任何一个都足以伪造登录。
+/// - `state` / `nonce`：uuid v4（122 bit 随机）足够——被猜到即可伪造登录。
+/// - `pkce_verifier`：**不用 uuid**。RFC 7636 要求 verifier 是 43-128 字符的
+///   `[A-Za-z0-9-._~]`，uuid 连字符形式只有 36 字符，
+///   `PkceCodeChallenge::from_code_verifier_sha256` 会因长度不合规 panic。
+///   这里用两个 uuid 拼接去掉连字符（32+32=64 字符，全落在合法字符集内），
+///   熵 244 bit，仍然不自造随机数发生器。
 pub fn new_state() -> (String, String, String) {
     let state = uuid::Uuid::new_v4().to_string();
     let nonce = uuid::Uuid::new_v4().to_string();
-    let pkce_verifier = uuid::Uuid::new_v4().to_string();
+    let pkce_verifier = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
     (state, nonce, pkce_verifier)
 }

@@ -9,14 +9,18 @@
 //!
 //! 安全关键路径（JWKS 轮换、nonce/state 校验、PKCE、签名验证）全部委托
 //! `openidconnect` crate，**本模块不手写任何密码学验证**。
+//!
+//! HTTP client 用 `openidconnect::reqwest`（crate 自带的 async reqwest
+//! 适配），不自己实现 `AsyncHttpClient`——官方示例同款，少一层易错胶水码。
+//! 注意 reqwest 默认跟随重定向，这里显式关掉（SSRF 防护，见 crate 文档）。
 
 use openidconnect::core::{
-    CoreAuthenticationFlow, CoreClient, CoreIdToken, CoreIdTokenClaims, CoreProviderMetadata,
-    CoreTokenResponse,
+    CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreProviderMetadata, CoreTokenResponse,
 };
+use openidconnect::reqwest as oidc_reqwest;
 use openidconnect::{
-    AuthorizationCode, ClientId, ClientSecret, IssuerUrl, Nonce, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, Scope,
+    AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
+    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
 
 use crate::provider::{IdentityProvider, OidcError};
@@ -38,6 +42,41 @@ pub struct VerifiedClaims {
     pub name: Option<String>,
     /// `preferred_username` claim。
     pub preferred_username: Option<String>,
+}
+
+/// 建 `CoreClient` —— 拉 discovery document 填 endpoints。
+///
+/// 每次调用都重新 discover（不缓存 metadata）：登录是低频操作，
+/// 而 discovery 让 JWKS 轮换、端点变更自动生效，缓存反而要管失效。
+async fn build_client(provider: &IdentityProvider) -> Result<CoreClient, OidcError> {
+    let issuer = IssuerUrl::new(provider.issuer_url.clone())
+        .map_err(|e| OidcError::Discovery(e.to_string()))?;
+    let http_client = http_client();
+    let metadata = CoreProviderMetadata::discover_async(issuer, &http_client)
+        .await
+        .map_err(|e| OidcError::Discovery(e.to_string()))?;
+
+    let client = CoreClient::from_provider_metadata(
+        metadata,
+        ClientId::new(provider.client_id.clone()),
+        Some(ClientSecret::new(provider.client_secret.clone())),
+    )
+    .set_redirect_uri(
+        RedirectUrl::new(provider.redirect_uri.clone())
+            .map_err(|e| OidcError::Discovery(e.to_string()))?,
+    );
+    Ok(client)
+}
+
+/// 不跟随重定向的 async HTTP client。
+///
+/// 重定向会让 OIDC 端点请求被导向别处（SSRF），必须关。复用同一个 client
+/// 实例以吃到底层连接池——每次新建会丢掉 keep-alive。
+fn http_client() -> oidc_reqwest::Client {
+    oidc_reqwest::ClientBuilder::new()
+        .redirect(oidc_reqwest::redirect::Policy::none())
+        .build()
+        .expect("reqwest client with no redirects should build")
 }
 
 /// 构造授权跳转 URL。
@@ -69,17 +108,21 @@ pub async fn authorize_url(
         .await?;
 
     let client = build_client(provider).await?;
+    // challenge 必须从**同一个** verifier 派生（callback 时提交的就是这个
+    // verifier 原文）；crate 的 new_random_sha256 会另生成一对，用它会让
+    // 两端不同源、token 交换必失败。
+    let pkce_challenge =
+        PkceCodeChallenge::from_code_verifier_sha256(&PkceCodeVerifier::new(pkce_verifier));
+
     let (auth_url, _, _) = client
         .authorize_url(
             CoreAuthenticationFlow::AuthorizationCode,
-            || openidconnect::CsrfToken::new(state.clone()),
-            || Nonce::new(nonce.clone()),
+            CsrfToken::new(state),
+            Nonce::new(nonce),
         )
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()))
-        .set_pkce_challenge(PkceCodeChallenge::from(PkceCodeVerifier::new(
-            pkce_verifier,
-        )))
+        .set_pkce_challenge(pkce_challenge)
         .url();
 
     Ok(auth_url.to_string())
@@ -92,6 +135,7 @@ pub async fn authorize_url(
 /// 2. `code` + PKCE verifier 换 token
 /// 3. ID token 验签（JWKS）+ `iss` == provider.issuer_url
 ///    + `aud` 含 client_id + `exp` 未过期 + `nonce` == pending.nonce
+/// 4. `at_hash`（若 claims 带）：确认 access token 未被替换成他人的
 ///
 /// - `code`: 授权回调带回的授权码
 /// - `state`: 授权回调带回的 state
@@ -110,20 +154,41 @@ pub async fn exchange_and_verify(
     }
 
     let client = build_client(provider).await?;
+    let http_client = http_client();
     let token_response = client
-        .exchange_code(AuthorizationCode::new(code.to_string()))?
+        .exchange_code(AuthorizationCode::new(code.to_string()))
+        .map_err(|e| OidcError::Token(e.to_string()))?
         .set_pkce_verifier(PkceCodeVerifier::new(pending.pkce_verifier))
-        .request_async(async_http_client)
+        .request_async(&http_client)
         .await
         .map_err(|e| OidcError::Token(e.to_string()))?;
 
-    let id_token: &CoreIdToken = token_response
+    let id_token = token_response
         .id_token()
         .ok_or_else(|| OidcError::Verification("no id_token in response".into()))?;
 
-    let claims: &CoreIdTokenClaims = id_token
-        .claims(&client.id_token_verifier(), &Nonce::new(pending.nonce))
+    let verifier = client.id_token_verifier();
+    let claims = id_token
+        .claims(&verifier, &Nonce::new(pending.nonce))
         .map_err(|e| OidcError::Verification(e.to_string()))?;
+
+    // at_hash：若 claims 声明了 access token 哈希，必须与实际 access token
+    // 对得上，否则说明 token 被调包（另一个用户的 access token）。
+    if let Some(expected) = claims.access_token_hash() {
+        let actual = AccessTokenHash::from_token(
+            token_response.access_token(),
+            id_token
+                .signing_alg()
+                .map_err(|e| OidcError::Verification(e.to_string()))?,
+            id_token
+                .signing_key(&verifier)
+                .map_err(|e| OidcError::Verification(e.to_string()))?,
+        )
+        .map_err(|e| OidcError::Verification(e.to_string()))?;
+        if &actual != expected {
+            return Err(OidcError::Verification("access token hash mismatch".into()));
+        }
+    }
 
     Ok(VerifiedClaims {
         subject: claims.subject().to_string(),
@@ -135,65 +200,4 @@ pub async fn exchange_and_verify(
             .map(|n| n.to_string()),
         preferred_username: claims.preferred_username().map(|u| u.to_string()),
     })
-}
-
-/// 建 `CoreClient` —— 拉 discovery document 填 endpoints。
-///
-/// 每次调用都重新 discover（不缓存 metadata）：登录是低频操作，
-/// 而 discovery 让 JWKS 轮换、端点变更自动生效，缓存反而要管失效。
-async fn build_client(provider: &IdentityProvider) -> Result<CoreClient, OidcError> {
-    let issuer = IssuerUrl::new(provider.issuer_url.clone())
-        .map_err(|e| OidcError::Discovery(e.to_string()))?;
-    let metadata = CoreProviderMetadata::discover_async(issuer, async_http_client)
-        .await
-        .map_err(|e| OidcError::Discovery(e.to_string()))?;
-
-    CoreClient::from_provider_metadata(
-        metadata,
-        ClientId::new(provider.client_id.clone()),
-        Some(ClientSecret::new(provider.client_secret.clone())),
-    )
-    .set_redirect_uri(
-        RedirectUrl::new(provider.redirect_uri.clone())
-            .map_err(|e| OidcError::Discovery(e.to_string()))?,
-    )
-    .ok_or_else(|| OidcError::Discovery("client build failed".into()))
-}
-
-/// `openidconnect` 的 async HTTP client 适配 —— 用 workspace 的 reqwest。
-///
-/// 签名由 crate 的 `SetHttpClient` trait 约束；返回 `Result` 而非
-/// `impl Future`，便于 `request_async` 直接传入。
-fn async_http_client(
-    request: openidconnect::HttpRequest,
-) -> impl Future<Output = Result<openidconnect::HttpResponse, String>> + Send {
-    async move {
-        let method = reqwest::Method::from_bytes(request.method().as_str().as_bytes())
-            .map_err(|e| e.to_string())?;
-        let mut req = reqwest::Client::new().request(method, request.uri().to_string());
-        for (name, value) in request.headers().iter() {
-            req = req.header(name.as_str(), value.as_bytes());
-        }
-        let response = req
-            .body(request.body().to_vec())
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        let status = response.status().as_u16();
-        let headers = response
-            .headers()
-            .iter()
-            .filter_map(|(k, v)| {
-                v.to_str()
-                    .ok()
-                    .map(|val| (k.as_str().to_string(), val.to_string()))
-            })
-            .collect();
-        let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
-        Ok(openidconnect::HttpResponse {
-            status_code: status.into(),
-            headers,
-            body,
-        })
-    }
 }
