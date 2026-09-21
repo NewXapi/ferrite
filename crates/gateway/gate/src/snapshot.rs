@@ -235,6 +235,10 @@ impl PricingSnapshot {
 }
 
 /// 单条计费行。单位：每 1M token 的"内部单位"（new-api 500_000 = $1）。
+///
+/// 生产侧由 `apps/api::snapshot::build_pricing_snapshot` 从 `model_prices` 表的
+/// **$/M** 原始值 ×500_000 换算填入，**不要直接塞美元值**——曾因漏了这层换算
+/// 导致 `quota::estimate_cost` 的预估值恒为 0，「余额<预估→402」在生产空转。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceRow {
     pub input_per_m: f64,
