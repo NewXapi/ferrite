@@ -44,6 +44,13 @@ for wt in .wt/*/; do
   [[ "$name" == *.patch ]] && continue
   dir="${wt%/}"
 
+  # 车道固定 worktree（.agent/rules/web-lanes.md）：永久基础设施，任何自动清理都不许碰。
+  # .wt/web-fix 常驻 detached 且无远端分支（remote_gone 恒真），唯一屏障是合并判定；
+  # 首次发布后其 HEAD 即成为 main 祖先，只靠 merge-base 判定必被误清——必须硬排除。
+  case "$name" in
+    web-dev|web-fix) KEPT+=("$name [车道固定 worktree，永不自动清]"); continue ;;
+  esac
+
   # 在跑进程 → 跳过
   if hit=$(is_running_in "$PWD/$dir"); then
     SKIPPED_RUNNING+=("$name")
@@ -112,6 +119,8 @@ if [[ $DRY -eq 0 ]]; then
     bn=$(basename "$wt")
     head=$(sed 's|refs/heads/||' "$wt/HEAD" 2>/dev/null || true)
     [[ -z "$head" ]] && continue
+    # 车道干流分支：发布后即"已合并"，但 .wt/web-dev 常驻其上——永不自动删
+    [[ "$head" == "web-dev" ]] && continue
     if git rev-parse --verify -q "refs/heads/$head" >/dev/null 2>&1; then
       # 仅当远端 ref 不在 + main 领先时才删
       if ! git rev-parse --verify -q "refs/remotes/newxapi/$head" >/dev/null 2>&1 \
