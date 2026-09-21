@@ -9,6 +9,8 @@
 
 use dioxus::prelude::*;
 
+use crate::on_tab_wheel;
+
 #[component]
 pub fn SegmentedCapsule(
     /// 分段文本,顺序即切换顺序
@@ -25,21 +27,7 @@ pub fn SegmentedCapsule(
     rsx! {
         div {
             class: "flex w-full flex-wrap overflow-hidden rounded-full border border-zinc-700 bg-zinc-950 text-xs sm:w-fit",
-            onwheel: move |e: WheelEvent| {
-                if n == 0 {
-                    return;
-                }
-                use dioxus::html::geometry::WheelDelta;
-                e.prevent_default();
-                let dy = match e.delta() {
-                    WheelDelta::Pixels(v) => v.y,
-                    WheelDelta::Lines(v) => v.y,
-                    WheelDelta::Pages(v) => v.y,
-                };
-                let dir = if dy > 0.0 { 1i64 } else { -1i64 };
-                let next = (active as i64 + dir).rem_euclid(n as i64) as usize;
-                on_select.call(next);
-            },
+            onwheel: move |e: WheelEvent| on_tab_wheel(e, n, active, |i| on_select.call(i)),
             for (i, item) in items.iter().enumerate() {
                 button {
                     key: "{item}",

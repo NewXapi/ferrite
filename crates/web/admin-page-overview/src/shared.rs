@@ -6,6 +6,8 @@
 
 use dioxus::prelude::*;
 
+use ui::on_tab_wheel;
+
 /// 时间窗档位:与 `api::window_start` 的窗口语义一一对应
 /// (今天=24h 逐时 / 本周=7d 逐天 / 本月=30d 逐天 / 今年=12mo 逐月)。
 ///
@@ -45,6 +47,11 @@ pub fn TimeframeTabs(
     let tf = timeframe();
     rsx! {
         div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
+            // 滚轮竖向滚动 → 循环切换时间窗档位(总览与排行榜共用)
+            onwheel: move |e: WheelEvent| {
+                let cur = TIMEFRAMES.iter().position(|t| *t == tf).unwrap_or(0);
+                on_tab_wheel(e, TIMEFRAMES.len(), cur, |i| timeframe.set(TIMEFRAMES[i]));
+            },
             for t in TIMEFRAMES {
                 button {
                     key: "{t}",

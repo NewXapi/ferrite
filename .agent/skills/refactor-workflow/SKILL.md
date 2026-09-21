@@ -74,7 +74,7 @@ license: MIT
 
 **主控做，不用子代理。**
 
-1. 读所属域目录 `README.md`，确定本次要动的 crate 和依赖关系
+1. 读根 `README.md` 的 crate 清单，确定本次要动的 crate 和依赖关系
 2. `cd <repo根>`（仓库根，**不在 worktree 内**）
    执行 `git worktree add .wt/<branch-name> -b feat/<branch-name>`
 3. 自检：`git worktree list` 新条目路径必须是 `<repo根>/.wt/<branch-name>`，

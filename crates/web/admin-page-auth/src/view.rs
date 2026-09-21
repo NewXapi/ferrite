@@ -27,7 +27,7 @@ impl From<SignUpPayload> for SubmitPayload {
             username: p.username,
             email: p.email,
             password: p.password,
-            remember: false,
+            remember: p.remember,
         }
     }
 }
@@ -35,12 +35,17 @@ impl From<SignUpPayload> for SubmitPayload {
 use crate::form::SubmitState;
 
 /// 统一提交载荷：register 标志 + 表单字段。
-struct SubmitPayload {
-    register: bool,
-    username: String,
-    email: String,
-    password: String,
-    remember: bool,
+///
+/// 公开是为了让 `tests/submit_payload.rs` 能钉住两个表单的 `From` 映射 ——
+/// `remember` 必须透传。曾经 `From<SignUpPayload>` 把它硬编码成 `false`，
+/// 注册表单也没有勾选框，注册拿到的 token 全进 sessionStorage，一关浏览器
+/// 登录态就丢，且编译期毫无提示。
+pub struct SubmitPayload {
+    pub register: bool,
+    pub username: String,
+    pub email: String,
+    pub password: String,
+    pub remember: bool,
 }
 
 /// 当前页面 query 串 (`?invite=…`),无 window / 非 wasm 时返回空串。
@@ -225,7 +230,7 @@ pub fn AuthPage() -> Element {
                     // Form content
                     match active {
                         AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
-                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()) } },
+                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()), remember: remember_signal } },
                     }
 
                     // Footer — placed clearly BELOW the form, inside the card, separated by a hairline.

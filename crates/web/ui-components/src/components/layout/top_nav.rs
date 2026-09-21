@@ -6,6 +6,8 @@
 
 use dioxus::prelude::*;
 
+use crate::on_tab_wheel;
+
 /// 单个 tab 态 class（激活=白字+底线下划线，默认=灰字 hover 提亮）。h-6 比 h-7 矮一档。
 fn tab_class(active: bool) -> &'static str {
     if active {
@@ -37,6 +39,8 @@ pub fn TopNavBar(
         nav {
             class: "flex max-w-full items-center gap-1 overflow-x-auto whitespace-nowrap",
             aria_label: "页面导航",
+            // 滚轮竖向滚动 → 循环切换页内 tab(末项绕回首项)
+            onwheel: move |e: WheelEvent| on_tab_wheel(e, tabs.len(), active, |i| on_select.call(i)),
             for (i, label) in tabs.iter().enumerate() {
                 button {
                     key: "{i}",

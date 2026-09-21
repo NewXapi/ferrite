@@ -20,6 +20,7 @@ use page_users::UsersPanel;
 use client::TokenFuture;
 use serde::Deserialize;
 use ui::components::layout::{AppShell, SectionRail, StatusBar, TopNavBar};
+use ui::on_tab_wheel;
 
 /// 401 静默刷新接线 (应用启动时由 main 调用一次):
 /// - refresher: 读存储的 refresh token → `POST /api/user/refresh` (后端轮换 access+refresh)
@@ -237,7 +238,10 @@ pub fn SectionPill(active: Section, on_select: EventHandler<Section>) -> Element
     rsx! {
         div {
             class: "fixed left-2 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center gap-2.5 p-1 bg-transparent",
-            onwheel: move |e: WheelEvent| wheel_step(e, active, &wheel),
+            onwheel: move |e: WheelEvent| {
+                let cur = SECTIONS.iter().position(|s| *s == active).unwrap_or(0);
+                on_tab_wheel(e, SECTIONS.len(), cur, |i| wheel.call(SECTIONS[i]));
+            },
             for s in SECTIONS {
                 button {
                     key: "{s.label()}",
@@ -255,20 +259,34 @@ pub fn SectionPill(active: Section, on_select: EventHandler<Section>) -> Element
     }
 }
 
-fn step(active: Section, dir: i32) -> Section {
-    let idx = SECTIONS.iter().position(|s| *s == active).unwrap_or(0);
-    SECTIONS[(idx as i32 + dir).rem_euclid(SECTIONS.len() as i32) as usize]
-}
-
-fn wheel_step(e: WheelEvent, active: Section, on_select: &EventHandler<Section>) {
-    e.prevent_default();
-    use dioxus::html::geometry::WheelDelta;
-    let dy = match e.delta() {
-        WheelDelta::Pixels(v) => v.y,
-        WheelDelta::Lines(v) => v.y,
-        WheelDelta::Pages(v) => v.y,
-    };
-    on_select.call(step(active, if dy > 0.0 { 1 } else { -1 }));
+/// Top-bar segmented pill: one capsule split into slots.
+#[component]
+pub fn TopNavMeter(active: Section, on_select: EventHandler<Section>) -> Element {
+    let len = SECTIONS.len();
+    let wheel = on_select;
+    let cur = SECTIONS.iter().position(|s| *s == active).unwrap_or(0);
+    rsx! {
+        nav {
+            class: "flex h-8 items-center gap-0.5 px-1.5",
+            onwheel: move |e: WheelEvent| on_tab_wheel(e, len, cur, |i| wheel.call(SECTIONS[i])),
+            for i in 0..len {
+                button {
+                    key: "{SECTIONS[i].label()}",
+                    class: if active == SECTIONS[i] {
+                        if i == 0 { "flex h-6 items-center rounded-l-full bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
+                        else if i == len - 1 { "flex h-6 items-center rounded-r-full bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
+                        else { "flex h-6 items-center bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
+                    } else {
+                        if i == 0 { "flex h-6 items-center rounded-l-full px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
+                        else if i == len - 1 { "flex h-6 items-center rounded-r-full px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
+                        else { "flex h-6 items-center px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
+                    },
+                    onclick: move |_| on_select.call(SECTIONS[i]),
+                    "{SECTIONS[i].label()}"
+                }
+            }
+        }
+    }
 }
 
 /// 面板头部文字 tab:激活项底部白色下划线(激活态用底部 0.5px 白色横条指示)
