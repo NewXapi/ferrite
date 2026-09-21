@@ -183,6 +183,9 @@ pub fn DropdownMenu(
 
     rsx! {
         div {
+            // 根 id 落到 DOM:外点监听靠 getElementById 找根做 contains 判断,
+            // 缺失时监听恒判外点 → 任何点击都会关掉所有菜单(2026-09-21 修复)。
+            id: root_id.clone(),
             "data-slot": "dropdown-menu",
             "data-state": if open() { "open" } else { "closed" },
             // display:contents 让根 div 融入父级 flex 行（trigger/content 各自成行项目）
