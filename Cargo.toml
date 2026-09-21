@@ -97,11 +97,10 @@ lto           = "fat"
 codegen-units = 1
 strip         = true
 
-# dev 依赖不开优化：本机多会话 CPU/内存吃紧，冷编译成本优先（~240 个 crate 少跑
-# LLVM 优化 passes，编译时间和峰值内存都降）。代价：dev 运行时慢一档，onig/regex
-# 重的路径更明显——要量性能就 cargo build --release 或临时提档，不为 dev 优化付费。
+# dev 依赖 opt-level=1：编译成本与运行时的甜点（0 编译更快但 dev 运行慢一档，
+# onig/regex 重路径尤其明显；本机已 cargo clean 过，按维护者决定保持 1）
 [profile.dev.package."*"]
-opt-level = 0
+opt-level = 1
 
 # wasm-dev（dx serve 默认 profile）不带 debuginfo：整个依赖树的 DWARF 会把
 # admin-web_bg.wasm 撑到 132MB，浏览器下载+编译期间 #main 全白（用户实测
