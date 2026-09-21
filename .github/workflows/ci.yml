@@ -129,6 +129,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # 仓库 .cargo/config.toml 对 x86_64-unknown-linux-gnu 配了
+      # `linker = "clang"` + `-C link-arg=--ld-path=/usr/bin/mold`，
+      # runner 上没预装 mold，不装则 clang 在 build script 链接期就失败：
+      #   clang: error: invalid linker name in argument '--ld-path=/usr/bin/mold'
+      # dynamic-test / clippy 等 job 都已装，本 job 漏了。
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
       - name: Check ${{ matrix.variant.name }} variant
         run: cargo check -p api ${{ matrix.variant.flags }}
 
