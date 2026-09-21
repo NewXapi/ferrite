@@ -56,13 +56,16 @@ for wt in .wt/*/; do
   branch=$(cd "$dir" && git symbolic-ref --short HEAD 2>/dev/null || true)
   head_sha=$(cd "$dir" && git rev-parse --short HEAD 2>/dev/null || true)
 
-  # 合并判定(全本地): 远端同名 ref 已不在本地 refstore + main 领先该 HEAD
+  # 合并判定(全本地): 远端同名 ref 已不在本地 refstore + wt HEAD 是 main 的祖先
+  # (即 wt 没有任何 main 不包含的提交)。detached HEAD 没有 branch 名, remote_gone
+  # 恒为 1, 更不能省祖先判定——车道 .wt/web-fix 常驻 detached 且带未合入提交,
+  # 用 "main 比 wt 新" 判断会误删(实测误判过)。
   remote_gone=1
   [[ -n "$branch" ]] && git rev-parse --verify -q "refs/remotes/newxapi/$branch" >/dev/null 2>&1 && remote_gone=0
-  main_ahead=0
-  [[ -n "$head_sha" ]] && git rev-list --count "$head_sha..HEAD" 2>/dev/null | grep -qE '^[1-9]' && main_ahead=1
+  merged=0
+  [[ -n "$head_sha" ]] && git merge-base --is-ancestor "$head_sha" HEAD && merged=1
 
-  if [[ $remote_gone -eq 1 && ( -z "$branch" || $main_ahead -eq 1 ) ]]; then
+  if [[ $remote_gone -eq 1 && $merged -eq 1 ]]; then
     # 有未提交改动 → 备份 diff 再删
     if [[ -n "$branch" ]] && ! (cd "$dir" && git diff --quiet 2>/dev/null); then
       (cd "$dir" && git diff) > ".wt/$name.dirty.patch"
