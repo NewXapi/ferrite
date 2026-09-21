@@ -3,18 +3,18 @@ use std::sync::Arc;
 use axum::Router;
 use sqlx::PgPool;
 
-use billing::{
-    AffiliateAppState, CurrencyAppState, SubscriptionAppState, TopupAppState, WalletAppState,
-    affiliate_router, currency_router, subscription_router, topup_router, wallet_router,
-};
+use auth::routes::OnUserRegistered;
 
-/// 启动时建表 + 聚合 admin-api 子域 Router。
-/// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies, dispatcher, health, cfg.payment.epay).await?;`
+/// 启动时建表 + 聚合 admin-api 子域 Router（**不含计费域**）。
+/// apps/api main.rs: `let admin = admin_router::router(pool, auth_svc, proxies, dispatcher, health, hook).await?;`
 /// `auth_svc` 由 app 层组装后注入（FERRITE_JWT_SECRET 是组装关注点，本 crate 不读环境变量）。
 /// `dispatcher` / `health` 是数据面共享句柄（#170 渠道健康端点用），必须与
 /// `apps/api` 数据面持有的是**同一批实例**，查询面才能读到运行期实时状态。
-/// `epay` = `[payment.epay]` 配置（None = 不注册该渠道，开单指它报未配置）；
-/// 跨边界只传 billing 拥有的 `EpayMerchant`，配置反序列化归 apps/api。
+/// `registered_hook` = 注册成功钩子（钱种子等）；trait 归 auth，故本 crate 不必
+/// 依赖 billing——钩子在 apps/api 侧构造，个人形态传 None。
+/// 计费域（wallet/currency/subscription/affiliate/topup/redeem）路由由 `apps/api`
+/// 按 feature 门自行构造并 merge 进本 router 返回值：feature 只能落在 apps/api 自己，
+/// 在本共享 crate 声明会被 workspace unify 泄漏给个人形态（rust-lang/cargo#10266）。
 /// DDL 失败返回 Err，由调用方决定日志/退出策略。
 pub async fn router(
     pool: PgPool,
@@ -22,17 +22,13 @@ pub async fn router(
     proxies: Arc<gateway_proxy::ProxyManager>,
     dispatcher: Arc<dispatch::Dispatcher>,
     health: Arc<dispatch::MemoryHealthTable>,
-    epay: Option<billing::EpayMerchant>,
+    registered_hook: Option<Arc<dyn OnUserRegistered>>,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     // 建表唯一入口：db/migrations（ensure_table 补丁式建表已退役）。
     db_bootstrap::run_migrations(&pool).await?;
     tracing::info!("db migrations applied");
 
-    // 注册 hook：新用户注册 → seed 全部启用货币（#179 多货币，幂等）。
-    let registered_hook: std::sync::Arc<dyn auth::routes::OnUserRegistered> =
-        std::sync::Arc::new(billing::WalletSeedHook::new(pool.clone()));
-    let auth_router =
-        auth::routes::router_with_svc_and_hook(auth_svc.clone(), Some(registered_hook))?;
+    let auth_router = auth::routes::router_with_svc_and_hook(auth_svc.clone(), registered_hook)?;
 
     let token_router = catalog::tokens::router(catalog::tokens::TokenAppState {
         svc: Arc::new(catalog::tokens::TokenService::new(pool.clone())),
@@ -53,10 +49,6 @@ pub async fn router(
     });
     let log_router = observe::logs::router(observe::logs::LogAppState {
         svc: Arc::new(observe::logs::LogService::new(pool.clone())),
-        auth: auth_svc.clone(),
-    });
-    let redeem_router = billing::router(billing::RedeemAppState {
-        svc: Arc::new(billing::RedeemService::new(pool.clone())),
         auth: auth_svc.clone(),
     });
     let options_router = ops::router(ops::OptionsAppState {
@@ -86,43 +78,6 @@ pub async fn router(
             auth: auth_svc.clone(),
         });
 
-    // billing 货币子域：钱包 / 货币定义 / 拉人奖励 / 充值。
-    // AffiliateService::new 收 WalletService 值（非 Arc），内部独享一份。
-    let wallet_svc = Arc::new(billing::WalletService::new(pool.clone()));
-    let currency_svc = Arc::new(billing::CurrencyService::new(pool.clone()));
-    let affiliate_svc = Arc::new(billing::AffiliateService::new(
-        pool.clone(),
-        billing::WalletService::new(pool.clone()),
-    ));
-    // epay 配置存在才注册渠道（缺省只有 manual，开单指 epay 报未配置）。
-    let mut topup_svc = billing::TopupService::new(pool.clone());
-    if let Some(epay) = epay {
-        topup_svc = topup_svc.with_epay(epay);
-    }
-    let topup_svc = Arc::new(topup_svc);
-
-    let wallet_router = wallet_router(WalletAppState {
-        svc: wallet_svc,
-        auth: auth_svc.clone(),
-    });
-    let currency_router = currency_router(CurrencyAppState {
-        svc: currency_svc,
-        auth: auth_svc.clone(),
-    });
-    // billing 订阅套餐子域：管理台「订阅」页 CRUD（0017 表）。
-    let subscription_router = subscription_router(SubscriptionAppState {
-        svc: Arc::new(billing::SubscriptionService::new(pool.clone())),
-        auth: auth_svc.clone(),
-    });
-    let affiliate_router = affiliate_router(AffiliateAppState {
-        svc: affiliate_svc,
-        auth: auth_svc.clone(),
-    });
-    let topup_router = topup_router(TopupAppState {
-        svc: topup_svc,
-        auth: auth_svc.clone(),
-    });
-
     // auth 子路由自身不带前缀（/login /register ...），必须 nest 到 /api/user
     // 与前端 admin-client 约定的 /api/user/{login,register,...} 对齐。
     let auth_router = axum::Router::new().nest("/api/user", auth_router);
@@ -132,12 +87,6 @@ pub async fn router(
         .merge(channel_router)
         .merge(group_router)
         .merge(model_router)
-        .merge(redeem_router)
-        .merge(wallet_router)
-        .merge(currency_router)
-        .merge(subscription_router)
-        .merge(affiliate_router)
-        .merge(topup_router)
         .merge(options_router)
         .merge(log_router)
         .merge(monitor_router)

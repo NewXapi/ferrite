@@ -118,3 +118,62 @@ jobs:
         run: cargo check -p gateway-proxy --features utls
       - name: Check with no default features
         run: cargo check -p gateway-proxy --no-default-features
+
+  # apps/api 双入口 feature 门的编译验证（todo/features-dual-entry-roadmap 任务 3）。
+  # 动机：tests/e2e 以默认 feature 依赖 apps/api，上面 clippy job 的 --all-targets
+  # 也只编默认变体 → 个人形态（关掉 tavern/billing）平时没人编，是持续验证盲区。
+  # 三个非默认组合各 check 一遍；默认（全功能）变体由 clippy / full-test 覆盖，不重复。
+  # 只 check 不 clippy：-D warnings 在非默认变体可能冒出新的 lint 噪音，治理它们是
+  # 后续任务，本 job 先守住"每个组合都能编"这个最低契约（见对应 commit body）。
+  api-feature-matrix:
+    name: API Feature Matrix (${{ matrix.variant.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          # 个人形态：关掉 tavern + billing
+          - name: personal
+            flags: "--no-default-features"
+          - name: tavern-only
+            flags: "--no-default-features --features tavern"
+          - name: billing-only
+            flags: "--no-default-features --features billing"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # 仓库 .cargo/config.toml 对 x86_64-unknown-linux-gnu 配了
+      # `linker = "clang"` + `-C link-arg=--ld-path=/usr/bin/mold`，
+      # runner 上没预装 mold，不装则 clang 在 build script 链接期就失败：
+      #   clang: error: invalid linker name in argument '--ld-path=/usr/bin/mold'
+      # dynamic-test / clippy 等 job 都已装，本 job 漏了。
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
+      - name: Check ${{ matrix.variant.name }} variant
+        run: cargo check -p api ${{ matrix.variant.flags }}
+
+  # 部署镜像构建验证：deploy/ 的 Dockerfile 只在切 tag 时由 release.yml 真正
+  # 构建推送，PR 期必须先验过，否则 Dockerfile 错误要等到切 tag 才暴露。
+  # 只构建不推送（本 job 无 packages:write 权限）。这是 ci.yml 里最慢的 job
+  # （全 workspace 编译 + cargo install dioxus-cli），接受。
+  deploy-images:
+    name: Deploy Images (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, admin-web, tavern-web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/${{ matrix.image }}/Dockerfile
+          push: false
+          cache-from: type=gha
+          tags: ferrite-${{ matrix.image }}:ci

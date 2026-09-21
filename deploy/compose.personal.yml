@@ -1,0 +1,22 @@
+# 个人形态覆盖：api 换成个人镜像（--no-default-features，无 tavern 无 billing），
+# 并去掉 tavern-web（后端没有 /tavern 路由，前端会全 404）。
+#
+# 用法：
+#   cd deploy
+#   cp .env.example .env && $EDITOR .env
+#   docker compose -f compose.yml -f compose.personal.yml up -d
+#   open http://localhost:8080
+#
+# 健全性检查（个人形态特有的形态差异）：
+#   curl -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/user/wallet   # 404：计费域不存在
+#   curl -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/channel        # 401：网关域存在
+
+services:
+  api:
+    image: ghcr.io/newxapi/ferrite-api:personal
+    build:
+      args:
+        FEATURES: --no-default-features
+
+  tavern-web:
+    profiles: [never]

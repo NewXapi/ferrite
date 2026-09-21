@@ -1,7 +1,7 @@
 //! # contract — 全 workspace 逻辑契约层
 //!
 //! 单一事实来源 (single source of truth)。center PostgreSQL、edge Fjall、
-//! web (wasm) 与 apps/gateway (native) 都依赖本 crate 获得相同的类型定义。
+//! web (wasm) 与 apps/api (native) 都依赖本 crate 获得相同的类型定义。
 //!
 //! ## 模块地图
 //!

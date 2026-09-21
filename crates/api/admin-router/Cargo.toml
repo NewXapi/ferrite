@@ -13,7 +13,6 @@ db-bootstrap = { path = "../db-bootstrap" }
 catalog = { path = "../admin-catalog" }
 observe = { path = "../admin-observe" }
 dispatch = { path = "../../gateway/dispatch" }
-billing = { path = "../admin-billing" }
 ops     = { path = "../admin-ops" }
 auth    = { path = "../auth" }
 sqlx    = { workspace = true }

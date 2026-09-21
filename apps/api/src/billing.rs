@@ -29,11 +29,21 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use contract::records::{TokenRecord, UsageEventRecord, UserRecord};
+use contract::records::{TokenRecord, UserRecord};
+// 以下导入只在 billing feature 下被使用（PgPriceTable / PgSettleSink /
+// record_settlement 耦合可选的 metering 与 admin-billing crate）；
+// NameDirectory / RecordJob / build_consume_event 是纯本地类型，保持常编
+// （snapshot.rs 的名单目录与事件构造依赖它们）。
+#[cfg(feature = "billing")]
+use contract::records::UsageEventRecord;
+#[cfg(feature = "billing")]
 use gateway_gate::snapshot::{SharedGroupSnapshot, SharedQuota};
+#[cfg(feature = "billing")]
 use metering::SettleSink;
+#[cfg(feature = "billing")]
 use metering::pricing::{ModelPrice, PriceTable};
 
+#[cfg(feature = "billing")]
 use crate::PgPool;
 
 /// [`NameDirectory`] 的共享句柄（`Arc<ArcSwap<T>>`）：reload 向同一实例
@@ -44,6 +54,7 @@ pub type SharedNameDirectory = Arc<arc_swap::ArcSwap<NameDirectory>>;
 // PgPriceTable — model_prices 表 + 组倍率折算
 // ============================================================================
 
+#[cfg(feature = "billing")]
 /// PG 价格表 + 组倍率折算的 [`PriceTable`] 实现。
 ///
 /// 价格行来自 `model_prices`，持 [`crate::snapshot::SharedPriceRows`] 共享句柄：
@@ -54,6 +65,7 @@ pub struct PgPriceTable {
     groups: SharedGroupSnapshot,
 }
 
+#[cfg(feature = "billing")]
 impl PgPriceTable {
     /// 从价格行共享句柄与组快照构建。
     ///
@@ -65,6 +77,7 @@ impl PgPriceTable {
     }
 }
 
+#[cfg(feature = "billing")]
 impl PriceTable for PgPriceTable {
     /// 查 `(model, group)` 价：命中 → 价格并把组倍率乘进 `group_multiplier`；
     /// 未命中 → `None`（库层按缺价免费落账）。
@@ -230,6 +243,7 @@ pub fn build_consume_event(job: &RecordJob) -> observe::logs::UsageEvent {
 // PgSettleSink — pipeline 结算事件的 PG 落地
 // ============================================================================
 
+#[cfg(feature = "billing")]
 /// pipeline 结算事件的 PG 落地通道：写 usage_logs（权威账本）+ 增量维护
 /// `api_tokens.used_quota`（缓存态）+ 扣货币余额 `user_balances`（钱包层）+
 /// 扣内存 quota 快照（与 QuotaGate 同桶，user 级折算值）。
@@ -248,6 +262,7 @@ pub struct PgSettleSink {
     wallet: billing::WalletService,
 }
 
+#[cfg(feature = "billing")]
 impl PgSettleSink {
     /// 组装 sink。`names` / `channel_names` 传共享句柄：reload 换新后
     /// submit 即读到新值。`wallet` 与 admin-router 共享同一 PG 池即可
@@ -269,6 +284,7 @@ impl PgSettleSink {
     }
 }
 
+#[cfg(feature = "billing")]
 impl SettleSink for PgSettleSink {
     /// 提交一条结算事件：热路径只做纯内存查表/解析，DB IO 全部 spawn 到后台
     /// （[`SettleSink`] 契约要求 submit 快速返回，不拖住转发管道）。
@@ -331,6 +347,7 @@ impl SettleSink for PgSettleSink {
     }
 }
 
+#[cfg(feature = "billing")]
 /// 后台落地：写 usage_logs → 增 `api_tokens.used_quota` → 扣货币余额
 /// `user_balances` → 扣内存 quota 快照（user 级）。
 ///

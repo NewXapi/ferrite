@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 /// 单模型价格 (对齐 mock::models::GroupPrice)。
 ///
-/// 可从配置反序列化：`apps/gateway` 的 `[metering.prices.<model>]` 段直接读成本类型，
+/// 可从配置反序列化：`apps/api` 的 `[metering.prices.<model>]` 段直接读成本类型，
 /// 避免在 binary 侧重复定义同字段结构。
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct ModelPrice {

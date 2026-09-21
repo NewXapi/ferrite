@@ -361,7 +361,8 @@ async fn load_channels_and_units(
 ) -> anyhow::Result<(Vec<ChannelRecord>, Vec<RouteUnitRecord>)> {
     let rows = sqlx::query(
         r#"
-        SELECT key, name, channel_type, base_url, keys, models, groups, priority, weight, status
+        SELECT key, name, channel_type, base_url, keys, models, groups, priority,
+               weight, status, settings
         FROM api_channels
         WHERE status = 1
         "#,
@@ -385,6 +386,10 @@ async fn load_channels_and_units(
         let priority: i32 = row.try_get("priority")?;
         let weight: i32 = row.try_get("weight")?;
         let status: i16 = row.try_get("status")?;
+        // settings JSONB：渠道级覆盖（forward::extra_headers_from_settings 读
+        // settings.headers；dispatch::fallback_units 读 settings.fallback）。
+        // 无 settings 列的旧行为 null → 空覆盖，行为不变。
+        let settings_json: Value = row.try_get("settings").unwrap_or(Value::Null);
 
         // Build ChannelKey array from JSONB string array
         let channel_keys: Vec<ChannelKey> = keys_json
@@ -422,7 +427,7 @@ async fn load_channels_and_units(
             max_concurrency: 8, // ponytail: 固定值，避免额外配置开销
             status: status as u8,
             groups: groups.clone(),
-            settings: Value::Null,
+            settings: settings_json.clone(),
         };
 
         channels.push(channel);
