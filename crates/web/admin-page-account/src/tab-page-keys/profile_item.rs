@@ -36,10 +36,11 @@ pub fn ProfileItem(
 /// (按钮文案瞬时变「已复制」/ 图标变 ✓)。
 /// 只用于真正值得复制的完整值 —— 一次性明文密钥 / 完整用户 ID;
 /// 掩码预览 (sk-ab****ef) 禁止用此组件, 复制掩码是功能错误。
+/// 密钥卡复制按钮复用本组件 (仅本次会话创建的密钥持有明文时渲染)。
 /// 复制语义与 ui-components session::copy_text_to_clipboard 一致:
 /// Clipboard API fire-and-forget, 提交即视为成功。
 #[component]
-fn CopyPlaintextButton(text: String, label: String) -> Element {
+pub fn CopyPlaintextButton(text: String, label: String) -> Element {
     let mut copied = use_signal(|| false);
     rsx! {
         Button {

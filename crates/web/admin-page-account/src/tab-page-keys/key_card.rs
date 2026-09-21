@@ -1,40 +1,53 @@
 //! 密钥卡片 — 数据来自 TokenDto (GET /api/token)。
-//! 操作: 编辑 (改名) / 停用·启用 (status 1↔2) / 删除, 成功后由父面板刷新列表。
+//! 布局 (维护者批注 2026-09-21): 标题行 (名称截断 + 状态徽标 + ⋯ 菜单) /
+//! 密钥行 (掩码占满一行 + 会话明文的复制按钮) / 信息区
+//! (额度 hover 明细 → 分组按钮+下拉切换 → 创建时间 → 过期时间)。
+//! 编辑·删除收进标题栏 ⋯ 菜单 (原底部三按钮已删); 停用·启用走状态徽标。
+//! 分组切换走 PUT /api/token/{key} (group 字段), 成功后由父面板刷新列表。
 //! 已用额度走 $ 口径 (fmt_quota, 500_000 ≈ $1, 小数≤1位) + used_pct 进度条,
 //! 无限额度显示「无限」徽标且不渲染进度条。
-//! 维护者批注 (2026-09-21): 状态徽标可点切换 (绿=启用/红=停用, 与底部按钮同出口);
-//! 额度两个金额左右分置 + truncate, 「已用额度」说明移入 hover/点击 popover。
+//! 额度 popover 只跟额度行 hover: 卡牌根不挂 group class (旧实现卡牌级 group
+//! 让鼠标进卡牌任意区域就弹出), 行内 group 是唯一 hover 源。
 
 use contract::api::token::TokenDto;
 use dioxus::prelude::*;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuLabel};
 
+use crate::tab_page_keys::CopyPlaintextButton;
 use crate::usage_support::{fmt_quota, used_pct};
 
 #[component]
 pub fn KeyCard(
     entry: TokenDto,
+    /// 可选分组名 (GET /api/token/auto-groups); 空 = 分组只读展示, 不给切换菜单。
+    groups: Vec<String>,
+    /// 本次会话创建时拿到的一次性明文 (后端只存 sha256, 刷新即失);
+    /// Some 才渲染复制按钮 —— 掩码预览不可复制 (复制了也是废串)。
+    plain_key: Option<String>,
     on_edit: EventHandler<TokenDto>,
     on_toggle: EventHandler<TokenDto>,
     on_delete: EventHandler<TokenDto>,
+    /// (目标密钥, 新分组名) — 切分组, 由父面板发 PUT 并刷新。
+    on_group_change: EventHandler<(TokenDto, String)>,
 ) -> Element {
     let enabled = entry.status == 1;
-    // 维护者批注: 徽标本身可点 (绿=启用 / 红=停用), 与底部操作按钮同一 on_toggle 出口
+    // 维护者批注: 徽标本身可点 (绿=启用 / 红=停用), 与 ⋯ 菜单同一出口语义
     let status_color = if enabled {
         "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
     } else {
         "bg-red-500/20 text-red-400 border-red-500/30"
     };
-    // 额度 popover 钉住态 (点击切换; hover 常显由 group-hover 承担, 触屏无 hover)
-    let mut quota_tip = use_signal(|| false);
-    // popover 可见性 class: hover 常显 + 点击钉住时强制可见 (important 覆盖 opacity-0)
-    let quota_tip_class = if quota_tip() { "opacity-100!" } else { "" };
-    // 每个 handler 闭包各持一份 clone, 避免 3 个 move 闭包连环占用 entry
+    // 两个下拉各自的「请求关闭」信号 (item 点击后置 true, DropdownMenu 收关)
+    let menu_close = use_signal(|| false);
+    let mut menu_close_s = menu_close;
+    let group_close = use_signal(|| false);
+    let mut group_close_s = group_close;
+    // 每个 handler 闭包各持一份 clone, 避免多个 move 闭包连环占用 entry
     let e_edit = entry.clone();
-    let e_toggle = entry.clone();
-    // 徽标按钮与底部操作按钮是两个独立闭包, 各持一份 (共享会 move 冲突)
     let e_badge = entry.clone();
     let e_del = entry.clone();
+    let e_grp = entry.clone();
     // RFC3339 → 展示取日期段 (无数据时不渲染)
     let created: String = entry
         .created_at
@@ -42,6 +55,15 @@ pub fn KeyCard(
         .take(10)
         .filter(|c| c.is_ascii_digit() || *c == '-')
         .collect();
+    // 过期时间: None = 永不过期 (卡牌常驻该行, 空值显示「永不过期」)
+    let expiry: Option<String> = entry.expires_at.as_ref().map(|s| {
+        s.chars()
+            .take(10)
+            .filter(|c| c.is_ascii_digit() || *c == '-')
+            .collect()
+    });
+    // 分组展示名: None (跟随用户默认分组) 显示「默认分组」
+    let group_label = entry.group.clone().unwrap_or_else(|| "默认分组".into());
     // 已用额度 $ 口径 (fmt_quota: 500_000 ≈ $1), 内部裸数对用户无意义;
     // 无限额度显示「无限」徽标 (参照 admin-page-users 面板处理, 跨 crate 只看不引)
     let unlimited = entry.unlimited_quota;
@@ -57,13 +79,16 @@ pub fn KeyCard(
     };
     rsx! {
         div {
-            class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-            div { class: "mb-3 flex items-start justify-between gap-2",
-                div { class: "min-w-0",
-                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
-                    // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
-                    // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
-                    p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
+            // 注意: 卡牌根不挂 `group` class —— 旧实现卡牌级 group 让额度 popover
+            // 在鼠标进入卡牌任意区域时就弹出 (维护者批注 2026-09-21:
+            // 「悬停到卡牌也出现」)。现在唯一的 group 在额度行上。
+            class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            // 标题行: 名称 (截断, 不遮徽标) + 状态徽标 + ⋯ 菜单
+            div { class: "mb-3 flex items-center gap-2",
+                h3 {
+                    class: "min-w-0 flex-1 truncate text-sm font-medium text-zinc-100",
+                    title: "{entry.name}",
+                    "{entry.name}"
                 }
                 button {
                     class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-[filter] {status_color} hover:brightness-125",
@@ -72,11 +97,63 @@ pub fn KeyCard(
                     onclick: move |_| on_toggle.call(e_badge.clone()),
                     if enabled { "启用" } else { "停用" }
                 }
+                // ⋯ 菜单: 编辑 / 删除 (替原底部三按钮; 停用·启用在徽标)
+                div { class: "relative shrink-0",
+                    DropdownMenu {
+                        trigger: rsx! {
+                            Button {
+                                variant: ButtonVariant::Ghost,
+                                size: ButtonSize::IconXs,
+                                class: "text-zinc-500",
+                                "data-testid": "key-menu",
+                                "aria-label": "密钥操作",
+                                "⋯"
+                            }
+                        },
+                        content: rsx! {
+                            DropdownMenuItem {
+                                "data-testid": "key-edit",
+                                onclick: move |_| {
+                                    menu_close_s.set(true);
+                                    on_edit.call(e_edit.clone());
+                                },
+                                "编辑密钥"
+                            }
+                            DropdownMenuItem {
+                                "data-testid": "key-delete",
+                                "data-variant": "destructive",
+                                onclick: move |_| {
+                                    menu_close_s.set(true);
+                                    on_delete.call(e_del.clone());
+                                },
+                                "删除密钥"
+                            }
+                        },
+                        content_class: Some("top-full right-0 w-32".into()),
+                        close_signal: Some(menu_close),
+                    }
+                }
+            }
+
+            // 密钥行: 掩码预览占满一行; 仅本次会话创建的密钥带复制按钮
+            div { class: "mb-3 flex items-center gap-2",
+                p {
+                    class: "min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-500",
+                    title: "{entry.key_preview}",
+                    "{entry.key_preview}"
+                }
+                if let Some(pk) = plain_key {
+                    CopyPlaintextButton { text: pk, label: "复制完整密钥".to_string() }
+                }
             }
 
             div { class: "space-y-2 text-xs",
                 // 额度行 (维护者批注): 删「已用额度」标题 (移进 popover), 两个金额
-                // 左右分置 + truncate 折行兜底 —— 旧实现 nowrap 单行撑出卡牌边界
+                // 左右分置 + truncate 折行兜底 —— 旧实现 nowrap 单行撑出卡牌边界。
+                // popover 只跟额度行自身 hover: 卡牌根已不挂 group class (旧实现
+                // 卡牌级 group 让鼠标进卡牌任意区域就弹出, 维护者批注 2026-09-21),
+                // 行内 group 是唯一 hover 源。原点击钉住已删 (点了常驻不消,
+                // 触屏场景由 aria-label 兜底)。
                 div { class: "group relative flex items-center justify-between gap-2",
                     if unlimited {
                         span {
@@ -88,14 +165,12 @@ pub fn KeyCard(
                             class: "flex min-w-0 flex-1 items-center justify-between gap-2 text-left",
                             "data-testid": "key-quota",
                             "aria-label": "已用额度 {fmt_quota(entry.used_quota)}, 总额度 {fmt_quota(entry.quota)}",
-                            onclick: move |_| quota_tip.set(!quota_tip()),
                             span { class: "min-w-0 truncate font-medium text-zinc-200", "{fmt_quota(entry.used_quota)}" }
                             span { class: "shrink-0 text-zinc-600", "/" }
                             span { class: "min-w-0 shrink-0 text-zinc-400", "{fmt_quota(entry.quota)}" }
                         }
-                        // popover: hover 即显 (group-hover), 点击钉住 (触屏无 hover)
                         div {
-                            class: "pointer-events-none absolute left-0 top-full z-50 mt-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 {quota_tip_class}",
+                            class: "pointer-events-none absolute left-0 top-full z-50 mt-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100",
                             "已用额度 {fmt_quota(entry.used_quota)} · 总额度 {fmt_quota(entry.quota)}"
                         }
                     }
@@ -106,35 +181,62 @@ pub fn KeyCard(
                         div { class: "h-full rounded-full {bar_tone}", style: "width: {pct}%" }
                     }
                 }
+                // 分组行 (维护者批注): 按钮 + 下拉菜单形式切换; 无分组数据时只读展示
+                div { class: "flex items-center justify-between gap-2",
+                    span { class: "shrink-0 text-zinc-400", "分组" }
+                    if groups.is_empty() {
+                        span { class: "min-w-0 truncate text-zinc-300", "{group_label}" }
+                    } else {
+                        div { class: "relative min-w-0",
+                            DropdownMenu {
+                                trigger: rsx! {
+                                    Button {
+                                        variant: ButtonVariant::Ghost,
+                                        size: ButtonSize::Xs,
+                                        class: "min-w-0 max-w-[140px] text-zinc-300",
+                                        "data-testid": "key-group",
+                                        "aria-label": "切换密钥分组, 当前 {group_label}",
+                                        span { class: "truncate", "{group_label}" }
+                                    }
+                                },
+                                content: rsx! {
+                                    DropdownMenuLabel { "切换分组" }
+                                    for g in groups.iter().cloned() {
+                                        {
+                                            let g_text = g.clone();
+                                            let e_item = e_grp.clone();
+                                            rsx! {
+                                                DropdownMenuItem {
+                                                    "data-testid": "key-group-option",
+                                                    onclick: move |_| {
+                                                        group_close_s.set(true);
+                                                        on_group_change.call((e_item.clone(), g.clone()));
+                                                    },
+                                                    "{g_text}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                content_class: Some("top-full right-0 w-40".into()),
+                                close_signal: Some(group_close),
+                            }
+                        }
+                    }
+                }
                 if !created.is_empty() {
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 whitespace-nowrap text-zinc-400", "创建时间" }
                         span { class: "whitespace-nowrap font-mono text-zinc-400", "{created}" }
                     }
                 }
-            }
-
-            div { class: "mt-4 flex items-center gap-2 border-t border-zinc-800 pt-3",
-                Button {
-                    variant: ButtonVariant::Ghost,
-                    size: ButtonSize::Xs,
-                    class: "flex-1 text-zinc-400",
-                    onclick: move |_| on_edit.call(e_edit.clone()),
-                    "编辑"
-                }
-                Button {
-                    variant: ButtonVariant::Ghost,
-                    size: ButtonSize::Xs,
-                    class: "flex-1 text-zinc-400",
-                    onclick: move |_| on_toggle.call(e_toggle.clone()),
-                    if enabled { "停用" } else { "启用" }
-                }
-                Button {
-                    variant: ButtonVariant::Ghost,
-                    size: ButtonSize::Xs,
-                    class: "flex-1 text-red-400",
-                    onclick: move |_| on_delete.call(e_del.clone()),
-                    "删除"
+                // 过期时间行 (维护者批注: 创建时间下方); None = 永不过期
+                div { class: "flex justify-between gap-2",
+                    span { class: "shrink-0 whitespace-nowrap text-zinc-400", "过期时间" }
+                    span {
+                        class: "whitespace-nowrap font-mono text-zinc-400",
+                        if let Some(exp) = expiry { "{exp}" } else { "永不过期" }
+                    }
                 }
             }
         }
