@@ -1,14 +1,19 @@
 //! StatusBar — 底部细状态条（无背景胶囊，整条一个字高）。
 //!
-//! 契约（维护者拍板）：不做任何背景/边框/阴影包装，左下角=用户头像（仅头像，
-//! 用户名进头像下拉的 Label——2026-09-21 批注：同行名称/占位文本已删），
-//! 右下角=系统状态纯数字占位（CPU·MEM 顺序，含义走 title 悬停提示）；
-//! 真实数据后续通过 hover popover 注入（组件留 `StatusItem.hint` 槽位）。
+//! 契约（维护者 2026-09-21 批注 + 口头需求）：左下角 = 用户名按钮（头像调大 +
+//! 用户名文本），点击弹出名片面板（上拉）：第一行头像+名称（整行可点 → 跳转
+//! 账户页，取代原「账户资料」菜单项），第二行余额·用量纯数值展示（无文字标签，
+//! 余额绿 / 用量橙，$ 口径同账户页 fmt_quota：500_000 ≈ $1）；面板末尾保留
+//! 「退出登录」。右下角=系统状态纯数字占位（CPU·MEM，含义走 title 悬停提示）。
 //! 用户下拉复用 crate 的 DropdownMenu（含外部点击/Escape 关闭，选中即关对齐 Radix 默认）。
+//! 名片数据读 localStorage `ferrite_current_user`（登录/账户页 /self 刷新时写入），
+//! 每次 StatusBar 渲染时重读——额度在页面停留期间的服务端变化要等下一次导航才反映。
 
+use contract::api::user::UserDto;
 use dioxus::prelude::*;
 
-use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator};
+use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuSeparator};
+use crate::session::get_storage_item;
 
 /// 底部状态条目：占位名称 + 可选 hint（popover 接入前的静态说明）。
 #[derive(Clone, PartialEq)]
@@ -19,17 +24,27 @@ pub struct StatusItem {
     pub hint: Option<String>,
 }
 
-/// 用户头像 chip class（16px 圆点 + 首字母，对齐单字行高）。
-/// 渐变底是维护者批注的「美化」：无边框纯色块 → 蓝紫渐变 + 轻投影。
-fn avatar_chip_class() -> &'static str {
-    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-[9px] font-semibold text-white shadow-sm transition-[filter] hover:brightness-115"
+/// 名片面板大头像 class（32px 圆点 + 首字母，渐变底对齐账户页 UserBadge 观感）。
+fn card_avatar_class() -> &'static str {
+    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-sm font-semibold text-white shadow-sm"
+}
+
+/// 内部额度单位 → $ 展示（500_000 ≈ $1，小数 1 位）——口径与账户页 fmt_quota 一致。
+fn fmt_usd(quota: i64) -> String {
+    format!("${:.1}", quota as f64 / 500_000.0)
+}
+
+/// 读 localStorage `ferrite_current_user`（登录/账户页写入的序列化 UserDto）。
+/// 解析失败返回 None（此时名片只显示名称行，不渲染余额/用量行）。
+fn read_user_card() -> Option<UserDto> {
+    serde_json::from_str::<UserDto>(&get_storage_item("ferrite_current_user")?).ok()
 }
 
 /// 底部细状态条（无背景，单行文字高度）。
 ///
-/// - `user_name`：登录用户名；Some 时显示头像+下拉菜单，None 时占位「未登录」。
+/// - `user_name`：登录用户名；Some 时显示用户名按钮+名片下拉，None 时占位「未登录」。
 /// - `is_light` / `on_toggle_theme`：主题切换。
-/// - `on_logout`：退出登录回调（头像下拉用）。
+/// - `on_logout`：退出登录回调（名片面板用）。
 #[component]
 pub fn StatusBar(
     /// 登录用户名；None 时显示「未登录」占位。
@@ -50,7 +65,7 @@ pub fn StatusBar(
     rsx! {
         div {
             class: "flex w-full items-center justify-between py-0.5 text-[11px] text-zinc-500",
-            // 左下角：用户头像 + 额度占位
+            // 左下角：用户名按钮 + 名片下拉
             div {
                 class: "flex items-center gap-1.5",
                 match user_name {
@@ -59,29 +74,54 @@ pub fn StatusBar(
                             class: "relative",
                             DropdownMenu {
                                 trigger: rsx! {
+                                    // 维护者批注: 头像调大 + 显示用户名（原先仅 16px 首字母圆点）
                                     button {
-                                        class: avatar_chip_class(),
+                                        class: "flex h-5 items-center gap-1.5 rounded-full pr-1.5 text-[11px] font-medium text-zinc-300 transition-colors hover:text-zinc-100",
                                         "data-testid": "status-user-menu-button",
                                         "aria-label": "用户菜单",
-                                        title: "{name}",
-                                        "{name.chars().next().unwrap_or('?')}"
+                                        span {
+                                            class: "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-[10px] font-semibold text-white shadow-sm",
+                                            "{name.chars().next().unwrap_or('?')}"
+                                        }
+                                        span { class: "max-w-[140px] truncate", "{name}" }
                                     }
                                 },
                                 content: rsx! {
-                                    // 用户名进下拉 (维护者批注: 状态条只留头像)
-                                    DropdownMenuLabel {
-                                        class: "text-zinc-300",
-                                        "{name}"
-                                    }
-                                    DropdownMenuSeparator {}
+                                    // 名片: 第一行 头像+名称, 整行可点 → 账户页
+                                    // (维护者批注: 原「账户资料」菜单项删除, 入口改到这里;
+                                    //  锚点在 item 内: 点击冒泡到 item 统一收关后跳转)
                                     DropdownMenuItem {
-                                        onclick: move |_| close_signal.set(true),
                                         "data-testid": "menu-account",
-                                        // 锚点在 item 内：点击冒泡到 item（组件统一收关）后跳转
+                                        onclick: move |_| close_signal.set(true),
                                         a {
-                                            class: "block",
+                                            class: "flex items-center gap-2.5",
                                             href: "#account",
-                                            "账户资料"
+                                            span {
+                                                class: "{card_avatar_class()}",
+                                                "{name.chars().next().unwrap_or('?')}"
+                                            }
+                                            span { class: "min-w-0 truncate text-sm font-medium text-zinc-100", "{name}" }
+                                        }
+                                    }
+                                    // 名片: 第二行 余额·用量 纯数值 (无文字标签, 颜色区分;
+                                    // 口径同账户页: 余额=quota-used, 500_000 ≈ $1)
+                                    if let Some(u) = read_user_card() {
+                                        div {
+                                            class: "flex items-center justify-between gap-3 px-2 py-1 font-mono text-xs",
+                                            "data-testid": "status-user-card",
+                                            span {
+                                                class: "text-emerald-400",
+                                                title: "余额",
+                                                "data-testid": "status-user-balance",
+                                                "{fmt_usd(u.quota - u.used_quota)}"
+                                            }
+                                            span { class: "text-zinc-600", "·" }
+                                            span {
+                                                class: "text-amber-400",
+                                                title: "用量",
+                                                "data-testid": "status-user-usage",
+                                                "{fmt_usd(u.used_quota)}"
+                                            }
                                         }
                                     }
                                     DropdownMenuSeparator {}
@@ -95,12 +135,10 @@ pub fn StatusBar(
                                         "退出登录"
                                     }
                                 },
-                                content_class: Some("bottom-full left-0 mb-2 w-36".into()),
+                                content_class: Some("bottom-full left-0 mb-2 w-56".into()),
                                 close_signal: Some(close_request),
                             }
                         }
-                        // 维护者批注: 只显示头像, 名称进下拉菜单 (DropdownMenuLabel)
-                        // —— 原「¥——.--」占位与头像同行展示已删除
                     },
                     None => rsx! {
                         span { class: "text-zinc-500", "未登录" }
