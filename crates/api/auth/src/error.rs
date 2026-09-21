@@ -45,6 +45,9 @@ pub enum AuthError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    #[error("identity error: {0}")]
+    Identity(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -62,7 +65,7 @@ impl AuthError {
             // JWT 解析失败 = 凭证无效, 必须 401 (前端 401 刷新链依赖该语义);
             // 真正的服务端故障 (密钥缺失/DB/crypto) 才是 500。
             Self::Jwt(_) => StatusCode::UNAUTHORIZED,
-            Self::Db(_) | Self::Crypto(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Db(_) | Self::Crypto(_) | Self::Internal(_) | Self::Identity(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
         }
     }
@@ -84,6 +87,7 @@ impl AuthError {
             Self::Jwt(_) => "JWT_ERROR",
             Self::NotFound(_) => "NOT_FOUND",
             Self::Internal(_) => "INTERNAL_ERROR",
+            Self::Identity(_) => "IDENTITY_ERROR",
         }
     }
 }

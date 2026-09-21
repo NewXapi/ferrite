@@ -10,6 +10,7 @@ pub mod jwt;
 pub mod password;
 pub mod routes;
 pub mod service;
+pub mod identity;
 
 pub use error::AuthError;
 pub use routes::{bearer_user, router};
