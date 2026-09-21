@@ -257,13 +257,17 @@ async fn quota_rejects_insufficient_remaining() {
         "gpt-4o".into(),
         "default".into(),
         PriceRow {
-            input_per_m: 10_000_000.0,
+            input_per_m: 5_000_000.0,
             output_per_m: 15_000_000.0,
             cache_per_m: 0.0,
         },
     );
     let quotas = QuotaSnapshot::default();
-    quotas.upsert("tok-q".into(), 1_000_000);
+    // key 必须是 token.id（"tok-1"）：历史上写成 "tok-q" 导致 remaining 恒 0、
+    // 在第 1 步就短路返回 cost:0，预估路径从未被走到（旧断言用 `{ .. }`
+    // 模式所以碰巧通过）。这里给 5_000：>0 过第 1 步，< 预估 15_360 触发
+    // 第 3 步拒绝，从而真正钉住 estimate_cost 的计算值。
+    quotas.upsert("tok-1".into(), 5_000);
 
     let gate = QuotaGate::new(
         Arc::new(ArcSwap::from_pointee(quotas)),
