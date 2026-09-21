@@ -28,13 +28,6 @@ pub fn DemoBoard() -> Element {
                     "{DEMO_COUNT_HEAD}{ranked.len()}{DEMO_COUNT_TAIL}"
                 }
             }
-            // 海报翻牌卡大阵列
-            // 维护者批注(2026-09-21): 海报阵列(mark2)放到头牌卡(mark1)之前
-            section { class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5",
-                for (i, m) in ranked.iter().copied().enumerate() {
-                    PosterImageCard { rank: i + 1, model: m }
-                }
-            }
             // 头牌翻牌卡: 综合分前五, 立绘交替斜角
             section { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4",
                 for (i, m) in ranked.iter().take(5).copied().enumerate() {
@@ -43,6 +36,13 @@ pub fn DemoBoard() -> Element {
                         lean: if i % 2 == 0 { -4.0 } else { 0.0 },
                         model: m,
                     }
+                }
+            }
+            // 海报翻牌卡大阵列
+            // 维护者批注(2026-09-21): 海报阵列放到头牌卡之后(还原默认顺序)
+            section { class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5",
+                for (i, m) in ranked.iter().copied().enumerate() {
+                    PosterImageCard { rank: i + 1, model: m }
                 }
             }
             // 底部数据分析图表 (参考 new-api / sub2api / wildtoken)

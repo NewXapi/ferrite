@@ -153,9 +153,9 @@ pub fn PosterCard(
                         // 底部：浓缩雷达居左、关键数据蒙版贴右下角
                         // (维护者批注 2026-09-21: 数据蒙版没有贴近右下角, 调整;
                         //  原实现整体钉左下、右下角留给立绘黄金徽章)
-                        div { class: "pointer-events-none absolute inset-x-3 bottom-3 flex items-end justify-between gap-2",
-                            // 浓缩雷达
-                            div { class: "w-28 shrink-0",
+                        div { class: "pointer-events-none absolute inset-0",
+                            // 浓缩雷达(缩小, 钉左下)
+                            div { class: "absolute bottom-3 left-3 w-20",
                                 style: "filter: drop-shadow(0 2px 6px rgba(0,0,0,0.65))",
                                 svg { class: "h-auto w-full", view_box: "2 0 116 116", preserve_aspect_ratio: "xMidYMid meet",
                                     for ring in 1..=3 {
@@ -197,7 +197,10 @@ pub fn PosterCard(
                                     }
                                 }
                             }
-                            KeyStatRows { stats: key_stats.clone() }
+                            // 数据蒙版(钉右下角)
+                            div { class: "absolute bottom-3 right-3",
+                                KeyStatRows { stats: key_stats.clone() }
+                            }
                         }
                     }
                     // 背面

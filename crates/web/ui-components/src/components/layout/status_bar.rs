@@ -30,6 +30,11 @@ fn card_avatar_class() -> &'static str {
     "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-sm font-semibold text-white shadow-sm"
 }
 
+/// 用户 ID 短显（key 前 8 位十六进制 + 省略号；不足 8 位原样）。
+fn short_user_key(key: &str) -> String {
+    if key.len() > 8 { format!("{}…", &key[..8]) } else { key.to_string() }
+}
+
 /// 名片面板横向 tab 选项 chip（私有小组件：rsx for 体内不能 let，拆组件最省事）。
 #[component]
 fn MenuTabChip(idx: usize, label: String, active: bool, onclick: EventHandler<usize>) -> Element {
@@ -125,7 +130,23 @@ pub fn StatusBar(
                                                 class: "{card_avatar_class()}",
                                                 "{name.chars().next().unwrap_or('?')}"
                                             }
-                                            span { class: "min-w-0 truncate text-sm font-medium text-zinc-100", "{name}" }
+                                            span { class: "min-w-0 flex-1 truncate text-sm font-medium text-zinc-100", "{name}" }
+                                            // 维护者批注(2026-09-21, 11:46 组): 用户 id 做成
+                                            // 按钮, 点击跳转账户页(与整行导航同一目的地)。
+                                            // 数据源同第二行(read_user_card); UserDto 无独立
+                                            // id 字段, 用 key 短显兜底。
+                                            if let Some(u) = read_user_card() {
+                                                button {
+                                                    class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200",
+                                                    title: "用户 ID · 点击前往账户页",
+                                                    "data-testid": "menu-user-id",
+                                                    onclick: move |_| {
+                                                        close_signal.set(true);
+                                                        on_open_tab.call(0);
+                                                    },
+                                                    "{short_user_key(&u.key)}"
+                                                }
+                                            }
                                         }
                                     }
                                     // 名片: 第二行 余额·用量 纯数值 (无文字标签, 默认文本色;
