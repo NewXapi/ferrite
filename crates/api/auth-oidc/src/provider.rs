@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use sqlx::PgPool;
 
 /// OIDC provider 配置行 —— 对应 `identity_providers` 表。
 ///

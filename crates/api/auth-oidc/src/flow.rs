@@ -14,13 +14,12 @@
 //! 适配），不自己实现 `AsyncHttpClient`——官方示例同款，少一层易错胶水码。
 //! 注意 reqwest 默认跟随重定向，这里显式关掉（SSRF 防护，见 crate 文档）。
 
-use openidconnect::core::{
-    CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreProviderMetadata, CoreTokenResponse,
-};
+use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata};
 use openidconnect::reqwest as oidc_reqwest;
 use openidconnect::{
-    AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
-    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+    AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet,
+    EndpointNotSet, EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
 
 use crate::provider::{IdentityProvider, OidcError};
@@ -48,7 +47,26 @@ pub struct VerifiedClaims {
 ///
 /// 每次调用都重新 discover（不缓存 metadata）：登录是低频操作，
 /// 而 discovery 让 JWKS 轮换、端点变更自动生效，缓存反而要管失效。
-async fn build_client(provider: &IdentityProvider) -> Result<CoreClient, OidcError> {
+///
+/// 类型参数照抄 `from_provider_metadata` 的真实产出（`CoreClient` 别名的
+/// 6 个 marker 参数默认全是 `EndpointNotSet`，不写就报 method not found）：
+/// - `HasAuthUrl = EndpointSet` —— `set_auth_uri` 吃非 Option，
+///   `authorize_url` 只有 `EndpointSet` 版才有
+/// - `HasTokenUrl = EndpointMaybeSet` —— `set_token_uri_option` 吃 Option，
+///   discovery 里 token endpoint 可缺
+async fn build_client(
+    provider: &IdentityProvider,
+) -> Result<
+    CoreClient<
+        EndpointSet,
+        EndpointNotSet,
+        EndpointNotSet,
+        EndpointNotSet,
+        EndpointMaybeSet,
+        EndpointMaybeSet,
+    >,
+    OidcError,
+> {
     let issuer = IssuerUrl::new(provider.issuer_url.clone())
         .map_err(|e| OidcError::Discovery(e.to_string()))?;
     let http_client = http_client();
@@ -114,11 +132,13 @@ pub async fn authorize_url(
     let pkce_challenge =
         PkceCodeChallenge::from_code_verifier_sha256(&PkceCodeVerifier::new(pkce_verifier));
 
+    // authorize_url 收 FnOnce 生成器（不是值）。state/nonce 已在上面落库，
+    // 用 move 闭包把已生成的值交出去——回调时取回同一对做校验。
     let (auth_url, _, _) = client
         .authorize_url(
             CoreAuthenticationFlow::AuthorizationCode,
-            CsrfToken::new(state),
-            Nonce::new(nonce),
+            move || CsrfToken::new(state),
+            move || Nonce::new(nonce),
         )
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()))
