@@ -253,6 +253,15 @@ fn build_dispatch_and_quota(
 /// 全局定价（组差异走 group_ratio，不重复建行）——这里全部 upsert 到
 /// `"default"` 组：任何组查询经 default 回退命中，组倍率由 QuotaGate 的
 /// group_ratio 参数另行折算（两层语义见 gate/quota.rs 文档）。
+///
+/// 单位换算：`load_model_prices` 从 DB 读出的原始值是 $/M tokens（如 gpt-4o
+/// output $15/M），灌进 `PriceRow` 前必须 ×500_000 转成内部单位/M，与
+/// [`gateway_gate::quota::estimate_cost`] 与
+/// [`gateway_metering::pricing::price_of`] 的口径一致（1 内部单位 = $1/500_000）。
+fn dollars_per_m_to_internal(dollars_per_m: f64) -> f64 {
+    dollars_per_m * 500_000.0
+}
+
 fn build_pricing_snapshot(
     price_rows: &[(String, f64, f64, f64)],
 ) -> gateway_gate::snapshot::PricingSnapshot {
@@ -263,9 +272,9 @@ fn build_pricing_snapshot(
             model.clone(),
             "default".to_string(),
             PriceRow {
-                input_per_m: *input,
-                output_per_m: *output,
-                cache_per_m: *cache,
+                input_per_m: dollars_per_m_to_internal(*input),
+                output_per_m: dollars_per_m_to_internal(*output),
+                cache_per_m: dollars_per_m_to_internal(*cache),
             },
         );
     }
