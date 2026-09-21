@@ -432,3 +432,198 @@ data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{
         "必须有且仅有一个终止帧，实际: {text}"
     );
 }
+
+// ---------- 流式非 2xx 守卫：故障注入 ----------
+
+/// 故障注入出口：明知违规地返回 `Ok(非 2xx)`。
+///
+/// 两个生产 Egress 都在 `execute` 内把非 2xx 归类为 Err，正常永不进入管道守卫；
+/// 这里注入的正是守卫要兜的「Ok(非 2xx) 透传」情形，验证纵深防御生效——
+/// 这不是在复现生产缺陷。
+struct LeakyEgress {
+    status: u16,
+    body: Bytes,
+}
+
+impl Egress for LeakyEgress {
+    fn execute<'a>(
+        &'a self,
+        _url: &'a str,
+        _headers: &'a [(String, String)],
+        _body: Bytes,
+        _timeouts: &'a Timeouts,
+    ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
+        let status = self.status;
+        let payload = self.body.clone();
+        let stream = futures_util::stream::iter(vec![Ok::<Bytes, std::io::Error>(payload)]);
+        Box::pin(async move {
+            Ok(ForwardedResponse::from_stream(
+                status,
+                "text/event-stream",
+                stream,
+            ))
+        })
+    }
+}
+
+/// 守卫位于 passthrough 之前：无论入站与上游是否同格式，流式分支拿到
+/// `Ok(非 2xx)` 都必须拦成 Err，并按状态码归类（413 致命不重试 / 429 限流可重试）。
+#[tokio::test]
+async fn stream_guard_rejects_leaked_non_2xx_before_passthrough() {
+    // (入站格式, 渠道, 上游状态码, 是否可重试)
+    // 同格式走零转换 passthrough 捷径、跨格式走 SSE 转换——两条入口都得拦在
+    // body 被消费之前。
+    let cases: [(ProtocolKind, &str, u16, bool); 2] = [
+        (ProtocolKind::OpenAI, "openai", 413, false),
+        (ProtocolKind::Anthropic, "openai", 429, true),
+    ];
+    for (inbound, provider, status, retryable) in cases {
+        let egress = LeakyEgress {
+            status,
+            body: Bytes::from(format!(
+                "{{\"error\":{{\"message\":\"upstream {status}\",\"type\":\"upstream_error\"}}}}"
+            )),
+        };
+        let mut task = mk_task(true, inbound, provider);
+        if inbound == ProtocolKind::Anthropic {
+            task.path = "/v1/messages".to_string();
+        }
+
+        let err = forward_once(
+            &task,
+            &egress,
+            &Arc::new(FormatRegistry::with_defaults()),
+            &Timeouts::default(),
+        )
+        .await
+        .expect_err("Ok(非 2xx) 必须被流式守卫拦成 Err");
+
+        assert_eq!(err.status, status, "上游状态码应原样传播，不退化成 502");
+        assert_eq!(
+            err.retryable, retryable,
+            "413 是请求本身坏不可重试；429 是限流可重试"
+        );
+    }
+}
+
+/// 首 chunk 已超 2048 字节时，守卫必须立即停手——预览有界，不把整条错误流
+/// 读进内存。第二个 poll 直接 panic：守卫若继续读，测试就红。
+struct OversizedErrorStream {
+    polls: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl futures_util::Stream for OversizedErrorStream {
+    type Item = Result<Bytes, std::io::Error>;
+    fn poll_next(
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        use std::sync::atomic::Ordering;
+        let n = self.polls.fetch_add(1, Ordering::SeqCst);
+        match n {
+            0 => std::task::Poll::Ready(Some(Ok(Bytes::from(vec![b'e'; 8192])))),
+            _ => panic!("预览有界：拿到 2048 字节后必须停手，不该继续 poll 错误流"),
+        }
+    }
+}
+
+struct OversizedErrorEgress {
+    status: u16,
+    polls: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Egress for OversizedErrorEgress {
+    fn execute<'a>(
+        &'a self,
+        _url: &'a str,
+        _headers: &'a [(String, String)],
+        _body: Bytes,
+        _timeouts: &'a Timeouts,
+    ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
+        let status = self.status;
+        let stream = OversizedErrorStream {
+            polls: self.polls.clone(),
+        };
+        Box::pin(async move {
+            Ok(ForwardedResponse::from_stream(
+                status,
+                "text/event-stream",
+                stream,
+            ))
+        })
+    }
+}
+
+#[tokio::test]
+async fn stream_guard_preview_is_bounded_and_stops_reading() {
+    let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let egress = OversizedErrorEgress {
+        status: 413,
+        polls: polls.clone(),
+    };
+    let task = mk_task(true, ProtocolKind::OpenAI, "openai");
+
+    let err = forward_once(
+        &task,
+        &egress,
+        &Arc::new(FormatRegistry::with_defaults()),
+        &Timeouts::default(),
+    )
+    .await
+    .expect_err("Ok(非 2xx) 必须被流式守卫拦成 Err");
+
+    assert_eq!(err.status, 413);
+    assert_eq!(
+        polls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "首 chunk 已达 2048 上限，守卫必须停手不再 poll 错误流"
+    );
+}
+
+/// 错误流挂住不返回时，守卫必须受 `total_ms` 约束、不无限等流；超时只让预览
+/// 降级，状态码分类不变。pending 流没有后续字节，只能靠超时收口——这就是这条
+/// 契约的实际断言（复用 tokio 已启用的 time feature，无新依赖；total_ms 给
+/// 1ms 而非真实长超时，断言结果与触发时刻无关）。
+struct HangingErrorEgress {
+    status: u16,
+}
+
+impl Egress for HangingErrorEgress {
+    fn execute<'a>(
+        &'a self,
+        _url: &'a str,
+        _headers: &'a [(String, String)],
+        _body: Bytes,
+        _timeouts: &'a Timeouts,
+    ) -> Pin<Box<dyn Future<Output = Result<ForwardedResponse, NormalizedError>> + Send + 'a>> {
+        let status = self.status;
+        Box::pin(async move {
+            Ok(ForwardedResponse::from_stream(
+                status,
+                "text/event-stream",
+                futures_util::stream::pending::<Result<Bytes, std::io::Error>>(),
+            ))
+        })
+    }
+}
+
+#[tokio::test]
+async fn stream_guard_preview_timeouts_instead_of_hanging() {
+    let egress = HangingErrorEgress { status: 413 };
+    let task = mk_task(true, ProtocolKind::OpenAI, "openai");
+    let timeouts = Timeouts {
+        total_ms: 1,
+        ..Timeouts::default()
+    };
+
+    let err = forward_once(
+        &task,
+        &egress,
+        &Arc::new(FormatRegistry::with_defaults()),
+        &timeouts,
+    )
+    .await
+    .expect_err("挂住的错误流必须被超时收成 Err");
+
+    assert_eq!(err.status, 413, "超时只降级预览，状态码分类不变");
+}

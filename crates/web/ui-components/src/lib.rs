@@ -26,14 +26,22 @@ pub mod icons;
 pub mod scroll_spy;
 pub mod segmented;
 pub mod session;
+pub mod wheel_tab;
 
 pub use action_buttons::{ActionButtonGroup, ActionSpec, ActionTone};
 pub use auth_modal::{AuthModal, UserBadge};
 pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
 pub use components::admin_card::{
-    AdminCard, AliasCard, ChannelCard, DotTabBar, GroupCard, RedemptionCard, UserCard,
+    AdminCard, AliasCard, AliasEditField, ChannelCard, ChannelEditField, DotTabBar, UserCard,
 };
+pub use components::admin_card::{
+    AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
+    PlaceholderBlock, SectionHeader,
+};
+pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
+pub use components::admin_card::{DangerActionRow, EditableRow};
+pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
@@ -49,3 +57,4 @@ pub use session::{
     get_cached_user, get_storage_item, refresh_access_token, remove_storage_item,
     set_cached_session, set_storage_item, set_storage_scoped, token_is_persistent,
 };
+pub use wheel_tab::{cycle_index, on_tab_wheel};

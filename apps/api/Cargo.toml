@@ -55,6 +55,7 @@ hex = "0.4"
 
 gateway-proxy    = { path = "../../crates/gateway/proxy" }
 admin-proxy      = { path = "../../crates/api/admin-proxy" }
+ops               = { path = "../../crates/api/admin-ops" }
 
 tavern-storage    = { path = "../../crates/api/tavern-storage", optional = true }
 tavern-auth       = { path = "../../crates/api/tavern-auth", optional = true }

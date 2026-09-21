@@ -16,7 +16,7 @@ use crate::shared::fmt_raw;
 ///
 /// - 智能定位:① 水平翻转 —— `x > 260px` 时往左侧展开,否则往右侧展开,防止
 ///   手机与窄屏边缘被右边框裁切;② 垂直修正 —— `y` 下限 80px,避免被顶部导航遮挡。
-/// - 初始态(0,0)以 `opacity-0 scale-95` 隐藏,避免首帧在左上角闪现。
+/// - 可见性由调用方控制：`trend.rs` 仅在 `tip` 为 `Some` 时渲染本组件，无值时整个外框不存在。
 #[component]
 pub fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -> Element {
     let transform = if x > 260.0 {
@@ -25,11 +25,9 @@ pub fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -
         "translate(12px, -50%)"
     };
     let clamped_y = y.max(80.0);
-    let opacity_class = if x == 0.0 && y == 0.0 {
-        "opacity-0 scale-95"
-    } else {
-        "opacity-100 scale-100"
-    };
+    // tip 为 Some 时本组件才渲染（trend.rs 的 `if let Some`），无需再用坐标哨兵判隐藏；
+    // 且 y 已钳到 >= 80，原 `x==0.0 && y==0.0` 分支恒不可达。
+    let opacity_class = "opacity-100 scale-100";
     rsx! {
         div {
             class: "pointer-events-none fixed z-50 rounded-xl border border-border/80 bg-card/95 p-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",

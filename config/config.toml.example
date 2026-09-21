@@ -4,21 +4,9 @@
 listen = "0.0.0.0:3000"
 log_level = "info"
 
-# 调度健康参数；字段名对齐 dispatch::health::HealthSetting。
-# 整段可省，用下面的默认值。
-[dispatch]
-# 连续失败达此数进入冷却
-cooldown_threshold = 5
-# 冷却基础时长（秒）
-cooldown_base_seconds = 10
-# 冷却最大时长（秒）；连续冷却时长从 base 递增到此上限
-cooldown_max_seconds = 60
-
-# 重试策略。可重试的状态码由 forward 的 classify_status 判定
-# （429 / 5xx 可重试，其余 4xx 致命），配置里不重复一份。
-[retry]
-# 单请求最大尝试次数（含首次）
-max_attempts = 3
+# 调度健康参数（冷却阈值/时长）与转发重试预算已移到 PG `options` 表
+# （`gateway.dispatch.*` / `gateway.retry.max_attempts` / `gateway.timeout.*`，
+# 由 apps/api 装配侧读取）；单机配置文件不再覆盖它们，统一在管理台改。
 
 # 计量定价。整段省略或 prices 为空 = 不计费（本地单机默认），转发不受影响。
 # 填了价格就会挂上额度闸 QuotaGate；此时额度快照必须有对应 token 的余额，

@@ -37,7 +37,7 @@ pub fn TrendHistogram(
                     // 顶格是封顶线 (axis_max), 其下三条是 step 等分, 最后是 0 基线
                     for i in [4, 3, 2, 1] {
                         div { class: "relative w-full border-t border-dashed border-zinc-800",
-                            span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((axis_max * i as f64 / 4.0) as i64)}" }
+                            span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((axis_max.max(1.0) * i as f64 / 4.0) as i64)}" }
                         }
                     }
                     div { class: "relative w-full border-t border-dashed border-zinc-800",
@@ -47,7 +47,9 @@ pub fn TrendHistogram(
                 div { class: "relative flex h-56 items-end", style: "gap: 3px",
                     for b in buckets.iter() {
                         {
-                            let hpct = (b.total / axis_max * 100.0).max(3.0);
+                            // ponytail: axis_max 由 api::nice_axis_max 保证 > 0（空窗给 4.0），
+                            // 但本组件接受外部传入的 axis_max，max(1.0) 兜底防 inf/NaN 污染高度。
+                            let hpct = (b.total / axis_max.max(1.0) * 100.0).max(3.0);
                             let label = b.label.clone();
                             // 列模式明细: 排序(值降序) + Total + 超 10 行折叠「+N more」
                             // —— 纯整形逻辑收在 api::trend_column_tip(可单测),渲染层只消费结果

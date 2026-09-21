@@ -91,9 +91,19 @@ uuid        = { version = "1", features = ["serde", "v4", "v7"] }
 base64      = "0.22"
 
 [profile.release]
+opt-level    = 3     # 显式钉死：3 = 最快（默认值）；"s"/"z" 是体积优化，本仓库不要
 lto           = "fat"
 codegen-units = 1
 strip         = true
 
 [profile.dev.package."*"]
 opt-level = 1
+
+# wasm-dev（dx serve 默认 profile）不带 debuginfo：整个依赖树的 DWARF 会把
+# admin-web_bg.wasm 撑到 132MB，浏览器下载+编译期间 #main 全白（用户实测
+# 白屏根因）。关掉后体积约缩到 1/3 以下，dev 迭代不受影响（wasm 里本来也
+# 没法直接调 native debugger）。strip 显式声明，双保险。
+[profile.wasm-dev]
+inherits = "dev"
+debug = 0
+strip = "debuginfo"

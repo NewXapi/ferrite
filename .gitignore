@@ -2,11 +2,14 @@
 **/*.rs.bk
 *.pdb
 todo/
-specs/
+# 只忽略仓库根的 specs/（历史遗留目录）；不加前导斜杠会连 e2e/specs/ 下的
+# Playwright 用例一起忽略，浏览器回归套件因此进不了版本库。
+/specs/
 db/dev/seed.sql
 /logs
 
 .codegraph/
+archify/
 .code-review-graph/
 node_modules/
 .wt
@@ -25,3 +28,9 @@ __pycache__/
 
 # smoke 脚手架（本地验证用，不进 PR）
 scripts/smoke/
+
+# Playwright E2E（e2e/）
+/e2e/node_modules/
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/bun.lock

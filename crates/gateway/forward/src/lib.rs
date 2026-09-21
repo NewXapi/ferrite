@@ -73,3 +73,14 @@ pub struct Forwarded {
     /// 响应内容类型 (决定 stream 模块是否挂 SSE 扫描)。
     pub content_type: String,
 }
+
+impl std::fmt::Debug for Forwarded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // body 是不透明字节流，Debug 只报状态码与内容类型——测试失败信息
+        // 需要的是「为什么是 Ok 而不是 Err」，不是整条流的内容。
+        f.debug_struct("Forwarded")
+            .field("status", &self.status)
+            .field("content_type", &self.content_type)
+            .finish_non_exhaustive()
+    }
+}

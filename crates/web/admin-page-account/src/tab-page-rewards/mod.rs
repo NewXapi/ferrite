@@ -4,6 +4,7 @@ pub mod invite_section;
 pub mod invitees_section;
 pub mod page;
 pub mod recharges_section;
+pub mod shared;
 pub mod topup_section;
 pub mod wallet_section;
 

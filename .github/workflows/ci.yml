@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # 手动触发：PR 事件偶发不投递（synchronize/reopened 丢失）时，可从 Actions 页面
+  # 或 `gh workflow run ci.yml --ref <branch>` 强制跑一遍，不用等 GitHub 恢复。
+  workflow_dispatch:
+    inputs:
+      base:
+        description: '受影响 crate diff 的基线 ref'
+        default: 'main'
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -38,13 +46,16 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
   # PR：按 git diff 的 path scope 只跑受影响的包，快速反馈。
+  # workflow_dispatch 走同一路径：base 取 inputs.base（pull_request 时用 github.base_ref）。
   dynamic-test:
     name: Dynamic Crate Check & Test
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -59,11 +70,14 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run Affected Crates Tests
-        run: bash scripts/ci-affected.sh --base "origin/${{ github.base_ref }}"
+        run: bash scripts/ci-affected.sh --base "origin/${{ github.base_ref || inputs.base }}"
 
   # 合并到 main：跑全量，作为动态选包的兜底。
+
   full-test:
     name: Full Workspace Test
     if: github.event_name == 'push'
@@ -78,6 +92,8 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Build all targets
         run: cargo build --all-targets
@@ -96,9 +112,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install cmake (BoringSSL build requirement)
-        run: sudo apt-get update && sudo apt-get install -y cmake
+      - name: Install cmake + mold (BoringSSL + fast linker)
+        run: sudo apt-get update && sudo apt-get install -y cmake mold
       - name: Check with utls feature
         run: cargo check -p gateway-proxy --features utls
       - name: Check with no default features

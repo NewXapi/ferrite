@@ -30,16 +30,41 @@ pub struct SignInPayload {
     pub remember: bool,
 }
 
+/// "记住我" 勾选框：登录 / 注册两表单共用的同一份标记。
 #[component]
-pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -> Element {
-    let error = use_context::<SubmitState>().error;
-    let mut username = use_signal(String::new);
-    let mut password = use_signal(String::new);
+fn RememberMe(remember: Signal<bool>) -> Element {
     let box_class = if remember() {
         "bg-indigo-400 border-indigo-400"
     } else {
         "bg-zinc-800/60 border-zinc-500 group-hover:border-zinc-400"
     };
+
+    rsx! {
+        label {
+            class: "flex items-center gap-2 cursor-pointer group",
+            div {
+                class: "relative size-4 shrink-0 flex items-center justify-center rounded border transition-colors {box_class}",
+                input {
+                    style: "position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;",
+                    r#type: "checkbox",
+                    checked: remember(),
+                    oninput: move |ev| remember.set(ev.checked()),
+                }
+                if remember() {
+                    span { class: "text-[11px] font-bold leading-none text-white", "✓" }
+                }
+            }
+            span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
+        }
+    }
+}
+
+#[component]
+pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -> Element {
+    let error = use_context::<SubmitState>().error;
+    let busy = use_context::<SubmitState>().busy;
+    let mut username = use_signal(String::new);
+    let mut password = use_signal(String::new);
 
     rsx! {
         form {
@@ -68,22 +93,7 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
             }
             div {
                 class: "flex items-center justify-between text-sm pt-1",
-                label {
-                    class: "flex items-center gap-2 cursor-pointer group",
-                    div {
-                        class: "relative size-4 shrink-0 flex items-center justify-center rounded border transition-colors {box_class}",
-                        input {
-                            style: "position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;",
-                            r#type: "checkbox",
-                            checked: remember(),
-                            oninput: move |ev| remember.set(ev.checked()),
-                        }
-                        if remember() {
-                            span { class: "text-[11px] font-bold leading-none text-white", "✓" }
-                        }
-                    }
-                    span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
-                }
+                RememberMe { remember }
                 span {
                     class: "cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
                     "Forgot password?"
@@ -92,7 +102,7 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
             SubmitStateBanner { error }
             div {
                 class: "pt-2",
-                SubmitButton { label: "Sign in" }
+                SubmitButton { label: "Sign in", busy: busy() }
             }
         }
     }
@@ -103,10 +113,12 @@ pub struct SignUpPayload {
     pub username: String,
     pub email: String,
     pub password: String,
+    pub remember: bool,
 }
 
 #[component]
-pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
+pub fn SignUpForm(submit: EventHandler<SignUpPayload>, remember: Signal<bool>) -> Element {
+    let busy = use_context::<SubmitState>().busy;
     let mut error = use_context::<SubmitState>().error;
     let mut username = use_signal(String::new);
     let mut email = use_signal(String::new);
@@ -126,6 +138,7 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
                     username: username.read().clone(),
                     email: email.read().clone(),
                     password: password.read().clone(),
+                    remember: remember(),
                 });
             },
             Field {
@@ -157,10 +170,15 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>) -> Element {
                 value: confirm(),
                 oninput: move |ev: dioxus::prelude::FormEvent| confirm.set(ev.value()),
             }
+
+            div {
+                class: "flex items-center justify-between text-sm pt-1",
+                RememberMe { remember }
+            }
             SubmitStateBanner { error }
             div {
                 class: "pt-2",
-                SubmitButton { label: "Create account" }
+                SubmitButton { label: "Create account", busy: busy() }
             }
         }
     }
