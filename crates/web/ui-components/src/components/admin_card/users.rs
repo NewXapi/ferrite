@@ -42,10 +42,12 @@ fn usage_tone(used_pct: f64) -> &'static str {
 /// 请求；卡内**不再有操作按钮行**（维护者 2026-09-21 批注删除）——启停 / 保存 /
 /// 删除等操作将由卡牌外的图标按钮承担（布局设计待维护者确认后接入）。
 ///
-/// 用户名 / 邮箱两行是原地编辑行（[`InlineEdit`]，Quasar standard 变体：浮动标签
-/// + 底部横条）：
-/// 点行 → 值变无边框输入框，Enter 收关、Escape 还原；v1 草稿只留卡内前端状态，
-/// 不提交后端——卡牌外「保存」按钮上线后经 `on_commit` 抛回页面统一写回。
+/// 用户名 / 邮箱两处是原地编辑行（[`InlineEdit`]，Quasar standard 变体：浮动标签
+/// + 底部横条）。**用户名就是卡牌标题本身**（title_mode chrome：整条标题可点、
+/// 固定 20px 行高编辑不撑卡、底部横条标示编辑态）——卡上只保留这一个用户名，
+/// 副标题（显示名）与用户名相同时不渲染：
+/// 点标题/行 → 值变无边框输入框，Enter 收关、Escape 还原；v1 草稿只留卡内前端
+/// 状态，不提交后端——卡牌外「保存」按钮上线后经 `on_commit` 抛回页面统一写回。
 #[component]
 pub fn UserCard(
     /// The administrative user DTO displayed by this card.
@@ -74,13 +76,9 @@ pub fn UserCard(
     // 容器高度取最高者，切页签时卡片高度不跳动。
     let panel_basic = rsx! {
         div { class: "space-y-2.5",
-            // 用户名 / 邮箱：原地编辑（点行 → 值变无边框输入框；Enter 收关，
-            // 草稿留卡内——v1 不提交后端，保存按钮上线后经 on_commit 抛回页面）。
-            InlineEdit {
-                label: "用户名".to_string(),
-                value: user.username.clone(),
-                testid: "user-inline-username".to_string(),
-            }
+            // 用户名即卡牌标题（见 title_slot，同一 InlineEdit 组件）；本tab只留
+            // 邮箱原地编辑（点行 → 值变无边框输入框；Enter 收关，草稿留卡内——
+            // v1 不提交后端，保存按钮上线后经 on_commit 抛回页面）。
             InlineEdit {
                 label: "邮箱".to_string(),
                 value: user.email.clone(),
@@ -145,8 +143,20 @@ pub fn UserCard(
 
     rsx! {
         AdminCard {
+            // 标题（用户名）本身即原地编辑入口：与邮箱行共用同一个 InlineEdit 组件
+            // （title_mode chrome），卡上不再有第二处用户名。
+            title_slot: rsx! {
+                InlineEdit {
+                    label: "用户名".to_string(),
+                    value: user.username.clone(),
+                    testid: "user-inline-username".to_string(),
+                    title_mode: true,
+                }
+            },
             title: "{user.username}",
-            subtitle: user.display_name.clone(),
+            // 副标题（显示名）与用户名去重：种子数据里两者常相同，卡上只留一个。
+            subtitle: (user.display_name != user.username && !user.display_name.is_empty())
+                .then(|| user.display_name.clone()),
             tabs: tabs,
             active_tab: tab(),
             on_tab_change: move |t| tab.set(t),

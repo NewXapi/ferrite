@@ -3,6 +3,10 @@ use dioxus::prelude::*;
 use super::dot_tab::DotTabBar;
 use super::shell::CARD_SHELL_CLASS;
 
+/// 标题文本 class：静态标题（h3）与自定义标题插槽内的可编辑标题共用一份，
+/// 保证两种形态逐字同款。
+pub const CARD_TITLE_CLASS: &str = "truncate text-sm font-medium text-zinc-100";
+
 /// Shortens a key by Unicode scalar value without splitting UTF-8 characters.
 ///
 /// Keeps at most `EDGE_CHARS * 2` (head…tail) characters so entity keys stay
@@ -22,7 +26,9 @@ pub(crate) fn short_key(key: &str) -> String {
 
 /// 渲染管理页实体摘要的共享卡片外壳。
 ///
-/// `title` 和可选的 `subtitle` 用作卡片标题；`tabs` 是只读内容页签的标签，
+/// `title` 和可选的 `subtitle` 用作卡片标题；`title_slot` 可传自定义标题节点
+/// （如原地可编辑标题）替代默认静态 h3，`title` 仍作 region 的 aria-label。
+/// `tabs` 是只读内容页签的标签，
 /// `active_tab` 指明当前页签，`on_tab_change` 接收用户选择的索引。页签条渲染在
 /// **卡片底部通栏横线**（维护者 2026-09-21 批注：一条横线占位、选中明暗反映、
 /// 占满底部、高度压低），不再占标题栏右侧。
@@ -60,6 +66,10 @@ pub fn AdminCard(
     /// 标题栏右侧、圆点页签之前的可选插槽（如实体卡的序号 badge）。
     #[props(default)]
     header_action: Option<Element>,
+    /// 自定义标题节点（如原地可编辑标题）；传了即替代默认 h3 静态标题，
+    /// `title` 仍作卡片 region 的 aria-label。
+    #[props(default)]
+    title_slot: Option<Element>,
 ) -> Element {
     // 非激活页签：invisible（占布局高度）+ pointer-events-none（不可交互）。
     // 类名必须完整字面量出现在源码里，Tailwind 才会生成对应 CSS（动态拼串不会被扫描）。
@@ -81,7 +91,11 @@ pub fn AdminCard(
             // Header: title (+ optional trailing slot)；页签已移到底部通栏横线。
             div { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0 flex-1",
-                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    if let Some(slot) = title_slot {
+                        {slot}
+                    } else {
+                        h3 { class: CARD_TITLE_CLASS, "{title}" }
+                    }
                     if let Some(sub) = subtitle {
                         p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{sub}" }
                     }

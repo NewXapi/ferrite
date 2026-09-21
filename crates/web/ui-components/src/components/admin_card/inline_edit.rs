@@ -22,6 +22,7 @@
 //! - blur → 不提交不退出（Quasar 默认的「点开即保存」在卡牌网格里会误触，
 //!   留到卡牌外保存按钮上线后再议）。
 
+use super::card::CARD_TITLE_CLASS;
 use dioxus::prelude::*;
 
 /// 原地编辑输入框 class：Quasar standard 变体——无盒型边框（四周边框全删），
@@ -34,6 +35,16 @@ pub const INLINE_INPUT_CLASS: &str =
 /// 可编辑性由 `cursor-pointer` 暗示； Enter 提交语义不变。
 pub const INLINE_ROW_CLASS: &str =
     "flex w-full cursor-pointer items-center justify-between gap-2 text-left text-xs";
+
+/// 标题模式展示态：整条标题可点，字号/字重/截断与卡牌静态标题逐字同款
+/// （`CARD_TITLE_CLASS`），行高固定 20px（`h-5`）——编辑态不撑卡。
+pub const INLINE_TITLE_ROW_CLASS: &str =
+    "flex h-5 w-full cursor-pointer items-center text-left";
+
+/// 标题模式输入框：与展示态同字号（text-sm/font-medium，零高度差），仅允许
+/// 轻微缩小（scale-[0.98]，批注：可以出现一点缩小）——宽高都不变。
+pub const INLINE_TITLE_INPUT_CLASS: &str =
+    "w-full border-0 bg-transparent p-0 text-sm font-medium text-zinc-100 outline-none focus:ring-0 scale-[0.98] origin-left transition-transform";
 
 /// 浮动后的标签 class：缩到 ~75%（text-[10px] vs 展示态 text-xs）、上浮到输入框
 /// 头顶、左对齐、变暗（Quasar 深色主题 `rgba(255,255,255,.7)` 的 zinc 等价）。
@@ -74,6 +85,10 @@ pub fn InlineEdit(
     /// 值为空时的占位提示（展示态与编辑态 input 共用）
     #[props(default)]
     placeholder: String,
+    /// 标题模式：整条标题即编辑入口——无浮动标签、固定 20px 行高（编辑不撑卡）、
+    /// 输入框同字号并轻微缩小，底部横条标示编辑态。用于卡牌标题（用户名）。
+    #[props(default)]
+    title_mode: bool,
 ) -> Element {
     // 卡内草稿：展示态显示它，编辑态输入写它；挂载时以外部值播种。
     let mut draft = use_signal(|| value.clone());
@@ -157,8 +172,26 @@ pub fn InlineEdit(
         "px-2 py-1.5 transition-all duration-200 opacity-0 -translate-y-1"
     };
 
+    // 标题模式 chrome：固定 20px 行高容器 + 绝对定位编辑块/横条（不占布局，
+    // 编辑不撑卡）；行模式维持原浮动标签 + 流内编辑块。
+    let root_class = if title_mode {
+        "relative flex h-5 items-center"
+    } else {
+        "relative"
+    };
+    let title_edit_class = if bar_in() {
+        "absolute inset-x-0 bottom-0 h-5 transition-all duration-200 opacity-100"
+    } else {
+        "absolute inset-x-0 bottom-0 h-5 transition-all duration-200 opacity-0"
+    };
+    let title_bar_class = if bar_in() {
+        "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-100"
+    } else {
+        "absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-zinc-100 transition-transform duration-200 scale-x-0"
+    };
+
     rsx! {
-        div { class: "relative", id: "{testid}-row",
+        div { class: "{root_class}", id: "{testid}-row",
             // Escape 收关：焦点在行内任意节点按键均可（冒泡到本容器）。
             onkeydown: move |e: KeyboardEvent| {
                 if editing() && e.key() == Key::Escape {
@@ -168,10 +201,12 @@ pub fn InlineEdit(
             },
             if editing() {
                 // 编辑态：标签浮动缩小到头顶 → 无盒型边框输入框 → 底部横条（展开动画）。
-                div { class: "{enter_class}",
-                    span { class: INLINE_LABEL_FLOAT_CLASS, "{label}" }
+                div { class: if title_mode { "{title_edit_class}" } else { "{enter_class}" },
+                    if !title_mode {
+                        span { class: INLINE_LABEL_FLOAT_CLASS, "{label}" }
+                    }
                     input {
-                        class: INLINE_INPUT_CLASS,
+                        class: if title_mode { INLINE_TITLE_INPUT_CLASS } else { INLINE_INPUT_CLASS },
                         "data-testid": "{testid}-input",
                         "aria-label": "{label}",
                         value: "{draft}",
@@ -189,12 +224,25 @@ pub fn InlineEdit(
                         },
                     }
                     // 底部横条：2px，从中心展开（scaleX 0→1）；Quasar standard 的
-                    // control:after（--highlighted 时 scaleX(1)）。
+                    // control:after（--highlighted 时 scaleX(1)）。标题模式绝对定位
+                    // 贴在标题行底边（不占布局）。
                     div {
-                        class: "{bar_class}",
+                        class: if title_mode { "{title_bar_class}" } else { "{bar_class}" },
                         "data-testid": "{testid}-bar",
                         "aria-hidden": "true",
                     }
+                }
+            } else if title_mode {
+                // 标题模式展示态：整条标题即编辑入口（与静态标题同字号同款）。
+                button {
+                    class: "{INLINE_TITLE_ROW_CLASS} {CARD_TITLE_CLASS}",
+                    "data-testid": "{testid}",
+                    "aria-label": "{label}",
+                    onclick: move |_| {
+                        stash.set(draft());
+                        editing.set(true);
+                    },
+                    span { class: "truncate", "{display}" }
                 }
             } else {
                 // 展示态：整行可点；行 class 与卡内其他只读行逐字对齐（批注：对不齐）。
