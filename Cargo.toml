@@ -97,8 +97,6 @@ lto           = "fat"
 codegen-units = 1
 strip         = true
 
-# dev 依赖 opt-level=1：编译成本与运行时的甜点（0 编译更快但 dev 运行慢一档，
-# onig/regex 重路径尤其明显；本机已 cargo clean 过，按维护者决定保持 1）
 [profile.dev.package."*"]
 opt-level = 1
 
