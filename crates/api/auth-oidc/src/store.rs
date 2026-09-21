@@ -77,7 +77,7 @@ impl AuthStateStore {
         .await?;
 
         // 顺手清过期行（低频操作，全表扫可接受；行数随授权流量增长，
-        // 若成负担再改定时任务，见 TODO(#0)）。
+        // 若成负担再改定时任务，见 TODO(#245)）。
         let _ = sqlx::query("DELETE FROM oidc_auth_states WHERE expires_at < now()")
             .execute(&self.pool)
             .await;
