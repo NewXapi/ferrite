@@ -92,6 +92,7 @@ uuid        = { version = "1", features = ["serde", "v4", "v7"] }
 base64      = "0.22"
 
 [profile.release]
+opt-level    = 3     # 显式钉死：3 = 最快（默认值）；"s"/"z" 是体积优化，本仓库不要
 lto           = "fat"
 codegen-units = 1
 strip         = true

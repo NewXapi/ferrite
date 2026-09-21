@@ -9,6 +9,7 @@
 use dioxus::prelude::*;
 
 use crate::icons::{IconChartBar, IconSettings, IconUser};
+use crate::on_tab_wheel;
 
 /// Rail 容器：窄列、边框分隔、纵向排布；移动端隐藏。
 const RAIL_CLASS: &str = "hidden h-svh w-14 shrink-0 flex-col items-center border-r border-zinc-800 bg-zinc-950 py-3 md:flex";
@@ -44,6 +45,8 @@ pub fn SectionRail(
             aria_label: "主导航",
             nav {
                 class: "flex flex-col items-center gap-1",
+                // 滚轮竖向滚动 → 循环切换 section(末项绕回首项)
+                onwheel: move |e: WheelEvent| on_tab_wheel(e, sections.len(), active_index, |i| on_select.call(i)),
                 for (label, idx) in sections {
                     button {
                         key: "{idx}",
