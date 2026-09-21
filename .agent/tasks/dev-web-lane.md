@@ -76,6 +76,15 @@ git commit -m "feat(web): <同上的干净 message>"
 git push origin web-dev && git branch -d feat/xxx
 ```
 
+**commit 闸门两个坑（实测踩过）**：
+
+- **陈旧 `COMMIT_EDITMSG`**：pre-commit hook 在 git 写入新 `-m` 消息**之前**就读
+  `.git/COMMIT_EDITMSG`——上一个手工/merge commit 的旧消息会被当成你的验，报 phantom
+  CM-01 FAIL。提交前先刷新：`printf '<你的消息>\n' > .git/COMMIT_EDITMSG` 再
+  `git commit -F .git/COMMIT_EDITMSG`（或先 `git commit --dry-run -m "..."` 刷文件）。
+- **main 上标题必须英文**（CM-02 在 main 是 FAIL，在车道分支只是 WARN）：中文标题在
+  feat/webfix/web-dev 上随便写，发布 PR 的 commit（含 squash 进 web-dev 的）用英文。
+
 推之前本地过闸门（pre-commit/push 钩子会自己跑；主动预检）：
 
 ```bash
