@@ -117,7 +117,7 @@ pub fn RewardsPage() -> impl IntoView {
                             <div class="p-5">
                                 <div class="flex items-center gap-3">
                                     <div class="w-9 h-9 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center text-white font-medium text-lg">
-                                        {inv.name.chars().next().unwrap_or('"客')}"
+                                        {inv.name.chars().next().unwrap_or('客')}
                                     </div>
                                     <div class="flex-1">
                                         <div class="font-medium">{inv.name}</div>
@@ -154,7 +154,7 @@ pub fn RewardsPage() -> impl IntoView {
             </div>
 
             <Dialog title="邀请好友".to_string() open=open.get() on_confirm=move |_| open.set(false) on_cancel=move |_| open.set(false)>
-                <p class="text-zinc-400">"分享您的邀请码"<span class="font-mono text-white">{DEMO_AFF_CODE}</span> "，好友注册后双方均可获得奖励。"</p>
+                <p class="text-zinc-400">"分享您的邀请码 "<span class="font-mono text-white">{DEMO_AFF_CODE}</span>"，好友注册后双方均可获得奖励。"</p>
             </Dialog>
         </div>
     }
