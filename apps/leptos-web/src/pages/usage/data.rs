@@ -2,20 +2,20 @@ use leptos::prelude::*;
 use singlestage::*;
 use crate::ui::{CardGrid, Card, Dialog, DialogTrigger, CardHeader, CardTitle, CardContent};
 
-#[derive(Clone)]
-struct UsageLog {
-    id: &'static str,
-    model_name: &'static str,
-    token_name: &'static str,
-    channel_name: &'static str,
-    created_at: &'static str,
-    prompt_tokens: i64,
-    completion_tokens: i64,
-    use_time_ms: i64,
-    quota: i64,
-    is_stream: bool,
-    ip: &'static str,
-    request_id: &'static str,
+#[derive(Clone, Copy)]
+pub struct UsageLog {
+    pub id: &'static str,
+    pub model_name: &'static str,
+    pub token_name: &'static str,
+    pub channel_name: &'static str,
+    pub created_at: &'static str,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub use_time_ms: i64,
+    pub quota: i64,
+    pub is_stream: bool,
+    pub ip: &'static str,
+    pub request_id: &'static str,
 }
 
 
