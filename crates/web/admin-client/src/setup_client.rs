@@ -11,6 +11,22 @@ use crate::manage_auth_token::{AuthState, SharedAuthState, TokenFuture};
 /// 刷新成功后的竞态抑制窗口: 窗口内的 401 视为并发尾巴, 直接重试或跳过清理。
 const UNAUTHORIZED_SUPPRESS_WINDOW: Duration = Duration::from_secs(5);
 use crate::{ApiError, ApiResult, Envelope};
+/// 当前页面的 origin（如 `http://127.0.0.1:8090`），非 wasm 构建返回 None。
+/// 照 tab-page-rewards/invite_section.rs 的现成写法；抽出为模块函数供 ApiClient 复用。
+fn current_origin() -> Option<String> {
+    // ponytail: web_sys 只在 wasm target 有 window；非 wasm（单测）直接 None，
+    // ApiClient::new 回落空串，与原行为一致。
+    #[cfg(target_family = "wasm")]
+    {
+        web_sys::window()
+            .and_then(|w| w.location().origin().ok())
+            .filter(|s| !s.is_empty())
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        None
+    }
+}
 
 /// HTTP client for the New API backend with automatic Bearer token injection
 /// and one-shot 401 token refresh.
@@ -43,9 +59,16 @@ impl ApiClient {
         SHARED.with(|c| c.clone())
     }
 
-    /// Create a client for same-origin requests (empty `base_url`).
+    /// Create a client for same-origin requests.
+    ///
+    /// base_url 取 `window.location.origin` 而非空串：gloo-net 的
+    /// `Request::url()` 会对 url 调 `web_sys::Url::new`，该构造函数要求绝对
+    /// URL（相对路径必须带 base）。真 Chrome 的 fetch 会先用 document base
+    /// 把相对 URL 补全，obscura 不会——原样透传导致 `Invalid URL`，所有
+    /// API 调用（登录、EntityStore hydrate）全挂。这里产出绝对 URL 后两端
+    /// 行为一致，同源语义不变。非 wasm 构建（单测）没有 window，回落空串。
     pub fn new() -> Self {
-        Self::with_base_url("")
+        Self::with_base_url(current_origin().unwrap_or_default())
     }
 
     pub fn with_base_url(base_url: impl Into<String>) -> Self {

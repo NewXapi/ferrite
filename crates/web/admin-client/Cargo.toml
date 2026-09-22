@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 gloo-net = { workspace = true }
+web-sys = { version = "0.3", features = ["Window", "Location"] }
 http = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
