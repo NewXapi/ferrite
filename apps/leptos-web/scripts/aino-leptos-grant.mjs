@@ -6,9 +6,27 @@ import { homedir } from 'node:os';
 
 const SERVICE_USER_FILE = `${homedir()}/.ainotation/service/connection.json`;
 const OUT = '/home/hathaway/projects/ferrite/.wt/leptos-web/target/site/assets/ainotation/connection.json';
+const ADMIN_IIFE_SRC = '/home/hathaway/projects/ferrite/apps/admin-web/assets/ainotation/ainotation.iife.js';
+const TARGET_IIFE = '/home/hathaway/projects/ferrite/.wt/leptos-web/target/site/assets/ainotation/ainotation.iife.js';
 const PROJECT_NAME = 'ferrite-admin';
 const ORIGIN = 'http://127.0.0.1:8081';
 const RENEW_MS = 2 * 60 * 1000;
+
+async function ensureLeptosBundle() {
+  try {
+    let content = await readFile(ADMIN_IIFE_SRC, 'utf8');
+    // Patch discovery order to same-origin first (leptos grant) before bridge. Prevents 403 on /sessions sync.
+    // Matches the exact string baked into the admin-web bundle.
+    content = content.replace(
+      `["http://127.0.0.1:44090/connection.json","/assets/ainotation/connection.json"]`,
+      `["/assets/ainotation/connection.json","http://127.0.0.1:44090/connection.json"]`
+    );
+    await writeFile(TARGET_IIFE, content);
+    console.log('✓ leptos ainotation.iife.js copied from admin-web and patched (same-origin first)');
+  } catch (e) {
+    console.warn('bundle patch skipped:', e.message);
+  }
+}
 
 async function api(url, token, path, method = 'GET', body) {
   const res = await fetch(url + path, {
@@ -22,6 +40,8 @@ async function api(url, token, path, method = 'GET', body) {
 }
 
 async function main() {
+  await ensureLeptosBundle();
+
   // service 重启会换端口，url 与管理 token 都运行时读发现文件。
   const svc = JSON.parse(await readFile(SERVICE_USER_FILE, 'utf8'));
   const { url, token } = svc;

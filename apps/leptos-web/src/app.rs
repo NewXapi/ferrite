@@ -63,11 +63,17 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn Rail() -> impl IntoView {
+    // dioxus SectionPill：左侧竖排圆点，当前项拉成长条。
+    let items = ["总览", "账户", "管理"];
     view! {
-        <nav class="rail">
-            <span class="dot" title="总览"></span>
-            <span class="dot" title="账户"></span>
-            <span class="dot active" title="管理"></span>
+        <nav class="rail" aria-label="分区">
+            {items.into_iter().enumerate().map(|(i, label)| {
+                let on = i == 2;
+                view! {
+                    <button type="button" class=if on { "rail-dot on" } else { "rail-dot" }
+                        title=label aria-label=label></button>
+                }
+            }).collect_view()}
         </nav>
     }
 }
@@ -134,6 +140,7 @@ fn UsersPage() -> impl IntoView {
     });
 
     // 筛选后条数变小：clamp 到最后一页，不落空页（dioxus 同款策略）。
+    let editing = RwSignal::new(None::<String>);
     let visible = Memo::new(move |_| {
         let all = filtered.get();
         let pages = all.len().div_ceil(CARD_PAGE_SIZE).max(1);
@@ -166,7 +173,8 @@ fn UsersPage() -> impl IntoView {
                             on:click=move |_| users.refetch()>
                             "刷新"
                         </button>
-                        <button class="btn-primary" data-testid="new-user" type="button">
+                        <button class="btn-primary" data-testid="new-user" type="button"
+                            on:click=move |_| editing.set(Some(String::new()))>
                             "✚ 新建用户"
                         </button>
                     </div>
@@ -196,8 +204,9 @@ fn UsersPage() -> impl IntoView {
                         <Pager total=move || filtered.get().len() page=page />
                     </div>
                 </div>
-                <UserList users=users visible=visible />
+                <UserList users=users visible=visible editing=editing />
             </section>
+            {move || editing.get().map(|key| view! { <EditDialog key=key close=editing /> })}
         </div>
     }
 }
@@ -218,7 +227,6 @@ fn role_options() -> Vec<(&'static str, &'static str)> {
 fn StatCard(value: impl Fn() -> String + Send + 'static, label: &'static str) -> impl IntoView {
     view! {
         <div class="stat">
-
             <p class="stat-value">{value}</p>
             <p class="stat-label">{label}</p>
         </div>
@@ -227,7 +235,11 @@ fn StatCard(value: impl Fn() -> String + Send + 'static, label: &'static str) ->
 
 /// 列表区：加载中 / 空态 / 卡片网格三态，抽出独立组件避免 match 类型链过深。
 #[component]
-fn UserList(users: Resource<Vec<User>>, visible: Memo<Vec<User>>) -> impl IntoView {
+fn UserList(
+    users: Resource<Vec<User>>,
+    visible: Memo<Vec<User>>,
+    editing: RwSignal<Option<String>>,
+) -> impl IntoView {
     move || match users.get() {
         None => view! {
             <div class="placeholder" role="status">"正在加载用户…"</div>
@@ -243,7 +255,7 @@ fn UserList(users: Resource<Vec<User>>, visible: Memo<Vec<User>>) -> impl IntoVi
                     visible
                         .get()
                         .into_iter()
-                        .map(|user| view! { <UserCard user=user users=users /> })
+                        .map(|user| view! { <UserCard user=user users=users editing=editing /> })
                         .collect_view()
                 }}
             </div>
@@ -315,11 +327,16 @@ fn Pager(total: impl Fn() -> usize + Send + Sync + 'static, page: RwSignal<usize
 }
 
 /// 用户卡：对齐 dioxus ui::UserCard 的三页签结构
-/// （基本信息 / 额度 / 系统），外壳带圆点页签切换。
+/// （基本信息 / 额度 / 系统），外壳带文字页签切换。
 #[component]
-fn UserCard(user: User, users: Resource<Vec<User>>) -> impl IntoView {
+fn UserCard(
+    user: User,
+    users: Resource<Vec<User>>,
+    editing: RwSignal<Option<String>>,
+) -> impl IntoView {
     let user = RwSignal::new(user);
     let key = user.get().key;
+    let edit_key = key.clone();
     let tab = RwSignal::new(0usize);
     let toggle = ArcServerAction::<ToggleUser>::new();
     let tabs = ["基本信息", "额度", "系统"];
@@ -331,14 +348,15 @@ fn UserCard(user: User, users: Resource<Vec<User>>) -> impl IntoView {
                     <h3 class="name">{move || user.get().username.clone()}</h3>
                     <p class="muted email">{move || user.get().email.clone()}</p>
                 </div>
-                <div class="dot-tabs" role="group" aria-label="内容页签">
+                <div class="card-tabs" role="tablist" aria-label="内容页签">
                     {(0..tabs.len()).map(|i| {
                         let active = move || tab.get() == i;
                         view! {
-                            <button type="button" class=move || if active() { "dt on" } else { "dt" }
-                                aria-label=tabs[i]
-                                aria-pressed=active
+                            <button type="button" role="tab"
+                                class=move || if active() { "ct on" } else { "ct" }
+                                aria-selected=active
                                 on:click=move |_| tab.set(i)>
+                                {tabs[i]}
                             </button>
                         }
                     }).collect_view()}
@@ -366,9 +384,10 @@ fn UserCard(user: User, users: Resource<Vec<User>>) -> impl IntoView {
                                 }
                             }}
                         </div>
-                    </div>
-                    <div class="actions">
-                        <button type="button" class="act" data-testid="user-edit">"编辑"</button>
+                        <button type="button" class="act" data-testid="user-edit"
+                            on:click=move |_| editing.set(Some(edit_key.clone()))>
+                            "编辑"
+                        </button>
                         <button type="button" class="act green" data-testid="user-topup">"充值"</button>
                         <button type="button" class="act amber" data-testid="user-toggle"
                             on:click=move |_| {
@@ -400,26 +419,49 @@ fn UserCard(user: User, users: Resource<Vec<User>>) -> impl IntoView {
     }
 }
 
+/// 编辑弹窗。key 为空是新建。字段先只展示，保存还没接后端。
+#[component]
+fn EditDialog(key: String, close: RwSignal<Option<String>>) -> impl IntoView {
+    let title = if key.is_empty() { "新建用户" } else { "编辑用户" };
+    view! {
+        <div class="modal" role="dialog" aria-label=title>
+            <div class="modal-card">
+                <div class="modal-head">
+                    <h3>{title}</h3>
+                    <button type="button" class="btn-ghost" on:click=move |_| close.set(None)>"取消"</button>
+                </div>
+                <label>"用户名" <input class="search" type="text" /></label>
+                <label>"邮箱" <input class="search" type="text" /></label>
+                <label>"角色" <input class="search" type="text" /></label>
+                <div class="modal-actions">
+                    <button type="button" class="btn-primary">"保存"</button>
+                </div>
+            </div>
+        </div>
+    }
+}
 const STYLE: &str = r#"
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
-body {
-    margin: 0;
-    background: #09090b;
-    color: #e4e4e7;
-    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-.shell { display: flex; min-height: 100vh; }
+body { margin: 0; background: #09090b; color: #e4e4e7;
+    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
 .rail {
-    width: 44px;
-    background: #0f0f12;
-    display: flex; flex-direction: column; align-items: center;
-    padding-top: 12px; gap: 14px;
-    border-right: 1px solid #1f1f23;
+    position: fixed; left: 8px; top: 50%; transform: translateY(-50%);
+    z-index: 40;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 4px;
 }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: #2a2a30; cursor: pointer; }
-.dot.active { background: #fafafa; }
-.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.rail-dot {
+    width: 8px; height: 8px; border-radius: 999px; padding: 0; cursor: pointer;
+    background: rgba(63,63,70,.6); border: 1px solid rgba(255,255,255,.08);
+}
+.rail-dot.on {
+    width: 8px; height: 36px;
+    background: linear-gradient(#a1a1aa, #71717a);
+    border-color: rgba(255,255,255,.16);
+}
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; margin-left: 28px; }
+.shell { display: flex; min-height: 100vh; }
 .tabs {
     display: flex; gap: 4px; padding: 10px 16px 0;
     border-bottom: 1px solid #1f1f23; background: #0c0c0f;
@@ -493,15 +535,15 @@ body {
 .search::placeholder { color: #52525b; }
 .segments { display: flex; flex-direction: column; gap: 12px; }
 
-/* 胶囊分段（SegmentedCapsule） */
+/* 胶囊分段：贴内容宽度，不拉满整行。 */
 .chips {
-    display: flex; flex-wrap: wrap; overflow: hidden;
+    display: inline-flex; width: fit-content; overflow: hidden;
     border-radius: 999px; border: 1px solid #3f3f46; background: #09090b;
 }
 .chip {
-    min-width: 30%; flex: 1 1 0;
+    flex: 0 0 auto;
     border-right: 1px solid #27272a;
-    padding: 6px 12px; text-align: center;
+    padding: 4px 12px; text-align: center;
     font-size: 12px; color: #71717a;
     background: transparent; cursor: pointer; transition: background .15s;
 }
@@ -528,15 +570,20 @@ body {
 .card:hover { border-color: #52525b; background: #1f1f23; }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .card-title { min-width: 0; flex: 1; }
+.card-tabs { display: flex; gap: 2px; }
+.ct {
+    position: relative; padding: 2px 6px; font-size: 11px; cursor: pointer;
+    background: transparent; border: 0; color: #71717a;
+}
+.ct.on { color: #fafafa; }
+.ct.on::after {
+    content: ""; position: absolute; left: 6px; right: 6px; bottom: -2px;
+    height: 2px; background: #fafafa;
+}
 .name { margin: 0; font-size: 14px; font-weight: 500; color: #fafafa;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .email { margin: 2px 0 0; font-size: 11px; color: #71717a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dot-tabs { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
-.dt { width: 8px; height: 8px; border-radius: 50%; cursor: pointer;
-    border: 1px solid rgba(255,255,255,.4); background: transparent; padding: 0; }
-.dt:hover { border-color: rgba(255,255,255,.7); }
-.dt.on { background: #fff; border-color: #fff; }
 .card-body { margin-top: 12px; display: grid; grid-template-columns: 1fr; }
 .panel.on { grid-column: 1; grid-row: 1; }
 .panel.off { grid-column: 1; grid-row: 1; visibility: hidden; pointer-events: none; }
@@ -573,6 +620,20 @@ body {
 .pg-btn:hover:not(:disabled) { background: #27272a; }
 .pg-btn:disabled { opacity: .4; cursor: default; }
 .pg-btn.on { background: #fff; border-color: #fff; font-weight: 500; color: #18181b; }
-.bar { height: 6px; width: 100%; overflow: hidden; border-radius: 999px; background: #27272a; margin-top: 8px; }
+.modal {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55);
+}
+.modal-card {
+    width: min(420px, calc(100vw - 32px));
+    display: flex; flex-direction: column; gap: 12px;
+    border: 1px solid #3f3f46; background: #18181b;
+    border-radius: 12px; padding: 16px;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; }
+.modal-head h3 { margin: 0; font-size: 14px; }
+.modal-card label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #a1a1aa; }
+.modal-actions { display: flex; justify-content: flex-end; }
 .bar-fill { height: 100%; border-radius: 999px; background: #34d399; transition: width .2s; }
 "#;
