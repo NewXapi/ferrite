@@ -229,7 +229,7 @@ pub fn NetworkPage() -> impl IntoView {
                                                     </div>
                                                 </CardContent>
                                             </Card>
-                                        }}
+                                        }
                                     />
                                 }.into_view()
                             }
