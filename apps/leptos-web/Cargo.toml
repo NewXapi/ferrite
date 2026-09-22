@@ -12,8 +12,9 @@ name = "leptos-web"
 path = "src/main.rs"
 
 [dependencies]
-leptos      = { version = "=0.8.20", features = ["ssr"] }
-leptos_axum = "=0.8.10"
+leptos        = { version = "=0.8.20", features = ["ssr"] }
+leptos_router = "=0.8.15"
+leptos_axum   = "=0.8.10"
 axum        = { workspace = true }
 tokio       = { workspace = true, features = ["net"] }
 serde       = { workspace = true }

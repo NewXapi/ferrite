@@ -1,9 +1,15 @@
 mod app;
+mod users;
+
+use std::sync::Arc;
 
 use app::{shell, App};
-use axum::{routing::post, Router};
+use axum::Router;
 use leptos::config::get_configuration;
-use leptos_axum::{generate_route_list, handle_server_fns, LeptosRoutes};
+use leptos::prelude::*;
+use leptos_axum::{generate_route_list, LeptosRoutes};
+use tokio::sync::Mutex;
+use users::PageState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -13,12 +19,22 @@ async fn main() -> anyhow::Result<()> {
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(App);
 
+    // 用户列表活在进程里：筛选是只读的，启停通过 server function 改它。
+    let state = Arc::new(Mutex::new(PageState::fresh()));
+
     let app = Router::new()
-        .route("/api/{*fn_name}", post(handle_server_fns))
-        .leptos_routes(&leptos_options, routes, {
-            let leptos_options = leptos_options.clone();
-            move || shell(leptos_options.clone())
-        })
+        .leptos_routes_with_context(
+            &leptos_options,
+            routes,
+            {
+                let state = state.clone();
+                move || provide_context(state.clone())
+            },
+            {
+                let leptos_options = leptos_options.clone();
+                move || shell(leptos_options.clone())
+            },
+        )
         .fallback(leptos_axum::file_and_error_handler(shell))
         .with_state(leptos_options);
 
