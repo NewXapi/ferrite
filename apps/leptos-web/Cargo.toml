@@ -32,6 +32,7 @@ csr = [
     "leptos/hydrate",
     "dep:wasm-bindgen",
     "dep:console_error_panic_hook",
+    "dep:server_fn",
 ]
 [dependencies]
 leptos        = { version = "=0.8.20" }
@@ -41,6 +42,7 @@ serde         = { workspace = true }
 anyhow        = { workspace = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen  = { version = "=0.2.128", optional = true }
+server_fn     = { version = "=0.8.13", optional = true }
 
 axum   = { workspace = true, optional = true }
 tokio  = { workspace = true, optional = true, features = ["net", "rt-multi-thread", "macros"] }

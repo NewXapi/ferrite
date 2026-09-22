@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 //! 客户端入口。wasm32 编译，由 `HydrationScripts` 在浏览器里启动，
 //! 接管 SSR 渲染出的 DOM，之后交互全在客户端。
 

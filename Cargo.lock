@@ -3758,6 +3758,7 @@ dependencies = [
  "leptos_axum",
  "leptos_router",
  "serde",
+ "server_fn",
  "tokio",
  "wasm-bindgen",
 ]

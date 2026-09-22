@@ -1,15 +1,23 @@
-//! 复刻 admin-web 的控制台壳 + 用户页。
-//!
-//! Hydration 版：首屏 SSR 吐 HTML，之后筛选/启停全在客户端信号上，
-//! 不刷页面。样式内联在 shell 里，无构建步骤。
+//! 用户页布局：对齐 dioxus admin-page-users 的三区结构
+//! （统计 / 筛选 / 卡片网格），视觉口径取 ui-components 的 Tailwind class 语义。
+//! leptos 项目无 Tailwind，STYLE 里用等价 CSS 落同一套几何与配色。
 
 use std::sync::Arc;
 
 use leptos::prelude::*;
-use leptos::server_fn::ServerFn;
+#[cfg(feature = "csr")]
+use server_fn::ServerFn;
 
-use crate::users::{cny, Filter, ListUsers, PageState, ToggleUser, User};
+#[cfg(feature = "ssr")]
+use leptos::config::LeptosOptions;
+#[cfg(feature = "ssr")]
+use leptos::hydration::{AutoReload, HydrationScripts};
 
+#[cfg(feature = "ssr")]
+use crate::users::PageState;
+use crate::users::{cny, Filter, ListUsers, ToggleUser, User};
+
+#[cfg(feature = "ssr")]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
@@ -21,6 +29,9 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <HydrationScripts options />
                 <title>"Ferrite · admin (Leptos)"</title>
                 <style>{STYLE}</style>
+                // ponytail: 标注 SDK 同源加载；grant 由 scripts/aino-leptos-grant.mjs
+                // 签给 origin 8081，写到 site/assets/ainotation/connection.json。
+                <script src="/assets/ainotation/ainotation.iife.js"></script>
             </head>
             <body>
                 <App />
@@ -28,6 +39,8 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
         </html>
     }
 }
+
+const CARD_PAGE_SIZE: usize = 15;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -100,6 +113,8 @@ fn UsersPage() -> impl IntoView {
         },
     );
     let filter = RwSignal::new(Filter::default());
+    let search = RwSignal::new(String::new());
+    let page = RwSignal::new(0usize);
 
     let filtered = Memo::new(move |_| {
         users
@@ -118,28 +133,71 @@ fn UsersPage() -> impl IntoView {
         (total, enabled, fresh, cny(granted), cny(consumed))
     });
 
-    view! {
-        <h2>"统计"</h2>
-        <div class="stats">
-            <StatCard value=move || stats.get().0.to_string() label="总用户" />
-            <StatCard value=move || stats.get().1.to_string() label="启用中" />
-            <StatCard value=move || stats.get().2.to_string() label="本月新增" />
-            <StatCard value=move || stats.get().3.clone() label="已发放额度" />
-            <StatCard value=move || stats.get().4.clone() label="已消耗额度" />
-            <Chips name="group" current=Arc::new(move || filter.get().group) options=group_options() on_pick=Arc::new(move |v| filter.update(|f| f.group = v)) />
-            <Chips name="status" current=Arc::new(move || filter.get().status) options=status_options() on_pick=Arc::new(move |v| filter.update(|f| f.status = v)) />
-            <Chips name="role" current=Arc::new(move || filter.get().role) options=role_options() on_pick=Arc::new(move |v| filter.update(|f| f.role = v)) />
-        </div>
+    // 筛选后条数变小：clamp 到最后一页，不落空页（dioxus 同款策略）。
+    let visible = Memo::new(move |_| {
+        let all = filtered.get();
+        let pages = all.len().div_ceil(CARD_PAGE_SIZE).max(1);
+        let clamped = page.get().min(pages - 1);
+        let start = clamped * CARD_PAGE_SIZE;
+        all[start..(start + CARD_PAGE_SIZE).min(all.len())].to_vec()
+    });
 
-        <h2>"用户列表 " <span class="count">{move || format!("{} 人", filtered.get().len())}</span></h2>
-        <div class="cards">
-            {move || {
-                filtered
-                    .get()
-                    .into_iter()
-                    .map(|user| view! { <UserCard user=user users=users /> })
-                    .collect_view()
-            }}
+    view! {
+        <div class="users-panel" data-testid="users-panel">
+            // 1. 统计区：手机 1 栏 / 平板 3 栏 / 大屏 5 栏
+            <section class="sec" id="users-sec-stats">
+                <h2>"用户概览"</h2>
+                <div class="stats">
+                    <StatCard value=move || stats.get().0.to_string() label="总用户" />
+                    <StatCard value=move || stats.get().1.to_string() label="启用中" />
+                    <StatCard value=move || stats.get().2.to_string() label="本月新增" />
+                    <StatCard value=move || stats.get().3.clone() label="总发放额度" />
+                    <StatCard value=move || stats.get().4.clone() label="总消耗" />
+                </div>
+            </section>
+
+            // 2. 筛选区
+            <section class="sec filter" id="users-sec-filter">
+                <div class="filter-head">
+                    <h2 class="filter-title">"筛选用户"</h2>
+                    <div class="filter-btns">
+                        <button class="btn-ghost" data-testid="refresh-users"
+                            type="button"
+                            on:click=move |_| users.refetch()>
+                            "刷新"
+                        </button>
+                        <button class="btn-primary" data-testid="new-user" type="button">
+                            "✚ 新建用户"
+                        </button>
+                    </div>
+                </div>
+
+                <input class="search" type="text" placeholder="搜索用户名或邮箱"
+                    data-testid="users-search"
+                    prop:value=move || search.get()
+                    on:input=move |e| search.set(leptos::leptos_dom::helpers::event_target_value(&e)) />
+
+                <div class="segments">
+                    <Chips name="group" current=Arc::new(move || filter.get().group)
+                        options=group_options() on_pick=Arc::new(move |v| filter.update(|f| f.group = v)) />
+                    <Chips name="status" current=Arc::new(move || filter.get().status)
+                        options=status_options() on_pick=Arc::new(move |v| filter.update(|f| f.status = v)) />
+                    <Chips name="role" current=Arc::new(move || filter.get().role)
+                        options=role_options() on_pick=Arc::new(move |v| filter.update(|f| f.role = v)) />
+                </div>
+            </section>
+
+            // 3. 用户卡片网格
+            <section class="sec" id="users-sec-list">
+                <div class="sec-head">
+                    <h2>"用户列表"</h2>
+                    <div class="sec-trailing">
+                        <span class="badge">{move || format!("{} 人", filtered.get().len())}</span>
+                        <Pager total=move || filtered.get().len() page=page />
+                    </div>
+                </div>
+                <UserList users=users visible=visible />
+            </section>
         </div>
     }
 }
@@ -160,13 +218,42 @@ fn role_options() -> Vec<(&'static str, &'static str)> {
 fn StatCard(value: impl Fn() -> String + Send + 'static, label: &'static str) -> impl IntoView {
     view! {
         <div class="stat">
-            <div class="stat-value">{value}</div>
-            <div class="stat-label">{label}</div>
+
+            <p class="stat-value">{value}</p>
+            <p class="stat-label">{label}</p>
         </div>
     }
 }
 
+/// 列表区：加载中 / 空态 / 卡片网格三态，抽出独立组件避免 match 类型链过深。
+#[component]
+fn UserList(users: Resource<Vec<User>>, visible: Memo<Vec<User>>) -> impl IntoView {
+    move || match users.get() {
+        None => view! {
+            <div class="placeholder" role="status">"正在加载用户…"</div>
+        }
+        .into_any(),
+        Some(list) if list.is_empty() => view! {
+            <div class="placeholder" role="status">"没有匹配的用户"</div>
+        }
+        .into_any(),
+        Some(_) => view! {
+            <div class="cards" role="list" aria-label="用户列表">
+                {move || {
+                    visible
+                        .get()
+                        .into_iter()
+                        .map(|user| view! { <UserCard user=user users=users /> })
+                        .collect_view()
+                }}
+            </div>
+        }
+        .into_any(),
+    }
+}
+
 /// 一组筛选胶囊。点击只改客户端信号，不提交表单、不刷页面。
+/// 对齐 dioxus SegmentedCapsule：圆角分段条，选中项白底。
 #[component]
 fn Chips(
     name: &'static str,
@@ -175,16 +262,19 @@ fn Chips(
     on_pick: Arc<dyn Fn(String) + Send + Sync>,
 ) -> impl IntoView {
     view! {
-        <div class="chips" data-name=name>
+        <div class="chips" data-name=name role="group" aria-label=name>
             {options
                 .into_iter()
                 .map(|(value, label)| {
                     let cur = current.clone();
+                    let cur2 = current.clone();
                     let pick = on_pick.clone();
                     view! {
                         <button
                             type="button"
-                            class=move || if cur() == value { "chip on" } else { "chip" }
+                            role="tab"
+                            aria-selected=move || cur() == value
+                            class=move || if cur2() == value { "chip on" } else { "chip" }
                             on:click=move |_| pick(value.to_string())
                         >
                             {label}
@@ -196,36 +286,115 @@ fn Chips(
     }
 }
 
+/// 分页器：总条数不超过一页时不渲染；当前页白底高亮。
+#[component]
+fn Pager(total: impl Fn() -> usize + Send + Sync + 'static, page: RwSignal<usize>) -> impl IntoView {
+    let pages = Memo::new(move |_| total().div_ceil(CARD_PAGE_SIZE).max(1));
+    let current = Memo::new(move |_| page.get().min(pages.get() - 1));
+
+    view! {
+        <nav class="pager" role="navigation" aria-label="分页">
+            {move || {
+                let n = pages.get();
+                let cur = current.get();
+                (0..n).map(move |i| {
+                    let on = i == cur;
+                    view! {
+                        <button type="button"
+                            class=if on { "pg-btn on" } else { "pg-btn" }
+                            aria-current=if on { "page" } else { "false" }
+                            disabled=on
+                            on:click=move |_| page.set(i)>
+                            {i + 1}
+                        </button>
+                    }
+                }).collect_view()
+            }}
+        </nav>
+    }
+}
+
+/// 用户卡：对齐 dioxus ui::UserCard 的三页签结构
+/// （基本信息 / 额度 / 系统），外壳带圆点页签切换。
 #[component]
 fn UserCard(user: User, users: Resource<Vec<User>>) -> impl IntoView {
     let user = RwSignal::new(user);
     let key = user.get().key;
+    let tab = RwSignal::new(0usize);
     let toggle = ArcServerAction::<ToggleUser>::new();
+    let tabs = ["基本信息", "额度", "系统"];
 
     view! {
-        <article class="card">
+        <article class="card" role="region" aria-label=move || user.get().username.clone()>
             <div class="card-head">
-                <span class="name">{move || user.get().username.clone()}</span>
-                <span class=move || if user.get().enabled() { "badge on" } else { "badge" }>
-                    {move || if user.get().enabled() { "启用" } else { "停用" }}
-                </span>
+                <div class="card-title">
+                    <h3 class="name">{move || user.get().username.clone()}</h3>
+                    <p class="muted email">{move || user.get().email.clone()}</p>
+                </div>
+                <div class="dot-tabs" role="group" aria-label="内容页签">
+                    {(0..tabs.len()).map(|i| {
+                        let active = move || tab.get() == i;
+                        view! {
+                            <button type="button" class=move || if active() { "dt on" } else { "dt" }
+                                aria-label=tabs[i]
+                                aria-pressed=active
+                                on:click=move |_| tab.set(i)>
+                            </button>
+                        }
+                    }).collect_view()}
+                </div>
             </div>
-            <div class="muted">{move || user.get().email.clone()}</div>
-            <div class="meta">{move || format!("{} · {}", user.get().role_label(), user.get().groups.join(" / "))}</div>
-            <div class="muted">{move || format!("额度 {} · 已用 {}", cny(user.get().quota), cny(user.get().used_quota))}</div>
-            <div class="actions">
-                <button type="button" class="act">"编辑"</button>
-                <button type="button" class="act green">"充值"</button>
-                <button
-                    type="button"
-                    class="act amber"
-                    on:click=move |_| {
-                        toggle.dispatch(ToggleUser { key: key.clone() });
-                        users.refetch();
-                    }
-                >
-                    {move || if user.get().enabled() { "停用" } else { "启用" }}
-                </button>
+
+            <div class="card-body">
+                // ponytail: 三页签同格叠加，容器高度取最高者，切页签不跳动。
+                <div class=move || if tab.get() == 0 { "panel on" } else { "panel off" }>
+                    <div class="kv"><span>"用户名"</span><span class="val">{move || user.get().username.clone()}</span></div>
+                    <div class="kv"><span>"邮箱"</span><span class="val">{move || user.get().email.clone()}</span></div>
+                    <div class="kv"><span>"角色"</span><span class="val">{move || user.get().role_label()}</span></div>
+                    <div class="kv"><span>"状态"</span><span class="val">{move || if user.get().enabled() { "启用" } else { "停用" }}</span></div>
+                    <div class="groups">
+                        <p class="groups-label">"分组"</p>
+                        <div class="group-list">
+                            {move || {
+                                let g = user.get().groups.clone();
+                                if g.is_empty() {
+                                    vec![view! { <span class="group-empty">"无分组"</span> }.into_any()]
+                                } else {
+                                    g.into_iter()
+                                        .map(|name| view! { <span class="group-chip">{name}</span> }.into_any())
+                                        .collect()
+                                }
+                            }}
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button type="button" class="act" data-testid="user-edit">"编辑"</button>
+                        <button type="button" class="act green" data-testid="user-topup">"充值"</button>
+                        <button type="button" class="act amber" data-testid="user-toggle"
+                            on:click=move |_| {
+                                toggle.dispatch(ToggleUser { key: key.clone() });
+                                users.refetch();
+                            }>
+                            {move || if user.get().enabled() { "停用" } else { "启用" }}
+                        </button>
+                    </div>
+                </div>
+                <div class=move || if tab.get() == 1 { "panel on" } else { "panel off" }>
+                    <div class="kv"><span>"已用"</span><span class="val">{move || cny(user.get().used_quota)}</span></div>
+                    <div class="kv"><span>"总额"</span><span class="val">{move || cny(user.get().quota)}</span></div>
+                    <div class="bar">
+                        <div class="bar-fill"
+                            style:width=move || format!("{:.1}%",
+                                if user.get().quota > 0 {
+                                    (user.get().used_quota as f64 / user.get().quota as f64 * 100.0).min(100.0)
+                                } else { 0.0 })>
+                        </div>
+                    </div>
+                </div>
+                <div class=move || if tab.get() == 2 { "panel on" } else { "panel off" }>
+                    <div class="kv"><span>"Key"</span><span class="val mono">{move || user.get().key.chars().take(8).collect::<String>()}</span></div>
+                    <div class="kv"><span>"创建"</span><span class="val">{move || user.get().created_at.clone()}</span></div>
+                </div>
             </div>
         </article>
     }
@@ -236,104 +405,174 @@ const STYLE: &str = r#"
 * { box-sizing: border-box; }
 body {
     margin: 0;
-    background: #0b0e14;
-    color: #e6e9f0;
+    background: #09090b;
+    color: #e4e4e7;
     font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 .shell { display: flex; min-height: 100vh; }
 .rail {
     width: 44px;
-    background: #11151d;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding-top: 12px;
-    gap: 14px;
-    border-right: 1px solid #1c2230;
+    background: #0f0f12;
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: 12px; gap: 14px;
+    border-right: 1px solid #1f1f23;
 }
-.dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: #2a3142; cursor: pointer;
-}
-.dot.active { background: #60a5fa; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #2a2a30; cursor: pointer; }
+.dot.active { background: #fafafa; }
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .tabs {
     display: flex; gap: 4px; padding: 10px 16px 0;
-    border-bottom: 1px solid #1c2230;
-    background: #0e1219;
+    border-bottom: 1px solid #1f1f23; background: #0c0c0f;
 }
-.tab {
-    padding: 8px 12px; color: #8b93a7; cursor: pointer;
-    border-bottom: 2px solid transparent;
-}
-.tab.active { color: #e6e9f0; border-bottom-color: #60a5fa; }
+.tab { padding: 8px 12px; color: #71717a; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab.active { color: #fafafa; border-bottom-color: #fafafa; }
 .panel { margin: 16px; flex: 1; }
 .panel-bar {
     height: 34px; padding: 0 14px;
     display: flex; align-items: center;
-    background: #141925; color: #aab3c5;
-    border: 1px solid #1c2230; border-bottom: none;
+    background: #111113; color: #a1a1aa;
+    border: 1px solid #1f1f23; border-bottom: none;
     border-radius: 10px 10px 0 0;
 }
 .panel-body {
     padding: 16px;
-    background: #0f131c;
-    border: 1px solid #1c2230;
+    background: #0c0c0f;
+    border: 1px solid #1f1f23;
     border-radius: 0 0 10px 10px;
 }
-.status {
-    padding: 8px 16px; color: #5b6478; font-size: 12px;
-    border-top: 1px solid #1c2230; background: #0e1219;
-}
-h2 { font-size: 15px; margin: 20px 0 10px; }
-.count { color: #60a5fa; font-weight: 400; }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.status { padding: 8px 16px; color: #52525b; font-size: 12px; border-top: 1px solid #1f1f23; background: #0c0c0f; }
+
+/* —— 用户页三区 —— */
+.users-panel { display: flex; flex-direction: column; gap: 24px; }
+.sec { display: flex; flex-direction: column; gap: 12px; }
+.sec h2, .filter-title { font-size: 15px; font-weight: 500; color: #fafafa; margin: 0; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.sec-trailing { display: flex; align-items: center; gap: 8px; }
+.badge { border-radius: 999px; background: #27272a; padding: 2px 12px; font-size: 12px; color: #a1a1aa; }
+
+/* 统计区：手机 1 栏 / 平板 3 栏 / 大屏 5 栏 */
+.stats { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 768px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1024px) { .stats { grid-template-columns: repeat(5, 1fr); } }
 .stat {
-    background: #141925; border: 1px solid #1c2230;
-    border-radius: 10px; padding: 12px 14px;
+    border: 1px solid #27272a; background: #18181b;
+    border-radius: 12px; padding: 12px 16px;
+    transition: border-color .15s;
 }
-.stat-value { font-size: 20px; font-weight: 600; }
-.stat-label { color: #8b93a7; margin-top: 2px; }
+.stat:hover { border-color: #3f3f46; }
+.stat-value { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: #fff; }
+.stat-label { margin: 2px 0 0; font-size: 12px; color: #71717a; }
+
+/* 筛选区 */
 .filter {
-    margin: 16px 0; padding: 14px;
-    background: #141925; border: 1px solid #1c2230; border-radius: 10px;
+    gap: 16px;
+    border: 1px solid #27272a; background: #18181b;
+    border-radius: 12px; padding: 20px;
 }
-.filter-title { color: #8b93a7; margin-bottom: 10px; }
-.filter input {
-    width: 100%; padding: 7px 10px;
-    background: #0b0e14; color: #e6e9f0;
-    border: 1px solid #232b3d; border-radius: 8px;
+.filter-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.filter-btns { display: flex; gap: 8px; }
+.btn-ghost {
+    flex-shrink: 0; border-radius: 10px; border: 1px solid #3f3f46;
+    padding: 6px 12px; font-size: 12px; color: #d4d4d8;
+    background: transparent; cursor: pointer; transition: background .15s;
 }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.btn-ghost:hover { background: #27272a; }
+.btn-primary {
+    flex-shrink: 0; border-radius: 10px; border: none;
+    padding: 6px 16px; font-size: 12px; font-weight: 500;
+    background: #fff; color: #18181b; cursor: pointer; transition: background .15s;
+}
+.btn-primary:hover { background: #e4e4e7; }
+.search {
+    width: 100%; padding: 8px 16px;
+    background: #09090b; color: #fafafa;
+    border: 1px solid #3f3f46; border-radius: 10px;
+    outline: none; font: inherit; transition: border-color .15s;
+}
+.search:focus { border-color: #71717a; }
+.search::placeholder { color: #52525b; }
+.segments { display: flex; flex-direction: column; gap: 12px; }
+
+/* 胶囊分段（SegmentedCapsule） */
+.chips {
+    display: flex; flex-wrap: wrap; overflow: hidden;
+    border-radius: 999px; border: 1px solid #3f3f46; background: #09090b;
+}
 .chip {
-    padding: 4px 12px; border-radius: 999px;
-    background: #0b0e14; color: #8b93a7;
-    border: 1px solid #232b3d; cursor: pointer;
+    min-width: 30%; flex: 1 1 0;
+    border-right: 1px solid #27272a;
+    padding: 6px 12px; text-align: center;
+    font-size: 12px; color: #71717a;
+    background: transparent; cursor: pointer; transition: background .15s;
 }
-.chip.on { background: #1d2b45; color: #93c5fd; border-color: #2f4a7a; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.chip:last-child { border-right: none; }
+.chip:hover { background: #27272a; color: #e4e4e7; }
+.chip.on { background: #f4f4f5; color: #18181b; font-weight: 500; }
+
+/* 卡片网格：1 / 3 / 5 列 */
+.cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 768px) { .cards { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1024px) { .cards { grid-template-columns: repeat(5, 1fr); } }
+.placeholder {
+    border: 1px dashed #3f3f46; background: #18181b;
+    border-radius: 12px; padding: 64px 16px; text-align: center; color: #71717a;
+}
+
+/* 用户卡（AdminCard 外壳） */
 .card {
-    background: #141925; border: 1px solid #1c2230;
-    border-radius: 10px; padding: 14px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    border: 1px solid #27272a; background: #18181b;
+    border-radius: 12px; padding: 16px;
+    transition: border-color .2s, background .2s;
 }
-.card-head {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 6px;
+.card:hover { border-color: #52525b; background: #1f1f23; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.card-title { min-width: 0; flex: 1; }
+.name { margin: 0; font-size: 14px; font-weight: 500; color: #fafafa;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.email { margin: 2px 0 0; font-size: 11px; color: #71717a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot-tabs { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
+.dt { width: 8px; height: 8px; border-radius: 50%; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.4); background: transparent; padding: 0; }
+.dt:hover { border-color: rgba(255,255,255,.7); }
+.dt.on { background: #fff; border-color: #fff; }
+.card-body { margin-top: 12px; display: grid; grid-template-columns: 1fr; }
+.panel.on { grid-column: 1; grid-row: 1; }
+.panel.off { grid-column: 1; grid-row: 1; visibility: hidden; pointer-events: none; }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.kv > span:first-child { color: #71717a; }
+.kv .val { font-weight: 500; color: #e4e4e7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.groups { margin-top: 10px; }
+.groups-label { margin: 0 0 6px; font-size: 11px; color: #71717a; }
+.group-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-chip {
+    border: 1px solid #3f3f46; background: #27272a;
+    border-radius: 999px; padding: 1px 8px; font-size: 11px; color: #d4d4d8;
 }
-.name { font-weight: 600; }
-.badge {
-    font-size: 12px; padding: 1px 8px; border-radius: 999px;
-    background: #2a2118; color: #fbbf24;
-}
-.badge.on { background: #14261c; color: #34d399; }
-.muted { color: #8b93a7; font-size: 12px; margin-top: 2px; }
-.meta { margin-top: 6px; }
-.actions { display: flex; gap: 6px; margin-top: 12px; }
+.group-empty { font-size: 11px; color: #52525b; }
+.actions { display: flex; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #27272a; }
 .act {
-    padding: 4px 12px; border-radius: 8px;
-    background: #0b0e14; color: #aab3c5;
-    border: 1px solid #232b3d; cursor: pointer;
+    flex: 1; border-radius: 8px; border: 1px solid #3f3f46;
+    background: #27272a; padding: 6px 0; font-size: 12px; font-weight: 500;
+    color: #d4d4d8; cursor: pointer; transition: background .15s;
 }
+.act:hover { background: #3f3f46; color: #fff; }
 .act.green { color: #34d399; }
+.act.green:hover { color: #6ee7b7; }
 .act.amber { color: #fbbf24; }
+.act.amber:hover { color: #fcd34d; }
+
+/* 分页器 */
+.pg-btn {
+    border-radius: 8px; border: 1px solid #3f3f46;
+    padding: 2px 8px; font-size: 11px; color: #d4d4d8;
+    background: transparent; cursor: pointer; transition: background .15s;
+}
+.pg-btn:hover:not(:disabled) { background: #27272a; }
+.pg-btn:disabled { opacity: .4; cursor: default; }
+.pg-btn.on { background: #fff; border-color: #fff; font-weight: 500; color: #18181b; }
+.bar { height: 6px; width: 100%; overflow: hidden; border-radius: 999px; background: #27272a; margin-top: 8px; }
+.bar-fill { height: 100%; border-radius: 999px; background: #34d399; transition: width .2s; }
 "#;
