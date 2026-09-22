@@ -44,17 +44,37 @@ const CARD_PAGE_SIZE: usize = 15;
 
 #[component]
 pub fn App() -> impl IntoView {
+    // 0 总览 / 1 账户 / 2 管理。截图里 dioxus 停在总览。
+    let section = RwSignal::new(0usize);
+    let tab = RwSignal::new(0usize);
+    let tabs = Memo::new(move |_| match section.get() {
+        0 => vec!["总览", "模型", "排行榜"],
+        1 => vec!["密钥·资料", "用量·日志", "邀请·奖励", "会话", "设置"],
+        _ => vec!["网络", "用户", "分组", "别名", "渠道", "订阅", "兑换", "系统", "网关健康", "货币"],
+    });
     view! {
         <div class="shell">
-            <Rail />
+            <Rail active=section on_select=move |i| { section.set(i); tab.set(0); } />
             <div class="main">
-                <TopBar />
-                <section class="panel">
-                    <div class="panel-bar">"Ferrite · admin"</div>
-                    <div class="panel-body">
-                        <UsersPage />
-                    </div>
-                </section>
+                <div class="top">
+                    <nav class="tabs" aria-label="页面导航">
+                        {move || tabs.get().into_iter().enumerate().map(|(i, label)| {
+                            let on = tab.get() == i;
+                            view! {
+                                <button type="button" class=if on { "tab on" } else { "tab" }
+                                    on:click=move |_| tab.set(i)>
+                                    {label}
+                                </button>
+                            }
+                        }).collect_view()}
+                    </nav>
+                </div>
+                <main class="content">
+                    {move || match (section.get(), tab.get()) {
+                        (2, 1) => view! { <UsersPage /> }.into_any(),
+                        _ => view! { <EmptyPage /> }.into_any(),
+                    }}
+                </main>
                 <div class="status">"admin_dev"</div>
             </div>
         </div>
@@ -62,40 +82,53 @@ pub fn App() -> impl IntoView {
 }
 
 #[component]
-fn Rail() -> impl IntoView {
-    // dioxus SectionPill：左侧竖排圆点，当前项拉成长条。
-    let items = ["总览", "账户", "管理"];
-    view! {
-        <nav class="rail" aria-label="分区">
-            {items.into_iter().enumerate().map(|(i, label)| {
-                let on = i == 2;
-                view! {
-                    <button type="button" class=if on { "rail-dot on" } else { "rail-dot" }
-                        title=label aria-label=label></button>
-                }
-            }).collect_view()}
-        </nav>
-    }
+fn EmptyPage() -> impl IntoView {
+    view! { <div class="placeholder">"这个页还没搬"</div> }
 }
 
 #[component]
-fn TopBar() -> impl IntoView {
-    let tabs = [
-        "网络", "用户", "分组", "别名", "渠道",
-        "订阅", "兑换", "系统", "网关健康", "货币",
-    ];
+fn Rail(active: RwSignal<usize>, on_select: impl Fn(usize) + Send + Sync + Clone + 'static) -> impl IntoView {
+    let labels = ["总览", "账户", "管理"];
     view! {
-        <nav class="tabs">
-            {tabs
-                .into_iter()
-                .map(|tab| {
-                    let active = tab == "用户";
+        <aside class="rail" aria-label="主导航">
+            <nav class="rail-nav">
+                {(0..3).map(|i| {
+                    let pick = on_select.clone();
+                    let on = move || active.get() == i;
                     view! {
-                        <span class=if active { "tab active" } else { "tab" }>{tab}</span>
+                        <button type="button" class=move || if on() { "rail-btn on" } else { "rail-btn" }
+                            aria-label=labels[i]
+                            on:click=move |_| pick(i)>
+                            {rail_icon(i)}
+                            <span class="tip">{labels[i]}</span>
+                        </button>
                     }
-                })
-                .collect_view()}
-        </nav>
+                }).collect_view()}
+            </nav>
+        </aside>
+    }
+}
+
+fn rail_icon(i: usize) -> impl IntoView {
+    let path = match i {
+        0 => "M3 9v7m0 0h7m-7 0v3m7-3V9a3 3 0 0 1 6 0v7m-6 0h6",
+        1 => "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2",
+        _ => "",
+    };
+    view! {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            {if i == 1 {
+                view! { <circle cx="12" cy="7" r="4"></circle> }.into_any()
+            } else if i == 2 {
+                view! {
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                }.into_any()
+            } else {
+                view! { <path d=path></path> }.into_any()
+            }}
+        </svg>
     }
 }
 
@@ -445,44 +478,43 @@ const STYLE: &str = r#"
 * { box-sizing: border-box; }
 body { margin: 0; background: #09090b; color: #e4e4e7;
     font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+.shell { display: flex; height: 100vh; overflow: hidden; background: #09090b; color: #fafafa; }
 .rail {
-    position: fixed; left: 8px; top: 50%; transform: translateY(-50%);
-    z-index: 40;
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    padding: 4px;
+    width: 56px; flex: 0 0 56px; height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    border-right: 1px solid #27272a; background: #09090b; padding: 12px 0;
 }
-.rail-dot {
-    width: 8px; height: 8px; border-radius: 999px; padding: 0; cursor: pointer;
-    background: rgba(63,63,70,.6); border: 1px solid rgba(255,255,255,.08);
+.rail-nav { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.rail-btn {
+    position: relative; width: 36px; height: 36px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 8px; background: transparent; color: #71717a; cursor: pointer;
 }
-.rail-dot.on {
-    width: 8px; height: 36px;
-    background: linear-gradient(#a1a1aa, #71717a);
-    border-color: rgba(255,255,255,.16);
+.rail-btn:hover { background: #18181b; color: #e4e4e7; }
+.rail-btn.on { background: #27272a; color: #fafafa; }
+.tip {
+    pointer-events: none; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+    margin-left: 8px; white-space: nowrap; opacity: 0;
+    border: 1px solid #3f3f46; background: #18181b; color: #e4e4e7;
+    border-radius: 6px; padding: 4px 8px; font-size: 12px;
 }
-.main { flex: 1; display: flex; flex-direction: column; min-width: 0; margin-left: 28px; }
-.shell { display: flex; min-height: 100vh; }
-.tabs {
-    display: flex; gap: 4px; padding: 10px 16px 0;
-    border-bottom: 1px solid #1f1f23; background: #0c0c0f;
+.rail-btn:hover .tip { opacity: 1; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.top { flex: 0 0 auto; display: flex; padding: 12px 16px 0; }
+.tabs { display: flex; align-items: center; gap: 4px; overflow-x: auto; }
+.tab {
+    position: relative; height: 24px; flex: 0 0 auto; padding: 0 8px;
+    border: 0; background: transparent; cursor: pointer;
+    font: 500 14px/1 inherit; color: #71717a;
 }
-.tab { padding: 8px 12px; color: #71717a; cursor: pointer; border-bottom: 2px solid transparent; }
-.tab.active { color: #fafafa; border-bottom-color: #fafafa; }
-.panel { margin: 16px; flex: 1; }
-.panel-bar {
-    height: 34px; padding: 0 14px;
-    display: flex; align-items: center;
-    background: #111113; color: #a1a1aa;
-    border: 1px solid #1f1f23; border-bottom: none;
-    border-radius: 10px 10px 0 0;
+.tab:hover { color: #d4d4d8; }
+.tab.on { color: #fafafa; }
+.tab.on::after {
+    content: ""; position: absolute; left: 8px; right: 8px; bottom: 0;
+    height: 2px; border-radius: 999px; background: #fafafa;
 }
-.panel-body {
-    padding: 16px;
-    background: #0c0c0f;
-    border: 1px solid #1f1f23;
-    border-radius: 0 0 10px 10px;
-}
-.status { padding: 8px 16px; color: #52525b; font-size: 12px; border-top: 1px solid #1f1f23; background: #0c0c0f; }
+.content { flex: 1; min-height: 0; overflow: auto; padding: 16px 24px 16px; }
+.status { flex: 0 0 auto; padding: 4px 16px 6px; font-size: 12px; color: #a1a1aa; }
 
 /* —— 用户页三区 —— */
 .users-panel { display: flex; flex-direction: column; gap: 24px; }
