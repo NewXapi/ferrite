@@ -358,7 +358,7 @@ pub fn GroupCard(
             aria-label=group.name
             data-testid="group-card"
         >
-            <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-blue-950/60 border-blue-800/60.to_string() + if is_default { " } else { "hidden" }>
+            <div class=("absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-blue-950/60 border-blue-800/60", !is_default)>
             </div>
             
             <div class="flex items-start justify-between">
@@ -451,7 +451,7 @@ pub fn GroupCard(
                     {move || if group.status == 1 { "停用" } else { "启用" }}
                 </button>
                 <button
-                    class=("rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700", if is_default { "opacity-40 cursor-not-allowed } else { " })
+                    class=("rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700", if is_default { "opacity-40 cursor-not-allowed" } else { "" })
                     disabled=move || is_default
                     on:click=move |_| {
                         if !is_default {
