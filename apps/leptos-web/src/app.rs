@@ -1,11 +1,14 @@
-//! 复刻 admin-web 的控制台壳 + 用户页。SSR-only：筛选是带 query 的链接，
-//! 启停是表单 POST，浏览器不跑任何 wasm。样式内联在 shell 里，无构建步骤。
+//! 复刻 admin-web 的控制台壳 + 用户页。
+//!
+//! Hydration 版：首屏 SSR 吐 HTML，之后筛选/启停全在客户端信号上，
+//! 不刷页面。样式内联在 shell 里，无构建步骤。
+
+use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::server_fn::ServerFn;
-use leptos_router::location::RequestUrl;
 
-use crate::users::{cny, PageState, ToggleUser, User};
+use crate::users::{cny, Filter, ListUsers, PageState, ToggleUser, User};
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -58,98 +61,85 @@ fn Rail() -> impl IntoView {
 
 #[component]
 fn TopBar() -> impl IntoView {
-    let tabs = ["网络", "用户", "分组", "别名", "渠道", "订阅", "兑换", "系统", "网关健康", "货币"];
+    let tabs = [
+        "网络", "用户", "分组", "别名", "渠道",
+        "订阅", "兑换", "系统", "网关健康", "货币",
+    ];
     view! {
         <nav class="tabs">
             {tabs
                 .into_iter()
-                .map(|t| {
-                    view! { <span class=if t == "用户" { "tab active" } else { "tab" }>{t}</span> }
+                .map(|tab| {
+                    let active = tab == "用户";
+                    view! {
+                        <span class=if active { "tab active" } else { "tab" }>{tab}</span>
+                    }
                 })
                 .collect_view()}
         </nav>
     }
 }
 
-/// 当前请求的筛选条件，从 URL query 读。
-#[derive(Clone)]
-struct Filter {
-    query: String,
-    group: String,
-    status: String,
-    role: String,
-}
+/// 用户页。users 信号 hydration 后在客户端；筛选和启停都改本地信号。
 #[component]
 fn UsersPage() -> impl IntoView {
-    let url = use_context::<RequestUrl>();
-    let params = url.as_ref().and_then(|url| url.parse().ok());
-    let param = |name: &str| {
-        params
-            .as_ref()
-            .and_then(|url| url.search_params().get(name))
+    // SSR 直读进程内状态；CSR 才走 HTTP 打 server function。
+    let users = Resource::new(
+        || (),
+        |_| async {
+            #[cfg(feature = "ssr")]
+            {
+                let state = use_context::<std::sync::Arc<tokio::sync::Mutex<PageState>>>()
+                    .unwrap_or_else(|| std::sync::Arc::new(tokio::sync::Mutex::new(PageState::fresh())));
+                state.lock().await.users.clone()
+            }
+            #[cfg(feature = "csr")]
+            {
+                ListUsers {}.run_on_client().await.unwrap_or_default()
+            }
+        },
+    );
+    let filter = RwSignal::new(Filter::default());
+
+    let filtered = Memo::new(move |_| {
+        users
+            .get()
+            .map(|list| list.into_iter().filter(|u| filter.get().matches(u)).collect::<Vec<_>>())
             .unwrap_or_default()
-    };
-    let filter = Filter {
-        query: param("q"),
-        group: param("group"),
-        status: param("status"),
-        role: param("role"),
-    };
-    let state = use_context::<std::sync::Arc<tokio::sync::Mutex<PageState>>>()
-        .unwrap_or_else(|| std::sync::Arc::new(tokio::sync::Mutex::new(PageState::fresh())));
+    });
 
-    let page = PageState {
-        users: Vec::new(),
-        query: filter.query.clone(),
-        group: filter.group.clone(),
-        status: filter.status.clone(),
-        role: filter.role.clone(),
-    };
-    // 列表在渲染时同步读取；toggle 之后整页重渲染，数字是新鲜的。
-    let users = state.try_lock().map(|g| g.users.clone()).unwrap_or_default();
-    let view_state = PageState { users: users.clone(), ..page };
-    let filtered = view_state.filtered();
+    let stats = Memo::new(move |_| {
+        let all = users.get().unwrap_or_default();
+        let total = all.len();
+        let enabled = all.iter().filter(|u| u.enabled()).count();
+        let fresh = all.iter().filter(|u| u.created_at.starts_with("2026-09")).count();
+        let granted: i64 = all.iter().map(|u| u.quota).sum();
+        let consumed: i64 = all.iter().map(|u| u.used_quota).sum();
+        (total, enabled, fresh, cny(granted), cny(consumed))
+    });
 
-    let total = users.len();
-    let enabled = users.iter().filter(|u| u.enabled()).count();
-    let fresh = users.iter().filter(|u| u.created_at.starts_with("2026-09")).count();
-    let granted: i64 = users.iter().map(|u| u.quota).sum();
-    let consumed: i64 = users.iter().map(|u| u.used_quota).sum();
-
-    let stats = [
-        (total.to_string(), "总用户"),
-        (enabled.to_string(), "启用中"),
-        (fresh.to_string(), "本月新增"),
-        (cny(granted), "已发放额度"),
-        (cny(consumed), "已消耗额度"),
-    ];
-
-    let kept = filter.clone();
     view! {
         <h2>"统计"</h2>
         <div class="stats">
-            {stats
-                .into_iter()
-                .map(|(value, label)| view! { <StatCard value=value label=label /> })
-                .collect_view()}
+            <StatCard value=move || stats.get().0.to_string() label="总用户" />
+            <StatCard value=move || stats.get().1.to_string() label="启用中" />
+            <StatCard value=move || stats.get().2.to_string() label="本月新增" />
+            <StatCard value=move || stats.get().3.clone() label="已发放额度" />
+            <StatCard value=move || stats.get().4.clone() label="已消耗额度" />
+            <Chips name="group" current=Arc::new(move || filter.get().group) options=group_options() on_pick=Arc::new(move |v| filter.update(|f| f.group = v)) />
+            <Chips name="status" current=Arc::new(move || filter.get().status) options=status_options() on_pick=Arc::new(move |v| filter.update(|f| f.status = v)) />
+            <Chips name="role" current=Arc::new(move || filter.get().role) options=role_options() on_pick=Arc::new(move |v| filter.update(|f| f.role = v)) />
         </div>
 
-        <div class="filter">
-            <div class="filter-title">"筛选"</div>
-            <form method="get" action="/">
-                <input name="q" value=kept.query.clone() placeholder="搜索用户名或邮箱" />
-                <Chips name="group" current=kept.group.clone() options=group_options() kept=kept.clone() />
-                <Chips name="status" current=kept.status.clone() options=status_options() kept=kept.clone() />
-                <Chips name="role" current=kept.role.clone() options=role_options() kept=kept.clone() />
-            </form>
-        </div>
-
-        <h2>"用户列表 " <span class="count">{format!("{} 人", filtered.len())}</span></h2>
+        <h2>"用户列表 " <span class="count">{move || format!("{} 人", filtered.get().len())}</span></h2>
         <div class="cards">
-            {filtered
-                .into_iter()
-                .map(|user| view! { <UserCard user=user /> })
-                .collect_view()}
+            {move || {
+                filtered
+                    .get()
+                    .into_iter()
+                    .map(|user| view! { <UserCard user=user users=users /> })
+                    .collect_view()
+            }}
         </div>
     }
 }
@@ -167,7 +157,7 @@ fn role_options() -> Vec<(&'static str, &'static str)> {
 }
 
 #[component]
-fn StatCard(value: String, label: &'static str) -> impl IntoView {
+fn StatCard(value: impl Fn() -> String + Send + 'static, label: &'static str) -> impl IntoView {
     view! {
         <div class="stat">
             <div class="stat-value">{value}</div>
@@ -176,32 +166,26 @@ fn StatCard(value: String, label: &'static str) -> impl IntoView {
     }
 }
 
-/// 一组筛选胶囊。隐藏字段保留搜索词和其他筛选，避免点一个胶囊丢掉其余条件。
+/// 一组筛选胶囊。点击只改客户端信号，不提交表单、不刷页面。
 #[component]
 fn Chips(
     name: &'static str,
-    current: String,
+    current: Arc<dyn Fn() -> String + Send + Sync>,
     options: Vec<(&'static str, &'static str)>,
-    kept: Filter,
+    on_pick: Arc<dyn Fn(String) + Send + Sync>,
 ) -> impl IntoView {
-    let hidden = [("q", kept.query), ("group", kept.group), ("status", kept.status), ("role", kept.role)]
-        .into_iter()
-        .filter(|(key, _)| *key != name)
-        .map(|(key, value)| view! { <input type="hidden" name=key value=value /> })
-        .collect_view();
     view! {
-        <div class="chips">
-            {hidden}
+        <div class="chips" data-name=name>
             {options
                 .into_iter()
                 .map(|(value, label)| {
-                    let on = current == value;
+                    let cur = current.clone();
+                    let pick = on_pick.clone();
                     view! {
                         <button
-                            type="submit"
-                            name=name
-                            value=value
-                            class=if on { "chip on" } else { "chip" }
+                            type="button"
+                            class=move || if cur() == value { "chip on" } else { "chip" }
+                            on:click=move |_| pick(value.to_string())
                         >
                             {label}
                         </button>
@@ -213,30 +197,35 @@ fn Chips(
 }
 
 #[component]
-fn UserCard(user: User) -> impl IntoView {
-    let badge = if user.enabled() { "启用" } else { "停用" };
-    let toggle_label = if user.enabled() { "停用" } else { "启用" };
-    let groups = user.groups.join(" / ");
-    let quota = cny(user.quota);
-    let used = cny(user.used_quota);
-    let key = user.key.clone();
+fn UserCard(user: User, users: Resource<Vec<User>>) -> impl IntoView {
+    let user = RwSignal::new(user);
+    let key = user.get().key;
+    let toggle = ArcServerAction::<ToggleUser>::new();
 
     view! {
         <article class="card">
             <div class="card-head">
-                <span class="name">{user.username.clone()}</span>
-                <span class=if user.enabled() { "badge on" } else { "badge" }>{badge}</span>
+                <span class="name">{move || user.get().username.clone()}</span>
+                <span class=move || if user.get().enabled() { "badge on" } else { "badge" }>
+                    {move || if user.get().enabled() { "启用" } else { "停用" }}
+                </span>
             </div>
-            <div class="muted">{user.email.clone()}</div>
-            <div class="meta">{format!("{} · {}", user.role_label(), groups)}</div>
-            <div class="muted">{format!("额度 {} · 已用 {}", quota, used)}</div>
+            <div class="muted">{move || user.get().email.clone()}</div>
+            <div class="meta">{move || format!("{} · {}", user.get().role_label(), user.get().groups.join(" / "))}</div>
+            <div class="muted">{move || format!("额度 {} · 已用 {}", cny(user.get().quota), cny(user.get().used_quota))}</div>
             <div class="actions">
                 <button type="button" class="act">"编辑"</button>
                 <button type="button" class="act green">"充值"</button>
-                <form method="post" action=ToggleUser::PATH>
-                    <input type="hidden" name="key" value=key />
-                    <button type="submit" class="act amber">{toggle_label}</button>
-                </form>
+                <button
+                    type="button"
+                    class="act amber"
+                    on:click=move |_| {
+                        toggle.dispatch(ToggleUser { key: key.clone() });
+                        users.refetch();
+                    }
+                >
+                    {move || if user.get().enabled() { "停用" } else { "启用" }}
+                </button>
             </div>
         </article>
     }
@@ -245,42 +234,106 @@ fn UserCard(user: User) -> impl IntoView {
 const STYLE: &str = r#"
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
-body { margin: 0; background: #09090b; color: #f4f4f5; font: 14px/1.5 sans-serif; }
-.shell { display: flex; height: 100vh; padding: 12px; gap: 12px; }
-.rail { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
-.dot { width: 8px; height: 8px; border-radius: 99px; background: #3f3f46; }
-.dot.active { height: 36px; background: #d4d4d8; }
+body {
+    margin: 0;
+    background: #0b0e14;
+    color: #e6e9f0;
+    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.shell { display: flex; min-height: 100vh; }
+.rail {
+    width: 44px;
+    background: #11151d;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 12px;
+    gap: 14px;
+    border-right: 1px solid #1c2230;
+}
+.dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #2a3142; cursor: pointer;
+}
+.dot.active { background: #60a5fa; }
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.tabs { display: flex; gap: 4px; height: 36px; align-items: center; overflow-x: auto; }
-.tab { padding: 0 10px; color: #71717a; white-space: nowrap; }
-.tab.active { color: #f4f4f5; border-bottom: 2px solid #f4f4f5; }
-.panel { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid #27272a; border-radius: 16px; background: rgba(24,24,27,.6); }
-.panel-bar { height: 36px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #27272a; color: #71717a; font-size: 12px; }
-.panel-body { flex: 1; overflow: auto; padding: 20px; }
-.status { height: 28px; display: flex; align-items: center; color: #71717a; font-size: 12px; }
-h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
-.count { color: #a1a1aa; font-size: 12px; }
-.stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-.stat { width: 180px; padding: 16px; border: 1px solid #27272a; border-radius: 12px; background: #18181b; }
+.tabs {
+    display: flex; gap: 4px; padding: 10px 16px 0;
+    border-bottom: 1px solid #1c2230;
+    background: #0e1219;
+}
+.tab {
+    padding: 8px 12px; color: #8b93a7; cursor: pointer;
+    border-bottom: 2px solid transparent;
+}
+.tab.active { color: #e6e9f0; border-bottom-color: #60a5fa; }
+.panel { margin: 16px; flex: 1; }
+.panel-bar {
+    height: 34px; padding: 0 14px;
+    display: flex; align-items: center;
+    background: #141925; color: #aab3c5;
+    border: 1px solid #1c2230; border-bottom: none;
+    border-radius: 10px 10px 0 0;
+}
+.panel-body {
+    padding: 16px;
+    background: #0f131c;
+    border: 1px solid #1c2230;
+    border-radius: 0 0 10px 10px;
+}
+.status {
+    padding: 8px 16px; color: #5b6478; font-size: 12px;
+    border-top: 1px solid #1c2230; background: #0e1219;
+}
+h2 { font-size: 15px; margin: 20px 0 10px; }
+.count { color: #60a5fa; font-weight: 400; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.stat {
+    background: #141925; border: 1px solid #1c2230;
+    border-radius: 10px; padding: 12px 14px;
+}
 .stat-value { font-size: 20px; font-weight: 600; }
-.stat-label { font-size: 12px; color: #a1a1aa; margin-top: 4px; }
-.filter { border: 1px solid #27272a; border-radius: 12px; background: #18181b; padding: 20px; margin-bottom: 24px; }
-.filter-title { color: #d4d4d8; margin-bottom: 12px; }
-input[name=q] { width: 100%; background: #09090b; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 12px; padding: 10px 16px; }
+.stat-label { color: #8b93a7; margin-top: 2px; }
+.filter {
+    margin: 16px 0; padding: 14px;
+    background: #141925; border: 1px solid #1c2230; border-radius: 10px;
+}
+.filter-title { color: #8b93a7; margin-bottom: 10px; }
+.filter input {
+    width: 100%; padding: 7px 10px;
+    background: #0b0e14; color: #e6e9f0;
+    border: 1px solid #232b3d; border-radius: 8px;
+}
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.chip { background: transparent; color: #d4d4d8; border: 1px solid #3f3f46; border-radius: 99px; padding: 3px 12px; cursor: pointer; font-size: 12px; }
-.chip.on { background: #f4f4f5; color: #09090b; }
-.cards { display: flex; flex-wrap: wrap; gap: 12px; }
-.card { width: 280px; padding: 16px; border: 1px solid #27272a; border-radius: 16px; background: #18181b; }
-.card-head { display: flex; justify-content: space-between; align-items: center; }
+.chip {
+    padding: 4px 12px; border-radius: 999px;
+    background: #0b0e14; color: #8b93a7;
+    border: 1px solid #232b3d; cursor: pointer;
+}
+.chip.on { background: #1d2b45; color: #93c5fd; border-color: #2f4a7a; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.card {
+    background: #141925; border: 1px solid #1c2230;
+    border-radius: 10px; padding: 14px;
+}
+.card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+}
 .name { font-weight: 600; }
-.badge { font-size: 11px; color: #a1a1aa; border: 1px solid rgba(161,161,170,.5); border-radius: 99px; padding: 1px 8px; }
-.badge.on { color: #34d399; border-color: rgba(52,211,153,.5); }
-.muted { color: #a1a1aa; font-size: 12px; }
-.meta { color: #d4d4d8; font-size: 12px; margin-top: 12px; }
-.actions { display: flex; gap: 4px; border-top: 1px solid #27272a; margin-top: 12px; padding-top: 8px; }
-.actions form { flex: 1; display: flex; }
-.act { flex: 1; width: 100%; background: transparent; border: none; color: #d4d4d8; cursor: pointer; font-size: 12px; padding: 6px 0; }
+.badge {
+    font-size: 12px; padding: 1px 8px; border-radius: 999px;
+    background: #2a2118; color: #fbbf24;
+}
+.badge.on { background: #14261c; color: #34d399; }
+.muted { color: #8b93a7; font-size: 12px; margin-top: 2px; }
+.meta { margin-top: 6px; }
+.actions { display: flex; gap: 6px; margin-top: 12px; }
+.act {
+    padding: 4px 12px; border-radius: 8px;
+    background: #0b0e14; color: #aab3c5;
+    border: 1px solid #232b3d; cursor: pointer;
+}
 .act.green { color: #34d399; }
 .act.amber { color: #fbbf24; }
 "#;

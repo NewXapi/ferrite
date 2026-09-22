@@ -1,3 +1,5 @@
+//! 服务端入口。编 SSR 二进制，吐首屏 HTML + 注册 server function 路由。
+
 mod app;
 mod users;
 
@@ -19,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(App);
 
-    // 用户列表活在进程里：筛选是只读的，启停通过 server function 改它。
+    // 用户列表活在进程里：SSR 首屏读它，客户端通过 server function 改它。
     let state = Arc::new(Mutex::new(PageState::fresh()));
 
     let app = Router::new()

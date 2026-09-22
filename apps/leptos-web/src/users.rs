@@ -1,11 +1,14 @@
-//! 用户页的数据与动作。SSR-only：筛选走 query string，启停走表单 POST，
-//! 不需要 hydration，所以没有 wasm 编译。样例数据在进程内，不接后端。
+//! 用户页的数据与动作。
+//!
+//! - SSR：`sample_users` 生成初始列表，序列化进 HTML 供 hydration。
+//! - CSR：筛选和启停全在客户端信号上，不刷页面；启停通过 server function
+//!   落库（试用应用里是进程内状态）。
 
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// 样例用户。status 1=启用 2=停用，role 1/10/100，quota 单位 500000 = ¥1。
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct User {
     pub key: String,
     pub username: String,
@@ -63,67 +66,72 @@ fn u(key: &str, name: &str, email: &str, status: i32, role: i32, groups: &[&str]
     }
 }
 
-/// 页面状态：筛选条件 + 用户列表。挂在服务器上，每个请求读一次。
+/// 进程内状态。SSR 请求读它做首屏渲染；客户端通过 server function 改它。
 #[derive(Clone, Debug)]
 pub struct PageState {
     pub users: Vec<User>,
+}
+
+impl PageState {
+    pub fn fresh() -> Self {
+        Self { users: sample_users() }
+    }
+
+    pub fn toggle(&mut self, key: &str) {
+        if let Some(user) = self.users.iter_mut().find(|user| user.key == key) {
+            user.status = if user.enabled() { 2 } else { 1 };
+        }
+    }
+}
+
+/// 客户端筛选条件。hydration 后由本地信号持有，点胶囊只改信号，不发包。
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Filter {
     pub query: String,
     pub group: String,
     pub status: String,
     pub role: String,
 }
 
-impl PageState {
-    pub fn fresh() -> Self {
-        Self {
-            users: sample_users(),
-            query: String::new(),
-            group: String::new(),
-            status: String::new(),
-            role: String::new(),
-        }
-    }
-
-    pub fn filtered(&self) -> Vec<User> {
+impl Filter {
+    pub fn matches(&self, user: &User) -> bool {
         let q = self.query.trim().to_lowercase();
-        self.users
-            .iter()
-            .filter(|user| {
-                if !q.is_empty()
-                    && !user.username.to_lowercase().contains(&q)
-                    && !user.email.to_lowercase().contains(&q)
-                {
-                    return false;
-                }
-                if !self.group.is_empty() && !user.groups.iter().any(|g| g == &self.group) {
-                    return false;
-                }
-                if self.status == "on" && !user.enabled() || self.status == "off" && user.enabled() {
-                    return false;
-                }
-                let want_role = match self.role.as_str() {
-                    "1" => 1,
-                    "10" => 10,
-                    "100" => 100,
-                    _ => 0,
-                };
-                if want_role != 0 && user.role != want_role {
-                    return false;
-                }
-                true
-            })
-            .cloned()
-            .collect()
+        if !q.is_empty()
+            && !user.username.to_lowercase().contains(&q)
+            && !user.email.to_lowercase().contains(&q)
+        {
+            return false;
+        }
+        if !self.group.is_empty() && !user.groups.iter().any(|g| g == &self.group) {
+            return false;
+        }
+        if self.status == "on" && !user.enabled() || self.status == "off" && user.enabled() {
+            return false;
+        }
+        let want_role = match self.role.as_str() {
+            "1" => 1,
+            "10" => 10,
+            "100" => 100,
+            _ => 0,
+        };
+        if want_role != 0 && user.role != want_role {
+            return false;
+        }
+        true
     }
 }
 
-/// 切换用户启停。表单 POST 提交，改完进程内的状态后页面重渲染。
+/// 取用户列表。SSR 直读进程内状态；CSR 走 HTTP 打同一注册路径。
+#[server]
+pub async fn list_users() -> Result<Vec<User>, ServerFnError> {
+    let state = expect_context::<std::sync::Arc<tokio::sync::Mutex<PageState>>>();
+    Ok(state.lock().await.users.clone())
+}
+
+/// 切换用户启停。客户端调它落库，回包后本地信号同步翻转。
 #[server]
 pub async fn toggle_user(key: String) -> Result<(), ServerFnError> {
     let state = expect_context::<std::sync::Arc<tokio::sync::Mutex<PageState>>>();
-    let mut guard = state.lock().await;
-    if let Some(user) = guard.users.iter_mut().find(|user| user.key == key) {
-        user.status = if user.enabled() { 2 } else { 1 };
-    }
+    state.lock().await.toggle(&key);
     Ok(())
 }

@@ -5,25 +5,53 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
-# 试用应用：SSR-only（不编 wasm，不做 hydrate），所以不在 wasm32 硬约束范围内。
+# 试用应用：SSR 首屏 + hydration。客户端编 wasm32，交互在浏览器里跑。
 # 目的是量 leptos + axum 的 dev 期 CPU / 内存，与 dx serve 做对比。
+
+[lib]
+name = "leptos_web"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
 [[bin]]
 name = "leptos-web"
 path = "src/main.rs"
+required-features = ["ssr"]
 
+[features]
+default = ["ssr"]
+ssr = [
+    "leptos/ssr",
+    "leptos_router/ssr",
+    "dep:leptos_axum",
+    "dep:axum",
+    "dep:tokio",
+]
+csr = [
+    "leptos/csr",
+    "leptos/hydrate",
+    "dep:wasm-bindgen",
+    "dep:console_error_panic_hook",
+]
 [dependencies]
-leptos        = { version = "=0.8.20", features = ["ssr"] }
-leptos_router = "=0.8.15"
-leptos_axum   = "=0.8.10"
-axum        = { workspace = true }
-tokio       = { workspace = true, features = ["net"] }
-serde       = { workspace = true }
-anyhow      = { workspace = true }
+leptos        = { version = "=0.8.20" }
+leptos_router = { version = "=0.8.15" }
+leptos_axum   = { version = "=0.8.10", optional = true }
+serde         = { workspace = true }
+anyhow        = { workspace = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+wasm-bindgen  = { version = "=0.2.128", optional = true }
+
+axum   = { workspace = true, optional = true }
+tokio  = { workspace = true, optional = true, features = ["net", "rt-multi-thread", "macros"] }
 
 [package.metadata.leptos]
 output-name = "leptos-web"
-site-root = "target/site"
+site-root = "/home/hathaway/projects/ferrite/.wt/leptos-web/target/site"
 site-pkg-dir = "pkg"
+lib-crate = "leptos_web"
+lib-features = ["csr"]
+bin-features = ["ssr"]
 site-addr = "127.0.0.1:8081"
 reload-port = 8091
 env = "DEV"
