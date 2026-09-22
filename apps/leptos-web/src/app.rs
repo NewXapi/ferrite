@@ -16,6 +16,11 @@ use leptos::hydration::{AutoReload, HydrationScripts};
 #[cfg(feature = "ssr")]
 use crate::users::PageState;
 use crate::users::{cny, Filter, ListUsers, ToggleUser, User};
+use crate::pages::{
+    AliasesPage, ChannelsPage, CurrencyPage, GatewayPage, GroupsPage, KeysPage, LeaderboardPage,
+    ModelsPage, NetworkPage, OverviewPage, RedemptionsPage, RewardsPage, SessionsPage, SettingsPage,
+    SubscriptionsPage, SystemPage, UsagePage,
+};
 
 #[cfg(feature = "ssr")]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -28,6 +33,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <AutoReload options=options.clone() />
                 <HydrationScripts options />
                 <title>"Ferrite · admin (Leptos)"</title>
+                <link rel="stylesheet" href="/assets/tailwind.css" />
                 <style>{STYLE}</style>
                 // ponytail: 标注 SDK 同源加载；grant 由 scripts/aino-leptos-grant.mjs
                 // 签给 origin 8081，写到 site/assets/ainotation/connection.json。
@@ -71,7 +77,24 @@ pub fn App() -> impl IntoView {
                 </div>
                 <main class="content">
                     {move || match (section.get(), tab.get()) {
+                        (0, 0) => view! { <OverviewPage /> }.into_any(),
+                        (0, 1) => view! { <ModelsPage /> }.into_any(),
+                        (0, 2) => view! { <LeaderboardPage /> }.into_any(),
+                        (1, 0) => view! { <KeysPage /> }.into_any(),
+                        (1, 1) => view! { <UsagePage /> }.into_any(),
+                        (1, 2) => view! { <RewardsPage /> }.into_any(),
+                        (1, 3) => view! { <SessionsPage /> }.into_any(),
+                        (1, 4) => view! { <SettingsPage /> }.into_any(),
+                        (2, 0) => view! { <NetworkPage /> }.into_any(),
                         (2, 1) => view! { <UsersPage /> }.into_any(),
+                        (2, 2) => view! { <GroupsPage /> }.into_any(),
+                        (2, 3) => view! { <AliasesPage /> }.into_any(),
+                        (2, 4) => view! { <ChannelsPage /> }.into_any(),
+                        (2, 5) => view! { <SubscriptionsPage /> }.into_any(),
+                        (2, 6) => view! { <RedemptionsPage /> }.into_any(),
+                        (2, 7) => view! { <SystemPage /> }.into_any(),
+                        (2, 8) => view! { <GatewayPage /> }.into_any(),
+                        (2, 9) => view! { <CurrencyPage /> }.into_any(),
                         _ => view! { <EmptyPage /> }.into_any(),
                     }}
                 </main>

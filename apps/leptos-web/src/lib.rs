@@ -5,6 +5,8 @@
 
 mod app;
 mod users;
+mod pages;
+mod ui;
 
 use app::App;
 
