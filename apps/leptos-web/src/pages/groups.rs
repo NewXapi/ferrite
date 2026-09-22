@@ -129,19 +129,19 @@ pub fn GroupsToolbar(
                         class=("bg-zinc-800 text-zinc-300 hover:bg-zinc-700", filter_tier.get() == 0)
                         on:click=move |_| filter_tier.set(0)
                     >
-                        全部
+                        "全部"
                     </button>
                     <button
                         class=("bg-emerald-950/60 text-emerald-400 border-emerald-800", filter_tier.get() == 1)
                         on:click=move |_| filter_tier.set(1)
                     >
-                        启用中
+                        "启用中"
                     </button>
                     <button
                         class=("bg-red-950/60 text-red-400 border-red-800", filter_tier.get() == 2)
                         on:click=move |_| filter_tier.set(2)
                     >
-                        已停用
+                        "已停用"
                     </button>
                 </div>
                 
@@ -150,7 +150,7 @@ pub fn GroupsToolbar(
                         class="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-700"
                         on:click=move |_| on_refresh()
                     >
-                        刷新
+                        "刷新"
                     </button>
                     <button
                         class="flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-zinc-900 hover:bg-zinc-100"
@@ -186,7 +186,7 @@ pub fn GroupsToolbar(
                                 }
                             }
                         >
-                            批量启用
+                            "批量启用"
                         </button>
                         <button
                             class="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-100 hover:bg-zinc-700 disabled:opacity-40"
@@ -197,7 +197,7 @@ pub fn GroupsToolbar(
                                 }
                             }
                         >
-                            批量停用
+                            "批量停用"
                         </button>
                         <button
                             class="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-100 hover:bg-zinc-700 disabled:opacity-40"
@@ -208,7 +208,7 @@ pub fn GroupsToolbar(
                                 }
                             }
                         >
-                            清除
+                            "清除"
                         </button>
                     </div>
                 </div>
@@ -230,7 +230,7 @@ pub fn GroupsList(
     view! {
         <section class="scroll-mt-8 space-y-4" id="groups-sec-list">
             <div class="flex items-center justify-between">
-                <h2 class="text-lg font-medium text-zinc-100">分组列表</h2>
+                <h2 class="text-lg font-medium text-zinc-100">"分组列表"</h2>
                 <div class="rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300">
                     {move || {
                         let total = filtered.len();
@@ -252,7 +252,7 @@ pub fn GroupsList(
                                 class="rounded-lg bg-red-950/60 px-4 py-2 text-sm text-red-300 hover:bg-red-900"
                                 on:click=move |_| on_retry()
                             >
-                                重试
+                                "重试"
                             </button>
                         </div>
                     </div>
@@ -264,7 +264,7 @@ pub fn GroupsList(
                 }.into_view(),
                 None if filtered.is_empty() => view! {
                     <div class="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16">
-                        <div class="text-center text-zinc-400">没有匹配的分组</div>
+                        <div class="text-center text-zinc-400">"没有匹配的分组"</div>
                     </div>
                 }.into_view(),
                 None => view! {
@@ -343,11 +343,11 @@ pub fn GroupCard(
     
     let ratio_badge = move || {
         if group.ratio >= 2.0 {
-            view! { <span class="text-[11px] font-medium">溢价</span> }
+            view! { <span class="text-[11px] font-medium">"溢价"</span> }
         } else if group.ratio >= 1.0 {
-            view! { <span class="text-[11px] font-medium">基准</span> }
+            view! { <span class="text-[11px] font-medium">"基准"</span> }
         } else {
-            view! { <span class="text-[11px] font-medium">优惠</span> }
+            view! { <span class="text-[11px] font-medium">"优惠"</span> }
         }
     };
     
@@ -358,7 +358,7 @@ pub fn GroupCard(
             aria-label=group.name
             data-testid="group-card"
         >
-            <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-blue-950/60 border-blue-800/60".to_string() + if is_default { "" } else { "hidden" }>
+            <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-blue-950/60 border-blue-800/60.to_string() + if is_default { " } else { "hidden" }>
             </div>
             
             <div class="flex items-start justify-between">
@@ -366,7 +366,7 @@ pub fn GroupCard(
                     <div class="flex items-center gap-2">
                         <h3 class="truncate text-base font-semibold text-zinc-100">{group.name}</h3>
                         {if is_default {
-                            view! { <span class="rounded-full border border-blue-800 bg-blue-950/60 px-2 py-0.5 text-xs text-blue-300">默认</span> }
+                            view! { <span class="rounded-full border border-blue-800 bg-blue-950/60 px-2 py-0.5 text-xs text-blue-300">"默认"</span> }
                         } else {
                             view! { <></> }
                         }}
@@ -385,7 +385,7 @@ pub fn GroupCard(
             
             <div class="mt-3 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <span class="text-[11px] font-medium text-zinc-400">计费倍率</span>
+                    <span class="text-[11px] font-medium text-zinc-400">"计费倍率"</span>
                     {ratio_badge()}
                 </div>
                 <div class="text-xs font-mono">
@@ -440,7 +440,7 @@ pub fn GroupCard(
                     class="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
                     on:click=move |_| on_edit()
                 >
-                    编辑
+                    "编辑"
                 </button>
                 <button
                     class=("rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors", status_tone())
@@ -451,7 +451,7 @@ pub fn GroupCard(
                     {move || if group.status == 1 { "停用" } else { "启用" }}
                 </button>
                 <button
-                    class=("rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700", if is_default { "opacity-40 cursor-not-allowed" } else { "" })
+                    class=("rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700", if is_default { "opacity-40 cursor-not-allowed } else { " })
                     disabled=move || is_default
                     on:click=move |_| {
                         if !is_default {
@@ -459,7 +459,7 @@ pub fn GroupCard(
                         }
                     }
                 >
-                    删除
+                    "删除"
                 </button>
                 {if is_default {
                     view! {
@@ -467,7 +467,7 @@ pub fn GroupCard(
                             class="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-500 cursor-not-allowed"
                             disabled=true
                         >
-                            内置
+                            "内置"
                         </button>
                     }
                 } else {
@@ -503,7 +503,7 @@ pub fn Pager(total: usize, page: RwSignal<usize>, on_change: impl Fn(usize) + 's
                     }
                 }
             >
-                上一页
+                "上一页"
             </button>
             {move || (0..=total_pages.min(4)).map(|p| {
                 view! {
@@ -534,7 +534,7 @@ pub fn Pager(total: usize, page: RwSignal<usize>, on_change: impl Fn(usize) + 's
                     }
                 }
             >
-                下一页
+                "下一页"
             </button>
         </div>
     }

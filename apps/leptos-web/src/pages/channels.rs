@@ -51,13 +51,13 @@ pub fn ChannelsPage() -> impl IntoView {
     view! {
         <div class="flex flex-col gap-6 p-6">
             <div class="flex justify-between items-center">
-                <h1 class="text-2xl font-bold text-white">渠道管理</h1>
+                <h1 class="text-2xl font-bold text-white">"渠道管理"</h1>
                 <button 
                     class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                     button_type="button"
                     on:click=move |_| open_modal("new".to_string())
                 >
-                    新建渠道
+                    "新建渠道"
                 </button>
             </div>
 
@@ -71,17 +71,17 @@ pub fn ChannelsPage() -> impl IntoView {
                     class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
                     button_type="button"
                     on:click=move |_| filter_tier.set(0)
-                >全部</button>
+                >"全部"</button>
                 <button 
                     class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
                     button_type="button"
                     on:click=move |_| filter_tier.set(1)
-                >启用</button>
+                >"启用"</button>
                 <button 
                     class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
                     button_type="button"
                     on:click=move |_| filter_tier.set(2)
-                >停用</button>
+                >"停用"</button>
             </div>
 
             <CardGrid>
@@ -106,15 +106,15 @@ pub fn ChannelsPage() -> impl IntoView {
 
                                 <div class="space-y-2 text-sm">
                                     <div class="flex justify-between">
-                                        <span class="text-zinc-400">权重</span>
+                                        <span class="text-zinc-400">"权重"</span>
                                         <span class="text-white">1</span>
                                     </div>
                                     <div class="flex justify-between">
-                                        <span class="text-zinc-400">分组</span>
+                                        <span class="text-zinc-400">"分组"</span>
                                         <span class="text-emerald-400">default</span>
                                     </div>
                                     <div class="flex justify-between">
-                                        <span class="text-zinc-400">备注</span>
+                                        <span class="text-zinc-400">"备注"</span>
                                         <span class="text-zinc-400 text-right">{c.5}</span>
                                     </div>
                                 </div>
@@ -126,13 +126,13 @@ pub fn ChannelsPage() -> impl IntoView {
                                     button_type="button"
                                     on:click=move |_| open_modal(key.clone())
                                 >
-                                    编辑
+                                    "编辑"
                                 </button>
                                 <button 
                                     class="px-4 py-2 text-sm bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg transition-colors border border-red-800/50"
                                     button_type="button"
                                 >
-                                    删除
+                                    "删除"
                                 </button>
                                 <button 
                                     class=format!("px-4 py-2 text-sm rounded-lg transition-colors {}", if is_enabled { "bg-amber-900/30 text-amber-400 border border-amber-800/50" } else { "bg-emerald-900/30 text-emerald-400 border border-emerald-800/50" })
@@ -156,7 +156,7 @@ pub fn ChannelsPage() -> impl IntoView {
                     </h3>
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm text-zinc-400 mb-1">名称</label>
+                            <label class="block text-sm text-zinc-400 mb-1">"名称"</label>
                             <input class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white" type="text" />
                         </div>
                         <div>
@@ -170,13 +170,13 @@ pub fn ChannelsPage() -> impl IntoView {
                             button_type="button"
                             on:click=move |_| close_modal()
                         >
-                            取消
+                            "取消"
                         </button>
                         <button 
                             class="flex-1 py-2.5 text-sm bg-white text-zinc-900 rounded-lg font-medium"
                             button_type="button"
                         >
-                            保存
+                            "保存"
                         </button>
                     </div>
                 </div>

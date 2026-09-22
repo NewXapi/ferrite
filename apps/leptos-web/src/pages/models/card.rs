@@ -78,15 +78,15 @@ pub fn ModelCard(model: ModelCardView) -> impl IntoView {
                 // 预留：价格/趋势/热力/分组（当前静态数据无对应字段，用 DASH 占位）
                 <div class="grid grid-cols-3 gap-3 text-center text-xs text-zinc-500">
                     <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                        <div>输入价</div>
+                        <div>"输入价"</div>
                         <div class="font-mono">{DASH}</div>
                     </div>
                     <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                        <div>输出价</div>
+                        <div>"输出价"</div>
                         <div class="font-mono">{DASH}</div>
                     </div>
                     <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                        <div>缓存价</div>
+                        <div>"缓存价"</div>
                         <div class="font-mono">{DASH}</div>
                     </div>
                 </div>

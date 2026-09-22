@@ -19,13 +19,13 @@ pub fn SubscriptionsPage() -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div class="flex justify-between items-center">
-                <h1 class="text-2xl font-bold">套餐管理</h1>
+                <h1 class="text-2xl font-bold">"套餐管理"</h1>
                 <button
                     type="button"
                     class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                     on:click=move |_| show_modal.set(true)
                 >
-                    新建套餐
+                    "新建套餐"
                 </button>
             </div>
 

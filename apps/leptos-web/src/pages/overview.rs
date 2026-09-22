@@ -86,7 +86,7 @@ pub fn OverviewPage() -> impl IntoView {
             
             // Trend bar chart section
             <div class="bg-card rounded-lg border p-6">
-                <h3 class="text-lg font-semibold mb-4">今日趋势</h3>
+                <h3 class="text-lg font-semibold mb-4">"今日趋势"</h3>
                 <div class="flex items-end justify-between h-32 gap-2">
                     {trend_bars.into_iter()}
                 </div>

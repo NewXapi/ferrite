@@ -28,29 +28,29 @@ pub fn SystemPage() -> impl IntoView {
 
     view! {
         <div class="space-y-6 p-6">
-            <h1 class="text-2xl font-semibold">系统设置</h1>
+            <h1 class="text-2xl font-semibold">"系统设置"</h1>
 
             <CardGrid>
                 <Card>
                     <CardHeader>
-                        <CardTitle>系统概览</CardTitle>
+                        <CardTitle>"系统概览"</CardTitle>
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <p class="text-sm text-zinc-500">版本</p>
+                                <p class="text-sm text-zinc-500">"版本"</p>
                                 <p class="font-mono text-lg">{move || static_data().get("version").and_then(|v| v.as_str()).unwrap_or_default().to_string()}</p>
                             </div>
                             <div>
-                                <p class="text-sm text-zinc-500">环境</p>
+                                <p class="text-sm text-zinc-500">"环境"</p>
                                 <p class="font-medium">{move || static_data().get("env").and_then(|v| v.as_str()).unwrap_or_default().to_string()}</p>
                             </div>
                             <div>
-                                <p class="text-sm text-zinc-500">运行时间</p>
+                                <p class="text-sm text-zinc-500">"运行时间"</p>
                                 <p class="font-medium">{move || static_data().get("uptime").and_then(|v| v.as_str()).unwrap_or_default().to_string()}</p>
                             </div>
                             <div>
-                                <p class="text-sm text-zinc-500">注册用户</p>
+                                <p class="text-sm text-zinc-500">"注册用户"</p>
                                 <p class="font-medium">{move || static_data().get("users").and_then(|v| v.as_i64()).unwrap_or(0)}</p>
                             </div>
                         </div>
@@ -59,16 +59,16 @@ pub fn SystemPage() -> impl IntoView {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>资源统计</CardTitle>
+                        <CardTitle>"资源统计"</CardTitle>
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <p class="text-sm text-zinc-500">模型数量</p>
+                                <p class="text-sm text-zinc-500">"模型数量"</p>
                                 <p class="text-2xl font-bold text-blue-600">{move || static_data().get("models").and_then(|v| v.as_i64()).unwrap_or(0)}</p>
                             </div>
                             <div>
-                                <p class="text-sm text-zinc-500">Token 总数</p>
+                                <p class="text-sm text-zinc-500">Token "总数"</p>
                                 <p class="text-2xl font-bold text-emerald-600">{move || static_data().get("tokens").and_then(|v| v.as_i64()).unwrap_or(0)}</p>
                             </div>
                         </div>
@@ -77,20 +77,20 @@ pub fn SystemPage() -> impl IntoView {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>配置选项</CardTitle>
+                        <CardTitle>"配置选项"</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div class="space-y-3 text-sm">
                             <div class="flex justify-between">
-                                <span class="text-zinc-500">调试模式</span>
+                                <span class="text-zinc-500">"调试模式"</span>
                                 <span class="font-medium">{"关闭"}</span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-zinc-500">日志级别</span>
+                                <span class="text-zinc-500">"日志级别"</span>
                                 <span class="font-mono">{"info"}</span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-zinc-500">最大连接数</span>
+                                <span class="text-zinc-500">"最大连接数"</span>
                                 <span class="font-medium">{"5000"}</span>
                             </div>
                         </div>

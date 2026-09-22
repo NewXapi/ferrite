@@ -79,18 +79,18 @@ pub fn NetworkPage() -> impl IntoView {
             <div class="flex-1 relative p-8 bg-zinc-900/50">
                 <div class="flex items-center justify-between mb-6">
                     <div>
-                        <h1 class="text-xl font-semibold text-white">网络拓扑</h1>
+                        <h1 class="text-xl font-semibold text-white">"网络拓扑"</h1>
                         <p class="text-zinc-400 text-sm">"分组 → 模型别名 → 调度渠道"</p>
                     </div>
                     <div class="flex gap-3">
                         <Button button_type="button" variant="outline" class="px-4 py-1.5 text-sm font-medium rounded-md">
-                            适配
+                            "适配"
                         </Button>
                         <Button button_type="button" variant="outline" class="px-4 py-1.5 text-sm font-medium rounded-md">
-                            设置
+                            "设置"
                         </Button>
                         <Button button_type="button" variant="outline" class="px-4 py-1.5 text-sm font-medium rounded-md">
-                            导入
+                            "导入"
                         </Button>
                     </div>
                 </div>
@@ -169,15 +169,15 @@ pub fn NetworkPage() -> impl IntoView {
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                             <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
-                            <span class="text-sm font-medium text-white">节点检视</span>
+                            <span class="text-sm font-medium text-white">"节点检视"</span>
                         </div>
                         <button class="text-zinc-400 hover:text-white text-xl leading-none">"×"</button>
                     </div>
 
                     <div class="flex border-b border-zinc-800 text-xs">
-                        <button class="flex-1 py-2.5 text-white border-b-2 border-white font-medium">节点</button>
-                        <button class="flex-1 py-2.5 text-zinc-500 hover:text-zinc-300">设置</button>
-                        <button class="flex-1 py-2.5 text-zinc-500 hover:text-zinc-300">导入</button>
+                        <button class="flex-1 py-2.5 text-white border-b-2 border-white font-medium">"节点"</button>
+                        <button class="flex-1 py-2.5 text-zinc-500 hover:text-zinc-300">"设置"</button>
+                        <button class="flex-1 py-2.5 text-zinc-500 hover:text-zinc-300">"导入"</button>
                     </div>
                 </div>
 
@@ -204,18 +204,18 @@ pub fn NetworkPage() -> impl IntoView {
                                                 <CardContent>
                                                     <div class="space-y-3">
                                                         <div>
-                                                            <div class="text-[11px] text-zinc-500 mb-1">层级</div>
+                                                            <div class="text-[11px] text-zinc-500 mb-1">"层级"</div>
                                                             <div class="text-white font-mono text-sm">{format!("层 {}", node.layer)}</div>
                                                         </div>
                                                         <div>
-                                                            <div class="text-[11px] text-zinc-500 mb-1">颜色</div>
+                                                            <div class="text-[11px] text-zinc-500 mb-1">"颜色"</div>
                                                             <div class="flex items-center gap-2">
                                                                 <div class="w-4 h-4 rounded" style=move || format!("background-color: {};", node.color)></div>
                                                                 <span class="text-zinc-400 font-mono text-xs">{node.color}</span>
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <div class="text-[11px] text-zinc-500 mb-2">连接</div>
+                                                            <div class="text-[11px] text-zinc-500 mb-2">"连接"</div>
                                                             <div class="flex flex-wrap gap-2">
                                                                 {node.connections.iter().map(|conn| {
                                                                     view! {
@@ -235,7 +235,7 @@ pub fn NetworkPage() -> impl IntoView {
                             }
                             None => view! {
                                 <div class="text-center text-zinc-500 py-16">
-                                    <div class="text-zinc-400">点击节点以查看详情</div>
+                                    <div class="text-zinc-400">"点击节点以查看详情"</div>
                                 </div>
                             }.into_view()
                         }

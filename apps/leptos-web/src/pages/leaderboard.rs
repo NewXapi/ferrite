@@ -56,7 +56,7 @@ pub fn LeaderboardPage() -> impl IntoView {
                     } else {
                         "text-red-400"
                     };
-                    let sign = if r.growth >= 0.0 { "+" } else { "" };
+                    let sign = if r.growth >= 0.0 { "+ } else { " };
                     view! {
                         <Card class="p-6 bg-zinc-900 border border-zinc-700 rounded-2xl hover:border-zinc-500 transition-colors">
                             <div class="flex justify-between mb-6">
