@@ -1,0 +1,54 @@
+use super::card::ModelCardView;
+
+pub fn static_models() -> Vec<ModelCardView> {
+    vec![
+        ModelCardView {
+            name: "Claude 3.7 Sonnet".to_string(),
+            owner: "Anthropic".to_string(),
+            model_type: "anthropic".to_string(),
+            status: 1,
+            usage_count: 1500000,
+            max_tokens: 200000,
+        },
+        ModelCardView {
+            name: "GPT-4 Turbo".to_string(),
+            owner: "OpenAI".to_string(),
+            model_type: "openai".to_string(),
+            status: 1,
+            usage_count: 2500000,
+            max_tokens: 128000,
+        },
+        ModelCardView {
+            name: "Gemini Pro".to_string(),
+            owner: "Google".to_string(),
+            model_type: "google".to_string(),
+            status: 1,
+            usage_count: 800000,
+            max_tokens: 1000000,
+        },
+        ModelCardView {
+            name: "DeepSeek-Chat".to_string(),
+            owner: "DeepSeek".to_string(),
+            model_type: "deepseek".to_string(),
+            status: 1,
+            usage_count: 1200000,
+            max_tokens: 64000,
+        },
+        ModelCardView {
+            name: "Qwen2.5-72B".to_string(),
+            owner: "Alibaba".to_string(),
+            model_type: "qwen".to_string(),
+            status: 2,
+            usage_count: 600000,
+            max_tokens: 32768,
+        },
+        ModelCardView {
+            name: "Llama 3.1 405B".to_string(),
+            owner: "Meta".to_string(),
+            model_type: "meta".to_string(),
+            status: 1,
+            usage_count: 400000,
+            max_tokens: 131072,
+        },
+    ]
+}

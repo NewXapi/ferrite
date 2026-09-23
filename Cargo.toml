@@ -4,6 +4,7 @@ members = [
     "tests",
     "apps/api",
     "apps/admin-web",
+    "apps/leptos-web",
     "apps/tavern-web",
     "crates/gateway/dispatch",
     "crates/gateway/forward",

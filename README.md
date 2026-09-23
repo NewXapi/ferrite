@@ -52,6 +52,7 @@ apps/                    # 进程入口：只做配置、状态与路由组装
 ├── gateway/             #   网关数据面进程 src/ tests/
 ├── admin-web/           #   管理后台 wasm：src/ tests/ assets/ scripts/(ainotation-bridge.mjs)
 │                        #     Dioxus.toml ainotation-entry.ts
+├── leptos-web/          #   Leptos SSR 试用应用（SSR-only，不出 wasm）
 └── tavern-web/          #   酒馆前端 wasm：src/ assets/ Dioxus.toml（无 tests/）
 
 crates/
@@ -196,6 +197,7 @@ tavern 域（酒馆面）：
 - `apps/api`（bin `ferrite`）：后端单体，组装全部 `crates/api/*` + `crates/gateway/*`（security 除外）+ contract
 - `apps/gateway`：网关数据面进程，只把各 gateway crate 拼成 pipeline
 - `apps/admin-web`：管理后台 wasm 应用（挂 tailwind + dx-components-theme，`init_auth()` 注册 401 静默刷新）
+- `apps/leptos-web`：Leptos 0.8 SSR 试用应用（axum 直出 HTML，**SSR-only，不在 wasm32 硬约束内**），用来量 leptos dev 期 CPU/内存，与 dx serve 对比
 - `apps/tavern-web`：酒馆前端 wasm 应用（只挂 tailwind，**不挂** dx-components-theme）
 
 ## 依赖与组装规则
