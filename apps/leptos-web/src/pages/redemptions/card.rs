@@ -78,7 +78,9 @@ pub fn RedemptionCard(
     };
 
     let disable_button_class = match item.status {
-        1 => "bg-zinc-800/80 hover:bg-red-500/20 text-zinc-100 hover:text-red-300 border border-zinc-700 hover:border-red-500/30",
+        1 => {
+            "bg-zinc-800/80 hover:bg-red-500/20 text-zinc-100 hover:text-red-300 border border-zinc-700 hover:border-red-500/30"
+        }
         _ => "bg-zinc-800/40 text-zinc-500 border border-zinc-800 cursor-not-allowed opacity-60",
     };
 

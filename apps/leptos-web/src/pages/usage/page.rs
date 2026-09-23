@@ -4,7 +4,7 @@ use singlestage::*;
 use crate::ui::CardGrid;
 
 use super::card::UsageCard;
-use super::data::{demo_usage_logs, fmt_num, UsageLog};
+use super::data::{UsageLog, demo_usage_logs, fmt_num};
 
 /// 用量日志页。统计和列表用演示数据，点卡片打开详情。
 #[component]

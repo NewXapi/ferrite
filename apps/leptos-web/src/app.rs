@@ -20,7 +20,7 @@ use crate::pages::{
 };
 #[cfg(feature = "ssr")]
 use crate::users::PageState;
-use crate::users::{cny, Filter, ListUsers, ToggleUser, User};
+use crate::users::{Filter, ListUsers, ToggleUser, User, cny};
 
 #[cfg(feature = "ssr")]
 pub fn shell(options: LeptosOptions) -> impl IntoView {

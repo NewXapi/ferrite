@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use super::data::{fmt_num, fmt_quota, UsageLog};
+use super::data::{UsageLog, fmt_num, fmt_quota};
 
 /// 单条用量日志卡片。
 #[component]
