@@ -204,12 +204,14 @@ def parse_hit(hit: dict, root: Path, needle: str) -> dict:
         lines = (root / hit["path"]).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         lines = []
+    marker_line = re.compile(r"\b(?:" + "|".join(TAGS) + r")\(")
     for line in lines[hit["line"] :]:
         stripped = line.lstrip()
-        if stripped and stripped.startswith(COMMENT_PREFIXES):
-            body.append(stripped.lstrip("/*#-;%'<>! ").rstrip())
-        else:
+        if not stripped or not stripped.startswith(COMMENT_PREFIXES):
             break
+        if marker_line.search(stripped):
+            break  # 下一条标记不算上一条的正文
+        body.append(stripped.lstrip("/*#-;%'<>! ").rstrip())
 
     return {
         "tag": tag,
@@ -282,6 +284,30 @@ def cursor_path(root: Path) -> Path:
     return (root / git_dir).resolve() / "notes-cursor"
 
 
+PROTOCOL = """收尾格式（必须照做，别只在聊天里说）：
+  · TODO 做完 → 把该行就地改成：DONE(<原 meta>): <一行结论> in=<commit 或 wip> by=<agent>
+  · ASK 回答 → 在标记**下一行**加注释：答：<答案>
+               需要维护者拍板时保持 ASK，并在答案里写明要他确认哪一点
+  · 没提交时写 in=wip，提交后再补 commit 短号"""
+
+
+def lint_protocol(notes: list[dict]) -> list[tuple[dict, str]]:
+    """标记协议检查：返回 [(note, 问题)]。
+
+    - `DONE` 必须带 `in=` 与 `by=`（谁做的、落在哪个提交）
+    - `ASK` 必须在紧随的注释块里有「答：」回复
+    """
+    problems: list[tuple[dict, str]] = []
+    for note in notes:
+        if note["tag"] == "DONE" and not (note["attrs"].get("in") and note["attrs"].get("by")):
+            problems.append((note, "DONE 缺 in=<commit> 或 by=<agent>"))
+        if note["tag"] == "ASK":
+            answered = any(line.lstrip().startswith("答：") for line in note["body"].splitlines())
+            if not answered:
+                problems.append((note, "ASK 还没有「答：」回复（回答写在标记下一行注释）"))
+    return problems
+
+
 def format_text(notes: list[dict], show_body: bool) -> str:
     if not notes:
         return "（没有匹配的批注）"
@@ -321,6 +347,8 @@ def main() -> int:
     parser.add_argument("--fast", action="store_true", help="只跑 rg 快筛，跳过 ast-grep 精筛")
     parser.add_argument("--no-symbol", action="store_true", help="跳过 ast-grep 符号绑定")
     parser.add_argument("--all-tags", action="store_true", help="打印标签表后退出")
+    parser.add_argument("--task", action="store_true", help="输出待办清单 + 收尾回写格式（给 agent 直接照做）")
+    parser.add_argument("--lint", action="store_true", help="检查标记协议：DONE 缺 in=/by=、ASK 没写「答：」")
     args = parser.parse_args()
 
     if args.all_tags:
@@ -373,7 +401,18 @@ def main() -> int:
     if not args.no_symbol:
         bind_symbols(root, notes)
 
-    if args.json:
+    if args.task:
+        open_items = [n for n in notes if n["tag"] in ("TODO", "ASK")]
+        print(f"维护者标记：{len(open_items)} 条待处理")
+        print(format_text(open_items, True))
+        print()
+        print(PROTOCOL)
+    elif args.lint:
+        problems = lint_protocol(notes)
+        for note, why in problems:
+            print(f"{note['path']}:{note['line']}  {note['tag']}  {why}")
+        print(f"协议问题：{len(problems)} 条" if problems else "协议检查通过")
+    elif args.json:
         print(json.dumps(notes, ensure_ascii=False, indent=2))
     else:
         print(format_text(notes, args.body))
@@ -382,6 +421,8 @@ def main() -> int:
         head = run(["git", "rev-parse", "HEAD"], root).strip()
         if head:
             cursor_path(root).write_text(head + "\n")
+    if args.lint and lint_protocol(notes):
+        return 1
     return 0
 
 

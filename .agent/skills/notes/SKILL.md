@@ -19,11 +19,21 @@ pub fn charge(user: &str, n: u64) -> u64 { … }
 // DONE(#801, hathaway): 探活调度已接 in=4f2a1c9 by=agent
 ```
 
-| 标记 | 谁写 | 含义 | 对面该做什么 |
+| 标记 | 谁写 | 含义 | 对面**必须**做什么 |
 |---|---|---|---|
-| `TODO` | 维护者 | 派给 agent 的活 | agent 做，做完改成 `DONE` 并补 `in=<commit> by=<agent>` |
-| `ASK` | 维护者 | 问题 / 想法 | agent 在标记**下一行**注释写「答：…」；要维护者拍板的别自己决定 |
+| `TODO` | 维护者 | 派给 agent 的活 | 做完**就地改成 `DONE`**：`DONE(<原 meta>): <一行结论> in=<commit 或 wip> by=<agent>` |
+| `ASK` | 维护者 | 问题 / 想法 | 在标记**下一行**注释写 `答：<答案>`；要维护者拍板的**保持 `ASK`** 并写明要他确认哪一点 |
 | `DONE` | agent | 已完成留痕 | 维护者验收后自己删 |
+
+回写模板（照抄，别只在聊天里说）：
+
+```rust
+// TODO(#801, hathaway): 探活定时调度还没接        ← 维护者写的
+// DONE(#801, hathaway): 探活已接（ops::probe 定时触发） in=4f2a1c9 by=agent   ← agent 改成的
+
+// ASK(hathaway): 配额要不要按分组限？             ← 维护者写的
+// 答：建议按用户维度限流（60/min）；需要你确认是否再按 IP 兜底        ← agent 补的下一行
+```
 
 - 标记**必须大写**且紧跟 `(`；正文里写小写 `todo` 不会误报。
 - 括号里：`#801` = issue、`hathaway` = 谁写的；`)` 之后是正文；同一行再往后的 `key=value`
@@ -35,8 +45,10 @@ pub fn charge(user: &str, n: u64) -> u64 { … }
 
 ## 两条流程（就这两条）
 
-- **开工**：`$N --tags TODO,ASK --body` → 把维护者派的活和问题读全，再动代码。
-- **收工**：做完的 `TODO` **就地改成 `DONE`** 并补 `in=<commit> by=<agent>`；回答 `ASK` 就在它下一行注释写「答：…」。
+- **开工**：`$N --task` → 待办清单 + 回写格式（工具会把格式再打一遍，照抄）。
+- **收工**：按上面的模板把每条 `TODO` 改成 `DONE`、给每条 `ASK` 补 `答：`；
+  然后 `$N --lint` 自检（`DONE` 缺 `in=`/`by=`、`ASK` 没写「答：」都会被抓出来，退出码 1）。
+  **没做完的不要标 `DONE`**；没提交就写 `in=wip`，提交后再补短号。
 
 ## 命令
 
@@ -48,6 +60,8 @@ $N --new                    # 只看这轮新加的（游标 .git/notes-cursor�
 $N --tag DONE               # 只看 agent 已完成的
 $N --json                   # 结构化（含 symbol{name,signature,line}）
 $N --all-tags               # 标记表
+$N --task                   # 待办清单 + 回写格式（开工先跑这条）
+$N --lint                   # 协议自检：DONE 缺 in=/by=、ASK 没答 → 退出码 1
 ```
 
 其余参数：`--owner` `--issue` `--sym` `--path` `--since <ref>` `--body` `--fast` `--marker '字面量'`。
