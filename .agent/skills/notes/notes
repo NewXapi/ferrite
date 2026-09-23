@@ -1,0 +1,394 @@
+#!/usr/bin/env python3
+"""notes —— 找源码注释里的三个标记：TODO（维护者派活）/ ASK（问题·想法）/ DONE（agent 已完成）。
+
+三层分工（这是它区别于"裸 grep"的全部价值）：
+
+  ① 快筛  一次 `rg --json` 扫全仓标记行 —— 全仓 0.2s 量级，拿 file/line/字节偏移。
+  ② 精筛  `ast-grep` 只保留**注释节点**里的命中：
+          rg 会把字符串字面量里的 `"// TODO(x): …"` 也算命中，ast-grep 知道注释边界，一次滤掉。
+  ③ 取用  正文按字节偏移读（不依赖行号，重构后不漂）；`--sym` 缺失时对**有标记的文件**
+          跑 `ast-grep outline` 绑定符号（名称 + 签名 + 行号）。
+
+语法（写在注释里）：
+
+    // TODO(hathaway): 扣额度必须走同一事务入口
+    // ASK(hathaway): 配额要不要按分组限？
+    // DONE(#801, hathaway): 探活调度已接 in=4f2a1c9 by=agent
+    // ```text
+    // 紧跟标记的连续注释行 = 正文（伪代码/回答都写这儿）
+    // ```
+
+括号里是 meta（逗号分隔）：`#123` = issue，`name` = 谁写的。`)` 之后是正文；
+同一行再往后的 `key=value` 会解析成字段（`in=` `by=` `sym=` `see=` `tag=`，其余原样保留）。
+
+用法：
+
+    notes                   # 三个标记全列
+    notes --tags TODO,ASK   # 只看没做完的
+    notes --tag DONE        # 只看 agent 已完成的
+    notes --body            # 连正文一起打印
+    notes --new             # 增量：游标在 .git/notes-cursor（首次全量，之后只给新的）
+    notes --since main      # 只看 main 之后新增行里的标记
+    notes --json            # 结构化输出（含 symbol{name,signature,line}）
+    notes --marker 'ponytail:'   # 临时扫别的字面量标记
+    notes --all-tags        # 打印标记表
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+# —— 闭合标签集：大写、紧跟 `(` 才算命中，避免正文里出现 "todo" 就误报 ——
+TAGS: dict[str, str] = {
+    "TODO": "维护者派给 agent 的活（未完成）",
+    "ASK": "维护者的问题 / 想法（等 agent 答或讨论）",
+    "DONE": "agent 已完成（附 in=<commit> by=<agent>，由维护者验收后删）",
+}
+
+DEFAULT_MARKER = ""
+COMMENT_PREFIXES = ("//", "#", "--", ";", "%", "/*", "*", "'", "<!--")
+NUMBERED = re.compile(r"^#(\d+)$")
+IDENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$")
+
+# ast-grep 的注释节点 kind 按语法不同：Rust 是 line_comment/block_comment，
+# 其它多数语法统一叫 comment（用错会报 "Cannot parse kind as a valid selector"）。
+LANGUAGES: dict[str, tuple[str, tuple[str, ...]]] = {
+    ".rs": ("Rust", ("line_comment", "block_comment")),
+    ".py": ("Python", ("comment",)),
+    ".ts": ("TypeScript", ("comment",)),
+    ".tsx": ("Tsx", ("comment",)),
+    ".js": ("JavaScript", ("comment",)),
+    ".jsx": ("JavaScript", ("comment",)),
+    ".go": ("Go", ("comment",)),
+    ".java": ("Java", ("comment",)),
+    ".c": ("C", ("comment",)),
+    ".h": ("C", ("comment",)),
+    ".cc": ("Cpp", ("comment",)),
+    ".cpp": ("Cpp", ("comment",)),
+    ".sh": ("Bash", ("comment",)),
+    ".bash": ("Bash", ("comment",)),
+}
+LANGUAGE_KINDS = {value[0]: value[1] for value in LANGUAGES.values()}
+
+
+def run(cmd: list[str], cwd: Path) -> str:
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    if proc.returncode > 1:  # rg: 1 = 无匹配；ast-grep: 1 = 有匹配
+        print(f"[notes] {' '.join(cmd[:3])}… 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}", file=sys.stderr)
+    return proc.stdout
+
+
+def repo_root() -> Path:
+    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()
+    return Path(out) if out else Path.cwd()
+
+
+def tag_pattern(tags: list[str]) -> str:
+    return r"\b(?:" + "|".join(tags) + r")\("
+
+
+def scan_hits(root: Path, pattern: str, paths: list[str], literal: bool) -> list[dict]:
+    """① 快筛：一次 rg。只在疑似注释行上保留。"""
+    cmd = ["rg", "--json", "-n", "--no-heading"]
+    cmd += ["-F"] if literal else []
+    cmd += ["-e", pattern, "--glob", "!target", *paths]
+    hits: list[dict] = []
+    for raw in run(cmd, root).splitlines():
+        event = json.loads(raw)
+        if event["type"] != "match":
+            continue
+        data = event["data"]
+        line_text = data["lines"]["text"]
+        if not line_text.lstrip().startswith(COMMENT_PREFIXES):
+            continue  # 命中字符串/文档里的同名词
+        hits.append(
+            {
+                "path": os.path.relpath(data["path"]["text"], "."),
+                "line": data["line_number"],  # 1 基
+                "offset": data["absolute_offset"],
+                "line_text": line_text.rstrip("\n"),
+            }
+        )
+    return hits
+
+
+def precise_comment_lines(root: Path, paths: list[str], needle: str) -> tuple[dict[str, set[int]], set[str]]:
+    """② 精筛：只保留真注释节点里的命中。返回 ({path: {行号}}, 成功的语言集合)。
+
+    没跑成功的语言**不做减法** —— 宁可留假命中，也不能把那种语言的批注整批丢掉。
+    """
+    by_language: dict[str, list[str]] = {}
+    for path in paths:
+        entry = LANGUAGES.get(Path(path).suffix.lower())
+        if entry:
+            by_language.setdefault(entry[0], []).append(path)
+
+    offsets: dict[str, set[int]] = {}
+    done: set[str] = set()
+    for language, files in by_language.items():
+        rule = json.dumps(
+            {
+                "id": "notes-comment-filter",
+                "language": language,
+                "rule": {"any": [{"kind": kind} for kind in LANGUAGE_KINDS[language]]},
+            }
+        )
+        proc = subprocess.run(
+            ["ast-grep", "scan", "--inline-rules", rule, "--json=compact", *files],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if "Error" in proc.stderr:
+            print(f"[notes] {language} 精筛跳过：{proc.stderr.strip().splitlines()[0][:80]}", file=sys.stderr)
+            continue
+        done.add(language)
+        raw = proc.stdout.strip()
+        if not raw:
+            continue
+        try:
+            matches = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        for match in matches:
+            if needle not in match.get("text", ""):
+                continue
+            start_line = match["range"]["start"]["line"] + 1
+            end_line = match["range"]["end"]["line"] + 1
+            offsets.setdefault(match["file"], set()).update(range(start_line, max(end_line, start_line + 1)))
+    return offsets, done
+
+
+def parse_hit(hit: dict, root: Path, needle: str) -> dict:
+    """解析 `TAG(meta): 正文 [key=value …]`，并把紧随其后的注释行当正文。"""
+    text = hit["line_text"]
+    match = re.search(re.escape(needle) + r"\(([^)]*)\)\s*:?\s*(.*)", text) if needle else re.search(
+        r"\b([A-Z]+)\(([^)]*)\)\s*:?\s*(.*)", text
+    )
+    tag = needle.rstrip(":") if needle else (match.group(1) if match else "")
+    meta = match.group(2) if match else ""
+    tail = (match.group(3) if match else "").strip()
+
+    issue = owner = ""
+    refs: list[str] = []
+    for token in (t.strip() for t in meta.split(",") if t.strip()):
+        numbered = NUMBERED.match(token)
+        if numbered:
+            issue = numbered.group(1)
+        elif "/" in token or "." in token:
+            refs.append(token)
+        else:
+            owner = token
+
+    context = text[: match.start()].lstrip().lstrip("/*#-;%'<>! ").rstrip(" ,;，。:：") if match else ""
+
+    attrs: dict[str, str] = {}
+    prose: list[str] = []
+    for token in tail.split():
+        if "=" in token:
+            key, value = token.split("=", 1)
+            attrs[key] = value.strip("\"'")
+        else:
+            prose.append(token)
+    inline = " ".join(prose).strip()
+
+    body: list[str] = []
+    try:
+        lines = (root / hit["path"]).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        lines = []
+    for line in lines[hit["line"] :]:
+        stripped = line.lstrip()
+        if stripped and stripped.startswith(COMMENT_PREFIXES):
+            body.append(stripped.lstrip("/*#-;%'<>! ").rstrip())
+        else:
+            break
+
+    return {
+        "tag": tag,
+        "path": hit["path"],
+        "line": hit["line"],
+        "owner": owner,
+        "issue": issue,
+        "refs": refs,
+        "sym": attrs.get("sym", ""),
+        "see": attrs.get("see", ""),
+        "attrs": attrs,
+        "inline": inline,
+        "context": context,
+        "body": "\n".join(body),
+        # 摘要优先级：标记行后的文字 → 标记行前的上下文 → 下一行注释
+        "summary": (inline or context or (body[0].strip() if body else "")).strip(),
+    }
+
+
+def outline_symbols(root: Path, paths: list[str]) -> dict[str, list[dict]]:
+    if not paths:
+        return {}
+    raw = run(["ast-grep", "outline", "--items", "structure", "--json=compact", *paths], root).strip()
+    if not raw:
+        return {}
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return {
+        entry["path"]: [
+            {
+                "name": item.get("name", ""),
+                "astKind": item.get("astKind", ""),
+                "signature": item.get("signature", ""),
+                "line": item["range"]["start"]["line"] + 1,
+            }
+            for item in entry.get("items", [])
+            if item.get("name")
+        ]
+        for entry in entries
+    }
+
+
+def bind_symbols(root: Path, notes: list[dict]) -> None:
+    """③ 取用：批注 → 符号绑定（显式 sym= 优先，否则取标记行之后最近的符号）。"""
+    symbols = outline_symbols(root, sorted({n["path"] for n in notes if not n["sym"]}))
+    for note in notes:
+        following = [item for item in symbols.get(note["path"], []) if item["line"] >= note["line"]]
+        note["symbol"] = min(following, key=lambda item: item["line"]) if following else None
+
+
+def added_lines_since(root: Path, ref: str) -> dict[str, set[int]]:
+    result: dict[str, set[int]] = {}
+    current: str | None = None
+    for line in run(["git", "diff", "-U0", ref, "--"], root).splitlines():
+        if line.startswith("+++ b/"):
+            current = line[6:]
+            result.setdefault(current, set())
+        elif line.startswith("@@") and current is not None:
+            segment = line.split("+", 1)[1].split(" ", 1)[0]
+            start, _, count = segment.partition(",")
+            begin = int(start)
+            result[current].update(begin + offset for offset in range(int(count or "1")))
+    return result
+
+
+def cursor_path(root: Path) -> Path:
+    git_dir = run(["git", "rev-parse", "--git-dir"], root).strip() or ".git"
+    return (root / git_dir).resolve() / "notes-cursor"
+
+
+def format_text(notes: list[dict], show_body: bool) -> str:
+    if not notes:
+        return "（没有匹配的批注）"
+    width = max(len(f"{n['path']}:{n['line']}") for n in notes)
+    rows: list[str] = []
+    for note in notes:
+        who = note["owner"] or (f"#{note['issue']}" if note["issue"] else "-")
+        if note["issue"] and note["owner"]:
+            who = f"{note['owner']} #{note['issue']}"
+        head = f"{note['path']}:{note['line']}".ljust(width) + f"  {note['tag']:<8} {who:<16}"
+        if note["sym"]:
+            head += f" sym={note['sym']}"
+        elif note.get("symbol"):
+            head += f" → {note['symbol']['name']}"
+        rows.append(head.rstrip())
+        if note["summary"]:
+            rows.append(f"{'':<{width}}  {note['summary']}")
+        if show_body and note["body"]:
+            rows.extend(f"{'':<{width}}    {extra}" for extra in note["body"].splitlines()[1:])
+    return "\n".join(rows)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="按大写标签筛源码注释里的批注")
+    parser.add_argument("--tag", help="只留该标签（如 TODO）")
+    parser.add_argument("--tags", help="逗号分隔的多个标签，默认全部")
+    parser.add_argument("--owner", help="只留该 owner")
+    parser.add_argument("--issue", help="只留挂了该 issue 号的")
+    parser.add_argument("--sym", help="只留有该 sym 的")
+    parser.add_argument("--path", help="限定路径 glob（传给 rg）")
+    parser.add_argument("--since", help="只看该 git ref 之后新增行里的批注")
+    parser.add_argument("--new", action="store_true", help="相对游标增量，结束时推进游标")
+    parser.add_argument("--marker", help="改用字面量标记（如 'ponytail:'），不限于闭合标签集")
+    parser.add_argument("--regex", action="store_true", help="标记按正则解释（--marker 时生效）")
+    parser.add_argument("--body", action="store_true", help="打印正文")
+    parser.add_argument("--json", action="store_true", help="结构化输出")
+    parser.add_argument("--fast", action="store_true", help="只跑 rg 快筛，跳过 ast-grep 精筛")
+    parser.add_argument("--no-symbol", action="store_true", help="跳过 ast-grep 符号绑定")
+    parser.add_argument("--all-tags", action="store_true", help="打印标签表后退出")
+    args = parser.parse_args()
+
+    if args.all_tags:
+        for tag, meaning in TAGS.items():
+            print(f"{tag:<9} {meaning}")
+        return 0
+
+    root = repo_root()
+    paths = [args.path] if args.path else ["."]
+
+    if args.marker:
+        pattern, literal, needle = args.marker, not args.regex, args.marker
+    else:
+        selected = [t.strip().upper() for t in (args.tags or args.tag or "").split(",") if t.strip()] or list(TAGS)
+        unknown = [t for t in selected if t not in TAGS]
+        if unknown:
+            print(f"[notes] 未知标签 {unknown}；用 --all-tags 看可用标签", file=sys.stderr)
+            return 2
+        pattern, literal, needle = tag_pattern(selected), False, ""
+
+    hits = scan_hits(root, pattern, paths, literal)
+    if not args.fast and hits:
+        precise, done_languages = precise_comment_lines(root, sorted({h["path"] for h in hits}), needle or "(")
+        hits = [
+            hit
+            for hit in hits
+            if LANGUAGES.get(Path(hit["path"]).suffix.lower(), ("", ()))[0] not in done_languages
+            or hit["line"] in precise.get(hit["path"], set())
+        ]
+
+    notes = [parse_hit(hit, root, needle) for hit in hits]
+
+    ref = args.since or (load_cursor(root) if args.new else None)
+    if ref:
+        changed = added_lines_since(root, ref)
+        notes = [n for n in notes if n["line"] in changed.get(n["path"], set())]
+
+    if args.tag and args.tag.upper() in TAGS:
+        notes = [n for n in notes if n["tag"] == args.tag.upper()]
+    if args.tags:
+        wanted = {t.strip().upper() for t in args.tags.split(",")}
+        notes = [n for n in notes if n["tag"] in wanted]
+    if args.owner:
+        notes = [n for n in notes if n["owner"] == args.owner]
+    if args.issue:
+        notes = [n for n in notes if n["issue"] == args.issue]
+    if args.sym:
+        notes = [n for n in notes if n["sym"] == args.sym]
+
+    if not args.no_symbol:
+        bind_symbols(root, notes)
+
+    if args.json:
+        print(json.dumps(notes, ensure_ascii=False, indent=2))
+    else:
+        print(format_text(notes, args.body))
+
+    if args.new:
+        head = run(["git", "rev-parse", "HEAD"], root).strip()
+        if head:
+            cursor_path(root).write_text(head + "\n")
+    return 0
+
+
+def load_cursor(root: Path) -> str | None:
+    candidate = cursor_path(root)
+    return candidate.read_text().strip() if candidate.exists() else None
+
+
+if __name__ == "__main__":
+    sys.exit(main())
