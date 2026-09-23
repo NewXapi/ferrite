@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ d0a4b2c (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 9bfcb58 (synced 2026-09-23) -->
 # 任务书：PR 收尾与合并（closeout-pr）
 
 **什么时候用**：PR 已就绪（代码改动已全部提交、CI 在跑）之后的收尾全流程——

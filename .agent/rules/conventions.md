@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ d0a4b2c (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 9bfcb58 (synced 2026-09-23) -->
 # 代码约定：UI、Rust、调查与审查
 
 **什么时候读这份文档**：写前端界面（Dioxus）、写 Rust 公共接口、或者要调查代码 / 审查代码的时候。
