@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ 9bfcb58 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
 # Web 双车道流程（web-dev / webfix 角色）
 
 **什么时候用**：改动只落在 web 域（`crates/web/*`、`apps/admin-web`、`apps/tavern-web`）的

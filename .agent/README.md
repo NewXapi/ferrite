@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ 9bfcb58 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
 # `.agent/` 目录说明
 
 这是给 agent 看的目录。跟 `docs/` 的区别：`docs/` 是给人看的项目文档；这里的东西是

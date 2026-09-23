@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ 9bfcb58 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
 # 任务书模板（填号派工单）
 
 > **什么时候用**：主控要把一个子任务派给子代理（或自己执行）之前，复制本模板填满——

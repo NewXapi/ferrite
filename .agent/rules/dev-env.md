@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ 9bfcb58 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
 # 本地开发环境：启动后端、数据库、前端
 
 **什么时候读这份文档**：要启动开发环境、前端报错连不上、构建卡住、或改完代码页面没变化的时候。
