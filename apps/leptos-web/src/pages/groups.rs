@@ -101,11 +101,11 @@ pub fn GroupsToolbar(
     search: RwSignal<String>,
     filter_tier: RwSignal<usize>,
     selected: RwSignal<Vec<String>>,
-    on_refresh: impl Fn() + 'static,
-    on_new: impl Fn() + 'static,
-    on_bulk_enable: impl Fn() + 'static,
-    on_bulk_disable: impl Fn() + 'static,
-    on_bulk_clear: impl Fn() + 'static,
+    on_refresh: Callback<()>,
+    on_new: Callback<()>,
+    on_bulk_enable: Callback<()>,
+    on_bulk_disable: Callback<()>,
+    on_bulk_clear: Callback<()>,
 ) -> impl IntoView {
     let filtered_count = move || {
         let groups = groups.get();
@@ -163,13 +163,13 @@ pub fn GroupsToolbar(
                 <div class="ml-auto flex gap-2">
                     <button
                         class="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-700"
-                        on:click=move |_| on_refresh()
+                        on:click=move |_| on_refresh.run(())
                     >
                         "刷新"
                     </button>
                     <button
                         class="flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-zinc-900 hover:bg-zinc-100"
-                        on:click=move |_| on_new()
+                        on:click=move |_| on_new.run(())
                     >
                         "✚ 新建分组"
                     </button>
@@ -197,7 +197,7 @@ pub fn GroupsToolbar(
                             disabled=move || selected.get().is_empty()
                             on:click=move |_| {
                                 if !selected.get().is_empty() {
-                                    on_bulk_enable();
+                                    on_bulk_enable.run(());
                                 }
                             }
                         >
@@ -208,7 +208,7 @@ pub fn GroupsToolbar(
                             disabled=move || selected.get().is_empty()
                             on:click=move |_| {
                                 if !selected.get().is_empty() {
-                                    on_bulk_disable();
+                                    on_bulk_disable.run(());
                                 }
                             }
                         >
@@ -219,7 +219,7 @@ pub fn GroupsToolbar(
                             disabled=move || selected.get().is_empty()
                             on:click=move |_| {
                                 if !selected.get().is_empty() {
-                                    on_bulk_clear();
+                                    on_bulk_clear.run(());
                                 }
                             }
                         >
@@ -241,9 +241,9 @@ pub fn GroupsList(
     filtered: Vec<GroupDto>,
     loading: bool,
     err: Option<String>,
-    on_edit: impl Fn(String) + Copy + 'static,
-    on_write: impl Fn((String, WriteOp)) + Copy + 'static,
-    on_retry: impl Fn() + Copy + 'static,
+    on_edit: Callback<String>,
+    on_write: Callback<(String, WriteOp)>,
+    on_retry: Callback<()>,
 ) -> impl IntoView {
     // 计数徽标在建视图前算好，避免 move 闭包先借用 filtered、
     // 随后下方 CardGrid 分支再把它移走。
@@ -270,7 +270,7 @@ pub fn GroupsList(
                         <div class="mt-3 text-center">
                             <button
                                 class="rounded-lg bg-red-950/60 px-4 py-2 text-sm text-red-300 hover:bg-red-900"
-                                on:click=move |_| on_retry()
+                                on:click=move |_| on_retry.run(())
                             >
                                 "重试"
                             </button>
@@ -302,17 +302,17 @@ pub fn GroupsList(
                                 <GroupCard
                                     group
                                     is_default
-                                    on_edit=move || on_edit(key_for_edit.clone())
-                                    on_delete=move || on_write((key_for_delete.clone(), WriteOp::Delete))
-                                    on_toggle_status=move || {
+                                    on_edit=Callback::new(move |_: ()| on_edit.run(key_for_edit.clone()))
+                                    on_delete=Callback::new(move |_: ()| on_write.run((key_for_delete.clone(), WriteOp::Delete)))
+                                    on_toggle_status=Callback::new(move |_: ()| {
                                         let op = if status == 1 {
                                             WriteOp::Disable
                                         } else {
                                             WriteOp::Enable
                                         };
-                                        on_write((key_for_toggle.clone(), op));
-                                    }
-                                    on_ratio_drag=move |v| on_write((key_for_ratio.clone(), WriteOp::SetRatio(v))),
+                                        on_write.run((key_for_toggle.clone(), op));
+                                    })
+                                    on_ratio_drag=Callback::new(move |v: f64| on_write.run((key_for_ratio.clone(), WriteOp::SetRatio(v))))
                                 />
                             }
                         }).collect_view()}
@@ -323,23 +323,31 @@ pub fn GroupsList(
     }
 }
 
+/// 拖拽偏移 → 倍率：按轨道宽度取比例，钳到 [0.05, 3.0]。
+/// 宽度取不到（元素不可见或目标非元素）时归到下限，避免 0/0 得 NaN。
+fn ratio_from_offset(x: f64, width: f64) -> f64 {
+    if width > 0.0 {
+        (x / width * 3.0).clamp(0.05, 3.0)
+    } else {
+        0.05
+    }
+}
+
 /// 单个分组卡片(对齐 UserCard 风格)
 ///
-/// `on_edit` 需为 `Clone`：卡片内「编辑」图标与「编辑」文字按钮各捕获一次，
-/// 构视图前先复制一份。
+/// `on_edit` 由卡片内的「编辑」图标与「编辑」文字按钮共用；
+/// `Callback` 本身是 `Copy`，无需再手动 `clone()` 分持。
 #[component]
 pub fn GroupCard(
     group: GroupDto,
     is_default: bool,
-    on_edit: impl Fn() + Clone + 'static,
-    on_delete: impl Fn() + 'static,
-    on_toggle_status: impl Fn() + 'static,
-    on_ratio_drag: impl Fn(f64) + 'static,
+    on_edit: Callback<()>,
+    on_delete: Callback<()>,
+    on_toggle_status: Callback<()>,
+    on_ratio_drag: Callback<f64>,
 ) -> impl IntoView {
     let adjusting = RwSignal::new(false);
     let local_ratio = RwSignal::new(group.ratio);
-    // on_edit 要被两个按钮各捕获一次：先复制一份，各自持有一份避免 move 冲突。
-    let on_edit_head = on_edit.clone();
 
     let ratio_percent = move || {
         let max = 3.0;
@@ -365,11 +373,14 @@ pub fn GroupCard(
         }
     };
 
+    // `aria-label` 与标题各消费一次 `name`：先克隆一份供属性用，标题用原值。
+    let name_for_label = group.name.clone();
+
     view! {
         <div
             class="group relative flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-zinc-600 hover:bg-zinc-900/80 transition-all duration-200"
             role="region"
-            aria-label=group.name.clone()
+            aria-label=name_for_label
             data-testid="group-card"
         >
             <div class=("absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-blue-950/60 border-blue-800/60", !is_default)>
@@ -382,14 +393,14 @@ pub fn GroupCard(
                         {if is_default {
                             view! { <span class="rounded-full border border-blue-800 bg-blue-950/60 px-2 py-0.5 text-xs text-blue-300">"默认"</span> }.into_any()
                         } else {
-                            view! { <></> }.into_any()
+                            None::<AnyView>.into_any()
                         }}
                     </div>
                     <p class="mt-1 text-xs text-zinc-500">{group.remark}</p>
                 </div>
                 <button
                     class="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-                    on:click=move |_| on_edit()
+                    on:click=move |_| on_edit.run(())
                 >
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
@@ -421,7 +432,7 @@ pub fn GroupCard(
                                 .map(|el| el.client_width() as f64)
                                 .unwrap_or(0.0);
                             let x = ev.offset_x() as f64;
-                            let ratio = (x / width * 3.0).max(0.05).min(3.0);
+                            let ratio = ratio_from_offset(x, width);
                             local_ratio.set(ratio);
                         }
                         on:pointermove=move |ev| {
@@ -432,13 +443,13 @@ pub fn GroupCard(
                                     .map(|el| el.client_width() as f64)
                                     .unwrap_or(0.0);
                                 let x = ev.offset_x() as f64;
-                                let ratio = (x / width * 3.0).max(0.05).min(3.0);
+                                let ratio = ratio_from_offset(x, width);
                                 local_ratio.set(ratio);
                             }
                         }
                         on:pointerup=move |_| {
                             adjusting.set(false);
-                            on_ratio_drag(local_ratio.get());
+                            on_ratio_drag.run(local_ratio.get());
                         }
                     ></div>
                     {move || if adjusting.get() {
@@ -450,7 +461,7 @@ pub fn GroupCard(
                             ></div>
                         }.into_any()
                     } else {
-                        view! { <></> }.into_any()
+                        None::<AnyView>.into_any()
                     }}
                 </div>
             </div>
@@ -458,7 +469,7 @@ pub fn GroupCard(
             <div class="mt-4 grid grid-cols-2 gap-2">
                 <button
                     class="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
-                    on:click=move |_| on_edit_head()
+                    on:click=move |_| on_edit.run(())
                 >
                     "编辑"
                 </button>
@@ -466,7 +477,7 @@ pub fn GroupCard(
                     class=format!("rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors {}", status_tone())
                     class=("bg-emerald-950/60 border-emerald-800 text-emerald-300", group.status == 1)
                     class=("bg-red-950/60 border-red-800 text-red-300", group.status == 2)
-                    on:click=move |_| on_toggle_status()
+                    on:click=move |_| on_toggle_status.run(())
                 >
                     {move || if group.status == 1 { "停用" } else { "启用" }}
                 </button>
@@ -478,7 +489,7 @@ pub fn GroupCard(
                     disabled=move || is_default
                     on:click=move |_| {
                         if !is_default {
-                            on_delete();
+                            on_delete.run(());
                         }
                     }
                 >
@@ -494,7 +505,7 @@ pub fn GroupCard(
                         </button>
                     }.into_any()
                 } else {
-                    view! { <></> }.into_any()
+                    None::<AnyView>.into_any()
                 }}
             </div>
         </div>
@@ -503,14 +514,11 @@ pub fn GroupCard(
 
 /// 分页器
 ///
-/// `on_change` 需为 `Copy`：页码按钮在循环里各建一份闭包，会多次按值捕获它。
+/// `on_change` 用 `Callback` 承载：页码按钮在循环里各建一份闭包，
+/// `Callback` 是 `Copy` 且 `Send + Sync`，可安全多路捕获。
 #[component]
-pub fn Pager(
-    total: usize,
-    page: RwSignal<usize>,
-    on_change: impl Fn(usize) + Copy + 'static,
-) -> impl IntoView {
-    let total_pages = (total + 9) / 10; // 每页10条
+pub fn Pager(total: usize, page: RwSignal<usize>, on_change: Callback<usize>) -> impl IntoView {
+    let total_pages = total.div_ceil(10); // 每页10条
 
     view! {
         <div class="flex justify-center gap-2">
@@ -520,7 +528,7 @@ pub fn Pager(
                 on:click=move |_| {
                     if page.get() > 0 {
                         page.set(page.get() - 1);
-                        on_change(page.get() - 1);
+                        on_change.run(page.get() - 1);
                     }
                 }
             >
@@ -539,7 +547,7 @@ pub fn Pager(
                         )
                         on:click=move |_| {
                             page.set(p);
-                            on_change(p);
+                            on_change.run(p);
                         }
                     >
                         {p + 1}
@@ -552,7 +560,7 @@ pub fn Pager(
                 on:click=move |_| {
                     if page.get() < total_pages - 1 {
                         page.set(page.get() + 1);
-                        on_change(page.get() + 1);
+                        on_change.run(page.get() + 1);
                     }
                 }
             >
@@ -638,7 +646,7 @@ pub fn GroupsPage() -> impl IntoView {
         ]
     };
 
-    let on_refresh = move || {
+    let on_refresh = Callback::new(move |_: ()| {
         loading.set(true);
         err.set(None);
         set_timeout(
@@ -648,13 +656,13 @@ pub fn GroupsPage() -> impl IntoView {
             },
             std::time::Duration::from_millis(300),
         );
-    };
+    });
 
-    let on_new = move || {
+    let on_new = Callback::new(move |_: ()| {
         modal_state.set(ModalState::New);
-    };
+    });
 
-    let on_bulk_enable = move || {
+    let on_bulk_enable = Callback::new(move |_: ()| {
         let keys_to_enable = selected.get();
         let mut updated = groups.get().clone();
         let mut results = Vec::new();
@@ -676,9 +684,9 @@ pub fn GroupsPage() -> impl IntoView {
             err.set(Some(summary));
         }
         selected.set(Vec::new());
-    };
+    });
 
-    let on_bulk_disable = move || {
+    let on_bulk_disable = Callback::new(move |_: ()| {
         let keys_to_disable = selected.get();
         let mut updated = groups.get().clone();
         let mut results = Vec::new();
@@ -700,17 +708,17 @@ pub fn GroupsPage() -> impl IntoView {
             err.set(Some(summary));
         }
         selected.set(Vec::new());
-    };
+    });
 
-    let on_bulk_clear = move || {
+    let on_bulk_clear = Callback::new(move |_: ()| {
         selected.set(Vec::new());
-    };
+    });
 
-    let on_edit = move |key: String| {
+    let on_edit = Callback::new(move |key: String| {
         modal_state.set(ModalState::Edit(key));
-    };
+    });
 
-    let on_write = move |(key, op): (String, WriteOp)| match op {
+    let on_write = Callback::new(move |(key, op): (String, WriteOp)| match op {
         WriteOp::Delete => {
             let mut updated = groups.get().clone();
             updated.retain(|g| g.key != key);
@@ -737,20 +745,20 @@ pub fn GroupsPage() -> impl IntoView {
             }
             groups.set(updated);
         }
-    };
+    });
 
-    let on_retry = move || {
-        on_refresh();
-    };
+    let on_retry = Callback::new(move |_: ()| {
+        on_refresh.run(());
+    });
 
-    let on_submit = move || {
-        on_refresh();
+    let on_submit = Callback::new(move |_: ()| {
+        on_refresh.run(());
         modal_state.set(ModalState::Closed);
-    };
+    });
 
-    let on_cancel = move || {
+    let on_cancel = Callback::new(move |_: ()| {
         modal_state.set(ModalState::Closed);
-    };
+    });
 
     view! {
         <div class="flex flex-col gap-6" role="region" aria-label="分组管理">
@@ -780,17 +788,19 @@ pub fn GroupsPage() -> impl IntoView {
             }}
 
             {move || view! {
-                <Pager total=total_groups() page=current_page on_change=move |p| current_page.set(p)/>
+                <Pager total=total_groups() page=current_page on_change=Callback::new(move |p| current_page.set(p))/>
             }}
 
             {move || match modal_state.get() {
-                ModalState::Closed => view! { <></> }.into_any(),
+                ModalState::Closed => {
+                    None::<AnyView>.into_any()
+                },
                 ModalState::New => view! {
                     <Modal
                         title="新建分组"
-                        on_close=move || {
+                        on_close=Callback::new(move |_: ()| {
                             modal_state.set(ModalState::Closed);
-                        }
+                        })
                     >
                         <GroupFormModal
                             editing=false
@@ -812,9 +822,9 @@ pub fn GroupsPage() -> impl IntoView {
                         Some(group) => view! {
                             <Modal
                                 title="编辑分组"
-                                on_close=move || {
+                                on_close=Callback::new(move |_: ()| {
                                     modal_state.set(ModalState::Closed);
-                                }
+                                })
                             >
                                 <GroupFormModal
                                     editing=true
@@ -842,7 +852,9 @@ pub fn GroupsPage() -> impl IntoView {
                                 />
                             </Modal>
                         }.into_any(),
-                        None => view! { <></> }.into_any(),
+                        None => {
+                            None::<AnyView>.into_any()
+                        },
                     }
                 },
             }}
@@ -879,15 +891,11 @@ fn parse_whitelist_raw(raw: &str) -> Vec<String> {
 /// 【数据流】入：`title` 弹窗标题、`on_close` 关闭回调、`children` 插槽内容；
 /// 出：`on_close` → 调用方关弹窗。`on_copy` 需为 `Copy`：遮罩与 × 按钮各捕获一次。
 #[component]
-pub fn Modal(
-    title: &'static str,
-    on_close: impl Fn() + Copy + 'static,
-    children: Children,
-) -> impl IntoView {
+pub fn Modal(title: &'static str, on_close: Callback<()>, children: Children) -> impl IntoView {
     view! {
         <div
             class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-            on:click=move |_| on_close()
+            on:click=move |_| on_close.run(())
         >
             <div
                 class="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl"
@@ -898,7 +906,7 @@ pub fn Modal(
                     <button
                         class="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
                         aria-label="关闭"
-                        on:click=move |_| on_close()
+                        on:click=move |_| on_close.run(())
                     >
                         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
@@ -952,8 +960,8 @@ pub fn GroupFormModal(
     alias_options: Vec<String>,
     // 映射别名草稿（逗号分隔字符串；MVP 仅登记展示，不随提交落库，文案见 tab1）
     f_alias: RwSignal<String>,
-    on_cancel: impl Fn() + 'static,
-    on_submit: impl Fn() + 'static,
+    on_cancel: Callback<()>,
+    on_submit: Callback<()>,
 ) -> impl IntoView {
     let submit_label = if editing {
         "保存修改"
@@ -988,7 +996,7 @@ pub fn GroupFormModal(
         let _r = ratio.get();
         let _rm = remark.get();
         let _wl = parse_whitelist_raw(&whitelist.get());
-        on_submit();
+        on_submit.run(());
     };
 
     view! {
@@ -1035,7 +1043,7 @@ pub fn GroupFormModal(
                             {move || if editing && name.get() == "default" {
                                 view! { <p class="mt-1 text-xs text-zinc-500">"默认分组标识不可更改"</p> }.into_any()
                             } else {
-                                view! { <></> }.into_any()
+                                None::<AnyView>.into_any()
                             }}
                         </div>
 
@@ -1189,7 +1197,7 @@ pub fn GroupFormModal(
             <button
                 class="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800"
                 data-testid="group-cancel"
-                on:click=move |_| on_cancel()
+                on:click=move |_| on_cancel.run(())
             >
                 "取消"
             </button>

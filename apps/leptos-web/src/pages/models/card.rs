@@ -1,30 +1,20 @@
 //! 模型页面 — 移植自 dioxus admin-page-overview 的 tab-page-models
 //! 使用 singlestage 组件：Card、CardGrid、Button，静态数据，RwSignal 交互
 
-use crate::ui::CardGrid;
+use crate::ui::{Card, CardContent, CardHeader, CardTitle};
 use leptos::prelude::*;
-use singlestage::*;
+
 #[derive(Clone)]
 pub struct ModelCardView {
-    name: String,
-    owner: String,
-    model_type: String,
-    status: i32,
-    usage_count: i64,
-    max_tokens: i64,
-    is_vision: bool,
-    is_tool: bool,
+    pub name: String,
+    pub owner: String,
+    pub model_type: String,
+    pub status: i32,
+    pub usage_count: i64,
+    pub max_tokens: i64,
 }
 
 // 常量（对齐 Dioxus shared.rs）
-const MODELS_TITLE: &str = "模型";
-const MODELS_COUNT_HEAD: &str = "共 ";
-const MODELS_COUNT_TAIL: &str = " 个";
-const MODELS_ERR: &str = "加载模型列表失败";
-const BTN_RETRY: &str = "重试";
-const MODELS_LOADING: &str = "正在加载模型列表…";
-const MODELS_EMPTY: &str = "暂无模型";
-const MODELS_EMPTY_HINT: &str = "/api/models 返回空列表 —— 配置模型后这里会展示真实卡片";
 const DASH: &str = "—";
 const CARD_HEADLINE: &str = "累计调用";
 const CARD_TYPE: &str = "类型";

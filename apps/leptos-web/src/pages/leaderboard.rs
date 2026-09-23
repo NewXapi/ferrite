@@ -51,7 +51,7 @@ const RANKINGS: &[ModelRank] = &[
 
 #[component]
 pub fn LeaderboardPage() -> impl IntoView {
-    let timeframe = use_signal(|| "30天".to_string());
+    let timeframe = RwSignal::new("30天".to_string());
     let options = ["7天", "30天", "全部"];
 
     view! {
@@ -61,16 +61,22 @@ pub fn LeaderboardPage() -> impl IntoView {
                 <div class="flex gap-1 bg-zinc-900 p-1 rounded-xl">
                     {options.iter().map(|&opt| {
                         let opt = opt.to_string();
-                        let active = move || *timeframe.get() == opt;
+                        let opt_active = opt.clone();
+                        let opt_click = opt.clone();
+                        let active = move || timeframe.get() == opt_active;
                         view! {
                             <Button
                                 button_type="button"
-                                class=move || if active() {
-                                    "px-5 py-1.5 rounded-[10px] bg-white text-zinc-900 text-sm font-medium"
-                                } else {
-                                    "px-5 py-1.5 rounded-[10px] text-zinc-400 hover:text-zinc-200 text-sm"
-                                }
-                                onclick=move |_| timeframe.set(opt.clone())
+                                class=MaybeProp::derive(move || {
+                                    Some(
+                                        if active() {
+                                            "px-5 py-1.5 rounded-[10px] bg-white text-zinc-900 text-sm font-medium".to_string()
+                                        } else {
+                                            "px-5 py-1.5 rounded-[10px] text-zinc-400 hover:text-zinc-200 text-sm".to_string()
+                                        },
+                                    )
+                                })
+                                on:click=move |_| timeframe.set(opt_click.clone())
                             >
                                 {opt}
                             </Button>
@@ -86,7 +92,7 @@ pub fn LeaderboardPage() -> impl IntoView {
                     } else {
                         "text-red-400"
                     };
-                    let sign = if r.growth >= 0.0 { "+ } else { " };
+                    let sign = if r.growth >= 0.0 { "+" } else { "" };
                     view! {
                         <Card class="p-6 bg-zinc-900 border border-zinc-700 rounded-2xl hover:border-zinc-500 transition-colors">
                             <div class="flex justify-between mb-6">

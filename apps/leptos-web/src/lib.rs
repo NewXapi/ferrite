@@ -2,12 +2,15 @@
 
 //! 客户端入口。wasm32 编译，由 `HydrationScripts` 在浏览器里启动，
 //! 接管 SSR 渲染出的 DOM，之后交互全在客户端。
+//!
+//! 模块公开：SSR 二进制（`main.rs`）与 wasm 侧共用同一套源码，公开后
+//! SSR 构建里这些模块才是有引用的公共接口，不会被 dead_code 判成死代码。
 
-mod app;
-mod pages;
-mod ui;
-mod users;
-mod wire;
+pub mod app;
+pub mod pages;
+pub mod ui;
+pub mod users;
+pub mod wire;
 
 /// 只在 csr feature 下编。SSR 二进制不包含 wasm-bindgen 依赖。
 /// `App` 直接走模块路径引用：它只被本函数用到，顶层 `use` 在非 csr 构建下会成为

@@ -18,9 +18,11 @@ use crate::pages::{
     ModelsPage, NetworkPage, OverviewPage, RedemptionsPage, RewardsPage, SessionsPage,
     SettingsPage, SubscriptionsPage, SystemPage, UsagePage,
 };
+#[cfg(feature = "csr")]
+use crate::users::ListUsers;
 #[cfg(feature = "ssr")]
 use crate::users::PageState;
-use crate::users::{Filter, ListUsers, ToggleUser, User, cny};
+use crate::users::{Filter, ToggleUser, User, cny};
 
 #[cfg(feature = "ssr")]
 pub fn shell(options: LeptosOptions) -> impl IntoView {

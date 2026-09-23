@@ -1,17 +1,33 @@
-use crate::ui::CardGrid;
-use crate::ui::components::button::ButtonVariant;
 use leptos::prelude::*;
-use serde_json::json;
-use singlestage::*;
+use leptos::serde_json::{Value, json};
+
+use crate::ui::{
+    Button, Card, CardContent, CardGrid, CardHeader, CardTitle, Dialog, DialogContent,
+    DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+};
+
+/// 从静态 JSON 里取字符串字段，缺失时回退为空串。
+fn json_str(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// 从静态 JSON 里取整数字段，缺失时回退为 0。
+fn json_i64(value: &Value, key: &str) -> i64 {
+    value.get(key).and_then(|v| v.as_i64()).unwrap_or(0)
+}
 
 /// 系统设置页 — 基于 dioxus 源码里的静态数据
 /// 使用 Card + CardHeader + CardTitle + CardContent, CardGrid 包装列表
 /// Dialog 使用 RwSignal 控制 open, button_type="button"
 #[component]
 pub fn SystemPage() -> impl IntoView {
-    let mut dialog_open = RwSignal::new(false);
+    let dialog_open = RwSignal::new(false);
 
-    let static_data = RwSignal::new(json!({
+    let static_data = json!({
         "title": "系统设置",
         "version": "v2.4.1",
         "env": "production",
@@ -24,7 +40,16 @@ pub fn SystemPage() -> impl IntoView {
             "log_level": "info",
             "max_connections": 5000
         }
-    }));
+    });
+
+    // `serde_json::Value` 不是 `Copy`：一次读出所有展示字段，
+    // 后续 view 只借用这些已拥有所有权的局部量。
+    let version = json_str(&static_data, "version");
+    let env = json_str(&static_data, "env");
+    let uptime = json_str(&static_data, "uptime");
+    let users = json_i64(&static_data, "users");
+    let models = json_i64(&static_data, "models");
+    let tokens = json_i64(&static_data, "tokens");
 
     view! {
         <div class="space-y-6 p-6">
@@ -39,19 +64,19 @@ pub fn SystemPage() -> impl IntoView {
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <p class="text-sm text-zinc-500">"版本"</p>
-                                <p class="font-mono text-lg">{move || static_data().get("version").and_then(|v| v.as_str()).unwrap_or_default().to_string()}</p>
+                                <p class="font-mono text-lg">{version}</p>
                             </div>
                             <div>
                                 <p class="text-sm text-zinc-500">"环境"</p>
-                                <p class="font-medium">{move || static_data().get("env").and_then(|v| v.as_str()).unwrap_or_default().to_string()}</p>
+                                <p class="font-medium">{env}</p>
                             </div>
                             <div>
                                 <p class="text-sm text-zinc-500">"运行时间"</p>
-                                <p class="font-medium">{move || static_data().get("uptime").and_then(|v| v.as_str()).unwrap_or_default().to_string()}</p>
+                                <p class="font-medium">{uptime}</p>
                             </div>
                             <div>
                                 <p class="text-sm text-zinc-500">"注册用户"</p>
-                                <p class="font-medium">{move || static_data().get("users").and_then(|v| v.as_i64()).unwrap_or(0)}</p>
+                                <p class="font-medium">{users}</p>
                             </div>
                         </div>
                     </CardContent>
@@ -65,11 +90,11 @@ pub fn SystemPage() -> impl IntoView {
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <p class="text-sm text-zinc-500">"模型数量"</p>
-                                <p class="text-2xl font-bold text-blue-600">{move || static_data().get("models").and_then(|v| v.as_i64()).unwrap_or(0)}</p>
+                                <p class="text-2xl font-bold text-blue-600">{models}</p>
                             </div>
                             <div>
                                 <p class="text-sm text-zinc-500">Token "总数"</p>
-                                <p class="text-2xl font-bold text-emerald-600">{move || static_data().get("tokens").and_then(|v| v.as_i64()).unwrap_or(0)}</p>
+                                <p class="text-2xl font-bold text-emerald-600">{tokens}</p>
                             </div>
                         </div>
                     </CardContent>
@@ -101,21 +126,21 @@ pub fn SystemPage() -> impl IntoView {
             <div class="flex gap-3">
                 <Button
                     button_type="button"
-                    variant=ButtonVariant::Default
-                    on_click=move |_| { dialog_open.set(true); }
+                    variant="default"
+                    on:click=move |_| { dialog_open.set(true); }
                 >
                     "运行诊断"
                 </Button>
                 <Button
                     button_type="button"
-                    variant=ButtonVariant::Outline
+                    variant="outline"
                 >
                     "刷新配置"
                 </Button>
             </div>
 
-            <Dialog open=dialog_open on_open_change=move |open| dialog_open.set(open)>
-                <DialogTrigger>
+            <Dialog open=dialog_open>
+                <DialogTrigger slot>
                     <span class="hidden">"trigger"</span>
                 </DialogTrigger>
                 <DialogContent>
@@ -134,8 +159,8 @@ pub fn SystemPage() -> impl IntoView {
                     <DialogFooter>
                         <Button
                             button_type="button"
-                            on_click=move |_| dialog_open.set(false)
-                            variant=ButtonVariant::Outline
+                            on:click=move |_| dialog_open.set(false)
+                            variant="outline"
                         >
                             "关闭"
                         </Button>

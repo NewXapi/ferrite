@@ -9,8 +9,6 @@ pub fn static_models() -> Vec<ModelCardView> {
             status: 1,
             usage_count: 1500000,
             max_tokens: 200000,
-            is_vision: true,
-            is_tool: true,
         },
         ModelCardView {
             name: "GPT-4 Turbo".to_string(),
@@ -19,8 +17,6 @@ pub fn static_models() -> Vec<ModelCardView> {
             status: 1,
             usage_count: 2500000,
             max_tokens: 128000,
-            is_vision: true,
-            is_tool: true,
         },
         ModelCardView {
             name: "Gemini Pro".to_string(),
@@ -29,8 +25,6 @@ pub fn static_models() -> Vec<ModelCardView> {
             status: 1,
             usage_count: 800000,
             max_tokens: 1000000,
-            is_vision: true,
-            is_tool: true,
         },
         ModelCardView {
             name: "DeepSeek-Chat".to_string(),
@@ -39,8 +33,6 @@ pub fn static_models() -> Vec<ModelCardView> {
             status: 1,
             usage_count: 1200000,
             max_tokens: 64000,
-            is_vision: false,
-            is_tool: true,
         },
         ModelCardView {
             name: "Qwen2.5-72B".to_string(),
@@ -49,8 +41,6 @@ pub fn static_models() -> Vec<ModelCardView> {
             status: 2,
             usage_count: 600000,
             max_tokens: 32768,
-            is_vision: false,
-            is_tool: true,
         },
         ModelCardView {
             name: "Llama 3.1 405B".to_string(),
@@ -59,8 +49,6 @@ pub fn static_models() -> Vec<ModelCardView> {
             status: 1,
             usage_count: 400000,
             max_tokens: 131072,
-            is_vision: false,
-            is_tool: true,
         },
     ]
 }

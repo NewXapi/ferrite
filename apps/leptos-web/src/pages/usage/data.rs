@@ -1,10 +1,5 @@
-use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle, Dialog, DialogTrigger};
-use leptos::prelude::*;
-use singlestage::*;
-
 #[derive(Clone, Copy)]
 pub struct UsageLog {
-    pub id: &'static str,
     pub model_name: &'static str,
     pub token_name: &'static str,
     pub channel_name: &'static str,
@@ -14,14 +9,11 @@ pub struct UsageLog {
     pub use_time_ms: i64,
     pub quota: i64,
     pub is_stream: bool,
-    pub ip: &'static str,
-    pub request_id: &'static str,
 }
 
 pub fn demo_usage_logs() -> Vec<UsageLog> {
     vec![
         UsageLog {
-            id: "log_001",
             model_name: "gpt-4o",
             token_name: "默认令牌",
             channel_name: "OpenAI",
@@ -31,11 +23,8 @@ pub fn demo_usage_logs() -> Vec<UsageLog> {
             use_time_ms: 2500,
             quota: 15000,
             is_stream: true,
-            ip: "192.168.1.100",
-            request_id: "req_abc123",
         },
         UsageLog {
-            id: "log_002",
             model_name: "claude-3.5-sonnet",
             token_name: "API令牌",
             channel_name: "Anthropic",
@@ -45,11 +34,8 @@ pub fn demo_usage_logs() -> Vec<UsageLog> {
             use_time_ms: 3200,
             quota: 24000,
             is_stream: false,
-            ip: "192.168.1.101",
-            request_id: "req_def456",
         },
         UsageLog {
-            id: "log_003",
             model_name: "deepseek-r1",
             token_name: "测试令牌",
             channel_name: "DeepSeek",
@@ -59,17 +45,11 @@ pub fn demo_usage_logs() -> Vec<UsageLog> {
             use_time_ms: 1500,
             quota: 8000,
             is_stream: true,
-            ip: "192.168.1.102",
-            request_id: "req_ghi789",
         },
     ]
 }
 
 pub fn fmt_num(v: i64) -> String {
-    v.to_string()
-}
-
-pub fn fmt_time(v: &str) -> String {
     v.to_string()
 }
 

@@ -1,6 +1,6 @@
-use crate::ui::CardGrid;
 use leptos::prelude::*;
-use singlestage::*;
+
+use crate::ui::{Button, Card, CardContent, CardHeader, CardTitle};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeInfo {
@@ -70,9 +70,11 @@ pub fn NetworkPage() -> impl IntoView {
     let nodes = sample_nodes();
     let selected_node = RwSignal::new(None::<String>);
 
-    let groups: Vec<_> = nodes.iter().filter(|n| n.layer == 1).collect();
-    let aliases: Vec<_> = nodes.iter().filter(|n| n.layer == 2).collect();
-    let dispatches: Vec<_> = nodes.iter().filter(|n| n.layer == 3).collect();
+    // 三个分层列表各自持有克隆出来的节点，避免借住 `nodes`：
+    // 下方 `For` 与侧栏都要按值消费 `nodes`，混用引用会形成「借出后又被移走」。
+    let groups: Vec<NodeInfo> = nodes.iter().filter(|n| n.layer == 1).cloned().collect();
+    let aliases: Vec<NodeInfo> = nodes.iter().filter(|n| n.layer == 2).cloned().collect();
+    let dispatches: Vec<NodeInfo> = nodes.iter().filter(|n| n.layer == 3).cloned().collect();
 
     view! {
         <div class="relative w-full h-full bg-zinc-950 flex overflow-hidden">
@@ -108,15 +110,20 @@ pub fn NetworkPage() -> impl IntoView {
                     <div class="absolute top-[80px] left-[80px] flex flex-col gap-6">
                         {groups.iter().enumerate().map(|(i, node)| {
                             let left = 40 + i * 60;
+                            let color = node.color.clone();
+                            let key = node.key.clone();
+                            let name = node.name.clone();
+                            let key_for_click = node.key.clone();
+                            let color_dot = node.color.clone();
                             view! {
                                 <div
                                     class="w-28 h-10 rounded-lg border-2 cursor-pointer hover:shadow-xl hover:scale-105 transition-all flex items-center px-3"
-                                    style=move || format!("left: {}px; border-color: {};", left, node.color)
-                                    class=("bg-zinc-900", selected_node.get() == Some(node.key.clone()))
-                                    on:click=move |_| selected_node.set(Some(node.key.clone()))
+                                    style=move || format!("left: {}px; border-color: {};", left, color)
+                                    class=("bg-zinc-900", move || selected_node.get() == Some(key.clone()))
+                                    on:click=move |_| selected_node.set(Some(key_for_click.clone()))
                                 >
-                                    <div class="w-3 h-3 rounded-full mr-2" style=move || format!("background-color: {};", node.color)></div>
-                                    <span class="text-xs font-medium text-white truncate">{node.name}</span>
+                                    <div class="w-3 h-3 rounded-full mr-2" style=move || format!("background-color: {};", color_dot)></div>
+                                    <span class="text-xs font-medium text-white truncate">{name}</span>
                                 </div>
                             }
                         }).collect_view()}
@@ -126,15 +133,20 @@ pub fn NetworkPage() -> impl IntoView {
                         {aliases.iter().enumerate().map(|(i, node)| {
                             let left = 20 + (i % 2) * 140;
                             let top = if i > 1 { 80 } else { 0 };
+                            let color = node.color.clone();
+                            let key = node.key.clone();
+                            let name = node.name.clone();
+                            let key_for_click = node.key.clone();
+                            let color_dot = node.color.clone();
                             view! {
                                 <div
                                     class="w-28 h-10 rounded-lg border-2 cursor-pointer hover:shadow-xl hover:scale-105 transition-all flex items-center px-3 absolute"
-                                    style=move || format!("left: {}px; top: {}px; border-color: {};", left, top, node.color)
-                                    class=("bg-zinc-900", selected_node.get() == Some(node.key.clone()))
-                                    on:click=move |_| selected_node.set(Some(node.key.clone()))
+                                    style=move || format!("left: {}px; top: {}px; border-color: {};", left, top, color)
+                                    class=("bg-zinc-900", move || selected_node.get() == Some(key.clone()))
+                                    on:click=move |_| selected_node.set(Some(key_for_click.clone()))
                                 >
-                                    <div class="w-3 h-3 rounded-full mr-2" style=move || format!("background-color: {};", node.color)></div>
-                                    <span class="text-xs font-medium text-white truncate">{node.name}</span>
+                                    <div class="w-3 h-3 rounded-full mr-2" style=move || format!("background-color: {};", color_dot)></div>
+                                    <span class="text-xs font-medium text-white truncate">{name}</span>
                                 </div>
                             }
                         }).collect_view()}
@@ -142,15 +154,20 @@ pub fn NetworkPage() -> impl IntoView {
 
                     <div class="absolute top-[480px] left-[720px] flex flex-col gap-4">
                         {dispatches.iter().map(|node| {
+                            let color = node.color.clone();
+                            let key = node.key.clone();
+                            let name = node.name.clone();
+                            let key_for_click = node.key.clone();
+                            let color_dot = node.color.clone();
                             view! {
                                 <div
                                     class="w-28 h-10 rounded-lg border-2 cursor-pointer hover:shadow-xl hover:scale-105 transition-all flex items-center px-3"
-                                    style=move || format!("border-color: {};", node.color)
-                                    class=("bg-zinc-900", selected_node.get() == Some(node.key.clone()))
-                                    on:click=move |_| selected_node.set(Some(node.key.clone()))
+                                    style=move || format!("border-color: {};", color)
+                                    class=("bg-zinc-900", move || selected_node.get() == Some(key.clone()))
+                                    on:click=move |_| selected_node.set(Some(key_for_click.clone()))
                                 >
-                                    <div class="w-3 h-3 rounded-full mr-2" style=move || format!("background-color: {};", node.color)></div>
-                                    <span class="text-xs font-medium text-white truncate">{node.name}</span>
+                                    <div class="w-3 h-3 rounded-full mr-2" style=move || format!("background-color: {};", color_dot)></div>
+                                    <span class="text-xs font-medium text-white truncate">{name}</span>
                                 </div>
                             }
                         }).collect_view()}
@@ -186,58 +203,54 @@ pub fn NetworkPage() -> impl IntoView {
                         match selected_node.get() {
                             Some(key) => {
                                 let node = nodes.iter().find(|n| n.key == key).cloned();
-                                view! {
-                                    <For
-                                        each=move || {
-                                            let mut v = Vec::new();
-                                            if let Some(n) = node {
-                                                v.push(n);
-                                            }
-                                            v
-                                        }
-                                        key=|node| node.key.clone()
-                                        children=|node| view! {
-                                            <Card class="mb-4">
-                                                <CardHeader>
-                                                    <CardTitle>{node.name.clone()}</CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div class="space-y-3">
-                                                        <div>
-                                                            <div class="text-[11px] text-zinc-500 mb-1">"层级"</div>
-                                                            <div class="text-white font-mono text-sm">{format!("层 {}", node.layer)}</div>
-                                                        </div>
-                                                        <div>
-                                                            <div class="text-[11px] text-zinc-500 mb-1">"颜色"</div>
-                                                            <div class="flex items-center gap-2">
-                                                                <div class="w-4 h-4 rounded" style=move || format!("background-color: {};", node.color)></div>
-                                                                <span class="text-zinc-400 font-mono text-xs">{node.color}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <div class="text-[11px] text-zinc-500 mb-2">"连接"</div>
-                                                            <div class="flex flex-wrap gap-2">
-                                                                {node.connections.iter().map(|conn| {
-                                                                    view! {
-                                                                        <div class="inline-flex items-center gap-1.5 bg-zinc-800 border border-zinc-600 rounded-full px-3 py-1 text-xs text-zinc-300">
-                                                                            {conn}
-                                                                        </div>
-                                                                    }
-                                                                }).collect_view()}
-                                                            </div>
+                                match node {
+                                    Some(node) => view! {
+                                        <Card class="mb-4">
+                                            <CardHeader>
+                                                <CardTitle>{node.name.clone()}</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div class="space-y-3">
+                                                    <div>
+                                                        <div class="text-[11px] text-zinc-500 mb-1">"层级"</div>
+                                                        <div class="text-white font-mono text-sm">{format!("层 {}", node.layer)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-[11px] text-zinc-500 mb-1">"颜色"</div>
+                                                        <div class="flex items-center gap-2">
+                                                            <div class="w-4 h-4 rounded" style=format!("background-color: {};", node.color)></div>
+                                                            <span class="text-zinc-400 font-mono text-xs">{node.color.clone()}</span>
                                                         </div>
                                                     </div>
-                                                </CardContent>
-                                            </Card>
-                                        }
-                                    />
-                                }.into_view()
+                                                    <div>
+                                                        <div class="text-[11px] text-zinc-500 mb-2">"连接"</div>
+                                                        <div class="flex flex-wrap gap-2">
+                                                            {node.connections.iter().map(|conn| {
+                                                                let conn = conn.clone();
+                                                                view! {
+                                                                    <div class="inline-flex items-center gap-1.5 bg-zinc-800 border border-zinc-600 rounded-full px-3 py-1 text-xs text-zinc-300">
+                                                                        {conn}
+                                                                    </div>
+                                                                }
+                                                            }).collect_view()}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    }.into_any(),
+                                    None => view! {
+                                        <div class="text-center text-zinc-500 py-16">
+                                            <div class="text-zinc-400">"点击节点以查看详情"</div>
+                                        </div>
+                                    }.into_any(),
+                                }
                             }
                             None => view! {
                                 <div class="text-center text-zinc-500 py-16">
                                     <div class="text-zinc-400">"点击节点以查看详情"</div>
                                 </div>
-                            }.into_view()
+                            }.into_any()
                         }
                     }}
                 </div>

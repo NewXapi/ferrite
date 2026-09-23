@@ -1,10 +1,7 @@
-use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle};
+use crate::ui::{Card, CardContent, CardHeader};
 use leptos::prelude::*;
-use singlestage::*;
 
-use super::data::{RedemptionCardData, RedemptionDemoData};
-
-use super::data::*;
+use super::data::RedemptionCardData;
 
 #[component]
 pub fn StatusBadge(status: u8) -> impl IntoView {
@@ -22,9 +19,9 @@ pub fn StatusBadge(status: u8) -> impl IntoView {
     };
 
     view! {
-        span { class: format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border {}", color_class),
+        <span class=format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border {}", color_class)>
             {text}
-        }
+        </span>
     }
 }
 
@@ -32,7 +29,7 @@ pub fn StatusBadge(status: u8) -> impl IntoView {
 #[component]
 pub fn QuotaIndicator(quota_cny: f64) -> impl IntoView {
     let width_class = {
-        let normalized = (quota_cny / 1000.0).min(1.0).max(0.0);
+        let normalized = (quota_cny / 1000.0).clamp(0.0, 1.0);
         let percentage = (normalized * 100.0) as u8;
         match percentage {
             0 => "w-0".to_string(),
@@ -52,9 +49,9 @@ pub fn QuotaIndicator(quota_cny: f64) -> impl IntoView {
     };
 
     view! {
-        div { class: "h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden",
-            div { class: format!("h-full {} transition-all duration-300 {}", color_class, width_class) }
-        }
+        <div class="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+            <div class=format!("h-full {} transition-all duration-300 {}", color_class, width_class)></div>
+        </div>
     }
 }
 
@@ -62,8 +59,8 @@ pub fn QuotaIndicator(quota_cny: f64) -> impl IntoView {
 #[component]
 pub fn RedemptionCard(
     item: RedemptionCardData,
-    on_copy: EventHandler<String>,
-    on_disable: EventHandler<String>,
+    on_copy: Callback<String>,
+    on_disable: Callback<String>,
 ) -> impl IntoView {
     let (copy_button_text, copy_button_class) = (
         "复制预览",
@@ -85,89 +82,91 @@ pub fn RedemptionCard(
     };
 
     view! {
-        Card {
-            class: "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
-            "data-testid": "redemption-card",
-            role: "listitem",
-
+        <Card
+            attr:data-testid="redemption-card"
+            attr:role="listitem"
+            class="group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80"
+        >
             // Header with avatar and status
-            CardHeader {
-                class: "flex items-start gap-3 mb-3",
-                div { class: "h-9 w-9 rounded-full border border-zinc-700 bg-zinc-800 flex items-center justify-center",
-                    svg { class: "h-5 w-5 text-zinc-400", fill: "none", stroke: "currentColor", view_box: "0 0 24 24",
-                        path { stroke_linecap: "round", stroke_linejoin: "round", stroke_width: "2", d: "M12 8c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-8-8zm0-8v4m0 4v4" }
-                    }
-                }
-                div { class: "flex-1 min-w-0",
-                    div { class: "flex items-center gap-2 mb-1",
-                        span { class: "font-mono text-sm text-zinc-100 truncate", {item.code_preview} }
-                        StatusBadge { status: item.status }
-                    }
-                    div { class: "text-xs text-zinc-500 font-mono", "ID: " {item.key} }
-                }
-            }
+            <CardHeader class="flex items-start gap-3 mb-3">
+                <div class="h-9 w-9 rounded-full border border-zinc-700 bg-zinc-800 flex items-center justify-center">
+                    <svg class="h-5 w-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-8-8zm0-8v4m0 4v4"></path>
+                    </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="font-mono text-sm text-zinc-100 truncate">{item.code_preview}</span>
+                        <StatusBadge status=item.status/>
+                    </div>
+                    <div class="text-xs text-zinc-500 font-mono">"ID: " {item.key}</div>
+                </div>
+            </CardHeader>
 
             // Quota display
             {if item.quota_cny > 0.0 {
                 view! {
-                    CardContent {
-                        class: "mb-3",
-                        div { class: "flex items-center justify-between mb-1",
-                            span { class: "text-xs text-zinc-400", "面值 ¥" {format!("{:.2}", item.quota_cny)} }
-                            span { class: "text-xs text-zinc-500", {format!("{} 积分", ((item.quota_cny / 500000.0) * 100.0) as u8)} }
-                        }
-                        QuotaIndicator { quota_cny: item.quota_cny }
-                    }
+                    <CardContent class="mb-3">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-zinc-400">
+                                "面值 ¥" {format!("{:.2}", item.quota_cny)}
+                            </span>
+                            <span class="text-xs text-zinc-500">
+                                {format!("{} 积分", ((item.quota_cny / 500000.0) * 100.0) as u8)}
+                            </span>
+                        </div>
+                        <QuotaIndicator quota_cny=item.quota_cny/>
+                    </CardContent>
                 }.into_any()
             } else {
-                view! { }.into_any()
+                view! { <span></span> }.into_any()
             }}
 
             // Metadata row
-            CardContent {
-                class: "space-y-1 mb-4 text-xs",
-                {if item.redeemed_by.is_some() {
+            <CardContent class="space-y-1 mb-4 text-xs">
+                {if let Some(by) = item.redeemed_by {
                     view! {
-                        div { class: "flex items-center gap-2",
-                            span { class: "text-zinc-500", "兑换人:" }
-                            span { class: "text-zinc-100", {item.redeemed_by.unwrap()} }
-                        }
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-500">"兑换人:"</span>
+                            <span class="text-zinc-100">{by}</span>
+                        </div>
                     }.into_any()
                 } else {
-                    view! { }.into_any()
+                    view! { <span></span> }.into_any()
                 }}
                 {if !item.redeemed_at.is_empty() {
                     view! {
-                        div { class: "flex items-center gap-2",
-                            span { class: "text-zinc-500", "核销时间:" }
-                            span { class: "text-zinc-100", {item.redeemed_at} }
-                        }
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-500">"核销时间:"</span>
+                            <span class="text-zinc-100">{item.redeemed_at}</span>
+                        </div>
                     }.into_any()
                 } else {
-                    view! { }.into_any()
+                    view! { <span></span> }.into_any()
                 }}
-                div { class: "flex items-center gap-2",
-                    span { class: "text-zinc-500", "生成时间:" }
-                    span { class: "text-zinc-100", {item.created} }
-                }
-            }
+                <div class="flex items-center gap-2">
+                    <span class="text-zinc-500">"生成时间:"</span>
+                    <span class="text-zinc-100">{item.created}</span>
+                </div>
+            </CardContent>
 
             // Action buttons
-            CardContent {
-                class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
-                button {
-                    class: format!("flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 {}", copy_button_class),
-                    on:click: move |_| on_copy.emit(item.key.to_string()),
+            <CardContent class="mt-4 flex gap-1.5 border-t border-zinc-800 pt-3">
+                <button
+                    class=format!("flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 {}", copy_button_class)
+                    on:click=move |_| on_copy.run(item.key.to_string())
+                >
                     {copy_button_text}
-                }
-                button {
-                    class: format!("flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 {}", disable_button_class),
-                    on:click: move |_| on_disable.emit(item.key.to_string()),
-                    disabled: item.status != 1,
+                </button>
+                <button
+                    class=format!("flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 {}", disable_button_class)
+                    on:click=move |_| on_disable.run(item.key.to_string())
+                    disabled=item.status != 1
+                >
                     {disable_button_text}
-                }
-            }
-        }
+                </button>
+            </CardContent>
+        </Card>
     }
 }
 

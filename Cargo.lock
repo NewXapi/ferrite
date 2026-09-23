@@ -3812,6 +3812,7 @@ dependencies = [
  "leptos_axum",
  "leptos_router",
  "serde",
+ "serde_json",
  "server_fn",
  "singlestage",
  "tokio",

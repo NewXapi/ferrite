@@ -1,10 +1,13 @@
 //! 服务端入口。编 SSR 二进制，吐首屏 HTML + 注册 server function 路由。
+//!
+//! 模块公开：SSR 二进制与 wasm 侧共用同一套源码，`ui` 的 `pub use` 出口
+//! 只有模块可见时才算被引用，否则 bin 里会报 unused_imports。
 
-mod app;
-mod pages;
-mod ui;
-mod users;
-mod wire;
+pub mod app;
+pub mod pages;
+pub mod ui;
+pub mod users;
+pub mod wire;
 
 use std::sync::Arc;
 

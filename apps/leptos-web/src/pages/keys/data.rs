@@ -1,17 +1,4 @@
-use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle, Dialog, DialogTrigger};
-use leptos::prelude::*;
-use singlestage::*;
-
-#[derive(Clone, Copy)]
-struct KeyItem {
-    name: &'static str,
-    key_preview: &'static str,
-    status: i32,
-    unlimited_quota: bool,
-    used_quota: i64,
-    quota: i64,
-    created_at: &'static str,
-}
+use super::card::KeyItem;
 
 pub fn demo_keys() -> Vec<KeyItem> {
     vec![

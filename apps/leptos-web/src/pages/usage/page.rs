@@ -43,8 +43,14 @@ pub fn UsagePage() -> impl IntoView {
                 </CardGrid>
             </section>
 
-            {move || selected.get().map(|log| view! {
-                <Dialog dialog_trigger=DialogTrigger::None open=open title="日志详情".to_string()>
+            <Dialog
+                open=open
+                title="日志详情".to_string()
+            >
+                <DialogTrigger slot>
+                    <span class="hidden">"日志详情"</span>
+                </DialogTrigger>
+                {move || selected.get().map(|log| view! {
                     <div class="space-y-3">
                         <Row k="模型" v=log.model_name.to_string()/>
                         <Row k="时间" v=log.created_at.to_string()/>
@@ -53,8 +59,8 @@ pub fn UsagePage() -> impl IntoView {
                         <Row k="Tokens" v=format!("{} / {}", fmt_num(log.prompt_tokens), fmt_num(log.completion_tokens))/>
                         <Row k="流式" v=if log.is_stream { "是" } else { "否" }.to_string()/>
                     </div>
-                </Dialog>
-            })}
+                })}
+            </Dialog>
         </div>
     }
 }

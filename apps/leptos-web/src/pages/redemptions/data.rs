@@ -1,30 +1,26 @@
-use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle};
-use leptos::prelude::*;
-use singlestage::*;
-
 // Static demo data - in real app, this would come from the backend API
 #[derive(Debug, Clone, Copy)]
 pub struct RedemptionCardData {
-    key: &'static str,
-    code_preview: &'static str,
-    quota_cny: f64,
-    status: u8, // 1: 未使用 / 2: 已核销 / 3: 已停用
-    redeemed_by: Option<&'static str>,
-    redeemed_at: &'static str,
-    created: &'static str,
+    pub key: &'static str,
+    pub code_preview: &'static str,
+    pub quota_cny: f64,
+    pub status: u8, // 1: 未使用 / 2: 已核销 / 3: 已停用
+    pub redeemed_by: Option<&'static str>,
+    pub redeemed_at: &'static str,
+    pub created: &'static str,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct RedemptionDemoData {
     // Stats data
-    total_count: i64,
-    unused_count: i64,
-    used_count: i64,
-    disabled_count: i64,
-    available_quota: f64,
+    pub total_count: i64,
+    pub unused_count: i64,
+    pub used_count: i64,
+    pub disabled_count: i64,
+    pub available_quota: f64,
 
     // List data
-    redemptions: Vec<RedemptionCardData>,
+    pub redemptions: Vec<RedemptionCardData>,
 }
 
 pub fn demo_data() -> RedemptionDemoData {

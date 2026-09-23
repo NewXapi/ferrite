@@ -6,7 +6,7 @@ use singlestage::*;
 /// 简化版：4个预设订阅套餐展示，新建套餐弹窗
 #[component]
 pub fn SubscriptionsPage() -> impl IntoView {
-    let mut show_modal = use_signal(|| false);
+    let show_modal = RwSignal::new(false);
 
     // 预设的 4 个订阅套餐数据
     const PLANS: &[(&str, &str, &str)] = &[
@@ -30,20 +30,28 @@ pub fn SubscriptionsPage() -> impl IntoView {
             </div>
 
             <CardGrid>
-                {PLANS.iter().enumerate().map(|(idx, (name, price, status))| {
-                    let status_class = if *status == "启用" { "bg-green-100 text-green-800" } else { "bg-red-100 text-red-800" };
-                    view! {
-                        <Card class="p-4">
-                            <h3 class="text-lg font-semibold mb-2">{name}</h3>
-                            <p class="text-gray-600 mb-2">{price}</p>
-                            <span class="inline-block px-2 py-1 text-xs rounded-full">{status_class} {status}</span>
-                        </Card>
-                    }
-                }).collect_view()}
+                {PLANS
+                    .iter()
+                    .copied()
+                    .map(|(name, price, status)| {
+                        let status_class = if status == "启用" {
+                            "bg-green-100 text-green-800"
+                        } else {
+                            "bg-red-100 text-red-800"
+                        };
+                        view! {
+                            <Card class="p-4">
+                                <h3 class="text-lg font-semibold mb-2">{name}</h3>
+                                <p class="text-gray-600 mb-2">{price}</p>
+                                <span class="inline-block px-2 py-1 text-xs rounded-full">{status_class} {status}</span>
+                            </Card>
+                        }
+                    })
+                    .collect_view()}
             </CardGrid>
 
-            <Dialog open=show_modal() on_open_change=move |v| show_modal.set(v)>
-                <DialogTrigger as std::fmt::Display = "button" button_type="button">
+            <Dialog open=show_modal.get()>
+                <DialogTrigger slot>
                     <span class="hidden">Dialog Trigger</span>
                 </DialogTrigger>
                 <DialogContent class="sm:max-w-2xl">
@@ -68,16 +76,11 @@ pub fn SubscriptionsPage() -> impl IntoView {
                         <div class="grid grid-cols-4 items-center gap-4">
                             <Label class="text-right">"币种"</Label>
                             <div class="col-span-3">
-                                <Select>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="选择币种" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="CNY">"CNY"</SelectItem>
-                                        <SelectItem value="USD">"USD"</SelectItem>
-                                        <SelectItem value="EUR">"EUR"</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <select class="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/50">
+                                    <option value="CNY">"CNY"</option>
+                                    <option value="USD">"USD"</option>
+                                    <option value="EUR">"EUR"</option>
+                                </select>
                             </div>
                         </div>
                         <div class="grid grid-cols-4 items-center gap-4">
@@ -89,8 +92,8 @@ pub fn SubscriptionsPage() -> impl IntoView {
                     </div>
 
                     <DialogFooter>
-                        <Button type="button" button_type="button" on:click=move |_| show_modal.set(false)>"取消"</Button>
-                        <Button type="button" button_type="button" class="ml-2" on:click=move |_| show_modal.set(false)>"保存"</Button>
+                        <Button button_type="button" on:click=move |_| show_modal.set(false)>"取消"</Button>
+                        <Button button_type="button" class="ml-2" on:click=move |_| show_modal.set(false)>"保存"</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

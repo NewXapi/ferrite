@@ -1,9 +1,6 @@
 use crate::ui::{Card, CardGrid, Dialog, DialogTrigger};
 use leptos::prelude::*;
-use singlestage::*;
 
-const DEMO_USER_KEY: &str = "user_0xA1B2";
-const DEMO_USER_NAME: &str = "测试用户";
 const DEMO_AFF_CODE: &str = "INVITE42";
 const DEMO_AVAILABLE: i64 = 12480;
 
@@ -107,9 +104,13 @@ pub fn RewardsPage() -> impl IntoView {
                     <div class="p-6">
                         <div class="flex items-center justify-between mb-6">
                             <div class="text-lg font-medium">"邀请奖励"</div>
-                            <DialogTrigger on:click=move |_| open.set(true)>
-                                <button type="button" class="text-xs px-5 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-full text-white transition">"邀请好友"</button>
-                            </DialogTrigger>
+                            <Dialog open=open>
+                                <DialogTrigger slot>
+                                    <button type="button" class="text-xs px-5 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-full text-white transition" on:click=move |_| open.set(true)>"邀请好友"</button>
+                                </DialogTrigger>
+                                <p class="text-zinc-400">"分享您的邀请码 "<span class="font-mono text-white">{DEMO_AFF_CODE}</span>"，好友注册后双方均可获得奖励。"</p>
+                                <button type="button" class="mt-4 w-full py-3 text-sm bg-white text-zinc-900 rounded-2xl hover:bg-zinc-100 transition" on:click=move |_| open.set(false)>"确定"</button>
+                            </Dialog>
                         </div>
 
                         <div class="flex gap-8">
@@ -170,7 +171,7 @@ pub fn RewardsPage() -> impl IntoView {
                             <div class="p-5 flex justify-between items-center">
                                 <div>
                                     <div class="text-sm text-zinc-400">{r.time}</div>
-                                    <div class="text-white font-medium mt-0.5">"充值 {r.amount}"</div>
+                                    <div class="text-white font-medium mt-0.5">"充值 " {r.amount}</div>
                                 </div>
                                 <div class="px-4 py-1 text-xs rounded-full bg-emerald-900 text-emerald-400">{r.status}</div>
                             </div>
@@ -178,10 +179,6 @@ pub fn RewardsPage() -> impl IntoView {
                     }).collect_view()}
                 </CardGrid>
             </div>
-
-            <Dialog title="邀请好友".to_string() open=open.get() on_confirm=move |_| open.set(false) on_cancel=move |_| open.set(false)>
-                <p class="text-zinc-400">"分享您的邀请码 "<span class="font-mono text-white">{DEMO_AFF_CODE}</span>"，好友注册后双方均可获得奖励。"</p>
-            </Dialog>
         </div>
     }
 }

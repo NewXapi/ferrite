@@ -71,7 +71,7 @@ pub fn GatewayHealthRow(item: crate::wire::GatewayHealthItem) -> impl IntoView {
                 channel_key
                     .as_deref()
                     .map(|k| k.chars().take(8).collect::<String>())
-                    .unwrap_or_else(|| format!("{}", unit_key.chars().take(6).collect::<String>()))
+                    .unwrap_or_else(|| unit_key.chars().take(6).collect::<String>().to_string())
             }
         }
     };
@@ -106,36 +106,39 @@ pub fn GatewayHealthRow(item: crate::wire::GatewayHealthItem) -> impl IntoView {
     let outcome = item.last_cooling_outcome.clone();
 
     view! {
-        div {
-            class: "flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 first:pt-1 last:pb-1",
-            "data-testid": "gateway-health-row",
+        <div
+            class="flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 first:pt-1 last:pb-1"
+            data-testid="gateway-health-row"
+        >
             // 渠道名 (channelName,缺省 channelKey 前 8 位)
-            span { class: "min-w-0 truncate text-sm font-medium text-zinc-100",
-                title: "{item.unit_key}", {name()} }
+            <span class="min-w-0 truncate text-sm font-medium text-zinc-100" title=item.unit_key.clone()>
+                {name()}
+            </span>
             // 模型 Badge
-            span { class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
-                "{model()}" }
+            <span class="rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300">
+                {model()}
+            </span>
             // 三态 Badge (cooling=红 / slow_start=黄 / ok=绿)
-            span { class: "rounded-full border px-2 py-0.5 text-[11px] font-medium {tone()}",
-                "{state_text}" }
+            <span class=move || format!("rounded-full border px-2 py-0.5 text-[11px] font-medium {}", tone())>
+                {state_text}
+            </span>
             // 冷却中才显示倒计时秒
             {if let Some(sec) = remaining() {
                 view! {
-                    span { class: "font-mono text-xs text-red-300",
-                        {format!("余 {}s", sec)} }
-                }
+                    <span class="font-mono text-xs text-red-300">{format!("余 {}s", sec)}</span>
+                }.into_any()
             } else {
-                view! { }
+                view! { <span></span> }.into_any()
             }}
             // lastCoolingOutcome (有则小字)
             {if let Some(o) = outcome {
                 view! {
-                    span { class: "text-[11px] text-zinc-500", "{o}" }
-                }
+                    <span class="text-[11px] text-zinc-500">{o}</span>
+                }.into_any()
             } else {
-                view! { }
+                view! { <span></span> }.into_any()
             }}
-        }
+        </div>
     }
 }
 
@@ -147,11 +150,12 @@ pub fn GatewayPage() -> impl IntoView {
     let err = RwSignal::new(String::new());
 
     // 手动刷新计数:每次点「刷新/重试」自增
-    let mut reload = RwSignal::new(0u32);
+    let reload = RwSignal::new(0u32);
 
     // 根据是否存在 cooling / slow_start 项决定是否需要轮询
     let polling = Memo::new(move |_| {
-        items()
+        items
+            .get()
             .iter()
             .flat_map(|view| view.items.iter())
             .any(|i| i.state != crate::wire::HealthItemState::Ok)
@@ -159,7 +163,8 @@ pub fn GatewayPage() -> impl IntoView {
 
     // 计算三个状态的计数
     let cooling_count = Memo::new(move |_| {
-        items()
+        items
+            .get()
             .iter()
             .flat_map(|view| view.items.iter())
             .filter(|i| i.state == crate::wire::HealthItemState::Cooling)
@@ -167,7 +172,8 @@ pub fn GatewayPage() -> impl IntoView {
     });
 
     let slow_count = Memo::new(move |_| {
-        items()
+        items
+            .get()
             .iter()
             .flat_map(|view| view.items.iter())
             .filter(|i| i.state == crate::wire::HealthItemState::SlowStart)
@@ -175,7 +181,8 @@ pub fn GatewayPage() -> impl IntoView {
     });
 
     let ok_count = Memo::new(move |_| {
-        items()
+        items
+            .get()
             .iter()
             .flat_map(|view| view.items.iter())
             .filter(|i| i.state == crate::wire::HealthItemState::Ok)
@@ -183,95 +190,114 @@ pub fn GatewayPage() -> impl IntoView {
     });
 
     let list = Memo::new(move |_| {
-        items()
+        items
+            .get()
             .into_iter()
             .flat_map(|view| view.items.clone())
             .collect::<Vec<_>>()
     });
 
     view! {
-        CardGrid {
+        <CardGrid>
             // 网关页面整体容器
-            section {
-                class: "flex flex-col gap-3",
-                role: "region",
-                "aria-label": "网关渠道健康",
-                "data-testid": "gateway-health-panel",
-
+            <section
+                class="flex flex-col gap-3"
+                role="region"
+                aria-label="网关渠道健康"
+                data-testid="gateway-health-panel"
+            >
                 // 标题 + 统计 + 手动刷新 (交互元素带 data-testid)
-                div { class: "flex flex-wrap items-center justify-between gap-2",
-                    div { class: "flex items-center gap-2",
-                        h2 { class: "text-lg font-medium text-zinc-100", "网关渠道健康" }
-                        span { class: "rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400",
-                            {if polling() { "轮询中 · 5s" } else { "已同步" }}
-                        }
-                    }
-                    div { class: "flex flex-wrap items-center gap-1.5 text-[11px]",
-                        span { class: "rounded-full border px-2 py-0.5 border-red-500/30 bg-red-500/15 text-red-300",
-                            {"冷却 ", cooling_count()} }
-                        span { class: "rounded-full border px-2 py-0.5 border-amber-500/30 bg-amber-500/15 text-amber-300",
-                            {"慢启动 ", slow_count()} }
-                        span { class: "rounded-full border px-2 py-0.5 border-emerald-500/30 bg-emerald-500/15 text-emerald-400",
-                            {"正常 ", ok_count()} }
-                        Button {
-                            button_type: "button",
-                            class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
-                            "data-testid": "refresh-gateway-health",
-                            on:click: move |_| reload.set(reload() + 1),
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-lg font-medium text-zinc-100">"网关渠道健康"</h2>
+                        <span class="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400">
+                            {move || if polling.get() { "轮询中 · 5s" } else { "已同步" }}
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span class="rounded-full border px-2 py-0.5 border-red-500/30 bg-red-500/15 text-red-300">
+                            "冷却 " {move || cooling_count.get()}
+                        </span>
+                        <span class="rounded-full border px-2 py-0.5 border-amber-500/30 bg-amber-500/15 text-amber-300">
+                            "慢启动 " {move || slow_count.get()}
+                        </span>
+                        <span class="rounded-full border px-2 py-0.5 border-emerald-500/30 bg-emerald-500/15 text-emerald-400">
+                            "正常 " {move || ok_count.get()}
+                        </span>
+                        <Button
+                            button_type="button"
+                            class="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+                            attr:data-testid="refresh-gateway-health"
+                            on:click=move |_| reload.set(reload.get() + 1)
+                        >
                             "刷新"
-                        }
-                    }
-                }
+                        </Button>
+                    </div>
+                </div>
 
                 // 卡片面板容器 (禁 table;rounded-xl border bg-card divide-y + flex-wrap 行)
-                div {
-                    class: "rounded-xl border border-zinc-800 bg-card p-4 divide-y divide-zinc-800",
-                    "data-testid": "gateway-health-list",
-
-                    if !err().is_empty() {
+                <div
+                    class="rounded-xl border border-zinc-800 bg-card p-4 divide-y divide-zinc-800"
+                    data-testid="gateway-health-list"
+                >
+                    {move || if !err.get().is_empty() {
                         // 错误态:柔和红边卡 (非满屏红),保留重试入口
-                        div { class: "rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-6 text-center",
-                            "data-testid": "gateway-health-error",
-                            p { class: "text-sm text-red-300", "网关健康拉取失败" }
-                            p { class: "mt-1 text-xs text-red-400/70", "{err()}" }
-                            Button {
-                                button_type: "button",
-                                class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
-                                "data-testid": "retry-gateway-health",
-                                on:click: move |_| reload.set(reload() + 1),
-                                "重试"
-                            }
-                        }
-                    } else if loading() {
+                        view! {
+                            <div
+                                class="rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-6 text-center"
+                                data-testid="gateway-health-error"
+                            >
+                                <p class="text-sm text-red-300">"网关健康拉取失败"</p>
+                                <p class="mt-1 text-xs text-red-400/70">{err.get()}</p>
+                                <Button
+                                    button_type="button"
+                                    class="mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                                    attr:data-testid="retry-gateway-health"
+                                    on:click=move |_| reload.set(reload.get() + 1)
+                                >
+                                    "重试"
+                                </Button>
+                            </div>
+                        }.into_any()
+                    } else if loading.get() {
                         // loading=skeleton (animate-pulse 骨架行 ×3)
-                        for _ in 0..3 {
-                            div { class: "flex flex-wrap items-center gap-2 py-3 first:pt-1 last:pb-1",
-                                div { class: "h-4 w-32 animate-pulse rounded bg-zinc-800" }
-                                div { class: "h-4 w-24 animate-pulse rounded bg-zinc-800/70" }
-                                div { class: "h-4 w-16 animate-pulse rounded bg-zinc-800/50" }
-                            }
-                        }
-                    } else if list().is_empty() {
+                        view! {
+                            <div>
+                                {(0..3).map(|_| view! {
+                                    <div class="flex flex-wrap items-center gap-2 py-3 first:pt-1 last:pb-1">
+                                        <div class="h-4 w-32 animate-pulse rounded bg-zinc-800"></div>
+                                        <div class="h-4 w-24 animate-pulse rounded bg-zinc-800/70"></div>
+                                        <div class="h-4 w-16 animate-pulse rounded bg-zinc-800/50"></div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    } else if list.get().is_empty() {
                         // 空态:虚线占位卡 (正常态,后端只返回有记录渠道)
-                        div { class: "rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center",
-                            "data-testid": "gateway-health-empty",
-                            p { class: "text-sm text-zinc-400", "暂无渠道健康记录——正常态" }
-                            p { class: "mt-1 text-xs text-zinc-500",
-                                "网关只上报发生过错的渠道;全部健康时列表为空" }
-                        }
+                        view! {
+                            <div
+                                class="rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center"
+                                data-testid="gateway-health-empty"
+                            >
+                                <p class="text-sm text-zinc-400">"暂无渠道健康记录——正常态"</p>
+                                <p class="mt-1 text-xs text-zinc-500">
+                                    "网关只上报发生过错的渠道;全部健康时列表为空"
+                                </p>
+                            </div>
+                        }.into_any()
                     } else {
                         // 数据态:每个上报过错的渠道一行;行渲染与状态徽标在 GatewayHealthRow,
                         // 页面只负责拉取/轮询与四态分支。
-                        for item in list() {
-                            {
-                                view! {
-                                    crate::pages::gateway::GatewayHealthRow { key: "{item.unit_key}", item }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+                        view! {
+                            <div>
+                                {list.get().into_iter().map(|item| view! {
+                                    <GatewayHealthRow item=item/>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
+                </div>
+            </section>
+        </CardGrid>
     }
 }

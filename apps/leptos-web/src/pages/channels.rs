@@ -80,7 +80,7 @@ pub fn ChannelsPage() -> impl IntoView {
                 <h1 class="text-2xl font-bold text-white">"渠道管理"</h1>
                 <button
                     class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                    button_type="button"
+                    type="button"
                     on:click=move |_| open_modal("new".to_string())
                 >
                     "新建渠道"
@@ -95,17 +95,17 @@ pub fn ChannelsPage() -> impl IntoView {
                 />
                 <button
                     class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
-                    button_type="button"
+                    type="button"
                     on:click=move |_| filter_tier.set(0)
                 >"全部"</button>
                 <button
                     class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
-                    button_type="button"
+                    type="button"
                     on:click=move |_| filter_tier.set(1)
                 >"启用"</button>
                 <button
                     class="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
-                    button_type="button"
+                    type="button"
                     on:click=move |_| filter_tier.set(2)
                 >"停用"</button>
             </div>
@@ -149,20 +149,20 @@ pub fn ChannelsPage() -> impl IntoView {
                             <div class="border-t border-zinc-700 p-3 flex gap-2">
                                 <button
                                     class="flex-1 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
-                                    button_type="button"
+                                    type="button"
                                     on:click=move |_| open_modal(key.clone())
                                 >
                                     "编辑"
                                 </button>
                                 <button
                                     class="px-4 py-2 text-sm bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg transition-colors border border-red-800/50"
-                                    button_type="button"
+                                    type="button"
                                 >
                                     "删除"
                                 </button>
                                 <button
                                     class=format!("px-4 py-2 text-sm rounded-lg transition-colors {}", if is_enabled { "bg-amber-900/30 text-amber-400 border border-amber-800/50" } else { "bg-emerald-900/30 text-emerald-400 border border-emerald-800/50" })
-                                    button_type="button"
+                                    type="button"
                                 >
                                     {if is_enabled { "停用" } else { "启用" }}
                                 </button>
@@ -172,10 +172,10 @@ pub fn ChannelsPage() -> impl IntoView {
                 }).collect::<Vec<_>>()}
             </CardGrid>
 
-            <Dialog
-                open=modal_open
-                dialog_trigger=DialogTrigger::from_children(|| view! { <span></span> })
-            >
+            <Dialog open=modal_open>
+                <DialogTrigger slot>
+                    <span class="hidden">"渠道编辑"</span>
+                </DialogTrigger>
                 <div class="p-6">
                     <h3 class="text-lg font-semibold text-white mb-4">
                         {if current_key.get().is_empty() { "新建渠道" } else { "编辑渠道" }}
@@ -193,14 +193,14 @@ pub fn ChannelsPage() -> impl IntoView {
                     <div class="flex gap-3 mt-8">
                         <button
                             class="flex-1 py-2.5 text-sm border border-zinc-700 hover:bg-zinc-800 rounded-lg text-zinc-300 transition-colors"
-                            button_type="button"
+                            type="button"
                             on:click=move |_| close_modal()
                         >
                             "取消"
                         </button>
                         <button
                             class="flex-1 py-2.5 text-sm bg-white text-zinc-900 rounded-lg font-medium"
-                            button_type="button"
+                            type="button"
                         >
                             "保存"
                         </button>

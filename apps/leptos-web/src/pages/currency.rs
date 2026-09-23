@@ -23,7 +23,7 @@ pub fn CurrencyPage() -> impl IntoView {
             </div>
 
             <CardGrid>
-                {CURRENCIES.iter().map(|&(name, rate, time)| {
+                {CURRENCIES.iter().map(|&(name, rate, _time)| {
                     view! {
                         <Card>
                             <div class="p-6">
