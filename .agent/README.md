@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ d0a4b2c (synced 2026-09-23) -->
 # `.agent/` 目录说明
 
 这是给 agent 看的目录。跟 `docs/` 的区别：`docs/` 是给人看的项目文档；这里的东西是
@@ -68,8 +68,8 @@
 `skills/` 下的目录结构是 omp 发现机制要求的（只扫描 `各目录/SKILL.md`，不递归）。
 往这里放普通文档不会被加载成技能，只会造成混乱。普通文档放 `rules/` 或直接写任务书。
 
-现有 4 个技能，各有分工（详情进各自 SKILL.md 看）：
-`ui-validation`（UI 验证实操）、`gate-checklist`（怎么加闸门检查项）、
+现有 3 个技能，各有分工（详情进各自 SKILL.md 看）：
+`gate-checklist`（怎么加闸门检查项）、
 `refactor-workflow`（重构流程）、`scaffold-dsh`（对照参考实现铺骨架）。
 
 **`skills/` 与 `rules/` 的边界**：会被工具自动加载、想跨项目复用的 → `skills/`；
