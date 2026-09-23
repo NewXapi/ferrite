@@ -7,13 +7,14 @@ mod app;
 mod pages;
 mod ui;
 mod users;
-
-use app::App;
+mod wire;
 
 /// 只在 csr feature 下编。SSR 二进制不包含 wasm-bindgen 依赖。
+/// `App` 直接走模块路径引用：它只被本函数用到，顶层 `use` 在非 csr 构建下会成为
+/// unused import（clippy `-D warnings` 直接判 error）。
 #[cfg(feature = "csr")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
     console_error_panic_hook::set_once();
-    leptos::mount::hydrate_body(App);
+    leptos::mount::hydrate_body(app::App);
 }

@@ -4,14 +4,15 @@ mod app;
 mod pages;
 mod ui;
 mod users;
+mod wire;
 
 use std::sync::Arc;
 
-use app::{shell, App};
+use app::{App, shell};
 use axum::Router;
 use leptos::config::get_configuration;
 use leptos::prelude::*;
-use leptos_axum::{generate_route_list, LeptosRoutes};
+use leptos_axum::{LeptosRoutes, generate_route_list};
 use tokio::sync::Mutex;
 use users::PageState;
 
