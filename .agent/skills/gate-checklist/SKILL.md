@@ -1,3 +1,4 @@
+<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
 ---
 name: gate-checklist
 description: 'Guide for creating and using custom project-level gate checklist rules (.githooks/spec/checklist_*.yaml). Use when adding new automated checks (grep, diff, or file modes) to pre-commit, pre-push, or merge hooks without modifying gate binary.'

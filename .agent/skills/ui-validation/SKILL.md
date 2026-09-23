@@ -1,3 +1,4 @@
+<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
 ---
 name: ui-validation
 description: 'Dioxus web UI 验证约定：data-testid + ARIA + tab.ariaSnapshot() 结构化断言，替代截图肉眼判断。纯 agent 约定，gate 不强制。'

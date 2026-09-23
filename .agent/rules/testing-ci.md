@@ -1,3 +1,4 @@
+<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
 # 测试与 CI
 
 **什么时候读这份文档**：要写测试、要跑测试、要看 CI 结果、或怀疑"CI 绿了但根本没验东西"的时候。
