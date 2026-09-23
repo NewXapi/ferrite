@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ d0a4b2c (synced 2026-09-23) -->
 # 任务书：web 审查修复车道（webfix 角色）
 
 **什么时候用**：审查 `web-dev` 上自上次发布以来新落的 commit，修复问题，补测试/e2e，

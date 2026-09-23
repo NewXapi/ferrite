@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ d0a4b2c (synced 2026-09-23) -->
 # 闸门（gate）与 GitHub 操作
 
 **什么时候读这份文档**：提交或推送被拦下、创建 PR/issue 被拒绝、或者想知道有哪些检查规则的时候。

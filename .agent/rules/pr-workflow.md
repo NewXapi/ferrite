@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ bcddc25 (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ d0a4b2c (synced 2026-09-23) -->
 # PR 开发流程（主控与子代理协作）
 
 **什么时候读这份文档**：要开一个 PR 干活的时候——尤其是要派子代理（subagent）来分担任务的时候。
