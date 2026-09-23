@@ -1,6 +1,6 @@
+use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle};
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::{CardGrid, Card, CardHeader, CardTitle, CardContent};
 
 // Static demo data - in real app, this would come from the backend API
 #[derive(Debug, Clone, Copy)]
@@ -26,7 +26,6 @@ pub struct RedemptionDemoData {
     // List data
     redemptions: Vec<RedemptionCardData>,
 }
-
 
 pub fn demo_data() -> RedemptionDemoData {
     RedemptionDemoData {

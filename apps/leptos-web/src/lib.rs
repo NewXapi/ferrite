@@ -4,9 +4,9 @@
 //! 接管 SSR 渲染出的 DOM，之后交互全在客户端。
 
 mod app;
-mod users;
 mod pages;
 mod ui;
+mod users;
 
 use app::App;
 

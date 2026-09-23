@@ -42,17 +42,87 @@ pub fn cny(quota: i64) -> String {
 
 fn sample_users() -> Vec<User> {
     vec![
-        u("u1", "admin_dev", "admin@ferrite.local", 1, 100, &["default", "vip"], 50_000_000, 12_300_000, "2026-09-02"),
-        u("u2", "alice", "alice@example.com", 1, 10, &["default"], 10_000_000, 4_200_000, "2026-09-14"),
-        u("u3", "bob", "bob@example.com", 2, 1, &["trial"], 2_500_000, 2_500_000, "2026-08-21"),
-        u("u4", "carol", "carol@example.com", 1, 1, &["default", "trial"], 8_000_000, 900_000, "2026-09-19"),
-        u("u5", "dave", "dave@example.com", 1, 10, &["vip"], 20_000_000, 15_600_000, "2026-07-03"),
-        u("u6", "erin", "erin@example.com", 2, 1, &["default"], 5_000_000, 100_000, "2026-09-08"),
+        u(
+            "u1",
+            "admin_dev",
+            "admin@ferrite.local",
+            1,
+            100,
+            &["default", "vip"],
+            50_000_000,
+            12_300_000,
+            "2026-09-02",
+        ),
+        u(
+            "u2",
+            "alice",
+            "alice@example.com",
+            1,
+            10,
+            &["default"],
+            10_000_000,
+            4_200_000,
+            "2026-09-14",
+        ),
+        u(
+            "u3",
+            "bob",
+            "bob@example.com",
+            2,
+            1,
+            &["trial"],
+            2_500_000,
+            2_500_000,
+            "2026-08-21",
+        ),
+        u(
+            "u4",
+            "carol",
+            "carol@example.com",
+            1,
+            1,
+            &["default", "trial"],
+            8_000_000,
+            900_000,
+            "2026-09-19",
+        ),
+        u(
+            "u5",
+            "dave",
+            "dave@example.com",
+            1,
+            10,
+            &["vip"],
+            20_000_000,
+            15_600_000,
+            "2026-07-03",
+        ),
+        u(
+            "u6",
+            "erin",
+            "erin@example.com",
+            2,
+            1,
+            &["default"],
+            5_000_000,
+            100_000,
+            "2026-09-08",
+        ),
     ]
 }
 
 #[allow(clippy::too_many_arguments)]
-fn u(key: &str, name: &str, email: &str, status: i32, role: i32, groups: &[&str], quota: i64, used: i64, created: &str) -> User {
+fn u(
+    key: &str,
+    name: &str,
+    email: &str,
+    status: i32,
+    role: i32,
+    groups: &[&str],
+    quota: i64,
+    used: i64,
+    created: &str,
+) -> User {
     User {
         key: key.into(),
         username: name.into(),
@@ -74,7 +144,9 @@ pub struct PageState {
 
 impl PageState {
     pub fn fresh() -> Self {
-        Self { users: sample_users() }
+        Self {
+            users: sample_users(),
+        }
     }
 
     pub fn toggle(&mut self, key: &str) {

@@ -1,6 +1,6 @@
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 // Define local types matching the reference structure
 #[derive(Clone, Copy)]
@@ -111,7 +111,10 @@ pub fn AliasesPage() -> impl IntoView {
         .map(|it| (it.alias.clone(), it.display.clone(), it.multiplier))
         .collect::<Vec<_>>();
     let total = alias_list.len();
-    let free_count = alias_list.iter().filter(|(_, _, mult)| *mult == 0.0).count();
+    let free_count = alias_list
+        .iter()
+        .filter(|(_, _, mult)| *mult == 0.0)
+        .count();
     let standard_count = alias_list
         .iter()
         .filter(|(_, _, mult)| (mult - 1.0).abs() < 0.001)
@@ -142,9 +145,7 @@ pub fn AliasesPage() -> impl IntoView {
     ];
 
     let filtered = {
-        let q = search()
-            .trim()
-            .to_lowercase();
+        let q = search().trim().to_lowercase();
         let tier = filter_tier();
         rows()
             .iter()
@@ -268,7 +269,9 @@ pub fn AliasesPage() -> impl IntoView {
     // 表单没有这两个字段的来源 — 诚实拒绝,不造数据、不假成功。
     // 编辑路径已改为卡片行内 Popover(commit_alias_field),不再走弹窗。
     let submit_alias = move |_| {
-        notice.set(Some("新建未执行:后端创建模型需要 owner 与 api_key 字段,当前表单未提供".to_string()));
+        notice.set(Some(
+            "新建未执行:后端创建模型需要 owner 与 api_key 字段,当前表单未提供".to_string(),
+        ));
         modal_state.set(AliasModalState::Closed);
     };
 
@@ -357,7 +360,7 @@ enum AliasModalState {
     New,
 }
 
-// Define AliasEditField locally  
+// Define AliasEditField locally
 #[derive(Clone, PartialEq)]
 enum AliasEditField {
     Name,

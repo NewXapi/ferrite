@@ -1,6 +1,6 @@
+use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle, Dialog, DialogTrigger};
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::{CardGrid, Card, Dialog, DialogTrigger, CardHeader, CardTitle, CardContent};
 
 #[derive(Clone, Copy)]
 pub struct UsageLog {
@@ -17,7 +17,6 @@ pub struct UsageLog {
     pub ip: &'static str,
     pub request_id: &'static str,
 }
-
 
 pub fn demo_usage_logs() -> Vec<UsageLog> {
     vec![
@@ -66,18 +65,14 @@ pub fn demo_usage_logs() -> Vec<UsageLog> {
     ]
 }
 
-
 pub fn fmt_num(v: i64) -> String {
     v.to_string()
 }
-
 
 pub fn fmt_time(v: &str) -> String {
     v.to_string()
 }
 
-
 pub fn fmt_quota(v: i64) -> String {
     format!("${:.2}", v as f64 / 500_000.0)
 }
-

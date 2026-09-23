@@ -1,13 +1,13 @@
-use leptos::prelude::*;
-use singlestage::*;
-use crate::ui::CardGrid;
+use crate::ui::Button;
 use crate::ui::Card;
+use crate::ui::CardContent;
+use crate::ui::CardGrid;
 use crate::ui::CardHeader;
 use crate::ui::CardTitle;
-use crate::ui::CardContent;
-use crate::ui::Button;
 use crate::ui::Input;
 use crate::ui::Label;
+use leptos::prelude::*;
+use singlestage::*;
 
 /// 设置页 — 账号与偏好，使用静态数据演示
 #[component]
@@ -45,7 +45,9 @@ pub fn SettingsPage() -> impl IntoView {
     let is_saving = RwSignal::new(false);
 
     let save_preferences = move |_| {
-        if is_saving() { return; }
+        if is_saving() {
+            return;
+        }
         is_saving.set(true);
         save_flash.set(None);
         save_error.set(String::new());
@@ -56,12 +58,16 @@ pub fn SettingsPage() -> impl IntoView {
     };
 
     let save_account = move |_| {
-        if is_saving() { return; }
+        if is_saving() {
+            return;
+        }
         is_saving.set(true);
         save_flash.set(None);
         save_error.set(String::new());
 
-        if !current_password().is_empty() && (new_password() != confirm_password() || new_password().len() < 8) {
+        if !current_password().is_empty()
+            && (new_password() != confirm_password() || new_password().len() < 8)
+        {
             save_error.set("新密码需至少 8 位且两次一致".into());
             is_saving.set(false);
             return;
@@ -213,7 +219,7 @@ pub fn SettingsPage() -> impl IntoView {
             {move || save_flash().map(|msg|
                 <div class="rounded-md bg-green-900/30 border border-green-700 text-green-300 px-4 py-3 text-sm" role="alert">{msg}</div>
             )}
-            {move || (!save_error().is_empty()).then(|| 
+            {move || (!save_error().is_empty()).then(||
                 <div class="rounded-md bg-red-900/30 border border-red-700 text-red-300 px-4 py-3 text-sm" role="alert">{save_error()}</div>
             )}
         </div>

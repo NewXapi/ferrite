@@ -1,6 +1,6 @@
+use crate::ui::{Card, CardGrid, Dialog, DialogTrigger};
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::{Card, CardGrid, Dialog, DialogTrigger};
 
 const DEMO_USER_KEY: &str = "user_0xA1B2";
 const DEMO_USER_NAME: &str = "测试用户";
@@ -14,8 +14,14 @@ struct DemoBalance {
 }
 
 const DEMO_BALANCES: &[DemoBalance] = &[
-    DemoBalance { symbol: "USDT", amount: 8750 },
-    DemoBalance { symbol: "BTC", amount: 42 },
+    DemoBalance {
+        symbol: "USDT",
+        amount: 8750,
+    },
+    DemoBalance {
+        symbol: "BTC",
+        amount: 42,
+    },
 ];
 
 const DEMO_INVITE_COUNT: i32 = 17;
@@ -29,9 +35,21 @@ struct DemoInvitee {
 }
 
 const DEMO_INVITEES: &[DemoInvitee] = &[
-    DemoInvitee { name: "小明", joined: "3天前", reward: 420 },
-    DemoInvitee { name: "小红", joined: "1周前", reward: 180 },
-    DemoInvitee { name: "小刚", joined: "2周前", reward: 650 },
+    DemoInvitee {
+        name: "小明",
+        joined: "3天前",
+        reward: 420,
+    },
+    DemoInvitee {
+        name: "小红",
+        joined: "1周前",
+        reward: 180,
+    },
+    DemoInvitee {
+        name: "小刚",
+        joined: "2周前",
+        reward: 650,
+    },
 ];
 
 #[derive(Clone)]
@@ -42,8 +60,16 @@ struct DemoRecharge {
 }
 
 const DEMO_RECHARGES: &[DemoRecharge] = &[
-    DemoRecharge { time: "今天 14:22", amount: 500, status: "已到账" },
-    DemoRecharge { time: "昨天 09:15", amount: 2000, status: "处理中" },
+    DemoRecharge {
+        time: "今天 14:22",
+        amount: 500,
+        status: "已到账",
+    },
+    DemoRecharge {
+        time: "昨天 09:15",
+        amount: 2000,
+        status: "处理中",
+    },
 ];
 
 #[component]

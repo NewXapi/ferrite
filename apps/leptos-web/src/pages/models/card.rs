@@ -1,9 +1,9 @@
 //! 模型页面 — 移植自 dioxus admin-page-overview 的 tab-page-models
 //! 使用 singlestage 组件：Card、CardGrid、Button，静态数据，RwSignal 交互
 
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 #[derive(Clone)]
 pub struct ModelCardView {
     name: String,
@@ -33,11 +33,18 @@ const CARD_STATUS: &str = "状态";
 const CARD_ENABLED: &str = "启用";
 const CARD_DISABLED: &str = "停用";
 
-
 #[component]
 pub fn ModelCard(model: ModelCardView) -> impl IntoView {
-    let status_text = if model.status == 1 { CARD_ENABLED } else { CARD_DISABLED };
-    let status_class = if model.status == 1 { "text-emerald-400" } else { "text-red-400" };
+    let status_text = if model.status == 1 {
+        CARD_ENABLED
+    } else {
+        CARD_DISABLED
+    };
+    let status_class = if model.status == 1 {
+        "text-emerald-400"
+    } else {
+        "text-red-400"
+    };
 
     view! {
         <Card class="h-full">

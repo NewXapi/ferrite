@@ -13,14 +13,14 @@ use leptos::config::LeptosOptions;
 #[cfg(feature = "ssr")]
 use leptos::hydration::{AutoReload, HydrationScripts};
 
+use crate::pages::{
+    AliasesPage, ChannelsPage, CurrencyPage, GatewayPage, GroupsPage, KeysPage, LeaderboardPage,
+    ModelsPage, NetworkPage, OverviewPage, RedemptionsPage, RewardsPage, SessionsPage,
+    SettingsPage, SubscriptionsPage, SystemPage, UsagePage,
+};
 #[cfg(feature = "ssr")]
 use crate::users::PageState;
 use crate::users::{cny, Filter, ListUsers, ToggleUser, User};
-use crate::pages::{
-    AliasesPage, ChannelsPage, CurrencyPage, GatewayPage, GroupsPage, KeysPage, LeaderboardPage,
-    ModelsPage, NetworkPage, OverviewPage, RedemptionsPage, RewardsPage, SessionsPage, SettingsPage,
-    SubscriptionsPage, SystemPage, UsagePage,
-};
 
 #[cfg(feature = "ssr")]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -56,7 +56,18 @@ pub fn App() -> impl IntoView {
     let tabs = Memo::new(move |_| match section.get() {
         0 => vec!["总览", "模型", "排行榜"],
         1 => vec!["密钥·资料", "用量·日志", "邀请·奖励", "会话", "设置"],
-        _ => vec!["网络", "用户", "分组", "别名", "渠道", "订阅", "兑换", "系统", "网关健康", "货币"],
+        _ => vec![
+            "网络",
+            "用户",
+            "分组",
+            "别名",
+            "渠道",
+            "订阅",
+            "兑换",
+            "系统",
+            "网关健康",
+            "货币",
+        ],
     });
     view! {
         <div class="shell">
@@ -110,7 +121,10 @@ fn EmptyPage() -> impl IntoView {
 }
 
 #[component]
-fn Rail(active: RwSignal<usize>, on_select: impl Fn(usize) + Send + Sync + Clone + 'static) -> impl IntoView {
+fn Rail(
+    active: RwSignal<usize>,
+    on_select: impl Fn(usize) + Send + Sync + Clone + 'static,
+) -> impl IntoView {
     let labels = ["总览", "账户", "管理"];
     view! {
         <aside class="rail" aria-label="主导航">
@@ -165,7 +179,9 @@ fn UsersPage() -> impl IntoView {
             #[cfg(feature = "ssr")]
             {
                 let state = use_context::<std::sync::Arc<tokio::sync::Mutex<PageState>>>()
-                    .unwrap_or_else(|| std::sync::Arc::new(tokio::sync::Mutex::new(PageState::fresh())));
+                    .unwrap_or_else(|| {
+                        std::sync::Arc::new(tokio::sync::Mutex::new(PageState::fresh()))
+                    });
                 state.lock().await.users.clone()
             }
             #[cfg(feature = "csr")]
@@ -181,7 +197,11 @@ fn UsersPage() -> impl IntoView {
     let filtered = Memo::new(move |_| {
         users
             .get()
-            .map(|list| list.into_iter().filter(|u| filter.get().matches(u)).collect::<Vec<_>>())
+            .map(|list| {
+                list.into_iter()
+                    .filter(|u| filter.get().matches(u))
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default()
     });
 
@@ -189,7 +209,10 @@ fn UsersPage() -> impl IntoView {
         let all = users.get().unwrap_or_default();
         let total = all.len();
         let enabled = all.iter().filter(|u| u.enabled()).count();
-        let fresh = all.iter().filter(|u| u.created_at.starts_with("2026-09")).count();
+        let fresh = all
+            .iter()
+            .filter(|u| u.created_at.starts_with("2026-09"))
+            .count();
         let granted: i64 = all.iter().map(|u| u.quota).sum();
         let consumed: i64 = all.iter().map(|u| u.used_quota).sum();
         (total, enabled, fresh, cny(granted), cny(consumed))
@@ -268,7 +291,12 @@ fn UsersPage() -> impl IntoView {
 }
 
 fn group_options() -> Vec<(&'static str, &'static str)> {
-    vec![("", "全部"), ("default", "default"), ("vip", "vip"), ("trial", "trial")]
+    vec![
+        ("", "全部"),
+        ("default", "default"),
+        ("vip", "vip"),
+        ("trial", "trial"),
+    ]
 }
 
 fn status_options() -> Vec<(&'static str, &'static str)> {
@@ -276,7 +304,12 @@ fn status_options() -> Vec<(&'static str, &'static str)> {
 }
 
 fn role_options() -> Vec<(&'static str, &'static str)> {
-    vec![("", "全部"), ("1", "普通用户"), ("10", "管理员"), ("100", "超级管理员")]
+    vec![
+        ("", "全部"),
+        ("1", "普通用户"),
+        ("10", "管理员"),
+        ("100", "超级管理员"),
+    ]
 }
 
 #[component]
@@ -356,7 +389,10 @@ fn Chips(
 
 /// 分页器：总条数不超过一页时不渲染；当前页白底高亮。
 #[component]
-fn Pager(total: impl Fn() -> usize + Send + Sync + 'static, page: RwSignal<usize>) -> impl IntoView {
+fn Pager(
+    total: impl Fn() -> usize + Send + Sync + 'static,
+    page: RwSignal<usize>,
+) -> impl IntoView {
     let pages = Memo::new(move |_| total().div_ceil(CARD_PAGE_SIZE).max(1));
     let current = Memo::new(move |_| page.get().min(pages.get() - 1));
 
@@ -478,7 +514,11 @@ fn UserCard(
 /// 编辑弹窗。key 为空是新建。字段先只展示，保存还没接后端。
 #[component]
 fn EditDialog(key: String, close: RwSignal<Option<String>>) -> impl IntoView {
-    let title = if key.is_empty() { "新建用户" } else { "编辑用户" };
+    let title = if key.is_empty() {
+        "新建用户"
+    } else {
+        "编辑用户"
+    };
     view! {
         <div class="modal" role="dialog" aria-label=title>
             <div class="modal-card">

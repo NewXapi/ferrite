@@ -1,6 +1,6 @@
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeInfo {
@@ -69,7 +69,7 @@ fn sample_nodes() -> Vec<NodeInfo> {
 pub fn NetworkPage() -> impl IntoView {
     let nodes = sample_nodes();
     let selected_node = RwSignal::new(None::<String>);
-    
+
     let groups: Vec<_> = nodes.iter().filter(|n| n.layer == 1).collect();
     let aliases: Vec<_> = nodes.iter().filter(|n| n.layer == 2).collect();
     let dispatches: Vec<_> = nodes.iter().filter(|n| n.layer == 3).collect();

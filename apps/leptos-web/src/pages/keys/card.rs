@@ -1,6 +1,6 @@
+use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle, Dialog, DialogTrigger};
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::{CardGrid, Card, Dialog, DialogTrigger, CardHeader, CardTitle, CardContent};
 
 #[derive(Clone, Copy)]
 pub struct KeyItem {
@@ -13,7 +13,6 @@ pub struct KeyItem {
     created_at: &'static str,
 }
 
-
 #[component]
 pub fn KeyCard(entry: KeyItem) -> impl IntoView {
     let enabled = entry.status == 1;
@@ -24,7 +23,9 @@ pub fn KeyCard(entry: KeyItem) -> impl IntoView {
     };
     let unlimited = entry.unlimited_quota;
     let pct = if entry.quota > 0 {
-        ((entry.used_quota as f64 / entry.quota as f64) * 100.0).min(100.0).max(0.0) as i32
+        ((entry.used_quota as f64 / entry.quota as f64) * 100.0)
+            .min(100.0)
+            .max(0.0) as i32
     } else {
         0
     };
@@ -90,4 +91,3 @@ pub fn KeyCard(entry: KeyItem) -> impl IntoView {
         }
     }
 }
-

@@ -1,6 +1,6 @@
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 #[derive(Clone, Copy)]
 struct ModelRank {
@@ -11,12 +11,42 @@ struct ModelRank {
 }
 
 const RANKINGS: &[ModelRank] = &[
-    ModelRank { rank: 1, name: "Claude-3.5-Sonnet", score: "98.7", growth: 12.4 },
-    ModelRank { rank: 2, name: "GPT-4o", score: "96.5", growth: -2.1 },
-    ModelRank { rank: 3, name: "Gemini-1.5-Pro", score: "94.2", growth: 8.7 },
-    ModelRank { rank: 4, name: "DeepSeek-R1", score: "93.8", growth: 15.2 },
-    ModelRank { rank: 5, name: "Qwen2.5-72B", score: "91.9", growth: 5.3 },
-    ModelRank { rank: 6, name: "Llama-3.1-405B", score: "89.4", growth: -4.6 },
+    ModelRank {
+        rank: 1,
+        name: "Claude-3.5-Sonnet",
+        score: "98.7",
+        growth: 12.4,
+    },
+    ModelRank {
+        rank: 2,
+        name: "GPT-4o",
+        score: "96.5",
+        growth: -2.1,
+    },
+    ModelRank {
+        rank: 3,
+        name: "Gemini-1.5-Pro",
+        score: "94.2",
+        growth: 8.7,
+    },
+    ModelRank {
+        rank: 4,
+        name: "DeepSeek-R1",
+        score: "93.8",
+        growth: 15.2,
+    },
+    ModelRank {
+        rank: 5,
+        name: "Qwen2.5-72B",
+        score: "91.9",
+        growth: 5.3,
+    },
+    ModelRank {
+        rank: 6,
+        name: "Llama-3.1-405B",
+        score: "89.4",
+        growth: -4.6,
+    },
 ];
 
 #[component]

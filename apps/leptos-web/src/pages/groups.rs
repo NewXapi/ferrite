@@ -6,9 +6,9 @@
 //! - 直接从 dioxus 源码逐字搬 Tailwind class，从 assets/tailwind.css 取样式
 //!
 
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 /// 分组数据类型 - 静态演示数据
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +20,7 @@ pub struct GroupDto {
     pub status: i16, // 1: enabled, 2: disabled
     pub is_default: bool,
     pub whitelist: Vec<String>, // 模型白名单
-    pub alias: Vec<String>, // 别名
+    pub alias: Vec<String>,     // 别名
 }
 
 /// 静态演示数据生成函数
@@ -98,18 +98,18 @@ pub fn GroupsToolbar(
         let groups = groups.clone();
         let search = search.get();
         let tier = filter_tier.get();
-        groups.into_iter().filter(|g| {
-            g.key.contains(&search) || g.remark.contains(&search)
-        }).filter(|g| {
-            match tier {
+        groups
+            .into_iter()
+            .filter(|g| g.key.contains(&search) || g.remark.contains(&search))
+            .filter(|g| match tier {
                 0 => true,
                 1 => g.status == 1,
                 2 => g.status == 2,
                 _ => true,
-            }
-        }).count()
+            })
+            .count()
     };
-    
+
     view! {
         <section class="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
             <div class="flex flex-wrap items-center gap-3">
@@ -122,7 +122,7 @@ pub fn GroupsToolbar(
                         on:input=move |ev| search.set(event_target_value(&ev))
                     />
                 </div>
-                
+
                 <div class="flex gap-2">
                     <button
                         class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
@@ -144,7 +144,7 @@ pub fn GroupsToolbar(
                         "已停用"
                     </button>
                 </div>
-                
+
                 <div class="ml-auto flex gap-2">
                     <button
                         class="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-700"
@@ -160,7 +160,7 @@ pub fn GroupsToolbar(
                     </button>
                 </div>
             </div>
-            
+
             <div class="mt-3 flex items-center justify-between text-sm text-zinc-400">
                 <div>
                     {move || format!("共找到 {} 个分组", filtered_count())}
@@ -242,7 +242,7 @@ pub fn GroupsList(
                     }}
                 </div>
             </div>
-            
+
             {match err {
                 Some(e) => view! {
                     <div class="rounded-2xl border-2 border-red-800/60 bg-red-950/40 py-10">
@@ -308,13 +308,13 @@ pub fn GroupCard(
 ) -> impl IntoView {
     let (adjusting, set_adjusting) = signal(false);
     let (local_ratio, set_local_ratio) = signal(group.ratio);
-    
+
     let ratio_percent = move || {
         let max = 3.0;
         let val = local_ratio.get().max(0.05).min(max);
         (val / max * 100.0) as f32
     };
-    
+
     let status_tone = move || {
         if group.status == 1 {
             "text-emerald-400"
@@ -322,7 +322,7 @@ pub fn GroupCard(
             "text-red-400"
         }
     };
-    
+
     let status_text = move || {
         if group.status == 1 {
             "启用中"
@@ -330,7 +330,7 @@ pub fn GroupCard(
             "已停用"
         }
     };
-    
+
     let badge_tone = move || {
         if group.ratio >= 2.0 {
             "text-amber-400"
@@ -340,7 +340,7 @@ pub fn GroupCard(
             "text-emerald-400"
         }
     };
-    
+
     let ratio_badge = move || {
         if group.ratio >= 2.0 {
             view! { <span class="text-[11px] font-medium">"溢价"</span> }
@@ -350,7 +350,7 @@ pub fn GroupCard(
             view! { <span class="text-[11px] font-medium">"优惠"</span> }
         }
     };
-    
+
     view! {
         <div
             class="group relative flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-zinc-600 hover:bg-zinc-900/80 transition-all duration-200"
@@ -360,7 +360,7 @@ pub fn GroupCard(
         >
             <div class=("absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-blue-950/60 border-blue-800/60", !is_default)>
             </div>
-            
+
             <div class="flex items-start justify-between">
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
@@ -382,7 +382,7 @@ pub fn GroupCard(
                     </svg>
                 </button>
             </div>
-            
+
             <div class="mt-3 flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <span class="text-[11px] font-medium text-zinc-400">"计费倍率"</span>
@@ -392,7 +392,7 @@ pub fn GroupCard(
                     {format!("{:.2}×", group.ratio)}
                 </div>
             </div>
-            
+
             <div class="mt-4">
                 <div class="relative h-4 w-full">
                     <div class="absolute inset-0 h-1.5 w-full rounded-full bg-zinc-800"></div>
@@ -434,7 +434,7 @@ pub fn GroupCard(
                     }}
                 </div>
             </div>
-            
+
             <div class="mt-4 grid grid-cols-2 gap-2">
                 <button
                     class="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
@@ -488,9 +488,13 @@ pub fn Badge(text: String, tone: &'static str) -> impl IntoView {
 
 /// 分页器
 #[component]
-pub fn Pager(total: usize, page: RwSignal<usize>, on_change: impl Fn(usize) + 'static) -> impl IntoView {
+pub fn Pager(
+    total: usize,
+    page: RwSignal<usize>,
+    on_change: impl Fn(usize) + 'static,
+) -> impl IntoView {
     let total_pages = (total + 9) / 10; // 每页10条
-    
+
     view! {
         <div class="flex justify-center gap-2">
             <button
@@ -508,7 +512,7 @@ pub fn Pager(total: usize, page: RwSignal<usize>, on_change: impl Fn(usize) + 's
             {move || (0..=total_pages.min(4)).map(|p| {
                 view! {
                     <button
-                        class=("rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors", 
+                        class=("rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
                             if p == page.get() {
                                 "bg-white text-zinc-900 border-zinc-300"
                             } else {
@@ -567,39 +571,41 @@ pub fn GroupsPage() -> impl IntoView {
     let (selected, set_selected) = signal(Vec::<String>::new());
     let (current_page, set_page) = signal(0usize);
     let (modal_state, set_modal_state) = signal(ModalState::Closed);
-    
+
     let filtered_groups = move || {
         let groups = groups.get();
         let search = search.get();
         let tier = filter_tier.get();
         let page = current_page.get();
         let size = 10;
-        let filtered: Vec<GroupDto> = groups.into_iter().filter(|g| {
-            g.key.contains(&search) || g.remark.contains(&search)
-        }).filter(|g| {
-            match tier {
+        let filtered: Vec<GroupDto> = groups
+            .into_iter()
+            .filter(|g| g.key.contains(&search) || g.remark.contains(&search))
+            .filter(|g| match tier {
                 0 => true,
                 1 => g.status == 1,
                 2 => g.status == 2,
                 _ => true,
-            }
-        }).collect();
+            })
+            .collect();
         let paged = page_slice(&filtered, page, size);
         paged.to_vec()
     };
-    
+
     let total_groups = move || groups.get().len();
     let enabled_count = move || groups.get().iter().filter(|g| g.status == 1).count();
     let disabled_count = move || groups.get().iter().filter(|g| g.status == 2).count();
     let avg_ratio = move || {
         let groups = groups.get();
-        if groups.is_empty() { 0.0 } else {
+        if groups.is_empty() {
+            0.0
+        } else {
             let sum: f64 = groups.iter().map(|g| g.ratio).sum();
             sum / groups.len() as f64
         }
     };
     let custom_ratio_count = move || groups.get().iter().filter(|g| g.ratio != 1.0).count();
-    
+
     let stats = vec![
         (total_groups().to_string(), "总分组数"),
         (enabled_count().to_string(), "启用中"),
@@ -607,7 +613,7 @@ pub fn GroupsPage() -> impl IntoView {
         (format!("{:.2}×", avg_ratio()), "平均倍率"),
         (custom_ratio_count().to_string(), "非基准倍率"),
     ];
-    
+
     let on_refresh = move || {
         set_loading(true);
         set_err(None);
@@ -619,11 +625,11 @@ pub fn GroupsPage() -> impl IntoView {
             300,
         );
     };
-    
+
     let on_new = move || {
         set_modal_state(ModalState::New);
     };
-    
+
     let on_bulk_enable = move || {
         let keys_to_enable = selected.get();
         let mut updated = groups.get().clone();
@@ -638,7 +644,8 @@ pub fn GroupsPage() -> impl IntoView {
         }
         set_groups(updated);
         if !results.is_empty() {
-            let summary = format!("批量操作：{} 成功，{} 失败", 
+            let summary = format!(
+                "批量操作：{} 成功，{} 失败",
                 results.iter().filter(|(_, ok)| *ok).count(),
                 results.iter().filter(|(_, ok)| !ok).count()
             );
@@ -646,7 +653,7 @@ pub fn GroupsPage() -> impl IntoView {
         }
         set_selected(Vec::new());
     };
-    
+
     let on_bulk_disable = move || {
         let keys_to_disable = selected.get();
         let mut updated = groups.get().clone();
@@ -661,7 +668,8 @@ pub fn GroupsPage() -> impl IntoView {
         }
         set_groups(updated);
         if !results.is_empty() {
-            let summary = format!("批量操作：{} 成功，{} 失败", 
+            let summary = format!(
+                "批量操作：{} 成功，{} 失败",
                 results.iter().filter(|(_, ok)| *ok).count(),
                 results.iter().filter(|(_, ok)| !ok).count()
             );
@@ -669,63 +677,61 @@ pub fn GroupsPage() -> impl IntoView {
         }
         set_selected(Vec::new());
     };
-    
+
     let on_bulk_clear = move || {
         set_selected(Vec::new());
     };
-    
+
     let on_edit = move |key: String| {
         set_modal_state(ModalState::Edit(key));
     };
-    
-    let on_write = move |(key, op): (String, WriteOp)| {
-        match op {
-            WriteOp::Delete => {
-                let mut updated = groups.get().clone();
-                updated.retain(|g| g.key != key);
-                set_groups(updated);
-            }
-            WriteOp::Enable | WriteOp::Disable => {
-                let status = if matches!(op, WriteOp::Enable) { 1 } else { 2 };
-                let mut updated = groups.get().clone();
-                for g in updated.iter_mut() {
-                    if g.key == key {
-                        g.status = status;
-                        break;
-                    }
+
+    let on_write = move |(key, op): (String, WriteOp)| match op {
+        WriteOp::Delete => {
+            let mut updated = groups.get().clone();
+            updated.retain(|g| g.key != key);
+            set_groups(updated);
+        }
+        WriteOp::Enable | WriteOp::Disable => {
+            let status = if matches!(op, WriteOp::Enable) { 1 } else { 2 };
+            let mut updated = groups.get().clone();
+            for g in updated.iter_mut() {
+                if g.key == key {
+                    g.status = status;
+                    break;
                 }
-                set_groups(updated);
             }
-            WriteOp::SetRatio(ratio) => {
-                let mut updated = groups.get().clone();
-                for g in updated.iter_mut() {
-                    if g.key == key {
-                        g.ratio = ratio;
-                        break;
-                    }
+            set_groups(updated);
+        }
+        WriteOp::SetRatio(ratio) => {
+            let mut updated = groups.get().clone();
+            for g in updated.iter_mut() {
+                if g.key == key {
+                    g.ratio = ratio;
+                    break;
                 }
-                set_groups(updated);
             }
+            set_groups(updated);
         }
     };
-    
+
     let on_retry = move || {
         on_refresh();
     };
-    
+
     let on_submit = move || {
         on_refresh();
         set_modal_state(ModalState::Closed);
     };
-    
+
     let on_cancel = move || {
         set_modal_state(ModalState::Closed);
     };
-    
+
     view! {
         <div class="flex flex-col gap-6" role="region" aria-label="分组管理">
             <GroupsStatsSection stats />
-            
+
             <GroupsToolbar
                 groups=groups.get()
                 filter_options=vec!["全部".to_string(), "启用中".to_string(), "已停用".to_string()]
@@ -738,7 +744,7 @@ pub fn GroupsPage() -> impl IntoView {
                 on_bulk_disable
                 on_bulk_clear
             />
-            
+
             <GroupsList
                 filtered=filtered_groups()
                 loading=loading.get()
@@ -747,9 +753,9 @@ pub fn GroupsPage() -> impl IntoView {
                 on_write
                 on_retry
             />
-            
+
             <Pager total=total_groups() page=current_page on_change=set_page/>
-            
+
             {match modal_state.get() {
                 ModalState::Closed => view! { <></> }.into_view(),
                 ModalState::New => view! {
@@ -822,5 +828,13 @@ enum ModalState {
 
 fn event_target_value(event: &web_sys::Event) -> String {
     let event = event.dyn_ref::<web_sys::Event>().unwrap();
-    event.as_event_target().unwrap().unchecked_into::<web_sys::Event>().target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value()
+    event
+        .as_event_target()
+        .unwrap()
+        .unchecked_into::<web_sys::Event>()
+        .target()
+        .unwrap()
+        .dyn_into::<web_sys::HtmlInputElement>()
+        .unwrap()
+        .value()
 }

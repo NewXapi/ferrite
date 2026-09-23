@@ -1,9 +1,9 @@
 //! 服务端入口。编 SSR 二进制，吐首屏 HTML + 注册 server function 路由。
 
 mod app;
-mod users;
 mod pages;
 mod ui;
+mod users;
 
 use std::sync::Arc;
 

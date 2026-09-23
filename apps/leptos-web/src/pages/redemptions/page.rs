@@ -1,9 +1,8 @@
+use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle};
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::{CardGrid, Card, CardHeader, CardTitle, CardContent};
 
 use super::data::{RedemptionCardData, RedemptionDemoData};
-
 
 use super::card::*;
 use super::data::*;
@@ -83,12 +82,17 @@ fn RedemptionsListSection(
 
     // Filtered redemptions
     let filtered_redemptions = Signal::derive(move || {
-        redemptions.iter()
+        redemptions
+            .iter()
             .filter(|r| {
                 // Search filter
-                let search_match = search_term.get().is_empty() ||
-                    r.code_preview.to_lowercase().contains(&search_term.get().to_lowercase()) ||
-                    r.key.to_lowercase().contains(&search_term.get().to_lowercase());
+                let search_match = search_term.get().is_empty()
+                    || r.code_preview
+                        .to_lowercase()
+                        .contains(&search_term.get().to_lowercase())
+                    || r.key
+                        .to_lowercase()
+                        .contains(&search_term.get().to_lowercase());
 
                 // Status filter
                 let status_match = status_filter.get() == 0 || r.status == status_filter.get();

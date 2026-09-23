@@ -1,6 +1,6 @@
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionData {
@@ -181,49 +181,52 @@ pub fn SessionsPage() -> impl IntoView {
     let mut busy = use_signal(|| false);
     let mut confirm_sid = use_signal(|| None::<String>);
     let mut notice = use_signal(|| None::<String>);
-    
+
     let mut search = use_signal(|| String::new());
     let mut status_filter = use_signal(|| SessionStatus::Active);
-    
+
     // 当 confirm_sid 为 Some 时显示弹窗
     let confirm_open = Signal::derive(move || confirm_sid().is_some());
-    
+
     let filtered_sessions = move || {
         let sessions_list = sessions();
         let search_term = search().to_lowercase();
         let status = status_filter();
-        
-        sessions_list.into_iter().filter(|session| {
-            if !search_term.is_empty() {
-                let ua_match = session.user_agent.to_lowercase().contains(&search_term);
-                let ip_match = session.ip.to_lowercase().contains(&search_term);
-                let method_match = session.login_method.to_lowercase().contains(&search_term);
-                if !(ua_match || ip_match || method_match) {
-                    return false;
+
+        sessions_list
+            .into_iter()
+            .filter(|session| {
+                if !search_term.is_empty() {
+                    let ua_match = session.user_agent.to_lowercase().contains(&search_term);
+                    let ip_match = session.ip.to_lowercase().contains(&search_term);
+                    let method_match = session.login_method.to_lowercase().contains(&search_term);
+                    if !(ua_match || ip_match || method_match) {
+                        return false;
+                    }
                 }
-            }
-            
-            match status {
-                SessionStatus::Active => session.current,
-                SessionStatus::Inactive => !session.current,
-            }
-        }).collect::<Vec<_>>()
+
+                match status {
+                    SessionStatus::Active => session.current,
+                    SessionStatus::Inactive => !session.current,
+                }
+            })
+            .collect::<Vec<_>>()
     };
-    
+
     let on_revoke_session = move |sid: String| {
         if busy() {
             return;
         }
         busy.set(true);
         notice.set(None);
-        
+
         let mut sessions_sig = sessions;
         let mut busy_sig = busy;
         let mut notice_sig = notice;
-        
+
         spawn_local(async move {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            
+
             let mut items = sessions_sig().to_vec();
             items.retain(|s| s.sid != sid);
             sessions_sig.set(items);
@@ -231,11 +234,11 @@ pub fn SessionsPage() -> impl IntoView {
             busy_sig.set(false);
         });
     };
-    
+
     let on_request_current_revoke = move |sid: String| {
         confirm_sid.set(Some(sid));
     };
-    
+
     let on_confirm_revoke = move || {
         if let Some(sid) = confirm_sid() {
             confirm_sid.set(None);
@@ -244,14 +247,14 @@ pub fn SessionsPage() -> impl IntoView {
             }
             busy.set(true);
             notice.set(None);
-            
+
             let mut sessions_sig = sessions;
             let mut busy_sig = busy;
             let mut notice_sig = notice;
-            
+
             spawn_local(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                
+
                 let mut items = sessions_sig().to_vec();
                 items.retain(|s| s.sid != sid);
                 sessions_sig.set(items);
@@ -260,15 +263,15 @@ pub fn SessionsPage() -> impl IntoView {
             });
         }
     };
-    
+
     let on_cancel_revoke = move || {
         confirm_sid.set(None);
     };
-    
+
     let refresh_sessions = move |_| {
         sessions.set(get_static_sessions());
     };
-    
+
     view! {
         div { class: "flex flex-col gap-6",
             div { class: "flex items-center justify-between gap-3",
@@ -284,7 +287,7 @@ pub fn SessionsPage() -> impl IntoView {
                     "刷新列表"
                 }
             }
-            
+
             if let Some(msg) = notice() {
                 div {
                     class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-300",
@@ -292,7 +295,7 @@ pub fn SessionsPage() -> impl IntoView {
                     if busy() { " ···" }
                 }
             }
-            
+
             div { class: "flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700/60 bg-zinc-900/60 p-4",
                 div { class: "flex-1 min-w-48",
                     input {
@@ -303,7 +306,7 @@ pub fn SessionsPage() -> impl IntoView {
                         oninput: move |ev| search.set(event_target_value(&ev)),
                     }
                 }
-                
+
                 div { class: "flex gap-2",
                     Button {
                         button_type: "button",
@@ -321,7 +324,7 @@ pub fn SessionsPage() -> impl IntoView {
                     }
                 }
             }
-            
+
             div { class: "flex flex-col gap-4",
                 if filtered_sessions().is_empty() {
                     div { class: "text-center py-12 text-zinc-500",
@@ -340,7 +343,7 @@ pub fn SessionsPage() -> impl IntoView {
                     }
                 }
             }
-            
+
             RevokeConfirmModal {
                 open: confirm_open,
                 sid: confirm_sid().unwrap_or_default(),

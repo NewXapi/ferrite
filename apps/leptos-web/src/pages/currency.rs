@@ -1,6 +1,6 @@
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 const CURRENCIES: &[(&str, &str, &str)] = &[
     ("USD", "1.0000", "刚刚更新"),

@@ -1,18 +1,23 @@
+use crate::ui::{Card, CardContent, CardGrid, CardHeader, CardTitle};
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::{CardGrid, Card, CardHeader, CardTitle, CardContent};
 
 use super::data::{RedemptionCardData, RedemptionDemoData};
-
 
 use super::data::*;
 
 #[component]
 pub fn StatusBadge(status: u8) -> impl IntoView {
     let (text, color_class) = match status {
-        1 => ("未使用", "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"),
+        1 => (
+            "未使用",
+            "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+        ),
         2 => ("已核销", "bg-zinc-400/20 text-zinc-300 border-zinc-400/30"),
-        3 => ("已停用", "bg-amber-500/20 text-amber-400 border-amber-500/30"),
+        3 => (
+            "已停用",
+            "bg-amber-500/20 text-amber-400 border-amber-500/30",
+        ),
         _ => ("未知状态", "bg-red-500/20 text-red-400 border-red-500/30"),
     };
 

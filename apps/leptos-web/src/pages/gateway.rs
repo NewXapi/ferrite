@@ -1,12 +1,12 @@
 //! 网关页面 - 基于 dioxus admin-page-admin 的 tab-page-gateway 设计
 //! 仅包含演示数据和 UI结构，不调用任何 API
+use crate::ui::CardGrid;
 use leptos::prelude::*;
 use singlestage::*;
-use crate::ui::CardGrid;
 
 /// 演示用网关健康数据
 fn default_gateway_health() -> Vec<crate::wire::GatewayHealthView> {
-    use crate::wire::{GatewayHealthItem, HealthItemState, GatewayHealthView};
+    use crate::wire::{GatewayHealthItem, GatewayHealthView, HealthItemState};
 
     vec![
         GatewayHealthView {
@@ -44,18 +44,16 @@ fn default_gateway_health() -> Vec<crate::wire::GatewayHealthView> {
             ],
         },
         GatewayHealthView {
-            items: vec![
-                GatewayHealthItem {
-                    unit_key: "channel-1111:claude".to_string(),
-                    channel_key: Some("chan-1111".to_string()),
-                    channel_name: None,
-                    public_model: None,
-                    state: HealthItemState::Ok,
-                    last_cooling_outcome: None,
-                    remaining_cooldown_ms: 0,
-                    slow_start_factor: 0.0,
-                },
-            ],
+            items: vec![GatewayHealthItem {
+                unit_key: "channel-1111:claude".to_string(),
+                channel_key: Some("chan-1111".to_string()),
+                channel_name: None,
+                public_model: None,
+                state: HealthItemState::Ok,
+                last_cooling_outcome: None,
+                remaining_cooldown_ms: 0,
+                slow_start_factor: 0.0,
+            }],
         },
     ]
 }
@@ -70,14 +68,10 @@ pub fn GatewayHealthRow(item: crate::wire::GatewayHealthItem) -> impl IntoView {
             if let Some(name) = item.channel_name.as_deref().filter(|n| !n.is_empty()) {
                 name.to_string()
             } else {
-                channel_key.as_deref()
+                channel_key
+                    .as_deref()
                     .map(|k| k.chars().take(8).collect::<String>())
-                    .unwrap_or_else(|| {
-                        format!(
-                            "{}",
-                            unit_key.chars().take(6).collect::<String>()
-                        )
-                    })
+                    .unwrap_or_else(|| format!("{}", unit_key.chars().take(6).collect::<String>()))
             }
         }
     };
@@ -95,12 +89,10 @@ pub fn GatewayHealthRow(item: crate::wire::GatewayHealthItem) -> impl IntoView {
         }
     };
 
-    let tone = move || {
-        match item.state {
-            crate::wire::HealthItemState::Cooling => crate::wire::TONE_COOLING,
-            crate::wire::HealthItemState::SlowStart => crate::wire::TONE_SLOW_START,
-            crate::wire::HealthItemState::Ok => crate::wire::TONE_OK,
-        }
+    let tone = move || match item.state {
+        crate::wire::HealthItemState::Cooling => crate::wire::TONE_COOLING,
+        crate::wire::HealthItemState::SlowStart => crate::wire::TONE_SLOW_START,
+        crate::wire::HealthItemState::Ok => crate::wire::TONE_OK,
     };
 
     let state_text = item.state.label();
@@ -190,7 +182,12 @@ pub fn GatewayPage() -> impl IntoView {
             .count()
     });
 
-    let list = Memo::new(move |_| items().into_iter().flat_map(|view| view.items.clone()).collect::<Vec<_>>());
+    let list = Memo::new(move |_| {
+        items()
+            .into_iter()
+            .flat_map(|view| view.items.clone())
+            .collect::<Vec<_>>()
+    });
 
     view! {
         CardGrid {

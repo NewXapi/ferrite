@@ -1,11 +1,11 @@
 //! 模型页面 — 移植自 dioxus admin-page-overview 的 tab-page-models
 //! 使用 singlestage 组件：Card、CardGrid、Button，静态数据，RwSignal 交互
 
-use leptos::prelude::*;
-use singlestage::*;
-use crate::ui::CardGrid;
 use super::card::{ModelCard, ModelCardView};
 use super::data::static_models;
+use crate::ui::CardGrid;
+use leptos::prelude::*;
+use singlestage::*;
 
 // 常量（对齐 Dioxus shared.rs）
 const MODELS_TITLE: &str = "模型";
@@ -81,4 +81,3 @@ pub fn ModelsPage() -> impl IntoView {
         </section>
     }
 }
-
