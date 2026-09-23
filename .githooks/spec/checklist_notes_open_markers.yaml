@@ -1,0 +1,58 @@
+# CK-NOTES-OPEN-MARKERS: 未完成的批注标记不得进提交
+# 约定见 skill://notes：维护者用 TODO(...) / ASK(...) 给 agent 派活与提问，
+# 做完要就地改成 DONE(...)（带 in=/by=），问题要在下一行写「答：」。
+# 因此提交里只要**新增**了 TODO(...) / ASK(...) 行，就说明活还没干完/问题还没答 → FAIL。
+#
+# 例外：`TODO(#123)` 是本仓既有约定（带 issue 的未来工作，由 rust_todo_needs_issue 管），不拦。
+#
+# 模式: diff（读 git diff；stdin 为空时回退到 staged + 工作区 diff，所以 pre-commit 也拦得住）
+# 性能: ~50ms（纯 grep/awk，零外部依赖）
+# SLA: l1
+# Hook: pre-commit / pre-push / merge
+enabled: true
+hooks: [pre-commit, pre-push, merge]
+sla: l1
+fail_severity: FAIL
+match:
+  paths_exclude: ["target/", ".wt/", ".agent/skills/notes/", ".githooks/spec/"]
+mode: diff
+harness:
+  command: "sh"
+  args:
+    - "-c"
+    - |
+      ROOT=$(git rev-parse --show-toplevel)
+      cd "$ROOT" || exit 2
+      DIFF=$(cat 2>/dev/null)
+      [ -z "$DIFF" ] && DIFF=$(git diff --cached -U0 2>/dev/null; git diff -U0 2>/dev/null)
+
+      findings=$(printf '%s\n' "$DIFF" | awk '
+        /^\+\+\+ /     { file = $2; sub(/^b\//, "", file); next }
+        /^@@/          { if (match($0, /\+[0-9]+/)) { ln = substr($0, RSTART+1, RLENGTH-1) + 0 } ; next }
+        /^\+/ {
+          line = substr($0, 2)
+          if (line ~ /(ASK|TODO)\(/) {
+            if (line ~ /TODO\(#/) { ln++; next }            # 例外：带 issue 的 TODO
+            if (file ~ /^\.agent\/skills\/notes\// || file ~ /^\.githooks\/spec\// || file ~ /^\.wt\// || file ~ /^target\//) { ln++; next }
+            tag = (line ~ /ASK\(/) ? "ASK" : "TODO"
+            msg = (tag == "ASK") ? "未回答的 ASK 不得进提交：在标记下一行写「答：…」，或确认无需回答后删除" : "未完成的 TODO 不得进提交：做完就地改成 DONE(<原 meta>): <一行结论> in=<commit|wip> by=<agent>"
+            gsub(/"/, "", line)
+            print file "\t" ln "\t" tag "\t" msg "\t" line
+          }
+          ln++; next
+        }
+        /^ / { ln++ }
+      ' | head -20)
+
+      if [ -z "$findings" ]; then
+        echo '[]'
+      else
+        printf '%s' "$findings" | jq -R -s '
+          split("\n") | map(select(length > 0))
+          | map(split("\t"))
+          | map({id: ("OPEN-" + .[2]), severity: "FAIL", path: .[0], line: (.[1] | tonumber),
+                  message: (.[3] + "  ← " + .[4])})
+        '
+      fi
+optional: false
+timeout: 10
