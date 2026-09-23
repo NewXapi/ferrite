@@ -52,11 +52,17 @@ async function main() {
   const projectId = project.projectId ?? project.config?.projectId;
 
   let grantToken;
+  // 必须把 grant 返回出去：调用方靠它拿到 grantId 去 renew。
+  // 之前漏了 return，导致 `grant` 恒为 undefined，下一轮 renew 抛
+  // "Cannot read properties of undefined (reading 'grantId')"，
+  // 于是每轮都走 catch 重新签发新 token —— 浏览器手里的旧 token 仍会过期，
+  // 表现为页面开满一个 RENEW_MS 周期后批注 403。
   async function issue() {
     const grant = await api(url, token, '/control/grants', 'POST', { kind: 'browser', projectId, origin: ORIGIN });
     grantToken = grant.token;
     await writeFile(OUT, `${JSON.stringify({ url, token: grant.token }, null, 2)}\n`);
     console.log('grant issued', grant.grantId, 'expires', new Date(grant.expiresAt).toISOString());
+    return grant;
   }
 
   let grant = await issue();
