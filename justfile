@@ -101,7 +101,7 @@ dev-backend *args:
 #     debug 档启用 debug-auto-login feature: 无 token 且不在登录页时自动登录 dev 种子
 #     账号 admin_dev (401 清会话后也会先自动重登); 打开 #login/#signup/#auth 仍可
 #     手动调试登录页, 主动「退出登录」不会被自动重登顶掉。彻底关闭用普通档重新起。
-#   全部 --watch false (仓库已知 dx watch 重建卡死)。
+#   全部 --watch false --hot-reload false（仓库已知 dx watch 重建卡死；hot-reload 同关，页面更新只走 dev-web-rebuild 手动重编 + 浏览器强刷）。
 #   ⚠️ 改了依赖 crate（ui-components 等）后页面没变：dx 不会自动重编 wasm，
 #      跑 `just dev-web-rebuild <port>`（或 `just dev-web-rebuild <port> debug`）一键重编+重启，
 #      浏览器再强刷一次。
@@ -111,9 +111,9 @@ dev-web port="8090" mode="":
     # ponytail: just 无 justfile_directory 变量（1.58 实测），用内置 justfile() + shell dirname
     cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
     if [ "{{mode}}" = "debug" ]; then
-      dx serve --platform web --port {{port}} --watch false --features debug-auto-login
+      dx serve --platform web --port {{port}} --watch false --hot-reload false --features debug-auto-login
     else
-      dx serve --platform web --port {{port}} --watch false
+      dx serve --platform web --port {{port}} --watch false --hot-reload false
     fi
 
 # 改完代码一键重编 wasm + 重启 dx（替代手动的 kill+restart 仪式）
@@ -130,9 +130,9 @@ dev-web-rebuild port="8090" mode="":
     pid="$(ss -ltnp 2>/dev/null | grep ":{{port}} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
     if [ -n "$pid" ]; then kill "$pid"; sleep 1; fi
     if [ "{{mode}}" = "debug" ]; then
-      dx serve --platform web --port {{port}} --watch false --features debug-auto-login
+      dx serve --platform web --port {{port}} --watch false --hot-reload false --features debug-auto-login
     else
-      dx serve --platform web --port {{port}} --watch false
+      dx serve --platform web --port {{port}} --watch false --hot-reload false
     fi
     echo "== done: hard-refresh the browser (wasm/js are cached) =="
 

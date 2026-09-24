@@ -28,6 +28,7 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .zcode/
+.workbuddy/
 
 # smoke 脚手架（本地验证用，不进 PR）
 scripts/smoke/
