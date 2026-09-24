@@ -1,4 +1,4 @@
-<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
+<!-- canon: hathawayANdRX105/canon @ 4972d48 (synced 2026-09-24) -->
 # 任务书：功能开发全流程（dev）
 
 **什么时候用**：从零开发一个功能 / 修复的完整流程——建 worktree、draft PR、拆子任务、
