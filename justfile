@@ -159,8 +159,10 @@ aino-service:
         echo "service 已在运行: $url"; exit 0
       fi
     fi
+    # 固定端口: service 随机端口 + SDK 仅在页面加载时读一次连接 = service 一重启就全体断链;
+    # 固定后 bridge 靠自愈逻辑重连, 页面仅需强刷一次
     CLI=$(ls "$HOME"/.npm/_npx/*/node_modules/@ainotation/mcp/dist/cli.mjs 2>/dev/null | head -1)
-    if [ -n "$CLI" ]; then exec node "$CLI" service; else exec npx --yes @ainotation/mcp@beta service; fi
+    if [ -n "$CLI" ]; then exec node "$CLI" service --port 45029; else exec npx --yes @ainotation/mcp@beta service --port 45029; fi
 
 aino-bridge:
     #!/usr/bin/env bash

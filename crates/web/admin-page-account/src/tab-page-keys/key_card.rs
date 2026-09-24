@@ -135,15 +135,26 @@ pub fn KeyCard(
                 }
             }
 
-            // 密钥行: 掩码预览占满一行; 仅本次会话创建的密钥带复制按钮
+            // 密钥行: 掩码预览占满一行; 复制图标常驻行尾 (维护者批注 2026-09-21 15:44:
+            // 「复制图标按钮放到这一行的最右边」)。仅会话内创建的密钥持有明文可复制,
+            // 旧密钥明文已不可得 (后端只存 sha256, 掩码复制无意义) → 禁用态+悬停说明。
             div { class: "mb-3 flex items-center gap-2",
                 p {
                     class: "min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-500",
                     title: "{entry.key_preview}",
                     "{entry.key_preview}"
                 }
-                if let Some(pk) = plain_key {
-                    CopyPlaintextButton { text: pk, label: "复制完整密钥".to_string() }
+                match plain_key {
+                    Some(pk) => rsx! {
+                        CopyPlaintextButton { text: pk, label: "复制完整密钥".to_string() }
+                    },
+                    None => rsx! {
+                        CopyPlaintextButton {
+                            text: String::new(),
+                            label: String::new(),
+                            disabled_reason: Some("明文仅创建时展示一次, 旧密钥无法复制".into()),
+                        }
+                    },
                 }
             }
 
@@ -165,8 +176,8 @@ pub fn KeyCard(
                             class: "flex min-w-0 flex-1 items-center justify-between gap-2 text-left",
                             "data-testid": "key-quota",
                             "aria-label": "已用额度 {fmt_quota(entry.used_quota)}, 总额度 {fmt_quota(entry.quota)}",
+                            // 维护者批注 2026-09-21 15:45: 删掉「/」分隔符, 两金额左右分置
                             span { class: "min-w-0 truncate font-medium text-zinc-200", "{fmt_quota(entry.used_quota)}" }
-                            span { class: "shrink-0 text-zinc-600", "/" }
                             span { class: "min-w-0 shrink-0 text-zinc-400", "{fmt_quota(entry.quota)}" }
                         }
                         div {
@@ -190,10 +201,10 @@ pub fn KeyCard(
                         div { class: "relative min-w-0",
                             DropdownMenu {
                                 trigger: rsx! {
-                                    Button {
-                                        variant: ButtonVariant::Ghost,
-                                        size: ButtonSize::Xs,
-                                        class: "min-w-0 max-w-[140px] text-zinc-300",
+                                    // 维护者批注 2026-09-21 15:49: 值要贴右缘 (原 Ghost 按钮
+                                    // 内边距让「default」离右边界有空隙), 换无内边距原生按钮
+                                    button {
+                                        class: "min-w-0 max-w-[140px] truncate text-xs text-zinc-300 transition-colors hover:text-zinc-100",
                                         "data-testid": "key-group",
                                         "aria-label": "切换密钥分组, 当前 {group_label}",
                                         span { class: "truncate", "{group_label}" }

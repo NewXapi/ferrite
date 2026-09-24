@@ -196,7 +196,11 @@ pub fn KeysPanel() -> Element {
                     } else {
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             for t in keys() {
+                                // key 按密钥 UUID 绑定卡牌: 无 key 时 Dioxus 按位置 diff,
+                                // 重取列表顺序变化会让卡牌串位——「点一张卡的按钮, 其他卡的
+                                // 按钮跟着变」的根因 (维护者批注 2026-09-21 15:50)。
                                 KeyCard {
+                                    key: "{t.key}",
                                     entry: t.clone(),
                                     groups: groups(),
                                     plain_key: plain_keys().get(&t.key).cloned(),
@@ -207,6 +211,14 @@ pub fn KeysPanel() -> Element {
                                         let mut k = keys;
                                         let mut kl = keys_loaded;
                                         let mut ke = keys_err;
+                                        // 乐观更新: 点击立即翻转本卡状态 (批注 15:50:
+                                        // 按钮反馈要卡牌内部即时生效), 随后重取以服务端
+                                        // 为准对齐 (含 PUT 失败回滚)。
+                                        k.write().iter_mut().for_each(|t| {
+                                            if t.key == tk.key {
+                                                t.status = if t.status == 1 { 2 } else { 1 };
+                                            }
+                                        });
                                         let client = client::ApiClient::shared().clone();
                                         spawn(async move {
                                             let next_status = if tk.status == 1 { 2 } else { 1 };
@@ -214,11 +226,10 @@ pub fn KeysPanel() -> Element {
                                                 status: Some(next_status),
                                                 ..Default::default()
                                             };
-                                            if api::update_token_api(&client, &tk.key, &req).await.is_ok() {
-                                                match api::list_tokens_api(&client).await {
-                                                    Ok(v) => { ke.set(String::new()); k.set(v); kl.set(true); }
-                                                    Err(e) => ke.set(e.to_string()),
-                                                }
+                                            let _ = api::update_token_api(&client, &tk.key, &req).await;
+                                            match api::list_tokens_api(&client).await {
+                                                Ok(v) => { ke.set(String::new()); k.set(v); kl.set(true); }
+                                                Err(e) => ke.set(e.to_string()),
                                             }
                                         });
                                     },

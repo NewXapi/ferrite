@@ -59,7 +59,20 @@ async function main() {
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
-  const { url, token } = svc;
+  let { url, token } = svc;
+
+  // 自愈: service 重启会轮换 instanceId/admin token(端口已由 justfile 钉死不变),
+  // 重读发现文件拿新 token 再重签 grant, 否则桥会永久卡在旧凭据上
+  async function refreshService() {
+    try {
+      const fresh = JSON.parse(await readFile(SERVICE_USER_FILE, 'utf8'));
+      if (fresh.url && fresh.url !== url) console.log('service moved:', url, '->', fresh.url);
+      url = fresh.url ?? url;
+      token = fresh.token ?? token;
+    } catch (error) {
+      console.error('re-read connection.json failed:', String(error).slice(0, 120));
+    }
+  }
 
   // 1. 注册项目（幂等：已注册返回既有记录）
   let project;
@@ -100,7 +113,13 @@ async function main() {
       console.log('renewed, expires', new Date(grant.expiresAt).toISOString());
     } catch (error) {
       console.error('renew failed, re-issuing:', String(error).slice(0, 160));
-      grant = await issue();
+      try {
+        await refreshService();
+        grant = await issue();
+      } catch (issueError) {
+        // 不让 issue 失败杀死定时器: 记日志, 下个周期再试
+        console.error('re-issue failed, will retry next cycle:', String(issueError).slice(0, 160));
+      }
     }
   }, RENEW_INTERVAL_MS);
 

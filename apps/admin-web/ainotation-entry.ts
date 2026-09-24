@@ -22,9 +22,11 @@ function start(mcp) {
 }
 
 async function loadConnection() {
-  // 44091 = 并行第二开发实例的专属桥（AINO_ORIGIN 指向该实例端口）；
-  // 没有该桥时 fetch 失败，自动落到 44090 默认桥。
-  for (const url of ['http://127.0.0.1:44091/connection.json', 'http://127.0.0.1:44090/connection.json', '/assets/ainotation/connection.json']) {
+  // 先取本车道专属桥(44090, AINO_ORIGIN=8090), 再落 44091(并行实例, 8091)。
+  // 顺序要紧: 两个桥都是 ACAO:*, 页面 fetch 会接受第一个成功响应——
+  // 若先撞上別车道的桥, 拿到的是对方 origin 的 grant, service 侧校验
+  // origin 不匹配直接静默丢弃, 批注永远不同步(2026-09-21 实测病根)。
+  for (const url of ['http://127.0.0.1:44090/connection.json', 'http://127.0.0.1:44091/connection.json', '/assets/ainotation/connection.json']) {
     try {
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) continue;

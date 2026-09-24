@@ -235,7 +235,9 @@ pub fn DropdownMenuItem(
     rsx! {
         div {
             "data-slot": "dropdown-menu-item",
-            "data-inset": "false",
+            // 不渲染 data-inset: css 的 [data-inset] 是存在性选择器, 值为 "false"
+            // 也会命中 data-[inset]:pl-8 (React 布尔 false 会省略属性, 移植时保留了
+            // 字符串 → 所有菜单项常驻 pl-8, 退出登录等居中批注的真正根因)。
             "data-variant": "default",
             role: "menuitem",
             tabindex: "-1",
@@ -259,7 +261,7 @@ pub fn DropdownMenuLabel(
     rsx! {
         div {
             "data-slot": "dropdown-menu-label",
-            "data-inset": "false",
+            // 同 DropdownMenuItem: 不渲染 data-inset (存在性选择器误命中 pl-8)
             ..class,
             {children}
         }

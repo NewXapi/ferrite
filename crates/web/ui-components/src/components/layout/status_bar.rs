@@ -125,16 +125,19 @@ pub fn StatusBar(
                                     // hashchange 不触发, 锚点导航会失效; 回调直接 set 状态必达)
                                     DropdownMenuItem {
                                         "data-testid": "menu-account",
+                                        class: "justify-center",
                                         onclick: move |_| {
                                             close_signal.set(true);
                                             on_open_tab.call(0);
                                         },
-                                        div { class: "flex items-center gap-2.5",
+                                        div { class: "mx-auto flex w-fit items-center gap-2.5",
                                             span {
                                                 class: "{card_avatar_class()}",
                                                 "{name.chars().next().unwrap_or('?')}"
                                             }
-                                            span { class: "min-w-0 flex-1 truncate text-sm font-medium text-zinc-100", "{name}" }
+                                            // 维护者批注 2026-09-21 15:43: 整行内容居中——name 不带
+                                            // flex-1 (撑满会吃掉 justify-center), 头像+名称+ID 成组居中
+                                            span { class: "min-w-0 truncate text-sm font-medium text-zinc-100", "{name}" }
                                             // 维护者批注(2026-09-21, 11:46 组): 用户 id 做成
                                             // 按钮, 点击跳转账户页(与整行导航同一目的地)。
                                             // 数据源同第二行(read_user_card); UserDto 无独立
@@ -156,8 +159,7 @@ pub fn StatusBar(
                                     // 名片: 第二行 余额·用量 纯数值 (无文字标签, 默认文本色;
                                     // 口径同账户页: 余额=quota-used, 500_000 ≈ $1)
                                     if let Some(u) = read_user_card() {
-                                        div {
-                                            class: "flex items-center justify-between gap-3 px-2 py-1 font-mono text-xs",
+                                        div { class: "flex items-center justify-center gap-3 px-2 py-1 font-mono text-xs",
                                             "data-testid": "status-user-card",
                                             span {
                                                 title: "余额",
@@ -175,7 +177,8 @@ pub fn StatusBar(
                                     // 名片: 第三行 账户页 tab 选项 (横向 chips, mark1 批注
                                     // 2026-09-21: 账号页面里面的 tab 选项做成横向选项加入菜单)
                                     if !tabs.is_empty() {
-                                        div { class: "flex flex-wrap gap-1 px-2 py-1.5",
+                                        // 维护者批注 2026-09-21 15:43: tab 选项一行一个 + 面板内容全部居中
+                                        div { class: "flex flex-col items-center gap-1 px-2 py-1.5",
                                             for idx in 0..tabs.len() {
                                                 MenuTabChip {
                                                     idx,
@@ -197,6 +200,7 @@ pub fn StatusBar(
                                         },
                                         "data-testid": "logout",
                                         "data-variant": "destructive",
+                                        class: "justify-center",
                                         "退出登录"
                                     }
                                 },
