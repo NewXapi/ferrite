@@ -1,6 +1,5 @@
 /target
 /target-web/
-/target-web-parallel/
 /data/
 **/*.rs.bk
 *.pdb
@@ -21,6 +20,8 @@ config/config.toml
 .env.*
 *.pem
 *.key
+# ainotation 运行时连接信息（含 token），本地产物
+/apps/admin-web/assets/ainotation/connection.json
 
 # Python cache
 __pycache__/
