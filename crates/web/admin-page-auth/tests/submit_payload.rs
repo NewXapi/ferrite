@@ -7,8 +7,8 @@
 //! 只测纯映射；rsx 里的 `busy` 接线与 Remember me 渲染需要 dioxus 运行时，
 //! 由 gate 的浏览器目检覆盖。
 
-use admin_page_auth::form::{SignInPayload, SignUpPayload};
-use admin_page_auth::view::SubmitPayload;
+use admin_page_auth::components::auth_form::{SignInPayload, SignUpPayload};
+use admin_page_auth::components::auth_view::SubmitPayload;
 
 /// 回归护栏：注册勾了 Remember me，`remember` 必须是 true。
 #[test]

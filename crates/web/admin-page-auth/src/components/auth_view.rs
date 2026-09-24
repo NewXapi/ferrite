@@ -3,8 +3,8 @@
 
 use crate::api;
 use crate::api::contract_auth;
-use crate::form::{SignInForm, SignInPayload, SignUpForm, SignUpPayload};
-use crate::state::{AuthTab, auth_tab};
+use crate::components::auth_form::{SignInForm, SignInPayload, SignUpForm, SignUpPayload};
+use crate::components::auth_state::{AuthTab, auth_tab};
 use client::{ApiClient, ApiError};
 use dioxus::prelude::*;
 
@@ -32,7 +32,7 @@ impl From<SignUpPayload> for SubmitPayload {
     }
 }
 
-use crate::form::SubmitState;
+use crate::components::auth_form::SubmitState;
 
 /// 统一提交载荷：register 标志 + 表单字段。
 ///
@@ -211,7 +211,7 @@ pub fn AuthPage() -> Element {
                             r#type: "button",
                             role: "tab",
                             aria_selected: "{is_sign_in}",
-                            onclick: move |_| crate::state::set_auth_tab(AuthTab::SignIn),
+                            onclick: move |_| crate::components::auth_state::set_auth_tab(AuthTab::SignIn),
                             "Sign in"
                         }
                         button {
@@ -219,7 +219,7 @@ pub fn AuthPage() -> Element {
                             r#type: "button",
                             role: "tab",
                             aria_selected: "{!is_sign_in}",
-                            onclick: move |_| crate::state::set_auth_tab(AuthTab::SignUp),
+                            onclick: move |_| crate::components::auth_state::set_auth_tab(AuthTab::SignUp),
                             "Register"
                         }
                     }
@@ -229,8 +229,8 @@ pub fn AuthPage() -> Element {
 
                     // Form content
                     match active {
-                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
-                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::form::SignUpPayload| handle_submit(p.into()), remember: remember_signal } },
+                        AuthTab::SignIn => rsx! { SignInForm { submit: move |p: crate::components::auth_form::SignInPayload| handle_submit(p.into()), remember: remember_signal } },
+                        AuthTab::SignUp => rsx! { SignUpForm { submit: move |p: crate::components::auth_form::SignUpPayload| handle_submit(p.into()), remember: remember_signal } },
                     }
 
                     // Footer — placed clearly BELOW the form, inside the card, separated by a hairline.
