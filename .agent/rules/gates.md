@@ -1,3 +1,4 @@
+<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
 # 闸门（gate）与 GitHub 操作
 
 **什么时候读这份文档**：提交或推送被拦下、创建 PR/issue 被拒绝、或者想知道有哪些检查规则的时候。
@@ -84,15 +85,13 @@ gate pr             # PR 预检
 另外：**PR 标题必须是纯英文**（如 `fix(metering): ...`）；正文里的小节标题（`## What` 等）也必须是英文，
 但正文内容用中文写。「标题不得包含中文」指的是 PR 标题那行，不是正文内容。
 
-### 3.4 规则文档在哪
+### 3.4 规则文档在哪（唯一正本，别处不重复维护）
 
-- `.githooks/GATE_HANDBOOK.md`：完整手册。三层检查的意思：
-  **l1 结构层**（文件放哪、有没有写文档这类格式检查）、
-  **l2 语义层**（依赖方向、命名这类代码语义检查）、
-  **l3 LLM 层**（用大模型判断的深层问题，只在合并时跑）。
-  共 16 条规则，每条标了触发时机和严重程度。
-- `.githooks/spec/SPEC_OVERVIEW.md`：规则对照清单（新增或修改规则后必须同步更新这个文件）。
-- `.githooks/spec/github_pr_gates.yaml`、`.githooks/spec/checklist_pr_*.yaml`：GitHub 相关的具体规则。
+- 完整手册：canon `manual/gate.md`（正本；各仓不单独维护）。三层 SLA、规则清单
+  （20 条 checklist + github/cleanup/code/workspace 系）、豁免与降级全部以它为准——
+  **本文件不复制规则表**，改了规则只改手册与 `rules/docs/SPEC_OVERVIEW.md`。
+- 规则对照清单：canon `rules/docs/SPEC_OVERVIEW.md`（正本；新增或修改规则后必须同步更新，
+  `gate init` 播种到本仓 `.githooks/spec/docs/`，本仓可直接读播种副本）。
 - 手动跑某个检查：先看 `SPEC_OVERVIEW.md` 找规则名（如 `rust_todo_needs_issue`），
   再跑 `gate check <规则名> --sla l1`。
 - `gate` 命令装在 `~/.local/bin/gate`（已在 PATH 里）；钩子脚本在 `.githooks/hooks/`。

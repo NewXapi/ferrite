@@ -32,7 +32,11 @@ fn card_avatar_class() -> &'static str {
 
 /// 用户 ID 短显（key 前 8 位十六进制 + 省略号；不足 8 位原样）。
 fn short_user_key(key: &str) -> String {
-    if key.len() > 8 { format!("{}…", &key[..8]) } else { key.to_string() }
+    if key.len() > 8 {
+        format!("{}…", &key[..8])
+    } else {
+        key.to_string()
+    }
 }
 
 /// 名片面板横向 tab 选项 chip（私有小组件：rsx for 体内不能 let，拆组件最省事）。

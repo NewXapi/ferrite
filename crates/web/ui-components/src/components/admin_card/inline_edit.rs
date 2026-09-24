@@ -33,18 +33,15 @@ pub const INLINE_ROW_CLASS: &str =
 /// 行模式编辑态输入框：右侧对齐（与展示态值同位），`leading-4 + pb-1` 与标题
 /// 模式同款间距——文字抬离底部横条 2px（批注 91631469：两种形态样式要一致，
 /// 横线不贴文字底）。
-pub const INLINE_ROW_INPUT_CLASS: &str =
-    "min-w-0 flex-1 border-0 bg-transparent p-0 pb-1 text-right text-xs font-medium leading-4 text-zinc-100 outline-none focus:ring-0";
+pub const INLINE_ROW_INPUT_CLASS: &str = "min-w-0 flex-1 border-0 bg-transparent p-0 pb-1 text-right text-xs font-medium leading-4 text-zinc-100 outline-none focus:ring-0";
 
 /// 标题模式展示态：整条标题可点，字号/字重/截断与卡牌静态标题逐字同款
 /// （`CARD_TITLE_CLASS`），行高固定 20px（`h-5`）——编辑态不撑卡。
-pub const INLINE_TITLE_ROW_CLASS: &str =
-    "flex h-5 w-full cursor-pointer items-center text-left";
+pub const INLINE_TITLE_ROW_CLASS: &str = "flex h-5 w-full cursor-pointer items-center text-left";
 
 /// 标题模式输入框：与展示态同字号（text-sm，`leading-4 + pb-1` 凑足 20px 零高度
 /// 差、文字抬离横条），仅允许轻微缩小（scale-[0.98]，批注：可以出现一点缩小）。
-pub const INLINE_TITLE_INPUT_CLASS: &str =
-    "w-full border-0 bg-transparent p-0 pb-1 text-sm font-medium leading-4 text-zinc-100 outline-none focus:ring-0 scale-[0.98] origin-left transition-transform";
+pub const INLINE_TITLE_INPUT_CLASS: &str = "w-full border-0 bg-transparent p-0 pb-1 text-sm font-medium leading-4 text-zinc-100 outline-none focus:ring-0 scale-[0.98] origin-left transition-transform";
 
 /// 卡牌内的原地可编辑行：展示态是「label + 值」文本行，点击后值的位置变成
 /// 输入框——标签留在原地（不浮动、零位移），底部横条展开标示编辑态。

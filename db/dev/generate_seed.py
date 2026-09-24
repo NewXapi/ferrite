@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """db/dev 种子生成器 — 真实数据纹理 + 可复现随机分布。
 
 数据来源 (两层):
@@ -90,7 +89,7 @@ def ts_abs(day_int: int, hour: int, minute: int, sec: int) -> str:
 
 def pick_clock(r, rng):
     """真实小时 + 高斯抖动 (±~1h) → 保留昼夜节奏又填平稀疏桶。"""
-    hour = int(round(r["hour"] + rng.gauss(0, 1.2))) % 24
+    hour = round(r["hour"] + rng.gauss(0, 1.2)) % 24
     return hour, rng.randrange(60), rng.randrange(60)
 
 
@@ -162,7 +161,7 @@ def main():
     for i, name in enumerate(USER_NAMES):
         quota = int(USERS[i][1] * 200_000_000)
         group = 'vip' if i < 3 else 'default'
-        group_arr = q('{"%s"}' % group)
+        group_arr = q(f'{{"{group}"}}')
         emit(f",\n  ({q(USER_KEYS[min(i, len(USER_KEYS) - 1)])}, {q(name)}, {q(name)}, {q(f'{name}@dev.local')}, {q(ADMIN_HASH)}, 1, 1, {quota}, {q(group)}, {group_arr})")
     emit(";\n\n")
 

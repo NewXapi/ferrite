@@ -1,3 +1,4 @@
+<!-- canon: hathawayANdRX105/canon @ 4972d48 (synced 2026-09-24) -->
 # 任务书：web 开发车道（dev 角色）
 
 **什么时候用**：web 域（`crates/web/*`、`apps/admin-web`、`apps/tavern-web`）的快速改动。

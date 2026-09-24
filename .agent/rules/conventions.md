@@ -1,3 +1,4 @@
+<!-- canon: hathawayANdRX105/canon @ 6a7370c (synced 2026-09-23) -->
 # 代码约定：UI、Rust、调查与审查
 
 **什么时候读这份文档**：写前端界面（Dioxus）、写 Rust 公共接口、或者要调查代码 / 审查代码的时候。
@@ -30,12 +31,10 @@
   现成的例子：`crates/web/admin-page-admin/specs/ui/` 下有 5 份，照着写。
 - PR 的冒烟验证用 `tab.ariaSnapshot()` 检查 role、name、testid 是否正确。
   这是 Playwright 的 API：`tab` 是会话工具 `browser` 打开的页签对象，
-  用法示例在 `.agent/skills/ui-validation/SKILL.md` 里有完整代码。
 - 截图只作为辅助手段（看视觉风格和品牌效果），失败的时候附上截图。
 
 **禁区**：只用截图肉眼判断、用 class 选择器定位元素、没写 ui-spec 文件就直接提 PR。
 
-详细操作在项目级技能文件里：`.agent/skills/ui-validation/SKILL.md`
 
 ### Rust 代码风格
 
