@@ -36,19 +36,39 @@ pub fn ProfileItem(
 /// (按钮文案瞬时变「已复制」/ 图标变 ✓)。
 /// 只用于真正值得复制的完整值 —— 一次性明文密钥 / 完整用户 ID;
 /// 掩码预览 (sk-ab****ef) 禁止用此组件, 复制掩码是功能错误。
+/// 密钥卡复制按钮常驻行尾 (维护者批注 2026-09-21 15:44); 旧密钥以 disabled_reason 禁用。
 /// 复制语义与 ui-components session::copy_text_to_clipboard 一致:
 /// Clipboard API fire-and-forget, 提交即视为成功。
 #[component]
-fn CopyPlaintextButton(text: String, label: String) -> Element {
+pub fn CopyPlaintextButton(
+    text: String,
+    label: String,
+    /// Some(原因) = 禁用态: 图标照常渲染在行尾但不可点, 悬停显示原因。
+    /// 密钥卡用: 旧密钥明文仅创建时可见 (后端只存 sha256), 无法复制。
+    #[props(default)]
+    disabled_reason: Option<String>,
+) -> Element {
     let mut copied = use_signal(|| false);
+    let disabled = disabled_reason.is_some();
+    let hint = disabled_reason.unwrap_or_else(|| label.clone());
     rsx! {
         Button {
             variant: ButtonVariant::Ghost,
             size: ButtonSize::IconXs,
-            title: "{label}",
-            "aria-label": "{label}",
-            class: if copied() { "text-emerald-400" } else { "" },
+            title: "{hint}",
+            "aria-label": "{hint}",
+            disabled,
+            class: if disabled {
+                "opacity-40"
+            } else if copied() {
+                "text-emerald-400"
+            } else {
+                ""
+            },
             onclick: move |_| {
+                if disabled {
+                    return;
+                }
                 let ok = ui::copy_text_to_clipboard(text.as_str());
                 copied.set(ok);
                 let mut c = copied;

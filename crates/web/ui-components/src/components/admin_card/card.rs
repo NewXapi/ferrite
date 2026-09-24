@@ -3,6 +3,10 @@ use dioxus::prelude::*;
 use super::dot_tab::DotTabBar;
 use super::shell::CARD_SHELL_CLASS;
 
+/// 标题文本 class：静态标题（h3）与自定义标题插槽内的可编辑标题共用一份，
+/// 保证两种形态逐字同款。
+pub const CARD_TITLE_CLASS: &str = "truncate text-sm font-medium text-zinc-100";
+
 /// Shortens a key by Unicode scalar value without splitting UTF-8 characters.
 ///
 /// Keeps at most `EDGE_CHARS * 2` (head…tail) characters so entity keys stay
@@ -22,8 +26,12 @@ pub(crate) fn short_key(key: &str) -> String {
 
 /// 渲染管理页实体摘要的共享卡片外壳。
 ///
-/// `title` 和可选的 `subtitle` 用作卡片标题；`tabs` 是只读内容页签的标签，
-/// `active_tab` 指明当前圆点，`on_tab_change` 接收用户选择的索引。
+/// `title` 和可选的 `subtitle` 用作卡片标题；`title_slot` 可传自定义标题节点
+/// （如原地可编辑标题）替代默认静态 h3，`title` 仍作 region 的 aria-label。
+/// `tabs` 是只读内容页签的标签，
+/// `active_tab` 指明当前页签，`on_tab_change` 接收用户选择的索引。页签条渲染在
+/// **卡片底部通栏横线**（维护者 2026-09-21 批注：一条横线占位、选中明暗反映、
+/// 占满底部、高度压低），不再占标题栏右侧。
 ///
 /// `panel_0` 到 `panel_2` 是前三个页签的内容，`panel_3` 可选（不传即该槽位
 /// 不渲染，供最多 3 个页签的实体卡使用）。各 panel 始终同格渲染
@@ -32,7 +40,7 @@ pub(crate) fn short_key(key: &str) -> String {
 /// 高度由最高的 panel 决定，切换页签时卡片高度不跳动。`testid` 可为整张
 /// 卡片指定测试标识。
 ///
-/// 当 `tabs` 为空时不渲染圆点；`active_tab` 超出 `tabs` 范围时不激活任何圆点。
+/// 当 `tabs` 为空时不渲染页签条；`active_tab` 超出 `tabs` 范围时不激活任何区段。
 ///
 /// 例如，实体卡可传入四个摘要页签内容，并在回调中切换其本地页签状态。
 #[component]
@@ -58,6 +66,10 @@ pub fn AdminCard(
     /// 标题栏右侧、圆点页签之前的可选插槽（如实体卡的序号 badge）。
     #[props(default)]
     header_action: Option<Element>,
+    /// 自定义标题节点（如原地可编辑标题）；传了即替代默认 h3 静态标题，
+    /// `title` 仍作卡片 region 的 aria-label。
+    #[props(default)]
+    title_slot: Option<Element>,
 ) -> Element {
     // 非激活页签：invisible（占布局高度）+ pointer-events-none（不可交互）。
     // 类名必须完整字面量出现在源码里，Tailwind 才会生成对应 CSS（动态拼串不会被扫描）。
@@ -76,10 +88,14 @@ pub fn AdminCard(
             "aria-label": "{title}",
             "data-testid": testid.unwrap_or_default(),
 
-            // Header: title + dot tabs at top-right.
+            // Header: title (+ optional trailing slot)；页签已移到底部通栏横线。
             div { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0 flex-1",
-                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    if let Some(slot) = title_slot {
+                        {slot}
+                    } else {
+                        h3 { class: CARD_TITLE_CLASS, "{title}" }
+                    }
                     if let Some(sub) = subtitle {
                         p { class: "mt-0.5 truncate text-[11px] text-zinc-400", "{sub}" }
                     }
@@ -87,11 +103,6 @@ pub fn AdminCard(
                 div { class: "flex items-center gap-2 pt-0.5",
                     if let Some(action) = header_action {
                         {action}
-                    }
-                    DotTabBar {
-                        tabs: tabs.clone(),
-                        active: active_tab,
-                        on_change: on_tab_change,
                     }
                 }
             }
@@ -104,6 +115,18 @@ pub fn AdminCard(
                 div { class: "{c2}", {panel_2} }
                 if let Some(p3) = panel_3 {
                     div { class: "{c3}", {p3} }
+                }
+            }
+
+            // 页签条：卡片底部通栏横线（维护者批注 2026-09-21：一条横线占位、
+            // 选中明暗反映、占满底部、高度压低）。mt-auto 让页签贴卡底。
+            if !tabs.is_empty() {
+                div { class: "mt-auto",
+                    DotTabBar {
+                        tabs: tabs.clone(),
+                        active: active_tab,
+                        on_change: on_tab_change,
+                    }
                 }
             }
         }

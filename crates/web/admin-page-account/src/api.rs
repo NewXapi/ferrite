@@ -31,6 +31,17 @@ pub async fn list_tokens_api(client: &ApiClient) -> ApiResult<Vec<TokenDto>> {
     Ok(page.items)
 }
 
+/// 真实调用: GET /api/token/auto-groups — 可自动分配的启用分组名
+/// (`{items: [name]}` 信封, 后端 admin-catalog tokens auto_groups)。
+/// 密钥卡「分组」下拉切换菜单的数据源; 非数组/缺失按空列表处理。
+pub async fn list_auto_groups_api(client: &ApiClient) -> ApiResult<Vec<String>> {
+    let resp: serde_json::Value = client.get("/api/token/auto-groups").await?;
+    Ok(resp
+        .get("items")
+        .and_then(|items| serde_json::from_value::<Vec<String>>(items.clone()).ok())
+        .unwrap_or_default())
+}
+
 /// 真实调用: POST /api/token — 响应含一次性明文 key (只在创建时返回一次)。
 pub async fn create_token_api(
     client: &ApiClient,

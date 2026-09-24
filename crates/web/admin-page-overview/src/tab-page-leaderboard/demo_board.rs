@@ -39,6 +39,7 @@ pub fn DemoBoard() -> Element {
                 }
             }
             // 海报翻牌卡大阵列
+            // 维护者批注(2026-09-21): 海报阵列放到头牌卡之后(还原默认顺序)
             section { class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5",
                 for (i, m) in ranked.iter().copied().enumerate() {
                     PosterImageCard { rank: i + 1, model: m }

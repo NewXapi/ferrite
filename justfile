@@ -116,17 +116,16 @@ dev-web port="8090" mode="":
       dx serve --platform web --port {{port}} --watch false --hot-reload false
     fi
 
-# 改完代码一键重编 wasm + 重启 dx（替代手动的 kill+restart 仪式）
+# 改完代码一键重启 dx（dx 启动时自会用 wasm 配置重编，预编 dev profile 白等——实测移除）
 #   普通: just dev-web-rebuild 8090     |  免登录调试档: just dev-web-rebuild 8090 debug
 #   档位（debug 与否）要和当前跑着的 dx 一致；重启后浏览器强刷一次。
+#   实测（共享 target 的 .wt 车道）：新 worktree 首建 ~54s，无改动重启 ~20s。
 #   ponytail: 配交互 dev 循环（人等自己的构建），这里不套 cpulimit；agent 会话发起的构建仍按 AGENTS.md 套
 dev-web-rebuild port="8090" mode="":
     #!/usr/bin/env bash
     set -e
     cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
-    echo "== rebuild wasm (dev profile) =="
-    cargo build --target wasm32-unknown-unknown
-    echo "== restart dx (port {{port}}, mode {{mode}}) =="
+    echo "== restart dx (port {{port}}, mode {{mode}}; dx 启动时自会重编 wasm) =="
     pid="$(ss -ltnp 2>/dev/null | grep ":{{port}} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
     if [ -n "$pid" ]; then kill "$pid"; sleep 1; fi
     if [ "{{mode}}" = "debug" ]; then
@@ -160,8 +159,10 @@ aino-service:
         echo "service 已在运行: $url"; exit 0
       fi
     fi
+    # 固定端口: service 随机端口 + SDK 仅在页面加载时读一次连接 = service 一重启就全体断链;
+    # 固定后 bridge 靠自愈逻辑重连, 页面仅需强刷一次
     CLI=$(ls "$HOME"/.npm/_npx/*/node_modules/@ainotation/mcp/dist/cli.mjs 2>/dev/null | head -1)
-    if [ -n "$CLI" ]; then exec node "$CLI" service; else exec npx --yes @ainotation/mcp@beta service; fi
+    if [ -n "$CLI" ]; then exec node "$CLI" service --port 45029; else exec npx --yes @ainotation/mcp@beta service --port 45029; fi
 
 aino-bridge:
     #!/usr/bin/env bash
@@ -169,7 +170,7 @@ aino-bridge:
     cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
     exec node scripts/ainotation-bridge.mjs
 
-aino-check:
+aino-check port="8090":
     #!/usr/bin/env bash
     echo "== service =="
     if [ -f "$HOME/.ainotation/service/connection.json" ]; then
@@ -186,9 +187,9 @@ aino-check:
     curl -sf -m 3 http://127.0.0.1:44090/connection.json 2>/dev/null \
       | jq -e -r '"  ✓ 桥活跃 service=" + .url + " token=" + (.token[0:8])' \
       || echo "  ✗ 未运行 (just aino-bridge)"
-    echo "== 前端 (默认 8090) =="
-    curl -s -o /dev/null -m 3 -w '  :8090 -> %{http_code}\n' http://127.0.0.1:8090/ \
-      || echo "  :8090 未监听 (just dev-web 8090 debug)"
+    echo "== 前端 (:{{port}}) =="
+    curl -s -o /dev/null -m 3 -w '  :{{port}} -> %{http_code}\n' http://127.0.0.1:{{port}}/ \
+      || echo "  :{{port}} 未监听 (just dev-web {{port}} debug)"
 
 # dev 环境体检：查共享后端(3211)/前端 serve(8090) 监听 + 打印进程卫生提醒
 # 场景: 前端页面报 500/连不上, 或 agent 开工前确认环境活着

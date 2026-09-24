@@ -14,11 +14,15 @@ fn fmt_num_thousands_separators() {
 
 #[test]
 fn fmt_quota_converts_internal_units() {
-    // 后端口径: 500_000 内部单位 = $1
-    assert_eq!(fmt_quota(0), "$0.0000");
-    assert_eq!(fmt_quota(500_000), "$1.0000");
-    assert_eq!(fmt_quota(250_000), "$0.5000");
-    assert_eq!(fmt_quota(123_456), "$0.2469");
+    // 后端口径: 500_000 内部单位 = $1; 小数最多一位 (卡牌边界 + 可读性)
+    assert_eq!(fmt_quota(0), "$0.0");
+    assert_eq!(fmt_quota(500_000), "$1.0");
+    assert_eq!(fmt_quota(250_000), "$0.5");
+    assert_eq!(fmt_quota(750_000), "$1.5");
+    assert_eq!(fmt_quota(123_456), "$0.2");
+    assert_eq!(fmt_quota(2_500_000), "$5.0");
+    // 大额不进位失真: 123_456_789 / 500_000 ≈ 246.9136 → $246.9
+    assert_eq!(fmt_quota(123_456_789), "$246.9");
 }
 
 #[test]

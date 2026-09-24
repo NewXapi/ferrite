@@ -174,6 +174,7 @@ crates/web/<prefix-feature>/
 | 启动后端 / 数据库 / 前端，或前端报错、构建卡住 | `.agent/rules/dev-env.md` |
 | 写前端界面、写 Rust 公共接口、调查或审查代码 | `.agent/rules/conventions.md` |
 | 要跑 web 双车道（快速开发 / 审查修复 / 发布） | `.agent/rules/web-lanes.md` + 任务书 `.agent/tasks/dev-web-lane.md` / `.agent/tasks/webfix-lane.md` |
+| 发布合并后要收尾（清进程 / 分支 / worktree / 垃圾） | `.agent/tasks/lane-closeout.md` |
 | 要派一件具体的事给某个 agent（写任务书） | 开发任务用 `.agent/tasks/dev.md`，收尾合并用 `.agent/tasks/closeout-pr.md`；空白模板 `.agent/tasks/TEMPLATE.md` |
 | 想了解 `.agent/` 目录本身怎么组织 | `.agent/README.md` |
 

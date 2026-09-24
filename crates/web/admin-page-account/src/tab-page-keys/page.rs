@@ -54,6 +54,11 @@ pub fn KeysPanel() -> Element {
     let keys = use_signal(Vec::<TokenDto>::new);
     let keys_loaded = use_signal(|| false);
     let keys_err = use_signal(String::new);
+    // 可选分组名 (GET /api/token/auto-groups) — 卡牌分组切换菜单数据源
+    let groups = use_signal(Vec::<String>::new);
+    // 本次会话创建时的一次性明文 (后端只存 sha256, 刷新即失):
+    // key UUID → plaintext, 仅这些卡牌渲染复制按钮
+    let mut plain_keys = use_signal(std::collections::HashMap::<String, String>::new);
 
     // 新建成功后的明文展示 (只出现一次)
     let mut created_key = use_signal(|| None::<CreateTokenResult>);
@@ -77,6 +82,15 @@ pub fn KeysPanel() -> Element {
                     su.set(Some(u));
                 }
                 Err(e) => se.set(e.to_string()),
+            }
+        });
+
+        // 可选分组名首载 (分组切换菜单用; 失败留空 = 卡牌分组只读)
+        let mut g = groups;
+        let gclient = client::ApiClient::shared().clone();
+        spawn(async move {
+            if let Ok(v) = api::list_auto_groups_api(&gclient).await {
+                g.set(v);
             }
         });
 
@@ -182,8 +196,14 @@ pub fn KeysPanel() -> Element {
                     } else {
                         div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                             for t in keys() {
+                                // key 按密钥 UUID 绑定卡牌: 无 key 时 Dioxus 按位置 diff,
+                                // 重取列表顺序变化会让卡牌串位——「点一张卡的按钮, 其他卡的
+                                // 按钮跟着变」的根因 (维护者批注 2026-09-21 15:50)。
                                 KeyCard {
-                                    entry: t,
+                                    key: "{t.key}",
+                                    entry: t.clone(),
+                                    groups: groups(),
+                                    plain_key: plain_keys().get(&t.key).cloned(),
                                     on_edit: move |tk: TokenDto| {
                                         edit_key.set(Some(tk));
                                     },
@@ -191,11 +211,36 @@ pub fn KeysPanel() -> Element {
                                         let mut k = keys;
                                         let mut kl = keys_loaded;
                                         let mut ke = keys_err;
+                                        // 乐观更新: 点击立即翻转本卡状态 (批注 15:50:
+                                        // 按钮反馈要卡牌内部即时生效), 随后重取以服务端
+                                        // 为准对齐 (含 PUT 失败回滚)。
+                                        k.write().iter_mut().for_each(|t| {
+                                            if t.key == tk.key {
+                                                t.status = if t.status == 1 { 2 } else { 1 };
+                                            }
+                                        });
                                         let client = client::ApiClient::shared().clone();
                                         spawn(async move {
                                             let next_status = if tk.status == 1 { 2 } else { 1 };
                                             let req = contract::api::token::UpdateTokenRequest {
                                                 status: Some(next_status),
+                                                ..Default::default()
+                                            };
+                                            let _ = api::update_token_api(&client, &tk.key, &req).await;
+                                            match api::list_tokens_api(&client).await {
+                                                Ok(v) => { ke.set(String::new()); k.set(v); kl.set(true); }
+                                                Err(e) => ke.set(e.to_string()),
+                                            }
+                                        });
+                                    },
+                                    on_group_change: move |(tk, g): (TokenDto, String)| {
+                                        let mut k = keys;
+                                        let mut kl = keys_loaded;
+                                        let mut ke = keys_err;
+                                        let client = client::ApiClient::shared().clone();
+                                        spawn(async move {
+                                            let req = contract::api::token::UpdateTokenRequest {
+                                                group: Some(g),
                                                 ..Default::default()
                                             };
                                             if api::update_token_api(&client, &tk.key, &req).await.is_ok() {
@@ -229,6 +274,10 @@ pub fn KeysPanel() -> Element {
                     new_group.set(String::new());
                     new_quota.set(String::new());
                     show_new_form.set(false);
+                    // 会话明文入表: 该卡牌随后带复制按钮 (后端只存 sha256, 刷新即失)
+                    if !res.plaintext.is_empty() {
+                        plain_keys.write().insert(res.token.key.clone(), res.plaintext.clone());
+                    }
                     created_key.set(Some(res));
                     load_keys(keys, keys_loaded, keys_err);
                 },

@@ -14,4 +14,4 @@ pub use edit_key_modal::EditKeyModal;
 pub use key_card::KeyCard;
 pub use new_key_form::NewKeyForm;
 pub use page::KeysPanel;
-pub use profile_item::ProfileItem;
+pub use profile_item::{CopyPlaintextButton, ProfileItem};

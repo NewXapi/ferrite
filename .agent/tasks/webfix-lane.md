@@ -15,7 +15,7 @@
 你没有 dev 角色的对话历史，以下四样是全部事实来源，缺一项就可能审漏：
 
 ```bash
-export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target-web
+export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target
 cd /home/hathaway/projects/ferrite/.wt/web-fix
 git fetch origin
 git log --oneline <base_sha>..origin/web-dev      # 本轮要审的 commit 清单
@@ -28,7 +28,9 @@ git checkout -b webfix/xxx origin/web-dev         # base_sha = 上次发布记�
 - `.wt/web-fix` 是常驻 detached HEAD 的 worktree（git 不允许同一分支进两个 worktree），
   每轮循环从 `origin/web-dev` 切新 `webfix/xxx`，不在旧 webfix 分支上续。
 - **用户原话/视觉意见**：读 ainotation 反馈（MCP `ainotation_get_feedback` /
-  `ainotation_get_image`）——那是 dev 为什么改的直接依据。
+  `ainotation_get_image`）——那是 dev 为什么改的直接依据。MCP 直连共享 service，
+  **不需要起桥**；桥只在用户要贴本车道端口标注时才起（且会抢走别的 origin 的标注
+  能力，约束见 dev 任务书 §1）。
 - **功能真貌**：自己把环境跑起来看实际页面（启动命令同 dev 任务书 §1），
   审查结论必须包含「跑过的路径 + 看到的行为」，不许只读 diff 下结论。
 
@@ -41,13 +43,14 @@ git checkout -b webfix/xxx origin/web-dev         # base_sha = 上次发布记�
 - **交互改动必跑浏览器**：点一遍改动路径；涉及请求回路的（轮询、effect、分页）必须看
   真实后端回路——本仓库的忙轮询白屏、effect 自循环都只在真实回路复现。
 - **测试补齐规则**：逻辑层改动补 Rust 测试进 `tests/`（本地只跑 <2min 针对性单测，
-  全量交给 CI）；**交互层**分支若已有 `e2e/`（Playwright，见 #241），补/改 spec：
+  全量交给 CI）；**交互层**补/改 `e2e/`（Playwright，已在车道；chromium 用本机
+  `~/.cache/ms-playwright` 现有构建，不额外下载）：
   ```bash
   just dev-web 8091 debug                          # 审查车道自己的 debug 预览（免登录）
   cd e2e && bun install                            # 仅首次
   E2E_BASE_URL=http://127.0.0.1:8091 bunx playwright test
   ```
-  分支没有 `e2e/` → 浏览器自测 + 汇报里注明「本分支无 e2e 套件」，不新建套件（维护者决策）。
+  e2e 不在 CI 里（无 browser job），只本地跑；汇报里贴结果。套件规则见 `e2e/README.md`。
 
 ## 2. 修复协议
 

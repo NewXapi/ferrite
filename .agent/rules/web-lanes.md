@@ -31,26 +31,28 @@ main ──merge（单向同步）──> web-dev ──PR merge-commit（单向
 
 ```bash
 cd /home/hathaway/projects/ferrite          # 仓库根，防 .wt 嵌套事故
-git checkout main && git pull --ff-only
-git checkout -b web-dev && git push -u origin web-dev
+git checkout refs/heads/main && git pull --ff-only
+git branch web-dev main                     # 建分支但不要 checkout：主检出停在 web-dev 会占住分支，
+git push -u origin web-dev main:web-dev     # 后续 worktree add 报 "already used by worktree"（实测踩过）
 git worktree add .wt/web-dev web-dev        # 开发角色
 git worktree add --detach .wt/web-fix       # 审查角色：常驻 detached（同一分支不能同时 checkout 两个 worktree），每轮循环切 webfix/xxx
 git worktree list                            # 自检：新条目路径必须是 .wt/ 下且不出现第二个 .wt/
 ```
 
-两个 web worktree **共享一个编译目录**（避免每开一个 worktree 付一次冷 wasm target）：
+两个 web worktree **共享主检出的编译目录**（避免每开一个 worktree 付一次冷 wasm target，
+磁盘也只有一份）：
 
 ```bash
-export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target-web   # 两个车道的会话各自 export
+export CARGO_TARGET_DIR=/home/hathaway/projects/ferrite/target   # 两个车道的会话各自 export
 ```
 
-cargo 用文件锁串行化并发构建；registry 依赖（dioxus 等）只编一次。
+cargo 用文件锁串行化并发构建；registry 依赖（dioxus 等）只编一次，工作区 crate 按内容指纹命中缓存。
 
 ## 循环 A：开发（角色 = dev agent）
 
 ```bash
 cd /home/hathaway/projects/ferrite/.wt/web-dev
-git checkout web-dev && git merge main          # 同步干线：每轮开发开始前必做
+git checkout web-dev && git merge refs/heads/main          # 同步干线：每轮开发开始前必做
 git checkout -b feat/xxx                        # 从 web-dev 切（内容 ≈ 刚同步过的 main）
 # 改 → just dev-web-rebuild <port> debug → 浏览器强刷验证
 git commit ...                                  # conventional commit，message 写清「为什么」
@@ -79,11 +81,12 @@ PR 正文和汇报；审查循环靠它界定「这一轮要审什么」。
 ```bash
 cd /home/hathaway/projects/ferrite/.wt/web-dev
 git checkout web-dev && git pull --ff-only
-git merge main                                   # 先同步 main（其他域的提交），冲突双保留
+git merge refs/heads/main                                   # 先同步 main（其他域的提交），冲突双保留
 git push origin web-dev
 # 建 PR：base = main，head = web-dev，merge commit（不 squash），挂 type label
 # PR 正文：改动清单 + base_sha + 审查结论（CRG comment，由 review 角色产出）
 # CI 全绿 + gate 无 FAIL → merge；merge 后记录新 base_sha（新 web-dev tip）
+# merge 后跑一轮收尾：`.agent/tasks/lane-closeout.md`（进程/分支/工作树/垃圾，可逆清理）
 ```
 
 **squash 禁令**：web-dev → main **禁止 squash**。squash 不记录祖先关系：下一次再合
@@ -118,7 +121,17 @@ merge 期跑 `github/pr_gates` + clippy 等。结论：
 
 ## 已知坑
 
-- `.wt/web-fix` 常驻 detached HEAD（git 不允许同一分支 checkout 进两个 worktree），
+- 裸 `main` 在本仓库有歧义（`origin` / `newxapi` 双 remote 指向同一仓库，`git log main` 直接
+  fatal）——车道命令一律写 `refs/heads/main` 或 `origin/main`。
+- ainotation 标注一次只服务一个 origin（桥单例 `:44090` + grant 绑 origin）；车道里起桥必须带
+  `AINO_DIRECTORY=<主检出目录>`，否则 MCP 读不到。详见两份任务书。
+- `.wt/web-fix` 常驻 detached HEAD（git 不允许同一分支进两个 worktree），
   每轮循环从 `origin/web-dev` 切新 `webfix/xxx`，不在旧 webfix 分支上续。
 - 共享 target 时两个车道同时构建会互相等锁（cargo 串行），属预期，不要 kill 对方的 cargo。
+- **共享 target 只在两个 worktree 内容一致时安全**。内容不同（并行第二实例、带着未提交
+  改动、或分支基线不同）时，任一方的构建都会覆盖共享编译目录里另一方 dx 正在 serve 的
+  wasm / dx bundle；且 cargo 的 mtime fresh 判定可能直接复用对方产物、跳过编译你的代码
+  ——症状是「UI 回退到旧版本」且不自愈。并行第二实例必须用独立
+  `CARGO_TARGET_DIR`（各自冷编一次 wasm，约 10 分钟）；只有同一分支 lineage 的会话
+  才共享同一个编译目录。
 - dx / ainotation / 后端的具体启动命令在任务书里，不在本文件重复。

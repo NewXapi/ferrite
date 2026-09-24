@@ -206,6 +206,15 @@ pub fn OverviewPanel() -> Element {
 
     rsx! {
         div { class: "flex flex-col gap-3 p-4 md:gap-4 md:p-6",
+            // 实时汇总统计卡(数据来自真实后端 /api/dashboard)
+            // 维护者批注(2026-09-21): 总览统计放到第一位, 之后才是用量趋势
+            StatsSection {
+                loading: loading(),
+                cards: stat_cards,
+                quota,
+                as_of: as_of_time,
+            }
+
             // 用量趋势大面板(含时间窗切换) —— 真实 /api/log/trend 聚合
             TrendPanel { timeframe, buckets, model_order, loading: trend_loading, err: trend_err, empty_window }
 
@@ -214,14 +223,6 @@ pub fn OverviewPanel() -> Element {
 
             // 近 24 小时错误(真实 /api/log/errors 聚合)——独立信号独立拉取,不阻塞面板其它数据
             super::errors::ErrorsPanel {}
-
-            // 实时汇总统计卡(数据来自真实后端 /api/dashboard)
-            StatsSection {
-                loading: loading(),
-                cards: stat_cards,
-                quota,
-                as_of: as_of_time,
-            }
 
             // Top 10 breakdowns —— 真实 /api/log/top 聚合
             // 面板卡挂 hoverable（维护者要求悬停边框变亮的动态全站回归）
