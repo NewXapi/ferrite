@@ -1,5 +1,9 @@
 //! 用户页的展示格式化助手。数据本身来自 `api`。
-
+//!
+//! 归属注记(spec 理念 2):`used_pct` / `short_key` 与 admin-page-account 的
+//! `usage_support` 同口径,属跨页语义——阶段 1 上提
+//! `ui-components/components/progress/`;其余为本页独有展示格式化。
+// DONE: format.rs 是纯函数模块(非组件)——已移出 components/ 到 src 根级 in=demo by=agent
 use crate::api;
 
 /// new-api 约定:500000 quota = ¥1

@@ -28,7 +28,7 @@ pub mod segmented;
 pub mod session;
 pub mod wheel_tab;
 
-pub use action_buttons::{ActionButtonGroup, ActionSpec, ActionTone};
+pub use action_buttons::{ActionButton, ActionButtonGroup, ActionSpec, ActionTone};
 pub use auth_modal::{AuthModal, UserBadge};
 pub use bubble::{MessageBubble, SwipePicker};
 pub use card::{ChoiceCard, ChoiceOption, StatusCard};
@@ -43,6 +43,7 @@ pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
 pub use components::admin_card::{DangerActionRow, EditableRow, InlineEdit};
 pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
+pub use components::panel::{CloseButton, FieldPanel};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
 pub use dialog::Dialog;
