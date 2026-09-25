@@ -6,6 +6,7 @@
 //! 表在 `auth_users` / `auth_refresh_tokens`（loose，迁移在 `migrations.rs` 启动时跑）。
 
 pub mod error;
+pub mod identity;
 pub mod jwt;
 pub mod password;
 pub mod routes;
