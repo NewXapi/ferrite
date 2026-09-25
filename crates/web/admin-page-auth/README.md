@@ -13,13 +13,12 @@
 |---|---|
 | `src/lib.rs` | crate 导出面 |
 | `src/api.rs` | 登录/注册请求 |
-| `src/form.rs` | 表单 |
-| `src/state.rs` | 登录态 context |
-| `src/view.rs` | 页面视图 |
+| `src/tab-page/` | 每 tab 一个页面文件；本 crate 目前只有 `auth.rs` 编排层 |
+| `src/components/` | 本 crate 独有的组件层（auth_form / auth_state / auth_view） |
 
 ## 依赖
 
-`admin-client`（改名依赖 `client`）+ `contract`。
+`admin-client`（改名依赖 `client`）+ `contract` + `ui-components`。
 
 ## 硬约束
 

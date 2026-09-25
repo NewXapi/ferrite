@@ -10,13 +10,16 @@
 
 use dioxus::prelude::*;
 
-use crate::api;
-use crate::data::fmt_cny;
+use contract::api::admin::AdminUserDto;
 
+use crate::api;
+use crate::format::fmt_cny;
+
+use super::chip::{Chip, ChipSize};
 use super::group_chips::GroupChips;
 use super::modal::{MODAL_INPUT, Modal};
 use super::role_chips::RoleChips;
-use super::shared::{
+use crate::shared::{
     BTN_CANCEL, BTN_CREATE, BTN_SAVE, FIELD_GROUP_HINT, FIELD_GROUPS, FIELD_INIT_PASSWORD,
     FIELD_NOTE, FIELD_NOTE_HINT, FIELD_PASSWORD_HINT, FIELD_ROLE, FIELD_USERNAME,
     FIELD_USERNAME_HINT, LBL_EMAIL, LBL_QUOTA, MSG_BINDING_READONLY, MSG_QUOTA_HINT, TAB_BASIC,
@@ -42,22 +45,67 @@ pub const TAB_LABELS: [(FormTab, &str); 3] = [
     (FormTab::Binding, TAB_BINDING),
 ];
 
+/// 新建 / 编辑用户弹窗(三个真实页签)。
+///
+/// 【是什么】用户的新建与编辑浮层:Basic(用户名/邮箱/角色/额度)、Group(生效分组/
+/// 备注)、Binding(第三方绑定只读)三个真实页签,每组只渲染自己的字段。
+///
+/// 【做什么】渲染并收集表单字段、按态分流提交(编辑: 按 tab 回写单字段
+/// `set_role` / `set_groups`;新建: 一次性 POST 建号)。不负责网络请求本身
+/// (经 EventHandler 抛回页面执行)。
+///
+/// 【交互逻辑】输入/切页签 → 组件内信号;保存 → 编辑态 `on_submit((action, value))`
+/// / 新建态 `on_create(CreateUserRequest)`;取消 → `on_cancel`。
+///
+/// 【样式】`Modal` 外壳 + 圆角页签按钮(选中反色)+ `MODAL_INPUT` 输入框。
+///
+/// 【子组件组成】`Modal`、`Chip`(页签行)、`GroupChips`、`RoleChips`。
+///
+/// 【数据流】
+/// - 对内(入):`editing`(态分流)、`user`(预填源——编辑态的用户对象,挂载时
+///   注水字段信号;None = 新建默认值)。
+/// - 对外(出):`on_cancel` / `on_submit((action, value))` / `on_create(req)`。
 #[component]
 pub fn UserForm(
     editing: bool,
-    edit_key: Option<String>,
-    username: Signal<String>,
-    email: Signal<String>,
-    password: Signal<String>,
-    quota: Signal<String>,
-    group: Signal<Vec<String>>,
-    remark: Signal<String>,
-    role: Signal<u16>,
+    user: Option<AdminUserDto>,
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<(String, Option<String>)>,
     on_create: EventHandler<api::CreateUserRequest>,
 ) -> Element {
-    let _ = edit_key;
+    // —— 表单字段信号(R2 下沉):仅本弹窗读写,页面不再持有 ——
+    let mut username = use_signal(String::new);
+    let mut email = use_signal(String::new);
+    let mut password = use_signal(String::new);
+    let mut quota = use_signal(|| "5000000".to_string());
+    // 生效分组(多值,对齐 `auth_users.groups`;后端 `set_groups` 整体替换)
+    let mut group = use_signal(|| vec!["default".to_string()]);
+    let mut remark = use_signal(String::new);
+    let mut role = use_signal(|| 10u16);
+
+    // 预填(use_hook 首次渲染期执行,打开即见值,无闪帧):
+    // 编辑态按 user 注水;新建态回默认——与旧 open_new/open_edit 逐字段等价
+    // (新建 role=1;编辑 role/额度/分组取当前用户,remark 恒空)。
+    use_hook(|| match &user {
+        Some(u) => {
+            username.set(u.username.clone());
+            email.set(u.email.clone());
+            password.set(String::new());
+            quota.set(u.quota.to_string());
+            group.set(u.groups.clone());
+            remark.set(String::new());
+            role.set(u.role);
+        }
+        None => {
+            username.set(String::new());
+            email.set(String::new());
+            password.set(String::new());
+            quota.set("5000000".to_string());
+            group.set(vec!["default".to_string()]);
+            remark.set(String::new());
+            role.set(1);
+        }
+    });
     let title = if editing { TTL_EDIT_USER } else { TTL_NEW_USER };
     let submit_label = if editing { BTN_SAVE } else { BTN_CREATE };
     // 额度输入的元换算提示:内部单位 → 人民币,不暴露 quota 字样
@@ -111,21 +159,12 @@ pub fn UserForm(
             // 页签行:弹窗顶部,手机端自动折行
             div { class: "mb-4 flex flex-wrap gap-1.5",
                 for (t, label) in TAB_LABELS {
-                    {
-                        let on = tab() == t;
-                        let tone = if on {
-                            "border-zinc-100 bg-zinc-100 text-zinc-900"
-                        } else {
-                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
-                        };
-                        rsx! {
-                            button {
-                                class: "rounded-full border px-3 py-1 text-xs font-medium transition-colors {tone}",
-                                "data-testid": "user-form-tab-{label}",
-                                onclick: move |_| tab.set(t),
-                                "{label}"
-                            }
-                        }
+                    Chip {
+                        label: label.to_string(),
+                        selected: tab() == t,
+                        testid: format!("user-form-tab-{label}"),
+                        size: ChipSize::Md,
+                        on_press: move |_| tab.set(t),
                     }
                 }
             }

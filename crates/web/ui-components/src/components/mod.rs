@@ -28,3 +28,4 @@ pub mod admin_card;
 
 // 布局原语（feat/layout）
 pub mod layout;
+pub mod panel;
