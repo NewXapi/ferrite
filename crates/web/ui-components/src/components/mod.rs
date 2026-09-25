@@ -7,6 +7,7 @@ pub mod input;
 // PR2 adopting 组件（feat/ui-shadcn-gap）
 pub mod avatar;
 pub mod dropdown_menu;
+pub mod rui_avatar;
 pub mod select;
 pub mod sheet;
 pub mod sidebar;

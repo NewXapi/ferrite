@@ -9,11 +9,13 @@
 //! 全部留在调用方页面（apps/admin-web HomePage），保证布局原语可被 tavern-web 复用。
 
 mod app_shell;
+mod avatar_menu;
 mod section_rail;
 mod status_bar;
 mod top_nav;
 
 pub use app_shell::AppShell;
+pub use avatar_menu::AvatarMenu;
 pub use section_rail::SectionRail;
 pub use status_bar::{StatusBar, StatusItem};
 pub use top_nav::TopNavBar;

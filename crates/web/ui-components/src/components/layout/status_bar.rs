@@ -3,11 +3,12 @@
 //! 契约（维护者拍板）：不做任何背景/边框/阴影包装，左下角=用户头像+额度占位，
 //! 右下角=系统状态纯数字占位（CPU·MEM 顺序，含义走 title 悬停提示）；
 //! 真实数据后续通过 hover popover 注入（组件留 `StatusItem.hint` 槽位）。
-//! 用户下拉复用 crate 的 DropdownMenu（含外部点击/Escape 关闭，选中即关对齐 Radix 默认）。
+//! 用户区委托 [`avatar_menu::AvatarMenu`]（rust-ui Avatar 触发 + 向上弹出菜单：
+//! 行 1 头像+用户名、行 2 余额、行 3+ 页签、末尾退出登录）。
 
 use dioxus::prelude::*;
 
-use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuSeparator};
+use crate::components::layout::avatar_menu::AvatarMenu;
 
 /// 底部状态条目：占位名称 + 可选 hint（popover 接入前的静态说明）。
 #[derive(Clone, PartialEq)]
@@ -16,11 +17,6 @@ pub struct StatusItem {
     pub label: String,
     /// 可选静态提示（不承载实时数据）。
     pub hint: Option<String>,
-}
-
-/// 用户头像 chip class（16px 圆点 + 首字母，对齐单字行高）。
-fn avatar_chip_class() -> &'static str {
-    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-[9px] font-semibold text-zinc-200 hover:bg-zinc-600"
 }
 
 /// 底部细状态条（无背景，单行文字高度）。
@@ -41,10 +37,16 @@ pub fn StatusBar(
     /// 状态条目（当前仅作为预留槽位，用不到时传空 vec）。
     #[props(default)]
     items: Vec<StatusItem>,
+    /// 用户菜单的页签名列表（当前 section 的页签；AvatarMenu 行 3+）。
+    #[props(default)]
+    menu_tabs: Vec<String>,
+    /// 当前激活页签下标（菜单内高亮）。
+    #[props(default)]
+    active_tab: u8,
+    /// 点击菜单内页签行（与 TopNavBar 同一信号语义，调用方写回 dash_tab）。
+    #[props(default)]
+    on_tab_select: EventHandler<usize>,
 ) -> Element {
-    // 外部关闭请求信号（「面板应关闭？」默认 false）：点选中项置 true，DropdownMenu 收关
-    let close_request = use_signal(|| false);
-    let mut close_signal = close_request;
     rsx! {
         div {
             class: "flex w-full items-center justify-between py-0.5 text-[11px] text-zinc-500",
@@ -53,45 +55,14 @@ pub fn StatusBar(
                 class: "flex items-center gap-1.5",
                 match user_name {
                     Some(name) => rsx! {
-                        div {
-                            class: "relative",
-                            DropdownMenu {
-                                trigger: rsx! {
-                                    button {
-                                        class: avatar_chip_class(),
-                                        "data-testid": "status-user-menu-button",
-                                        "aria-label": "用户菜单",
-                                        title: "{name}",
-                                        "{name.chars().next().unwrap_or('?')}"
-                                    }
-                                },
-                                content: rsx! {
-                                    DropdownMenuItem {
-                                        onclick: move |_| close_signal.set(true),
-                                        "data-testid": "menu-account",
-                                        // 锚点在 item 内：点击冒泡到 item（组件统一收关）后跳转
-                                        a {
-                                            class: "block",
-                                            href: "#account",
-                                            "账户资料"
-                                        }
-                                    }
-                                    DropdownMenuSeparator {}
-                                    DropdownMenuItem {
-                                        onclick: move |_| {
-                                            close_signal.set(true);
-                                            on_logout.call(());
-                                        },
-                                        "data-testid": "logout",
-                                        "data-variant": "destructive",
-                                        "退出登录"
-                                    }
-                                },
-                                content_class: Some("bottom-full left-0 mb-2 w-36".into()),
-                                close_signal: Some(close_request),
-                            }
+                        AvatarMenu {
+                            user_name: name,
+                            amount: "¥——.--".to_string(),
+                            menu_tabs: menu_tabs,
+                            active_tab: active_tab as usize,
+                            on_tab_select: on_tab_select,
+                            on_logout: on_logout,
                         }
-                        span { class: "text-zinc-500", "¥——.--" }
                     },
                     None => rsx! {
                         span { class: "text-zinc-500", "未登录" }

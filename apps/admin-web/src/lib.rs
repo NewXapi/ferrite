@@ -474,6 +474,9 @@ pub fn HomePage() -> Element {
                         is_light: is_light,
                         on_toggle_theme: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         on_logout: move |_| do_logout(),
+                        menu_tabs: labels.clone(),
+                        active_tab: active_tab,
+                        on_tab_select: move |i| dash_tab.set(i as u8),
                     }
                 },
                 ConsolePanel {
