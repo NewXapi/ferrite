@@ -31,7 +31,7 @@ pub fn AppShell(
                 class: "flex min-w-0 flex-1 flex-col",
                 // 顶部悬浮导航区（不随内容滚动；tab 行靠左上角）
                 div {
-                    class: "flex shrink-0 flex-col items-start gap-2 px-4 pt-3",
+                    class: "flex shrink-0 flex-col items-start gap-2 px-4 pt-3 border-b border-zinc-800 pb-2",
                     {top_nav}
                 }
                 // 滚动主内容
@@ -41,7 +41,7 @@ pub fn AppShell(
                 }
                 // 底部状态条：无背景细条，内容直接贴左右两端（维护者拍板去胶囊）
                 div {
-                    class: "flex shrink-0 justify-between px-4 pb-1.5 pt-1",
+                    class: "flex shrink-0 justify-between px-4 pb-1.5 pt-1 border-t border-zinc-800",
                     {status_bar}
                 }
             }

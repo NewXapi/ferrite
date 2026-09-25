@@ -310,20 +310,9 @@ pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -
 }
 
 #[component]
-pub fn ConsolePanel(header: Element, children: Element) -> Element {
+pub fn ConsolePanel(children: Element) -> Element {
     rsx! {
-        section { class: "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60",
-            div { class: "flex h-9 shrink-0 items-center justify-between border-b border-zinc-800 px-4",
-                {header}
-                div { class: "flex items-center gap-1.5",
-                    for _ in 0..3 {
-                        button {
-                            class: "h-3.5 w-3.5 rounded-full border border-zinc-700 bg-zinc-800 transition-colors hover:bg-zinc-700",
-                            "aria-label": "window control",
-                        }
-                    }
-                }
-            }
+        section { class: "flex min-h-0 flex-1 flex-col",
             div { id: "panel-scroll", class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6",
                 {children}
             }
@@ -487,7 +476,6 @@ pub fn HomePage() -> Element {
                     }
                 },
                 ConsolePanel {
-                    header: rsx! { span { class: "text-xs font-medium text-zinc-500", "Ferrite · admin" } },
                     match (section(), active_tab) {
                         (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
                         (Section::Dashboard, 1) => rsx! { ModelsPanel {} },

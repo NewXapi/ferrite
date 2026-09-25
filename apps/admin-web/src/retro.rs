@@ -46,12 +46,6 @@ pub fn RetroPage() -> Element {
             // Single centered panel
             main { class: "flex min-w-0 flex-1 flex-col p-4 sm:p-6 md:pt-20",
                 ConsolePanel {
-                    header: rsx! {
-                        div { class: "flex h-full items-center",
-                            span { class: "text-sm font-medium text-zinc-100", "四象面板" }
-                            span { class: "ml-2 text-xs text-zinc-600", "quadrant mock" }
-                        }
-                    },
                     // Quadrant scene: a big X of diagonal rays, a four-pointed star
                     // plate hugging the center (blades out on the diagonals, V-notches
                     // on the axes), buttons placed in the hollow center.
@@ -66,7 +60,6 @@ pub fn RetroPage() -> Element {
                                     stop { offset: "35%", stop_color: "#ffffff", stop_opacity: "0.25" }
                                     stop { offset: "50%", stop_color: "#ffffff", stop_opacity: "0.65" }
                                     stop { offset: "65%", stop_color: "#ffffff", stop_opacity: "0.25" }
-                                    stop { offset: "100%", stop_color: "#ffffff", stop_opacity: "0" }
                                 }
                                 linearGradient { id: "rayB", x1: "1", y1: "0", x2: "0", y2: "1",
                                     stop { offset: "0%", stop_color: "#ffffff", stop_opacity: "0" }
