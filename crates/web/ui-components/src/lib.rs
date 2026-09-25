@@ -44,7 +44,9 @@ pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
 pub use components::admin_card::{DangerActionRow, EditableRow, InlineEdit};
 pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
-pub use components::panel::{CloseButton, FieldPanel};
+pub use components::panel::{
+    CLOSE_BTN, CloseButton, FIELD_PANEL, FieldPanel, MODAL_BACKDROP, MODAL_CARD, MODAL_HEADER,
+};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
 pub use dialog::Dialog;

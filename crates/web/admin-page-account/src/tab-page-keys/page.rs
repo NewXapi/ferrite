@@ -109,8 +109,8 @@ pub fn KeysPanel() -> Element {
             section {
                 id: "keys-sec-stats",
                 class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
-                div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                h2 { class: ui::SECTION_TITLE, "{SEC_STATS}" }
+                div { class: ui::CARD_GRID,
                     StatCard {
                         value: if keys_loaded() { keys().len().to_string() } else { pending.clone() },
                         label: "密钥总数",
@@ -138,14 +138,14 @@ pub fn KeysPanel() -> Element {
             section {
                 id: "keys-sec-profile",
                 class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
+                h2 { class: ui::SECTION_TITLE, "{SEC_PROFILE}" }
+                div { class: ui::CARD_CONTENT,
                     div { class: "flex items-start justify-between gap-4",
                         div { class: "min-w-0",
                             if let Some(user) = self_user() {
                                 div { class: "mb-4 flex items-center gap-2",
                                     span { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
-                                    span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{role_label(user.role)}" }
+                                    span { class: ui::STATUS_PILL, "{role_label(user.role)}" }
                                 }
                                 // 资料项横向流式排布, 一行放不下自动换行。
                                 // 无「分组」行: group 是创建密钥时的分组语义, 不属于用户资料。
@@ -174,8 +174,8 @@ pub fn KeysPanel() -> Element {
                 div { class: "space-y-4",
                     div { class: "flex items-center justify-between gap-3",
                         div { class: "flex items-center gap-2",
-                            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_KEYS}" }
-                            span { class: "text-xs px-3 py-1 rounded-full bg-zinc-800 text-zinc-400",
+                            h2 { class: ui::SECTION_TITLE, "{SEC_KEYS}" }
+                            span { class: ui::STATUS_PILL,
                                 if keys_loaded() { "{keys().len()} 个" } else { "…" }
                             }
                         }
@@ -194,7 +194,7 @@ pub fn KeysPanel() -> Element {
                     } else if keys().is_empty() {
                         p { class: "text-sm text-zinc-500", "还没有密钥,点「✚ 新建密钥」签发第一个" }
                     } else {
-                        div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                        div { class: ui::CARD_GRID,
                             for t in keys() {
                                 // key 按密钥 UUID 绑定卡牌: 无 key 时 Dioxus 按位置 diff,
                                 // 重取列表顺序变化会让卡牌串位——「点一张卡的按钮, 其他卡的

@@ -81,13 +81,13 @@ pub fn EditKeyModal(
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
+            class: ui::MODAL_BACKDROP,
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
+                class: ui::MODAL_CARD,
                 onclick: move |e| e.stop_propagation(),
 
-                div { class: "mb-5 flex items-center justify-between",
+                div { class: ui::MODAL_HEADER,
                     h3 { class: "text-base font-semibold text-zinc-100", "编辑密钥" }
                     p { class: "truncate font-mono text-xs text-zinc-500", "{token.key_preview}" }
                 }
@@ -97,7 +97,7 @@ pub fn EditKeyModal(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "密钥名称" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: ui::INPUT,
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
                         }
@@ -105,7 +105,7 @@ pub fn EditKeyModal(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "分组 (可选)" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: ui::INPUT,
                             placeholder: "留空 = 保持不变",
                             value: "{group}",
                             oninput: move |e| group.set(e.value()),
@@ -126,7 +126,7 @@ pub fn EditKeyModal(
                             "无限额度"
                         }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                            class: ui::INPUT_MONO,
                             r#type: "text",
                             placeholder: "额度单位, 500,000 ≈ $1",
                             value: "{quota}",
@@ -138,7 +138,7 @@ pub fn EditKeyModal(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "过期时间" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 focus:border-zinc-500 focus:outline-none",
+                            class: ui::INPUT,
                             r#type: "date",
                             value: "{expiry}",
                             oninput: move |e| expiry.set(e.value()),
@@ -154,12 +154,12 @@ pub fn EditKeyModal(
 
                 div { class: "mt-6 flex gap-3",
                     button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                        class: ui::GHOST_BTN,
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
                     button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                        class: ui::PRIMARY_BTN,
                         disabled: busy(),
                         onclick: submit,
                         "保存"

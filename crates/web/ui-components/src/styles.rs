@@ -32,13 +32,16 @@ pub const SECTION_SCROLL: &str = "scroll-mt-8 rounded-xl border border-zinc-800 
 /// 区段标题行：左标题 + 右侧徽章 / 计数。
 pub const SECTION_HEADER: &str = "mb-4 flex items-center justify-between";
 
+/// 区段大标题（`text-lg`）。
+pub const SECTION_TITLE: &str = "text-lg font-medium text-zinc-100";
+
 /// 状态 / 计数胶囊。
 pub const STATUS_PILL: &str = "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400";
 
 /// 输入框 / 选择框统一 class。
 pub const INPUT: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none";
 
-/// 只读展示输入框（等宽字体、灰绿文字）。
+/// 等宽字体输入框。
 pub const INPUT_MONO: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none";
 
 /// 幽灵按钮（次级操作，描边 + 悬停提亮）。
@@ -57,3 +60,9 @@ pub const INFO_BAR: &str =
 /// 危险条（错误 / 破坏性提示）。
 pub const DANGER_BAR: &str =
     "rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-2 text-xs text-red-300";
+
+/// 内容卡外壳（区段内的单卡，内边距 p-6）。
+pub const CARD_CONTENT: &str = "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6";
+
+/// 实体卡网格（手机 1 / 中屏 3 / 大屏 5 栏）。
+pub const CARD_GRID: &str = "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5";

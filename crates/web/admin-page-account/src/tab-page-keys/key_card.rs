@@ -82,7 +82,7 @@ pub fn KeyCard(
             // 注意: 卡牌根不挂 `group` class —— 旧实现卡牌级 group 让额度 popover
             // 在鼠标进入卡牌任意区域时就弹出 (维护者批注 2026-09-21:
             // 「悬停到卡牌也出现」)。现在唯一的 group 在额度行上。
-            class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            class: ui::CARD_SHELL_CLASS,
             // 标题行: 名称 (截断, 不遮徽标) + 状态徽标 + ⋯ 菜单
             div { class: "mb-3 flex items-center gap-2",
                 h3 {
