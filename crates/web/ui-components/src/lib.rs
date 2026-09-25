@@ -10,8 +10,11 @@
 //! - dialog — 确认弹窗 (Dialog)
 //! - scroll_spy — 滚动监听导航 (ScrollSpyNav)
 //! - segmented — 分段胶囊选择器 (SegmentedCapsule)
+//! - panel — 选择器面板外壳与关闭按钮 (FieldPanel, CloseButton)
 //! - action_buttons — 卡片底部操作按钮组 (ActionButtonGroup, ActionSpec, ActionTone)
 //! - i18n — 跨 crate 文案抽象 (Locale, LOCALE, t, t_in, plural)
+//!
+//! 组件族已迁移至 `components/<族>/` 目录；平铺 .rs 文件保留为向后兼容 shim。
 
 pub mod action_buttons;
 pub mod auth_modal;
@@ -23,6 +26,7 @@ pub mod feedback;
 pub mod form;
 pub mod i18n;
 pub mod icons;
+pub mod panel;
 pub mod scroll_spy;
 pub mod segmented;
 pub mod session;
@@ -41,12 +45,9 @@ pub use components::admin_card::{
     PlaceholderBlock, SectionHeader,
 };
 pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
-pub use components::admin_card::{DangerActionRow, EditableRow, InlineEdit};
+pub use components::admin_card::{DangerActionRow, EditableRow};
 pub use components::admin_card::{PriceMode, PriceModeToggle};
 pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
-pub use components::panel::{
-    CLOSE_BTN, CloseButton, FIELD_PANEL, FieldPanel, MODAL_BACKDROP, MODAL_CARD, MODAL_HEADER,
-};
 pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use components::stat_card::{StatCard, StatSize};
 pub use dialog::Dialog;
@@ -54,6 +55,9 @@ pub use feedback::{Avatar, EmptyState, IconButton, Loading};
 pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};
 pub use i18n::{LOCALE, Locale, plural, t, t_in};
 pub use icons::{IconChartBar, IconLogOut, IconUser};
+pub use panel::{
+    CLOSE_BTN, CloseButton, FIELD_PANEL, FieldPanel, MODAL_BACKDROP, MODAL_CARD, MODAL_HEADER,
+};
 pub use scroll_spy::ScrollSpyNav;
 pub use segmented::SegmentedCapsule;
 pub use session::{

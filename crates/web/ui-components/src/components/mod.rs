@@ -28,4 +28,15 @@ pub mod admin_card;
 
 // 布局原语（feat/layout）
 pub mod layout;
+// 新迁组件族（feat/ui-components-structure）
+pub mod action_buttons;
+pub mod auth;
+pub mod bubble;
+pub mod decision;
+pub mod feedback;
+pub mod form;
+pub mod icons;
+pub mod nav;
+pub mod overlay;
 pub mod panel;
+pub mod segmented;

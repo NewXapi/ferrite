@@ -16,12 +16,9 @@ pub const MODAL_CARD: &str =
 
 /// 模态标题行：左标题 + 右关闭按钮。
 pub const MODAL_HEADER: &str = "mb-5 flex items-center justify-between";
-
 /// 关闭按钮 class（与 `CloseButton` 组件同款）。页面若自建按钮结构，复用此常量。
 pub const CLOSE_BTN: &str =
     "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200";
-
-/// 选择器面板外壳样式:圆角输入框容器 + focus-within 边框提亮。
 pub const FIELD_PANEL: &str =
     "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 focus-within:border-zinc-500";
 

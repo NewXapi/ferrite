@@ -8,7 +8,7 @@
 
 use dioxus::prelude::*;
 
-use crate::icons::{IconChartBar, IconSettings, IconUser};
+use crate::components::icons::{IconChartBar, IconSettings, IconUser};
 use crate::on_tab_wheel;
 
 /// Rail 容器：窄列、边框分隔、纵向排布；移动端隐藏。

@@ -9,9 +9,8 @@
  *   --card：对齐维护者指定的存量统计卡观感——原面板类
  *     bg-zinc-900/60（rgb(24,24,27)@60%）叠页面底色后的合成色
  *     ≈ rgb(18,18,21)。换算历程：首版取 bg-layer-3 过亮，次版
- *     bg-layer-1 仍偏亮，均被验收驳回；--popover 原 ← bg-layer-3
- *     （neutral-bluish-800），2026-09-22 维护者批注「背景太亮，稍微靠近
- *     黑色」后手动调暗为 rgb(28,28,31)，脱离 bg-layer 别名
+ *     bg-layer-1 仍偏亮，均被验收驳回；--popover ← 仍为 bg-layer-3
+ *     （:252 ← neutral-bluish-800 :143，弹层/菜单实证层）
  *   --primary ← button-primary-fill（:283 = brand-primary :271）
  *   --secondary ← button-ghost-active-fill（:278 ← neutral-bluish-750 :141）
  *   --secondary-hover ← button-ghost-active-hover（:279 ← neutral-bluish-700 :140）
@@ -40,7 +39,7 @@
   --foreground: rgb(249 250 251);
   --card: rgb(18 18 21);
   --card-foreground: rgb(249 250 251);
-  --popover: rgb(28 28 31);
+  --popover: rgb(53 54 56);
   --popover-foreground: rgb(249 250 251);
   --primary: rgb(249 250 251);
   --primary-foreground: rgb(15 17 21);
@@ -82,7 +81,7 @@
   --foreground: rgb(249 250 251);
   --card: rgb(18 18 21);
   --card-foreground: rgb(249 250 251);
-  --popover: rgb(28 28 31);
+  --popover: rgb(53 54 56);
   --popover-foreground: rgb(249 250 251);
   --primary: rgb(249 250 251);
   --primary-foreground: rgb(15 17 21);

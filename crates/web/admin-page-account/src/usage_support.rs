@@ -118,11 +118,8 @@ pub fn fmt_num(n: i64) -> String {
 }
 
 /// 内部额度单位 → 估算美元展示 (500_000 ≈ $1)。
-///
-/// 小数最多一位 (维护者批注: 卡牌里 `$0.0000 / $10000.0000` 既溢出边界又难读;
-/// 精确到 0.1 美元对额度展示足够, 原始精度在编辑弹窗与 API 侧仍在)。
 pub fn fmt_quota(quota: i64) -> String {
-    format!("${:.1}", quota as f64 / QUOTA_PER_USD)
+    format!("${:.4}", quota as f64 / QUOTA_PER_USD)
 }
 
 /// 编辑密钥弹窗的 `<input type="date">` 值 (本地时区 "YYYY-MM-DD") → UTC RFC3339。

@@ -13,8 +13,8 @@
 
 use dioxus::prelude::*;
 
-use crate::dialog::Dialog;
-use crate::form::FormField;
+use crate::components::form::component::FormField;
+use crate::components::overlay::component::Dialog;
 
 /// 展示行 class：label 左、当前值右，整行可点。
 pub const EDITABLE_ROW_CLASS: &str = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-zinc-800/60";
@@ -177,87 +177,6 @@ pub fn DangerActionRow(
                     "{confirm_detail}"
                 }
             }
-        }
-    }
-}
-
-/// Popover 浮层壳：外点收关遮罩 + 固定定位浮层面板（[`EditableRow`] 同款交互契约）。
-///
-/// 【是什么】卡牌内弹出面板的最小外壳——遮罩（fixed inset-0 z-40，点击收关）
-/// 与面板（fixed z-50，`role="dialog"`）。面板内容由 `content` 插槽自由组成
-/// （单选选项行 / 多选 chips / 表单等），开合由调用方持有的 `open` 信号控制。
-///
-/// 【定位】打开时用 document::eval 量锚元素的视口坐标，把面板 `position: fixed`
-/// **水平居中**到锚上（clamp 进视口 8px 边距），垂直贴锚下方 4px（下方空间
-/// < 140px 且上方充足时翻到上方）。锚元素取面板容器（parentElement）内带
-/// `[data-testid="{testid}-anchor"]` 的后代（如角色值文本），取不到用容器本身。
-/// **必须 fixed**：页面主区是 `overflow-y-auto` 滚动容器，absolute 面板会被其
-/// 底边裁剪（2026-09-21 实测：面板 DOM 在、rect 在，命中测试却落在遮罩上）；
-/// fixed 子元素不受祖先 overflow 裁剪影响。
-///
-/// 【做什么】只负责「开着时：遮罩拦外点 + 面板浮起 + 锚定定位」；选中语义、
-/// 是否开完即关归调用方（`content_class` 只传宽度 / 圆角 / 边框等外观 class）。
-#[component]
-pub fn PopoverPanel(
-    /// 受控开合信号（调用方持有；遮罩点击置 false 收关）
-    open: Signal<bool>,
-    /// 面板 aria-label（同时是触发语义的无障碍名）
-    label: String,
-    /// 面板测试标识（`data-testid`；同时是锚定 JS 的查找键）
-    testid: String,
-    /// 面板内容插槽（选项行 / chips / 表单）
-    content: Element,
-    /// 面板外观 class（宽度 / 圆角 / 边框 / 底色 / 阴影；定位由本组件负责）
-    #[props(default)]
-    content_class: Option<String>,
-) -> Element {
-    // 打开时锚定：面板 fixed、水平居中到锚（角色值等 `-anchor` 后代或容器本身），
-    // 垂直贴锚下方 4px（空间不足翻上方）。
-    let tid_for_effect = testid.clone();
-    use_effect(move || {
-        if open() {
-            let tid = tid_for_effect.clone();
-            spawn(async move {
-                let js = format!(
-                    r#"{{ const p = document.querySelector('[data-testid="{tid}"]'); if (p) {{
-                        const row = p.parentElement;
-                        const anchor = row.querySelector('[data-testid="{tid}-anchor"]') || row;
-                        const r = anchor.getBoundingClientRect();
-                        const pw = p.offsetWidth || 160;
-                        const ph = p.offsetHeight || 100;
-                        let left = r.left + r.width / 2 - pw / 2;
-                        left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
-                        // 仅当下方真放不下 且 上方严格更优时才翻转（避免不必要地
-                        // 盖住锚上方内容——批注 685f7f2f：不要遮挡角色）
-                        const below = window.innerHeight - r.bottom;
-                        const flip = below < ph + 6 && r.top > below + ph;
-                        p.style.left = left + 'px';
-                        p.style.right = 'auto';
-                        p.style.top = flip ? '' : (r.bottom + 4) + 'px';
-                        p.style.bottom = flip ? (window.innerHeight - r.top + 4) + 'px' : '';
-                    }} }}"#
-                );
-                let _ = document::eval(&js).await;
-            });
-        }
-    });
-
-    if !open() {
-        return rsx! {};
-    }
-    rsx! {
-        // 外点收关遮罩（WCAG dismissible）；浮层在其上，点击浮层不触发。
-        div {
-            class: "fixed inset-0 z-40",
-            "aria-hidden": "true",
-            onclick: move |_| open.set(false),
-        }
-        div {
-            class: "fixed z-50 {content_class.clone().unwrap_or_default()}",
-            role: "dialog",
-            "aria-label": "{label}",
-            "data-testid": "{testid}",
-            {content}
         }
     }
 }

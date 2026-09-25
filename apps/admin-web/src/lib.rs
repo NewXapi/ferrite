@@ -311,45 +311,24 @@ pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -
 
 #[component]
 pub fn ConsolePanel(header: Element, children: Element) -> Element {
-    // 维护者实验(#account mark2 批注 2026-09-21): 外层面板壳暂时移开,
-    // 内部内容直接铺在页面上看效果; 原实现保留在下方注释——效果好则删,
-    // 不好则删掉上方 rsx 并恢复注释块。
-    let _ = &header;
     rsx! {
-        div { id: "panel-scroll", class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6",
-            {children}
+        section { class: "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60",
+            div { class: "flex h-9 shrink-0 items-center justify-between border-b border-zinc-800 px-4",
+                {header}
+                div { class: "flex items-center gap-1.5",
+                    for _ in 0..3 {
+                        button {
+                            class: "h-3.5 w-3.5 rounded-full border border-zinc-700 bg-zinc-800 transition-colors hover:bg-zinc-700",
+                            "aria-label": "window control",
+                        }
+                    }
+                }
+            }
+            div { id: "panel-scroll", class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6",
+                {children}
+            }
         }
     }
-    // ---- 原面板壳实现(含 Ferrite · admin 头 + 窗控按钮), 还原时取消注释 ----
-    // rsx! {
-    //     section { class: "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60",
-    //         div { class: "flex h-9 shrink-0 items-center justify-between border-b border-zinc-800 px-4",
-    //             {header}
-    //             div { class: "flex items-center gap-1.5",
-    //                 for _ in 0..3 {
-    //                     button {
-    //                         class: "h-3.5 w-3.5 rounded-full border border-zinc-700 bg-zinc-800 transition-colors hover:bg-zinc-700",
-    //                         "aria-label": "window control",
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         div { id: "panel-scroll", class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6",
-    //             {children}
-    //         }
-    //     }
-    // }
-}
-
-/// 账户页 tab 标签（TopNavBar 与状态栏名片面板共用一份顺序）。
-fn account_tab_labels() -> Vec<String> {
-    vec![
-        "密钥·资料".into(),
-        "用量·日志".into(),
-        "邀请·奖励".into(),
-        "会话".into(),
-        "设置".into(),
-    ]
 }
 
 fn get_initial_route() -> (Section, u8) {
@@ -457,7 +436,13 @@ pub fn HomePage() -> Element {
     // 各 section 的 tab 列表;dash_tab 跨 section 共享,可能越界
     let labels: Vec<String> = match section() {
         Section::Dashboard => vec!["总览".into(), "模型".into(), "排行榜".into()],
-        Section::Account => account_tab_labels(),
+        Section::Account => vec![
+            "密钥·资料".into(),
+            "用量·日志".into(),
+            "邀请·奖励".into(),
+            "会话".into(),
+            "设置".into(),
+        ],
         Section::Manage => vec![
             "网络".into(),
             "用户".into(),
@@ -473,15 +458,6 @@ pub fn HomePage() -> Element {
     };
     // 越界的 dash_tab clamp 到当前 section 的末位 tab,保证选中态与内容一致
     let active_tab = (dash_tab() as usize).min(labels.len() - 1) as u8;
-    // 状态栏名片面板的选中 tab(仅账户页, 其他页面 -1)。用信号传给 StatusBar:
-    // chip 高亮直接读信号, 始终反映当前 tab, 不依赖调用方重渲染传值。
-    let status_active_tab = use_memo(move || {
-        if section() == Section::Account {
-            ((dash_tab() as usize).min(account_tab_labels().len() - 1)) as i8
-        } else {
-            -1
-        }
-    });
     // rail 激活项 = 当前 section 在 SECTIONS 里的下标
     let section_idx = SECTIONS.iter().position(|s| *s == section()).unwrap_or(0);
     rsx! {
@@ -508,13 +484,6 @@ pub fn HomePage() -> Element {
                         is_light: is_light,
                         on_toggle_theme: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         on_logout: move |_| do_logout(),
-                        // 名片面板的账户页 tab 选项(mark1 批注 2026-09-21)
-                        tabs: account_tab_labels(),
-                        active_tab: status_active_tab,
-                        on_open_tab: move |tab: u8| {
-                            section.set(Section::Account);
-                            dash_tab.set(tab);
-                        },
                     }
                 },
                 ConsolePanel {
