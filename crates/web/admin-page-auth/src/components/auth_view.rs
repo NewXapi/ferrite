@@ -68,15 +68,16 @@ pub fn AuthPage() -> Element {
     } else {
         "translate-x-full"
     };
+    let indicator_class = format!("{} {}", ui::TAB_INDICATOR, indicator_transform);
     let sign_in_class = if is_sign_in {
-        "text-zinc-900"
+        ui::TAB_ACTIVE
     } else {
-        "text-zinc-400 hover:text-zinc-200"
+        ui::TAB_INACTIVE
     };
     let register_class = if is_sign_in {
-        "text-zinc-400 hover:text-zinc-200"
+        ui::TAB_INACTIVE
     } else {
-        "text-zinc-900"
+        ui::TAB_ACTIVE
     };
     let title_text = if is_sign_in {
         "Welcome back"
@@ -163,7 +164,7 @@ pub fn AuthPage() -> Element {
 
     rsx! {
         div {
-            class: "relative min-h-screen overflow-x-hidden bg-zinc-950 text-zinc-100",
+            class: ui::PAGE_BG,
 
             // Background: dim grid (hairline)
             svg {
@@ -198,16 +199,16 @@ pub fn AuthPage() -> Element {
             div {
                 class: "flex min-h-screen items-center justify-center px-4",
                 div {
-                    class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 shadow-2xl shadow-black/40 backdrop-blur",
+                    class: ui::AUTH_CARD,
 
                     // Tab switcher
                     div {
-                        class: "relative mb-6 flex rounded-full border border-zinc-800 bg-zinc-900 p-1",
+                        class: ui::TAB_SWITCHER,
                         div {
-                            class: "absolute inset-y-0 w-1/2 rounded-full bg-zinc-100 transition-transform duration-200 {indicator_transform}",
+                            class: indicator_class,
                         }
                         button {
-                            class: "relative z-10 flex-1 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 {sign_in_class}",
+                            class: sign_in_class,
                             r#type: "button",
                             role: "tab",
                             aria_selected: "{is_sign_in}",
@@ -215,7 +216,7 @@ pub fn AuthPage() -> Element {
                             "Sign in"
                         }
                         button {
-                            class: "relative z-10 flex-1 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 {register_class}",
+                            class: register_class,
                             r#type: "button",
                             role: "tab",
                             aria_selected: "{!is_sign_in}",

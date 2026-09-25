@@ -45,18 +45,18 @@ pub fn UsersFilterSection(
     rsx! {
         section {
             id: "users-sec-filter",
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+            class: ui::SECTION_SCROLL,
             div { class: "flex items-center justify-between gap-3",
                 h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
                 div { class: "flex gap-2",
                     button {
-                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                        class: ui::REFRESH_BTN,
                         "data-testid": "refresh-users",
                         onclick: move |_| on_refresh.call(()),
                         "{BTN_REFRESH}"
                     }
                     button {
-                        class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                        class: ui::PRIMARY_BTN,
                         "data-testid": "new-user",
                         onclick: move |_| on_new.call(()),
                         "{BTN_NEW_USER}"
@@ -65,7 +65,7 @@ pub fn UsersFilterSection(
             }
 
             input {
-                class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
+                class: ui::INPUT,
                 r#type: "text",
                 placeholder: MSG_SEARCH_HINT,
                 "data-testid": "users-search",
