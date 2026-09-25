@@ -1,39 +1,149 @@
 {
-  "web_refactor_hint": {
-    "intent": "Ferrite web page-crate shape (dev -> main lane). Page crates under crates/web/admin-page-* and crates/web/tavern-page-* must keep: (1) page orchestration in src/tab-page/<tab>.rs, (2) page-unique components in src/components/, (3) shared UI primitives and style constants in crates/web/ui-components, (4) shared style constants referenced via ui::styles / ui::CARD_SHELL_CLASS etc. Flag diffs that introduce or leave flat src/tab-page-* directories, long repeated Tailwind class strings that should be shared constants, page-local components that are duplicated across more than one page crate, or missing shared UI primitives that two or more pages need.",
+  "web_refactor": {
+    "intent": "Ferrite web refactor review. The agent is editing a page crate in the web-dev lane. Check the complete changed file and its diff against the web specification: one tab-page/<tab>.rs orchestration file, page-unique components in components/, shared components and semantic style tokens in ui-components, one content rsx per component, state next to its consumer, EventHandler boundaries, user-facing copy in constants, and zero behavior drift (testid/aria/class/four states/button order). Flag only evidence visible in the file or diff; do not infer behavior from a path name alone.",
     "paths_include": ["crates/web/**/*.rs", "apps/admin-web/**/*.rs", "apps/tavern-web/**/*.rs"],
     "paths_exclude": ["target/", ".wt/", "**/tests/", "**/benches/"],
     "state": {
       "file": true,
       "diff": true,
-      "context_files": [".agent/rules/web-lanes.md", ".agent/tasks/dev-web-lane.md"]
+      "context_files": [
+        "todo/web-spec.md",
+        ".agent/rules/web-lanes.md",
+        ".agent/tasks/dev-web-lane.md",
+        "crates/web/README.md"
+      ]
     },
     "questions": {
-      "refactor_hint": {
-        "type": "choice",
-        "instructions": "Classify the refactor need visible in this web diff. Pick the single most specific bucket; use 'mixed' when two or more buckets apply and 'no_action' when the diff already follows the page-crate shape.",
+      "has_refactor_debt": {
+        "type": "noul",
+        "instructions": "Does this complete file or diff leave a web refactor issue described by the web specification?",
         "criteria": {
-          "page_shape": "The diff creates or keeps a flat src/tab-page-* directory instead of src/tab-page/<tab>.rs plus src/components/.",
-          "style_unification": "The diff adds or leaves a long repeated Tailwind class string that should be a shared ui::styles constant or ui component.",
-          "shared_component": "The diff adds a component inside a page crate that is already used by, or identical to, a component in another page crate or in ui-components.",
-          "mixed": "At least two of the other buckets apply to the same diff.",
-          "no_action": "The diff already uses src/tab-page/ + src/components/ and shared ui primitives/constants; no refactor hint is needed."
+          "true": "At least one page-shape, style, shared-component, composition, state, i18n, documentation, or behavior-drift issue is visible in the changed file or diff.",
+          "false": "The file and diff show the target page-crate shape and shared primitives with no observable refactor debt."
         },
-        "fail_labels": ["page_shape", "style_unification", "shared_component"],
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "page_shape": {
+        "type": "noul",
+        "instructions": "Does the file or diff keep or create a flat tab-page-* directory when the page should use tab-page/<tab>.rs plus components/?",
+        "criteria": {
+          "true": "A tab-page-users/, tab-page-keys/, tab-page-settings/, or equivalent flat tab directory is present or created outside the canonical tab-page/ directory.",
+          "false": "The path is tab-page/<tab>.rs, components/<name>.rs, api.rs, or a root-level state/format/shared module; a legitimate crate that has not yet migrated is not a violation unless this diff creates or preserves the old path."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "style_unification": {
+        "type": "noul",
+        "instructions": "Does the diff add or preserve a repeated semantic Tailwind style combination that should be a ui-components constant or style component?",
+        "criteria": {
+          "true": "A semantic combination such as a card shell, modal shell, input shell, section header, focus shell, or empty/error state is written inline in more than one page/component and is not represented by ui::styles, CARD_SHELL_CLASS, MODAL_*, FIELD_PANEL, or a shared style component.",
+          "false": "Only atomic utilities are used, or the semantic combination is already centralized and the diff references that shared constant/component."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "shared_component_ownership": {
+        "type": "noul",
+        "instructions": "Does the diff keep a component local even though the file or diff shows a second real page use or an interface that is clearly shared?",
+        "criteria": {
+          "true": "A component has a second real use outside its page crate, or the diff visibly duplicates a page component with only prop/text differences instead of moving it to ui-components.",
+          "false": "The component is used once inside its page, or the shared component already lives in ui-components and the page imports it."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "composition_discipline": {
+        "type": "noul",
+        "instructions": "Does the diff violate the rsx composition rules: nested element trees, inline loop bodies, multiple content rsx blocks, or rsx closures that contain API calls and multi-signal writes?",
+        "criteria": {
+          "true": "A tab-page file nests meaningful UI more than one level deep, has an inline for-loop with state derivation or nested rsx, has a non-slot second content rsx, or an rsx closure contains spawn/API work plus three or more business statements.",
+          "false": "The page reads as named section/component calls, loop bodies are item components, stateful components keep one content rsx, and only slot-connection rsx remains inline."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "state_and_interaction_boundary": {
+        "type": "noul",
+        "instructions": "Does the diff put private state in the page, put cross-component state inside a child, or let a child component call the API and mutate external state directly?",
+        "criteria": {
+          "true": "A child owns state needed by siblings, a component self-uses state in the page layer, or a child calls ApiClient/spawn and writes multiple external signals instead of exposing EventHandler/props.",
+          "false": "Private use_signal stays in the component, cross-component state stays in the tab-page, and API/EventHandler boundaries are explicit."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "i18n_constants": {
+        "type": "noul",
+        "instructions": "Does the diff put user-facing Chinese copy directly in rsx element bodies instead of a page/root constant?",
+        "criteria": {
+          "true": "A tab-page or components rsx element contains visible Chinese text that is not a constant, test selector, numeric symbol, or unit-only literal.",
+          "false": "Visible copy uses LBL_/BTN_/SEC_/MSG_/FIELD_/OPT_ constants, or the changed text is only a comment/test fixture."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "component_documentation": {
+        "type": "noul",
+        "instructions": "Does a newly added or materially changed public #[component] lack the six-element documentation required by the web specification?",
+        "criteria": {
+          "true": "A public component has no module/function rustdoc or is missing the observable sections describing what it is, what it does, interaction, style, child composition, and data flow.",
+          "false": "The component has the required six-element rustdoc, or the file only changes a private implementation detail without changing the public component contract."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "behavior_drift": {
+        "type": "noul",
+        "instructions": "Does this refactor diff visibly change behavior that H1 requires to remain byte-for-byte stable?",
+        "criteria": {
+          "true": "The diff changes data-testid, aria role/label, a visible class string, loading/error/empty/data branches, button text, or button order while claiming to be a structural refactor.",
+          "false": "The diff only moves code, extracts components, updates imports, or replaces an inline semantic class with the identical shared constant; no observable contract changes are shown."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "primary_refactor_kind": {
+        "type": "choice",
+        "instructions": "Classify the primary refactor need visible in this file and diff. Use mixed when two or more non-trivial categories apply.",
+        "criteria": {
+          "page_shape": "The primary issue is an old tab-page-* directory or wrong page-crate module shape.",
+          "style_unification": "The primary issue is duplicated semantic styling that belongs in ui-components.",
+          "shared_component": "The primary issue is a component that should move to shared ui-components.",
+          "composition": "The primary issue is rsx nesting, loop-body extraction, multiple rsx blocks, or closure extraction.",
+          "state_boundary": "The primary issue is state ownership or API/EventHandler boundary.",
+          "i18n": "The primary issue is user-facing copy not using constants.",
+          "documentation": "The primary issue is missing six-element component documentation.",
+          "behavior_drift": "The primary issue is a structural diff that changes an observable UI contract.",
+          "mixed": "At least two of the other categories apply.",
+          "no_action": "The file already satisfies the target shape and shared-component/style rules."
+        },
+        "fail_labels": ["page_shape", "style_unification", "shared_component", "composition", "state_boundary", "i18n", "documentation", "behavior_drift", "mixed"],
         "fail": 0.99,
         "warn": 0.6
       },
       "refactor_severity": {
         "type": "score",
-        "instructions": "How much should this diff be scheduled for refactor work in the web-dev lane?",
+        "instructions": "How urgent is the refactor work for the web-dev lane?",
         "criteria": [
-          "0: The diff is already in the target page-crate shape and uses shared primitives; no action.",
-          "1: Minor advisory; one repeated class or one flat directory that can be fixed in a later pass.",
-          "2: The diff adds a new flat page-crate shape or duplicates a component that should be moved to ui-components now.",
-          "3: The diff leaves multiple pages with duplicated styles/components and will block the web-dev -> main release if not refactored."
+          "0: The file already follows the target page-crate shape and uses shared primitives; no refactor work is needed.",
+          "1: A minor issue such as one flat directory or one repeated semantic class can be fixed in a later web slice.",
+          "2: The current diff creates a flat page shape, duplicates a component/style that should be shared now, or breaks the rsx composition/state boundary.",
+          "3: Multiple pages are left with duplicated styles/components, or a structural refactor changes observable UI behavior and blocks web-dev -> main release."
         ],
         "fail": 3,
         "warn": 1
+      },
+      "release_blocker": {
+        "type": "noul",
+        "instructions": "Should this finding block the web-dev -> main release until the refactor is dispositioned?",
+        "criteria": {
+          "true": "The evidence shows release-scale duplication, a structural diff that changes H1 behavior, or a new page shape that bypasses the canonical page-crate contract.",
+          "false": "The issue is a local advisory, a single-file style opportunity, or a missing comment that does not alter runtime behavior."
+        },
+        "fail": 0.99,
+        "warn": 0.6
       }
     }
   }
