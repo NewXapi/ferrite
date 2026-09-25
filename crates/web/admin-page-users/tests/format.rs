@@ -1,4 +1,4 @@
-//! 展示格式化助手(从 src/format.rs 内联测试迁出)。
+//! 展示格式化助手(从 src/data.rs 内联测试迁出)。
 
 use admin_page_users::format::{
     cny_to_quota, fmt_cny, fmt_created_date, fmt_num, short_key, used_pct,
