@@ -23,7 +23,7 @@ pub fn SessionRow(
     let expires_at = fmt_time_minute(&session.expires_at);
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-colors hover:border-zinc-600",
             div { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0",
                     div { class: "flex items-center gap-2",

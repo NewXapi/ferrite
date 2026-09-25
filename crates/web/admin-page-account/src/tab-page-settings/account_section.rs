@@ -30,7 +30,7 @@ pub fn AccountSection() -> Element {
     });
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
             role: "group",
             "aria-label": "资料与密码",
             "data-testid": "settings-account-card",

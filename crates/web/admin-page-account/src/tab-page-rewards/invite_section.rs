@@ -44,7 +44,7 @@ pub fn InviteSection(
             h2 { class: "text-lg font-medium text-zinc-100", "邀请" }
 
             // 邀请链接 — origin + 钱包 user_key 现拼;钱包未加载时占位
-            section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+            section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
                 h3 { class: "mb-4 text-sm font-medium text-zinc-200", "邀请好友得奖励" }
                 div { class: "flex flex-col gap-3 sm:flex-row",
                     div {

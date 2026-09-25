@@ -50,7 +50,7 @@ pub fn PreferencesSection() -> Element {
                 p { class: "mt-1 text-sm text-zinc-500", "设置以 JSONB 形式存于账号, 修改即时合并保存" }
             }
 
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
                 div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2",
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "界面语言" }
@@ -119,7 +119,7 @@ pub fn PreferencesSection() -> Element {
                 }
             }
 
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
                 div { class: "mb-3 flex items-center justify-between",
                     h3 { class: "text-sm font-medium text-zinc-100", "当前设置 (JSON)" }
                     span { class: "text-xs text-zinc-500", "只读视图" }

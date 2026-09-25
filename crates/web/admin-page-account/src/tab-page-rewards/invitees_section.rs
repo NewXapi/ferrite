@@ -15,7 +15,7 @@ pub fn InviteesSection(
 ) -> Element {
     rsx! {
         // 被邀人列表
-        section { id: "rewards-sec-list", class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+        section { id: "rewards-sec-list", class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { class: "mb-2 flex items-center justify-between",
                 h3 { class: "text-sm font-medium text-zinc-200", "被邀请用户" }
                 div { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",

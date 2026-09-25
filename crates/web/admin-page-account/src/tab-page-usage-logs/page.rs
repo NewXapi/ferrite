@@ -206,7 +206,7 @@ pub fn UsageLogsPanel() -> Element {
             }
 
             // 过滤器
-            section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+            section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-600",
                 div { class: "flex items-center justify-between",
                     h2 { class: "text-sm font-medium text-zinc-300", "{SEC_LOGS}" }
                     span { class: "text-xs text-zinc-500", "共 {total_len} 条" }

@@ -21,7 +21,7 @@ pub fn WalletSection(
             h2 { class: "text-lg font-medium text-zinc-100", "钱包" }
 
             // 余额卡 — 三态: error 红边 / loading 骨架 / 数据(空余额虚线占位)
-            section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+            section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
                 if !wallet_err().is_empty() {
                     ErrCard { testid: "wallet-error", what: "钱包", msg: wallet_err() }
                 } else if !wallet_loaded() {

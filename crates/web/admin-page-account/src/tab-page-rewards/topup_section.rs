@@ -165,7 +165,7 @@ pub fn TopupSection(
 
     rsx! {
         // 充值开单 — provider 可选:epay 在线支付(跳转支付页) / manual 人工确认
-        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { role: "group", "aria-label": "充值开单",
                 p { class: "mb-1 text-sm font-medium text-zinc-100", "充值开单" }
                 p { class: "mb-4 text-xs text-zinc-500",
@@ -244,7 +244,7 @@ pub fn TopupSection(
         }
 
         // 兑换码充值
-        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { role: "group", "aria-label": "兑换码充值",
                 p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
                 div { class: "flex flex-col gap-3 sm:flex-row",
