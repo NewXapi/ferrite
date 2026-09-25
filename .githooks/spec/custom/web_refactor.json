@@ -1,0 +1,40 @@
+{
+  "web_refactor_hint": {
+    "intent": "Ferrite web page-crate shape (dev -> main lane). Page crates under crates/web/admin-page-* and crates/web/tavern-page-* must keep: (1) page orchestration in src/tab-page/<tab>.rs, (2) page-unique components in src/components/, (3) shared UI primitives and style constants in crates/web/ui-components, (4) shared style constants referenced via ui::styles / ui::CARD_SHELL_CLASS etc. Flag diffs that introduce or leave flat src/tab-page-* directories, long repeated Tailwind class strings that should be shared constants, page-local components that are duplicated across more than one page crate, or missing shared UI primitives that two or more pages need.",
+    "paths_include": ["crates/web/**/*.rs", "apps/admin-web/**/*.rs", "apps/tavern-web/**/*.rs"],
+    "paths_exclude": ["target/", ".wt/", "**/tests/", "**/benches/"],
+    "state": {
+      "file": true,
+      "diff": true,
+      "context_files": [".agent/rules/web-lanes.md", ".agent/tasks/dev-web-lane.md"]
+    },
+    "questions": {
+      "refactor_hint": {
+        "type": "choice",
+        "instructions": "Classify the refactor need visible in this web diff. Pick the single most specific bucket; use 'mixed' when two or more buckets apply and 'no_action' when the diff already follows the page-crate shape.",
+        "criteria": {
+          "page_shape": "The diff creates or keeps a flat src/tab-page-* directory instead of src/tab-page/<tab>.rs plus src/components/.",
+          "style_unification": "The diff adds or leaves a long repeated Tailwind class string that should be a shared ui::styles constant or ui component.",
+          "shared_component": "The diff adds a component inside a page crate that is already used by, or identical to, a component in another page crate or in ui-components.",
+          "mixed": "At least two of the other buckets apply to the same diff.",
+          "no_action": "The diff already uses src/tab-page/ + src/components/ and shared ui primitives/constants; no refactor hint is needed."
+        },
+        "fail_labels": ["page_shape", "style_unification", "shared_component"],
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "refactor_severity": {
+        "type": "score",
+        "instructions": "How much should this diff be scheduled for refactor work in the web-dev lane?",
+        "criteria": [
+          "0: The diff is already in the target page-crate shape and uses shared primitives; no action.",
+          "1: Minor advisory; one repeated class or one flat directory that can be fixed in a later pass.",
+          "2: The diff adds a new flat page-crate shape or duplicates a component that should be moved to ui-components now.",
+          "3: The diff leaves multiple pages with duplicated styles/components and will block the web-dev -> main release if not refactored."
+        ],
+        "fail": 3,
+        "warn": 1
+      }
+    }
+  }
+}

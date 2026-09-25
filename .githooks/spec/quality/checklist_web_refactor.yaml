@@ -1,0 +1,21 @@
+# WEB-REFACTOR: ferrite web page-crate / style / shared-component hints
+# Rule body: .githooks/spec/custom/web_refactor.json (config-driven, no code)
+# Mechanism: each matched file becomes a jev state (file + diff + intent + optional context).
+#            The choice/score verdicts are thresholded; below-warn verdicts are dropped (FP filter).
+# No key / offline: candidates degrade to WARN (recall preserved, disposition still required).
+enabled: true
+hooks: [pre-push, merge]
+sla: l2
+fail_severity: WARN
+mode: file
+match:
+  paths_include: ["crates/web/**/*.rs", "apps/admin-web/**/*.rs", "apps/tavern-web/**/*.rs"]
+  paths_exclude: ["target/", ".wt/", "**/tests/", "**/benches/"]
+harness:
+  command: "python3"
+  args:
+    - ".githooks/spec/harness/jev_rule.py"
+    - "--config"
+    - ".githooks/spec/custom/web_refactor.json"
+optional: true
+timeout: 300
