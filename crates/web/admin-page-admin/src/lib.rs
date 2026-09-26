@@ -10,8 +10,6 @@ pub mod state;
 pub mod tab_page_aliases;
 #[path = "tab-page-channels/mod.rs"]
 pub mod tab_page_channels;
-#[path = "tab-page-currency/mod.rs"]
-pub mod tab_page_currency;
 #[path = "tab-page-redemptions/mod.rs"]
 pub mod tab_page_redemptions;
 #[path = "tab-page-system/mod.rs"]
@@ -26,9 +24,9 @@ pub mod tab_page_network;
 #[path = "tab-page-subscriptions/mod.rs"]
 pub mod tab_page_subscriptions;
 
+pub use tab_page::currency::CurrencyPage;
 pub use tab_page_aliases::AliasesPage;
 pub use tab_page_channels::ChannelsPage;
-pub use tab_page_currency::CurrencyPage;
 #[path = "tab-page/mod.rs"]
 pub mod tab_page;
 

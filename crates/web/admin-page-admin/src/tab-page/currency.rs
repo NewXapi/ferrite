@@ -11,17 +11,16 @@
 //! 渲染拆成 `list`（列表四态）与 `form`
 //! （录入表单）两个组件。四态约定与 data-testid 对齐 RedemptionsPage 惯例。
 //!
-//! 边界:文案常量在 `shared`;列表与表单的视觉细节分别在 `list` / `form`;
+//! 边界:文案常量在根级 `shared`;列表与表单的视觉细节分别在 `components/currency_list` / `currency_form`;
 //! 本文件负责全部网络进出(拉取、upsert)与跨组件状态。
 
-use super::form::CurrencyForm;
-use super::list::CurrencyList;
-use super::shared::{
+use crate::api::{CurrencyView, list_currencies_api, upsert_currency_api};
+use crate::components::{CurrencyForm, CurrencyList};
+use crate::shared::{
     BTN_RETRY, Kind, LBL_PAGE, MSG_ERR_CODE_REQUIRED, MSG_ERR_FIAT_PRECISION, MSG_ERR_FIAT_SYMBOL,
     MSG_ERR_RATE_POSITIVE, MSG_LOAD_FAILED_PREFIX, MSG_OK_CREATED_SUFFIX, MSG_OK_DISABLED_SUFFIX,
     MSG_OK_UPDATED_SUFFIX, SEC_NOTE,
 };
-use crate::api::{CurrencyView, list_currencies_api, upsert_currency_api};
 use client::ApiClient;
 use dioxus::prelude::*;
 

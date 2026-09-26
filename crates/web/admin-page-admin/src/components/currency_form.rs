@@ -1,14 +1,14 @@
 //! 货币表单区：新增 / 编辑的录入行 + 提交/取消。
 //! 纯展示组件：表单状态以 `Signal` 注入（Signal 是可拷贝的全局句柄），
-//! 校验与写回逻辑留在 `page` 的 `on_submit` 里；
+//! 校验与写回逻辑留在 `tab-page/currency.rs` 的 `on_submit` 里；
 //! 成功/错误提示由页面统一渲染（与列表/重试提示同列）。
 //!
 //! 边界:字段布局与警示文案在本文件;填写规则(必填 / fiat 符号 / precision /
-//! 正汇率)的校验不在本文件,由页面 `submit` 闭包执行;文案常量见 `super::shared`。
+//! 正汇率)的校验不在本文件,由页面 `submit` 闭包执行;文案常量见根级 `crate::shared`。
 
 use dioxus::prelude::*;
 
-use super::shared::{
+use crate::shared::{
     BTN_CANCEL, BTN_CREATE, BTN_SAVE_CHANGES, FIELD_CODE, FIELD_ENABLED, FIELD_KIND,
     FIELD_PRECISION, FIELD_RATE, FIELD_SYMBOL, Kind, LBL_FIELD_NAME, LBL_FIELD_REMARK,
     LBL_FORM_REGION, MSG_USD_LOCKED, MSG_WARN_DISABLE, MSG_WARN_RATE, OPT_KIND_FIAT,
@@ -21,7 +21,7 @@ use super::shared::{
 ///
 /// 【做什么】渲染 Code/名称/符号/kind/汇率/小数位/启用/备注八个字段,并在编辑态把
 /// Code 与 USD 汇率置为禁用;Code 为 `USD` 时汇率格改渲染只读 `1` 加锁定说明。
-/// 不负责校验(页面的 `submit`)、不负责写回网络(页面的 `submit`/`disable`)、
+/// 不负责校验(页面的 `submit` 闭包)、不负责写回网络(页面的 `submit`/`disable`)、
 /// 不负责成功与失败提示(页面统一渲染)。
 ///
 /// 【交互逻辑】用户操作 → 组件行为 → 数据交互:

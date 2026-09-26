@@ -1,17 +1,17 @@
 //! 货币列表区：四态渲染（loading / error / empty / data）+ 表格行。
-//! 纯展示组件：数据与写回调由 `page` 注入。
+//! 纯展示组件：数据与写回调由 `tab-page/currency.rs` 注入。
 //!
 //! 边界:表格自身的列宽/描边/状态色都在本文件;拉取、错误回退与软禁用
-//! 的写回逻辑不在这里(在 `page.rs`);文案常量统一来自 `super::shared`。
+//! 的写回逻辑不在这里(在 `tab-page/currency.rs`);文案常量统一来自根级 `crate::shared`。
 
 use dioxus::prelude::*;
 
-use super::shared::{
+use crate::api::CurrencyView;
+use crate::shared::{
     BTN_DISABLE, BTN_EDIT, BTN_RETRY, LBL_COL_CODE, LBL_COL_KIND, LBL_COL_NAME, LBL_COL_PRECISION,
     LBL_COL_RATE, LBL_COL_STATUS, LBL_COL_SYMBOL, LBL_LIST_REGION, LBL_STATUS_DISABLED,
     LBL_STATUS_ENABLED, MSG_EMPTY, MSG_LOAD_FAILED_PREFIX, SEC_LIST,
 };
-use crate::api::CurrencyView;
 
 /// 货币定义列表。
 ///
@@ -19,7 +19,7 @@ use crate::api::CurrencyView;
 ///
 /// 【做什么】按 `err` / `loading` / `defs` 的取值渲染四种形态之一;有数据时把每条
 /// `CurrencyView` 铺成一行(代号/符号/名称/kind 徽标/汇率/小数位/状态/操作)。不负责
-/// 拉取与软禁用的网络写回(在 `page.rs`),不负责表单录入(在 `form.rs`)。
+/// 拉取与软禁用的网络写回(在 `tab-page/currency.rs`),不负责表单录入(在 `components/currency_form.rs`)。
 ///
 /// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
 /// - 点错误条「重试」→ `on_retry` 抛回页面(MouseEvent,页面 `reload + 1` 触发重拉)。
