@@ -1,21 +1,26 @@
-//! 新建成功视图 — 一次性明文 key 展示 (后端只在创建响应返回一次)。
+//! 新建成功视图 — 一次性明文 key 展示 (后端只在创建响应返回一次)，rust-ui Dialog 重构。
 //! 提供一键复制明文 (这是唯一值得复制的完整密钥), 关闭后无法再查看。
 
 use contract::api::token::CreateTokenResult;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+
+use ui::components::rui_button::{Button, ButtonSize, ButtonVariant};
+use ui::components::rui_dialog::{
+    Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+};
+use ui::components::rui_input::{Input, InputType};
 
 /// 【是什么】新建密钥成功后的明文展示弹窗，只出现一次。
 ///
-/// 【做什么】负责渲染新建密钥成功后一次性展示的明文 key：只读输入框显示完整密钥 + 一键复制按钮 + 关闭按钮。提示用户"此信息仅显示一次，关闭后无法再次查看"。不保存明文到任何存储。
+/// 【做什么】负责渲染新建密钥成功后一次性展示的明文 key：只读输入框显示完整密钥 + 一键复制按钮 + 完成按钮。提示用户"此信息仅显示一次，关闭后无法再次查看"。不保存明文到任何存储。
 ///
 /// 【交互逻辑】
-/// - 点击「完成」/遮罩：调用 on_close，关闭弹窗。
+/// - 点击「完成」/遮罩/X：调用 on_close，关闭弹窗。
 /// - 点击「复制」：通过 Clipboard API fire-and-forget 写入剪贴板，成功后短暂切换按钮文案为「已复制」并变为绿色，1.5 秒后自动恢复。
 ///
-/// 【样式】固定最大宽度 max-w-md，圆角边框、成功主题色 (border-emerald-500/40 bg-zinc-900)，标题与提示使用 emerald-400 绿色。输入框 mono 字体高亮 emerald-300。
+/// 【样式】rust-ui Dialog 承载（max-w-md）；明文 Input 只读等宽 + emerald 高亮；复制/完成 rui Button。
 ///
-/// 【子组件组成】ui::components::button::Button × 1 (完成)；无其他自定义组件。
+/// 【子组件组成】rui Dialog 族 + Input (readonly) + Button ×2 (复制/完成)
 ///
 /// 【数据流】
 /// - 对内（入）：result (CreateTokenResult) 含明文 key 与元数据 (name 等)；on_close EventHandler 由页面传入。
@@ -24,55 +29,46 @@ use ui::components::button::{Button, ButtonVariant};
 pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Element {
     let mut copied = use_signal(|| false);
     rsx! {
-        div {
-            class: "{ui::MODAL_BACKDROP}",
-            div {
-                class: "w-full max-w-md rounded-2xl border border-emerald-500/40 bg-zinc-900 p-5 shadow-xl",
-                onclick: move |e| e.stop_propagation(),
-
-                div { class: "mb-4 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-emerald-400", "密钥创建成功" }
-                    button {
-                        class: "{ui::CLOSE_BTN}",
-                        onclick: move |_| on_close.call(()),
-                        "aria-label": "关闭",
-                        "✕"
+        Dialog { class: "w-full max-w-md",
+            DialogContent { open: true, on_close: move |_| on_close.call(()),
+                DialogHeader {
+                    DialogTitle { class: "text-emerald-400", "密钥创建成功" }
+                    DialogDescription { class: "text-amber-400",
+                        "明文密钥只显示这一次,关闭后无法再查看"
                     }
                 }
 
-                p { class: "mb-2 text-xs text-amber-400", "明文密钥只显示这一次,关闭后无法再查看" }
-                div { class: "flex items-center gap-2",
-                    input {
-                        class: "min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
-                        r#type: "text",
-                        r#readonly: true,
-                        value: "{result.plaintext}"
+                DialogBody {
+                    div { class: "flex items-center gap-2",
+                        Input {
+                            r#type: InputType::Text,
+                            class: "min-w-0 flex-1 border-emerald-500/30 bg-zinc-950 font-mono text-emerald-300",
+                            readonly: true,
+                            value: "{result.plaintext}",
+                        }
+                        Button {
+                            variant: if copied() { ButtonVariant::Success } else { ButtonVariant::Outline },
+                            size: ButtonSize::Sm,
+                            aria_label: "复制明文密钥",
+                            onclick: move |_| {
+                                // fire-and-forget 写入剪贴板, 提交即视为发起成功
+                                let ok = ui::copy_text_to_clipboard(&result.plaintext);
+                                copied.set(ok);
+                                let mut c = copied;
+                                spawn(async move {
+                                    gloo_timers::future::TimeoutFuture::new(1500).await;
+                                    c.set(false);
+                                });
+                            },
+                            if copied() { "已复制" } else { "复制" }
+                        }
                     }
-                    button {
-                        class: if copied() {
-                            "shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-xs font-medium text-emerald-400"
-                        } else {
-                            "shrink-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
-                        },
-                        "aria-label": "复制明文密钥",
-                        onclick: move |_| {
-                            // fire-and-forget 写入剪贴板, 提交即视为发起成功
-                            let ok = ui::copy_text_to_clipboard(&result.plaintext);
-                            copied.set(ok);
-                            let mut c = copied;
-                            spawn(async move {
-                                gloo_timers::future::TimeoutFuture::new(1500).await;
-                                c.set(false);
-                            });
-                        },
-                        if copied() { "已复制" } else { "复制" }
-                    }
+                    p { class: "text-xs text-zinc-500", "名称: {result.token.name}" }
                 }
-                p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name}" }
 
-                div { class: "mt-5 flex justify-end",
+                DialogFooter {
                     Button {
-                        variant: ButtonVariant::Primary,
+                        size: ButtonSize::Sm,
                         onclick: move |_| on_close.call(()),
                         "完成"
                     }

@@ -1,4 +1,4 @@
-//! 编辑密钥弹窗 — 走 PUT /api/token/{key}。
+//! 编辑密钥弹窗 — 走 PUT /api/token/{key}（rust-ui Dialog 重构）。
 //! 契约 UpdateTokenRequest 全 Option, 缺省字段不随请求发出 (skip_serializing_if),
 //! 后端按「缺省 = 不改」处理 (admin-catalog tokens.rs svc.update 逐字段 if let Some)。
 //! 注意: 后端 group / expires_at 是双层 Option (Some(None) = 跟随用户组 / 永不过期),
@@ -6,6 +6,15 @@
 
 use contract::api::token::{TokenDto, UpdateTokenRequest};
 use dioxus::prelude::*;
+
+use ui::components::rui_alert::{Alert, AlertDescription, AlertVariant};
+use ui::components::rui_button::{Button, ButtonSize, ButtonVariant};
+use ui::components::rui_dialog::{
+    Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+};
+use ui::components::rui_input::{Input, InputType};
+use ui::components::rui_label::Label;
+use ui::components::rui_switch::{Switch, SwitchLabel};
 
 use crate::api;
 use crate::usage_support::{date_input_to_rfc3339, rfc3339_to_date_input};
@@ -16,15 +25,14 @@ use crate::usage_support::{date_input_to_rfc3339, rfc3339_to_date_input};
 /// 不负责状态切换（启用/停用由 KeyCard 的启用/停用按钮单独处理）。
 ///
 /// 【交互逻辑】
-/// - 取消: 点击遮罩或「取消」按钮，调用 on_cancel。
-/// - 保存: 校验名称非空、额度为 ≥0 整数；通过后提交 API，成功则 on_saved，失败则显示错误。
-/// - 无限额度勾选时：输入框禁用，不解析输入值，直接发 quota=0 + unlimited=true。
+/// - 取消: 点击遮罩、「取消」按钮或 X，调用 on_cancel（弹窗条件挂载，父层卸载）。
+/// - 保存: 校验名称非空、额度为 ≥0 整数；通过后提交 API，成功则 on_saved，失败则以 Destructive Alert 显示错误。
+/// - 无限额度开关打开时：输入框禁用，不解析输入值，直接发 quota=0 + unlimited=true。
 /// - 分组/过期时间为可选修改，留空 = 保持不变（不发字段）。
 ///
-/// 【样式】固定居中弹窗 (fixed inset-0 z-50)，白字标题，内边距 p-5，最大宽度 max-w-md；
-/// 字段区内部可滚动 (max-h-[60vh] overflow-y-auto)。按钮为原始 button 而非 ui::button 组件。
+/// 【样式】rust-ui Dialog 承载（max-w-md，字段区超高内部滚动）；Input + Label；无限额度 Switch；错误 Destructive Alert；按钮 Outline/Default。
 ///
-/// 【子组件组成】纯无外部组件依赖，仅使用 dioxus 原生 input/button/label/p。
+/// 【子组件组成】rui Dialog 族 + Input ×4 + Label + Switch + Alert + Button ×2
 ///
 /// 【数据流】
 /// - 对内（入）：token (TokenDto) 提供预填充值；on_cancel/on_saved EventHandler 由页面传入。
@@ -47,7 +55,7 @@ pub fn EditKeyModal(
     let mut busy = use_signal(|| false);
     let mut err = use_signal(String::new);
 
-    let submit = move |_| {
+    let submit = move |_: MouseEvent| {
         let n = name().trim().to_string();
         if n.is_empty() {
             err.set("名称不能为空".into());
@@ -55,12 +63,10 @@ pub fn EditKeyModal(
         }
         // 分组: 空串 → 不发字段 (保持不变); 非空 → Some(g) 改分组
         let g = group().trim().to_string();
-        // 额度: 提交总是发 Some(quota) + Some(unlimitedQuota) (两项一体生效)
+        // 额度: 提交总是发 Some(quota) + Some(unlimitedQuota) (两项一体生效);
+        // 无限额度时明确发 0 占位, 不再 parse 输入框旧文本
         let q_raw = quota().trim().to_string();
         let (quota_v, unlimited_v) = if unlimited() {
-            // 无限额度时限额输入禁用: 明确发 0 占位, 不再 parse 输入框旧文本
-            // (先输非法值再勾选无限时, 旧输入的 parse 结果无意义);
-            // quota 数值此时无意义, 后端以 unlimitedQuota = true 为准
             (0, true)
         } else {
             match q_raw.parse::<i64>() {
@@ -81,6 +87,7 @@ pub fn EditKeyModal(
             expires_at,
             ..Default::default()
         };
+
         busy.set(true);
         err.set(String::new());
         let client = client::ApiClient::shared().clone();
@@ -99,86 +106,79 @@ pub fn EditKeyModal(
     };
 
     rsx! {
-        div {
-            class: "{ui::MODAL_BACKDROP}",
-            onclick: move |_| on_cancel.call(()),
-            div {
-                class: "{ui::MODAL_CARD}",
-                onclick: move |e| e.stop_propagation(),
-
-                div { class: "{ui::MODAL_HEADER}",
-                    h3 { class: "text-base font-semibold text-zinc-100", "编辑密钥" }
-                    p { class: "truncate font-mono text-xs text-zinc-500", "{token.key_preview}" }
+        Dialog { class: "w-full max-w-md",
+            DialogContent { open: true, on_close: move |_| on_cancel.call(()),
+                DialogHeader {
+                    DialogTitle { "编辑密钥" }
+                    DialogDescription { class: "truncate font-mono", "{token.key_preview}" }
                 }
 
                 // 字段较多, 弹窗保持 max-w-md 视觉, 字段区超高内部滚动
                 div { class: "max-h-[60vh] space-y-4 overflow-y-auto",
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "密钥名称" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                    div { class: "space-y-1",
+                        Label { "密钥名称" }
+                        Input {
                             value: "{name}",
-                            oninput: move |e| name.set(e.value()),
+                            oninput: move |e: FormEvent| name.set(e.value()),
                         }
                     }
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "分组 (可选)" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                    div { class: "space-y-1",
+                        Label { "分组 (可选)" }
+                        Input {
                             placeholder: "留空 = 保持不变",
                             value: "{group}",
-                            oninput: move |e| group.set(e.value()),
+                            oninput: move |e: FormEvent| group.set(e.value()),
                         }
-                        p { class: "mt-1 text-[11px] text-zinc-500",
+                        p { class: "text-[11px] text-zinc-500",
                             "分组决定计费与模型可见范围; 跟随用户默认分组的密钥此处显示为空"
                         }
                     }
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "额度限制 (额度单位)" }
-                        label { class: "mb-1.5 flex cursor-pointer items-center gap-2 text-xs text-zinc-400",
-                            input {
-                                r#type: "checkbox",
-                                class: "h-4 w-4 accent-emerald-500",
-                                checked: "{unlimited}",
-                                onchange: move |e| unlimited.set(e.checked()),
-                            }
-                            "无限额度"
-                        }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
-                            r#type: "text",
+                    div { class: "space-y-1",
+                        Label { "额度限制 (额度单位)" }
+                        Input {
                             placeholder: "额度单位, 500,000 ≈ $1",
+                            class: "font-mono",
                             value: "{quota}",
                             disabled: unlimited(),
-                            oninput: move |e| quota.set(e.value()),
+                            oninput: move |e: FormEvent| quota.set(e.value()),
                         }
-                        p { class: "mt-1 text-[11px] text-zinc-500", "额度单位: 500,000 ≈ $1" }
+                        div { class: "flex items-center gap-2",
+                            Switch {
+                                checked: unlimited(),
+                                aria_label: "无限额度",
+                                on_change: Some(EventHandler::new(move |v: bool| unlimited.set(v))),
+                            }
+                            SwitchLabel { class: "text-xs text-zinc-400", "无限额度" }
+                        }
+                        p { class: "text-[11px] text-zinc-500", "额度单位: 500,000 ≈ $1" }
                     }
-                    div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "过期时间" }
-                        input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 focus:border-zinc-500 focus:outline-none",
-                            r#type: "date",
+                    div { class: "space-y-1",
+                        Label { "过期时间" }
+                        Input {
+                            r#type: InputType::Date,
                             value: "{expiry}",
-                            oninput: move |e| expiry.set(e.value()),
+                            oninput: move |e: FormEvent| expiry.set(e.value()),
                         }
-                        p { class: "mt-1 text-[11px] text-zinc-500",
+                        p { class: "text-[11px] text-zinc-500",
                             "留空 = 保持不变; 所选日期当日 (UTC) 结束后失效"
                         }
                     }
                     if !err().is_empty() {
-                        p { class: "text-xs text-red-400", "{err()}" }
+                        Alert { variant: AlertVariant::Destructive,
+                            AlertDescription { "{err()}" }
+                        }
                     }
                 }
 
-                div { class: "mt-6 flex gap-3",
-                    button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                DialogFooter {
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        size: ButtonSize::Sm,
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
-                    button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    Button {
+                        size: ButtonSize::Sm,
                         disabled: busy(),
                         onclick: submit,
                         "保存"

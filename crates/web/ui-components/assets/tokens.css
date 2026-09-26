@@ -54,8 +54,19 @@
   --destructive-foreground: oklch(0.58 0.22 27);
   --success: rgb(35 60 44);
   --success-foreground: rgb(34 197 94);
+  /* light/dark 对供 rust-ui Badge Success/Warning/Info 变体使用；
+   * 不抄上游亮色主题值（oklch 0.95/0.35 在暗色底上过曝），
+   * 按本站既有徽标语言（tint 底 + 亮字，同 accent/无限徽标）取值。 */
+  --success-light: rgb(34 197 94 / 16%);
+  --success-dark: rgb(74 222 128);
   --warning: rgb(39 36 31);
   --warning-foreground: rgb(245 158 11);
+  --warning-light: rgb(245 158 11 / 16%);
+  --warning-dark: rgb(251 191 36);
+  --info: rgb(12 74 110);
+  --info-foreground: rgb(125 211 252);
+  --info-light: rgb(14 165 233 / 16%);
+  --info-dark: rgb(125 211 252);
   --border: rgb(255 255 255 / 12%);
   --input: rgb(255 255 255 / 12%);
   --ring: rgb(249 250 251);
@@ -96,8 +107,19 @@
   --destructive-foreground: oklch(0.58 0.22 27);
   --success: rgb(35 60 44);
   --success-foreground: rgb(34 197 94);
+  /* light/dark 对供 rust-ui Badge Success/Warning/Info 变体使用；
+   * 不抄上游亮色主题值（oklch 0.95/0.35 在暗色底上过曝），
+   * 按本站既有徽标语言（tint 底 + 亮字，同 accent/无限徽标）取值。 */
+  --success-light: rgb(34 197 94 / 16%);
+  --success-dark: rgb(74 222 128);
   --warning: rgb(39 36 31);
   --warning-foreground: rgb(245 158 11);
+  --warning-light: rgb(245 158 11 / 16%);
+  --warning-dark: rgb(251 191 36);
+  --info: rgb(12 74 110);
+  --info-foreground: rgb(125 211 252);
+  --info-light: rgb(14 165 233 / 16%);
+  --info-dark: rgb(125 211 252);
   --border: rgb(255 255 255 / 12%);
   --input: rgb(255 255 255 / 12%);
   --ring: rgb(249 250 251);
@@ -136,8 +158,16 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-success-light: var(--success-light);
+  --color-success-dark: var(--success-dark);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-light: var(--warning-light);
+  --color-warning-dark: var(--warning-dark);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-light: var(--info-light);
+  --color-info-dark: var(--info-dark);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
