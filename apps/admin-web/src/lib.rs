@@ -1,7 +1,6 @@
 //! Console shell assembled from page crates after the frontend split.
 pub mod app;
 pub mod retro;
-pub mod rui;
 pub use app::RootApp;
 
 use app::{current_hash, is_auth_hash};
