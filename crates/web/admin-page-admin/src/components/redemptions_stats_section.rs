@@ -9,7 +9,7 @@
 
 use dioxus::prelude::*;
 
-use super::shared::SEC_STATS;
+use crate::shared::SEC_STATS_REDEMPTIONS;
 use crate::tab_page_groups::StatCard;
 
 /// 兑换码概览统计区。
@@ -22,7 +22,7 @@ use crate::tab_page_groups::StatCard;
 /// 【交互逻辑】纯展示,无交互:无 `EventHandler`,无网络请求,不持有任何状态。
 ///
 /// 【样式】外壳 `section#reds-sec-stats` 为 `scroll-mt-8 space-y-3`,并带
-/// `data-testid="redemptions-stats"`、`role="region"`、`aria-label=SEC_STATS`;
+/// `data-testid="redemptions-stats"`、`role="region"`、`aria-label=SEC_STATS_REDEMPTIONS`;
 /// 标题 `text-lg font-medium text-zinc-100`;网格 `grid grid-cols-1 gap-3
 /// md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///
@@ -40,9 +40,9 @@ pub fn RedemptionsStatsSection(stats: Vec<(String, &'static str)>) -> Element {
             id: "reds-sec-stats",
             "data-testid": "redemptions-stats",
             role: "region",
-            "aria-label": SEC_STATS,
+            "aria-label": SEC_STATS_REDEMPTIONS,
             class: "scroll-mt-8 space-y-3",
-            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS_REDEMPTIONS}" }
             div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                 for (value, label) in stats {
                     StatCard { value, label }

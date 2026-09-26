@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-use super::shared::{
+use crate::shared::{
     BTN_DELETE, BTN_EDIT, LBL_DISABLED, LBL_ENABLED, LBL_GROUP_PREFIX, LBL_NO_LIMIT, LBL_PERIOD,
     LBL_PRICE, LBL_QUOTA, LBL_UNLIMITED, ToggleSwitch,
 };

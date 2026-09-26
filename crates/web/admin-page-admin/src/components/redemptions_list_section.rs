@@ -8,10 +8,10 @@
 
 use dioxus::prelude::*;
 
-use super::card::RedemptionCard;
-use super::shared::{
-    BTN_RETRY, LBL_ERROR_ARIA, LBL_LIST_ARIA, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST,
-    OPT_BADGE_LOADING, RedRowFE, SEC_LIST,
+use super::redemptions_card::RedemptionCard;
+use crate::shared::{
+    BTN_RETRY, LBL_ERROR_ARIA, LBL_LIST_ARIA, MSG_EMPTY_REDEMPTIONS, MSG_LOAD_FAILED_REDEMPTIONS,
+    MSG_LOADING_LIST_REDEMPTIONS, OPT_BADGE_LOADING, RedRowFE, SEC_LIST_REDEMPTIONS,
 };
 
 /// 兑换码卡片网格区:错误 / 加载 / 空 / 网格 四态。
@@ -80,7 +80,7 @@ pub fn RedemptionsListSection(
             "aria-label": LBL_LIST_ARIA,
             class: "scroll-mt-8 space-y-4",
             ui::SectionHeader {
-                title: SEC_LIST.to_string(),
+                title: SEC_LIST_REDEMPTIONS.to_string(),
                 badge: if loading { OPT_BADGE_LOADING.to_string() } else { format!("{} 张", filtered_rows.len()) },
                 trailing: rsx! {
                     ui::Pager {
@@ -98,7 +98,7 @@ pub fn RedemptionsListSection(
                     role: "alert",
                     "aria-label": LBL_ERROR_ARIA,
                     class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED}" }
+                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED_REDEMPTIONS}" }
                     p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                     button {
                         "data-testid": "retry-redemptions",
@@ -109,13 +109,13 @@ pub fn RedemptionsListSection(
                 }
             } else if loading {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_LOADING_LIST}" }
+                    p { class: "text-zinc-400", "{MSG_LOADING_LIST_REDEMPTIONS}" }
                 }
             } else if filtered_rows.is_empty() {
                 div {
                     "data-testid": "redemptions-empty",
                     class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_EMPTY}" }
+                    p { class: "text-zinc-400", "{MSG_EMPTY_REDEMPTIONS}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",

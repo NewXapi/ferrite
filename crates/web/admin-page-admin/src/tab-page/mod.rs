@@ -5,3 +5,6 @@ pub mod aliases;
 pub mod channels;
 pub mod currency;
 pub mod gateway;
+pub mod redemptions;
+pub mod subscriptions;
+pub mod system;

@@ -5,7 +5,7 @@
 //!
 //! 本文件只保留状态与写回逻辑(拉取 / `commit_generate` / `disable_red`);
 //! 渲染拆成 `stats`(概览统计)、`toolbar`(筛选与操作)、`list`(卡片网格)、
-//! `card`(卡片)、`modal`(生成弹窗 / 明文码展示),共享类型与映射见 `shared`。
+//! `card`(卡片)、`modal`(生成弹窗 / 明文码展示),共享类型与映射见根级 `crate::shared`。
 //!
 //! 状态归属约定(页面层持有的都是跨组件交互的):
 //! - 列表状态(reds/loading/err/reload):effect 拉取 + 三组件共享
@@ -19,14 +19,14 @@ use dioxus::prelude::*;
 
 use crate::api::{disable_redemption_api, generate_redemptions_api, list_redemptions_api};
 
-use super::list::RedemptionsListSection;
-use super::modal::{GeneratedCodesModal, RedemptionGenerateModal};
-use super::shared::{
+use crate::components::RedemptionsListSection;
+use crate::components::RedemptionsStatsSection;
+use crate::components::RedemptionsToolbarSection;
+use crate::components::{GeneratedCodesModal, RedemptionGenerateModal};
+use crate::shared::{
     LBL_STAT_AVAILABLE, LBL_STAT_DISABLED, LBL_STAT_TOTAL, LBL_STAT_UNUSED, LBL_STAT_USED, OPT_ALL,
     OPT_DISABLED, OPT_UNUSED, OPT_USED, RedModalState, RedRowFE, map_redemption_view,
 };
-use super::stats::RedemptionsStatsSection;
-use super::toolbar::RedemptionsToolbarSection;
 
 /// 兑换码管理页。
 ///

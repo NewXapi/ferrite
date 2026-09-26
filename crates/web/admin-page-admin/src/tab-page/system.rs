@@ -12,11 +12,11 @@
 
 use dioxus::prelude::*;
 
-use super::options::SystemOptionsPanel;
-use super::overview::SystemOverview;
-use super::proxy_nodes::ProxyNodesPanel;
-use super::proxy_runtime::ProxyRuntimePanel;
-use super::shared::SystemInfoView;
+use crate::components::system_options::SystemOptionsPanel;
+use crate::components::system_overview::SystemOverview;
+use crate::components::system_proxy_nodes::ProxyNodesPanel;
+use crate::components::system_proxy_runtime::ProxyRuntimePanel;
+use crate::shared::SystemInfoView;
 use client::ApiClient;
 
 /// 系统页:顶部运行指标 + 实体统计 + 运行环境明细,数据来自 `/api/system-info`。

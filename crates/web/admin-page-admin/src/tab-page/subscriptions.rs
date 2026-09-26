@@ -18,9 +18,9 @@ use crate::api::{
 };
 use crate::state::{PlanRow, map_subscription_view};
 
-use super::card::PlanCard;
-use super::modal::SubscriptionFormModal;
-use super::shared::{
+use crate::components::subscriptions_card::PlanCard;
+use crate::components::subscriptions_modal::SubscriptionFormModal;
+use crate::shared::{
     BTN_NEW_PLAN, MSG_CREATED, MSG_DELETED, MSG_EMPTY, MSG_ERR_NAME_REQUIRED, MSG_ERR_QUOTA,
     MSG_LOAD_FAIL_PREFIX, MSG_LOAD_FAIL_SUFFIX, MSG_LOADING, MSG_SAVING, MSG_UPDATED,
     OPT_BADGE_LOADING, SEC_LIST, SEC_NAME_DEDUP,

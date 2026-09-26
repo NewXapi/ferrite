@@ -10,10 +10,10 @@
 
 use dioxus::prelude::*;
 
-use super::shared::{
-    BTN_CANCEL, BTN_CLOSE_SAVED, BTN_SUBMIT_GENERATE, FIELD_COUNT, FIELD_QUOTA, LBL_BATCH,
-    LBL_QUOTA_PRESETS, LBL_TOTAL_VALUE, MSG_CODES_WARNING, MSG_GENERATE_HINT, TTL_GENERATE,
-    TTL_GENERATED_PREFIX, TTL_GENERATED_SUFFIX,
+use crate::shared::{
+    BTN_CANCEL_REDEMPTIONS, BTN_CLOSE_SAVED, BTN_SUBMIT_GENERATE, FIELD_COUNT, FIELD_QUOTA,
+    LBL_BATCH, LBL_QUOTA_PRESETS, LBL_TOTAL_VALUE, MSG_CODES_WARNING, MSG_GENERATE_HINT,
+    TTL_GENERATE, TTL_GENERATED_PREFIX, TTL_GENERATED_SUFFIX,
 };
 use crate::tab_page_groups::Modal;
 
@@ -146,7 +146,7 @@ pub fn RedemptionGenerateModal(
                     "data-testid": "cancel-generate",
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
-                    "{BTN_CANCEL}"
+                    "{BTN_CANCEL_REDEMPTIONS}"
                 }
                 button {
                     "data-testid": "submit-generate",
