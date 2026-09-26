@@ -5,8 +5,19 @@ use dioxus::prelude::*;
 use crate::api::InviteeView;
 use crate::usage_support::{fmt_num, fmt_time};
 
-use super::shared::ErrCard;
+use crate::components::ErrCard;
 
+/// 【是什么】被邀人列表区段组件，展示经邀请链接注册的用户及其累计贡献奖励。
+///
+/// 【做什么】渲染「被邀请用户」区：标题 + 人数徽标 + 四态分发 (错误 / 骨架 / 空态 / 列表)；每行含首字母头像、昵称 (空则显示「(未命名用户)」)、注册时间与贡献奖励额。不发请求。
+///
+/// 【交互逻辑】纯展示；行 hover 边框转琥珀色，无点击动作。
+///
+/// 【样式】卡片 rounded-xl p-6 + hover:border-zinc-600；行 rounded-2xl bg-zinc-950 p-5 gap-4；头像琥珀渐变方块；奖励额 emerald-400 tabular-nums 右对齐。
+///
+/// 【子组件组成】ErrCard × 0 或 1
+///
+/// 【数据流】props 接收 invitees (Signal<Option<Vec<InviteeView>>>)、invitees_loaded (Signal<bool>)、invitees_err (Signal<String>)。无输出回调。
 #[component]
 pub fn InviteesSection(
     invitees: Signal<Option<Vec<InviteeView>>>,

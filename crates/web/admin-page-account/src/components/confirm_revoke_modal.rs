@@ -5,6 +5,17 @@
 use dioxus::prelude::*;
 use ui::components::button::{Button, ButtonVariant};
 
+/// 【是什么】吊销「当前设备」会话的二次确认弹窗。
+///
+/// 【做什么】居中渲染红边模态：标题 + 风险说明 (吊销后本机立即退出且不可恢复) + 取消/确认双按钮；不发请求，视觉对齐 keys 页的 DeleteKeyModal。
+///
+/// 【交互逻辑】点遮罩或「取消」触发 on_cancel；「确认吊销」触发 on_confirmed，真正的 DELETE 由父面板执行；点弹窗主体 stop_propagation 防误取消。
+///
+/// 【样式】遮罩 fixed inset-0 z-50 黑半透明 + backdrop-blur-sm；弹窗 max-w-md rounded-2xl 红边 (border-red-500/40) shadow-xl；按钮 Outline / Destructive 各占一半。
+///
+/// 【子组件组成】ui::components::button::Button × 2
+///
+/// 【数据流】无入参数据；输出 on_cancel / on_confirmed 两个 EventHandler<()。
 #[component]
 pub fn ConfirmRevokeCurrentModal(
     on_cancel: EventHandler<()>,

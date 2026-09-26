@@ -6,8 +6,19 @@ use gloo_timers::future::TimeoutFuture;
 use crate::api::{self, AffiliateOverviewView, WalletView};
 use crate::usage_support::{fmt_num, fmt_quota};
 
-use super::shared::ErrCard;
+use crate::components::ErrCard;
 
+/// 【是什么】邀请区段组件，展示可复制的邀请链接与拉人统计 (已邀人数 / 累计奖励)。
+///
+/// 【做什么】渲染「邀请」区：链接卡 (origin + 钱包 user_key + aff_code 前端现拼，钱包未就绪时占位且复制按钮禁用) + 拉人统计卡三态分发 (错误 / 骨架 / 两张数据卡)。链接不依赖后端链接端点。
+///
+/// 【交互逻辑】点「复制链接」经 ui::copy_text_to_clipboard 写剪贴板，成功后按钮文案变「已复制 ✓」，2 秒后经 TimeoutFuture 复原；链接为空时按钮禁用。
+///
+/// 【样式】外层 scroll-mt-8 space-y-4；链接框 rounded-2xl 等宽灰字 break-all；复制按钮白底黑字大号圆角，hover 转琥珀；统计数字 text-4xl amber-300 tabular-nums。
+///
+/// 【子组件组成】ErrCard × 0 或 1
+///
+/// 【数据流】props 接收 wallet、overview (Signal<Option<AffiliateOverviewView>>)、overview_loaded (Signal<bool>)、overview_err (Signal<String>)、show_copied (Signal<bool>)；无对外回调，复制态是本组件独占的临时信号。
 #[component]
 pub fn InviteSection(
     wallet: Signal<Option<WalletView>>,

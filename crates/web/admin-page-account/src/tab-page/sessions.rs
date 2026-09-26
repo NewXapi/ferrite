@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::api;
-use crate::tab_page_sessions::{ConfirmRevokeCurrentModal, SessionRow};
+use crate::components::{ConfirmRevokeCurrentModal, SessionRow};
 
 /// 拉取会话列表, 结果写入 sessions / err 信号。信号按值 (clone 句柄) 接收并 `mut`。
 /// 首次加载与吊销成功后的刷新共用此入口。

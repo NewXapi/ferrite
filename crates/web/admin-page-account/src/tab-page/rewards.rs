@@ -18,7 +18,7 @@
 use dioxus::prelude::*;
 
 use crate::api::{self, AffiliateOverviewView, InviteeView, TopupOrderView, WalletView};
-use crate::tab_page_rewards::{
+use crate::components::{
     InviteSection, InviteesSection, RechargesSection, TopupSection, WalletSection,
 };
 

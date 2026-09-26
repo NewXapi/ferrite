@@ -8,6 +8,17 @@ use ui::components::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::usage_support::{fmt_time_minute, summarize_ua};
 
+/// 【是什么】单条登录会话卡片，展示设备、IP、登录方式与活跃/到期时间，并提供吊销入口。
+///
+/// 【做什么】渲染一条会话：UA 归纳为「浏览器 · OS」短标签 (完整 UA 挂 title 悬停)、当前设备徽标、IP/登录方式/最后活跃/到期四项明细 (时间悬停显示原始 RFC3339)、右侧吊销按钮。不发请求。
+///
+/// 【交互逻辑】点吊销：当前设备走 on_request_current_revoke (父面板弹二次确认，因为吊销即本机登出)，其它设备直接走 on_revoke；busy 时按钮禁用防重入。
+///
+/// 【样式】卡片 rounded-xl bg-zinc-900/60 p-4 + hover:border-zinc-600；短标签 truncate；当前设备 emerald 圆角徽标；明细 12px 灰字两列网格；按钮 Ghost Xs 红字。
+///
+/// 【子组件组成】ui::components::button::Button (吊销) × 1
+///
+/// 【数据流】props 接收 session (SessionDto)、busy (bool)、on_revoke (EventHandler<String>)、on_request_current_revoke (EventHandler<String>)；输出为两个携带 sid 的回调。
 #[component]
 pub fn SessionRow(
     session: SessionDto,

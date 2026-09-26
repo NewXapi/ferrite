@@ -5,6 +5,17 @@ use dioxus::prelude::*;
 
 use crate::usage_support::{fmt_num, fmt_quota};
 
+/// 【是什么】单条请求日志卡片，展示模型、时间、Tokens、耗时与消耗摘要，整卡可点开详情。
+///
+/// 【做什么】渲染一条日志摘要：模型色点 + 模型名 (等宽截断)、本地化时间与消耗额、Tokens (提示/补全) 与耗时两行明细；模型色按名称映射固定色板，未知模型回退灰色，耗时为 0 显示「—」。不取数。
+///
+/// 【交互逻辑】整卡是 button，点击触发 on_open 并回传本条 log。
+///
+/// 【样式】整卡 w-full rounded-2xl 边框卡片 p-4 text-left + hover:border-zinc-500；模型名 font-mono truncate；消耗额 emerald-400 tabular-nums；明细 12px 灰字。
+///
+/// 【子组件组成】无 (纯 rsx，色值与文案在组件内派生)
+///
+/// 【数据流】props 接收 log (UsageLogDto) 与 on_open (EventHandler<UsageLogDto>)；输出仅 on_open。
 #[component]
 pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element {
     let time_str = crate::usage_support::fmt_time(&log.created_at);

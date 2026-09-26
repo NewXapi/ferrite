@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 
-use crate::tab_page_settings::{AccountSection, PreferencesSection};
+use crate::components::{AccountSection, PreferencesSection};
 
 #[component]
 pub fn SettingsPanel() -> Element {

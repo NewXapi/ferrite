@@ -14,7 +14,7 @@ use ui::components::button::{Button, ButtonSize, ButtonVariant};
 use contract::api::usage::{UsageLogDto, UsageStatDto};
 
 use crate::api;
-use crate::tab_page_usage_logs::{LogCard, LogDetailModal};
+use crate::components::{LogCard, LogDetailModal};
 use crate::usage_support::{RANGE_7D, RANGE_30D, RANGE_TODAY, range_bounds};
 
 const FILTER_ALL: &str = "全部";

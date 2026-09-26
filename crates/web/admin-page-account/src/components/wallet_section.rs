@@ -4,8 +4,19 @@ use dioxus::prelude::*;
 
 use crate::usage_support::{fmt_num, fmt_quota};
 
-use super::shared::ErrCard;
+use crate::components::ErrCard;
 
+/// 【是什么】钱包区段组件，展示可用额度折算值与多币种余额列表。
+///
+/// 【做什么】渲染「钱包」区：标题 + 余额卡三态分发 (ErrCard 错误 / 骨架 / 数据)；数据态先给可用额度大数字与「已连后端」徽标，再逐行列出各币种余额 (symbol 为空回退 currency_code)，余额为空时给虚线空态。不发请求。
+///
+/// 【交互逻辑】纯展示，无点击动作；卡片 hover 边框提亮。
+///
+/// 【样式】外层 scroll-mt-8 space-y-4；余额卡 rounded-xl 边框卡片 p-6 + hover:border-zinc-600；可用额度 text-6xl emerald-400 tabular-nums；多币种行 divide-y 分隔 py-3。
+///
+/// 【子组件组成】ErrCard × 0 或 1
+///
+/// 【数据流】props 接收 wallet (Signal<Option<WalletView>>)、wallet_loaded (Signal<bool>)、wallet_err (Signal<String>)。无输出回调。
 #[component]
 pub fn WalletSection(
     wallet: Signal<Option<crate::api::WalletView>>,

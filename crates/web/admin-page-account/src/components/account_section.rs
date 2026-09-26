@@ -7,6 +7,17 @@ use ui::components::button::{Button, ButtonVariant};
 
 use crate::api;
 
+/// 【是什么】资料与密码区段组件，修改显示名与登录密码 (同一端点 PUT /api/user/self)。
+///
+/// 【做什么】挂载时拉取当前显示名预填；渲染显示名输入 + 保存按钮、原密码/新密码两输入 + 修改密码按钮，成功/失败以绿字 flash 与红字错误反馈；改显示名成功后同步 ferrite_current_user 本地缓存，顶栏头像菜单立即读到新名。
+///
+/// 【交互逻辑】保存显示名前先 trim 并拒绝空值；改密两框都空则不发请求，只填一框则提示须成对提供；两个动作共用 saving 信号串行防重入，成功后清空密码框。
+///
+/// 【样式】卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；输入 rounded-xl 边框 + focus:border-zinc-500，密码框等宽字体；按钮 Primary 置于输入右侧 (items-end 对齐)。
+///
+/// 【子组件组成】ui::components::button::Button (保存显示名 / 修改密码) × 2
+///
+/// 【数据流】无 props：显示名与密码草稿、保存状态全为本组件私有，经 api 取用。
 #[component]
 pub fn AccountSection() -> Element {
     // —— 资料与密码 (PUT /api/user/self) ——

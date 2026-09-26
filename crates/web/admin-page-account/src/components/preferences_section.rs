@@ -6,6 +6,17 @@ use ui::components::button::{Button, ButtonVariant};
 
 use crate::api;
 
+/// 【是什么】偏好设置区段组件，读写账号的自由 JSONB 设置 (界面语言 / 接收通知) 并只读回显全量 JSON。
+///
+/// 【做什么】挂载时拉取全量设置并回填两个快捷字段；渲染语言下拉 + 通知开关 + 保存按钮 + 当前设置 JSON 只读视图；保存只提交本次改动的两个键 (后端 deep-merge)，成功后回填后端返回的最新 JSON。
+///
+/// 【交互逻辑】改下拉/勾选只改本地信号；点「保存设置」置 busy 防重入，成功显绿字 flash，失败在卡下方红字展示后端错误。
+///
+/// 【样式】标题 + 两栏网格 (sm 起两列)；输入与下拉 rounded-xl 边框 + focus:border-zinc-500；卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；JSON 视图 pre max-h-60 可滚动等宽小字。
+///
+/// 【子组件组成】ui::components::button::Button (保存设置) × 1
+///
+/// 【数据流】无 props：settings/err/flash/busy/language/notifications 全为本组件私有信号，经 api 取用；跨组件状态不外泄。
 #[component]
 pub fn PreferencesSection() -> Element {
     let settings = use_signal(|| None::<serde_json::Value>);
