@@ -178,7 +178,7 @@ pub fn CurrencyForm(
                 }
                 if editing.is_some() {
                     button {
-                        class: "rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800",
+                        class: "rounded-lg border border-zinc-700 px-3 py-1.5 {ui::TYPE_BODY} hover:bg-zinc-800",
                         "data-testid": "currency-cancel",
                         onclick: on_cancel,
                         "{BTN_CANCEL}"

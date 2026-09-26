@@ -178,8 +178,8 @@ pub fn TopupSection(
         // 充值开单 — provider 可选:epay 在线支付(跳转支付页) / manual 人工确认
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { role: "group", "aria-label": "充值开单",
-                p { class: "mb-1 text-sm font-medium text-zinc-100", "充值开单" }
-                p { class: "mb-4 text-xs text-zinc-500",
+                p { class: "mb-1 {ui::TYPE_CARD_TITLE}", "充值开单" }
+                p { class: "mb-4 {ui::TYPE_DESC}",
                     "在线支付:开单后去支付页完成付款,到账自动入账;人工确认:管理员审核后入账"
                 }
                 div { class: "flex flex-col gap-3 sm:flex-row",
@@ -257,7 +257,7 @@ pub fn TopupSection(
         // 兑换码充值
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { role: "group", "aria-label": "兑换码充值",
-                p { class: "mb-4 text-sm font-medium text-zinc-100", "兑换码充值" }
+                p { class: "mb-4 {ui::TYPE_CARD_TITLE}", "兑换码充值" }
                 div { class: "flex flex-col gap-3 sm:flex-row",
                     input {
                         class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 text-sm placeholder:text-zinc-500 focus:border-zinc-500 outline-none",

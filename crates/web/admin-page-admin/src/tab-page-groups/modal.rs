@@ -55,7 +55,7 @@ pub fn StatCard(value: String, label: &'static str) -> Element {
     rsx! {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
             p { class: "text-xl font-semibold tracking-tight text-white", "{value}" }
-            p { class: "mt-0.5 text-xs text-zinc-500", "{label}" }
+            p { class: "mt-0.5 {ui::TYPE_DESC}", "{label}" }
         }
     }
 }
@@ -203,7 +203,7 @@ pub fn GroupCard(
                 // 头部:分组名 + 默认标签 (卡内勾选框已移除, 多选改到列表外的 chips 区)
                 div { class: "min-w-0",
                     div { class: "flex items-center justify-between gap-2",
-                        h3 { class: "truncate text-sm font-medium text-zinc-100", "{group.name}" }
+                        h3 { class: "truncate {ui::TYPE_CARD_TITLE}", "{group.name}" }
                         if is_default {
                             span { class: "min-w-0 max-w-[140px] truncate rounded bg-blue-950/60 border border-blue-800/60 px-1.5 py-0.5 text-[10px] font-mono text-blue-300 shrink-0",
                                 title: LBL_DEFAULT,
@@ -574,7 +574,7 @@ pub fn GroupFormModal(
                                 oninput: move |e| name.set(e.value()),
                             }
                             if editing && name() == "default" {
-                                p { class: "mt-1 text-xs text-zinc-500", "{MSG_DEFAULT_LOCKED}" }
+                                p { class: "mt-1 {ui::TYPE_DESC}", "{MSG_DEFAULT_LOCKED}" }
                             }
                         }
 

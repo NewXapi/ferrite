@@ -63,7 +63,7 @@ pub fn TopUpForm(
                         value: "{amount}",
                         oninput: move |e| amount.set(e.value()),
                     }
-                    p { class: "mt-1 text-xs text-zinc-500", "{MSG_QUOTA_HINT} {fmt_cny(delta_quota.unwrap_or(0))}" }
+                    p { class: "mt-1 {ui::TYPE_DESC}", "{MSG_QUOTA_HINT} {fmt_cny(delta_quota.unwrap_or(0))}" }
                 }
                 div { class: "flex justify-between gap-2 text-xs",
                     span { class: "text-zinc-400", "{MSG_AFTER_QUOTA}{LBL_QUOTA}" }

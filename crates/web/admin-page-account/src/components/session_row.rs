@@ -47,7 +47,7 @@ pub fn SessionRow(
                             span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400", "当前设备" }
                         }
                     }
-                    div { class: "mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2",
+                    div { class: "mt-2 grid grid-cols-1 gap-1 {ui::TYPE_DESC} sm:grid-cols-2",
                         span { "IP: {session.ip}" }
                         span { "登录方式: {session.login_method}" }
                         // 时间悬停可见原始 RFC3339 (与上方 UA 短标签同款处理)

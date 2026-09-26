@@ -152,7 +152,7 @@ fn MoveList(
                 p { class: "text-[11px] text-zinc-500", "{subtitle}" }
             }
             if moves.is_empty() {
-                p { class: "py-6 text-center text-xs text-zinc-500", "{MOVERS_EMPTY}" }
+                p { class: "py-6 text-center {ui::TYPE_DESC}", "{MOVERS_EMPTY}" }
             } else {
                 div { class: "space-y-3",
                     for m in moves {

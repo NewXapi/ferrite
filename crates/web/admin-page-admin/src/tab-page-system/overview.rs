@@ -207,7 +207,7 @@ pub fn SystemOverview(
                 div { class: "divide-y divide-zinc-800/80",
                     for (label, value) in env_rows {
                         div { class: "flex items-center justify-between gap-4 py-2.5",
-                            span { class: "shrink-0 text-xs text-zinc-500", "{label}" }
+                            span { class: "shrink-0 {ui::TYPE_DESC}", "{label}" }
                             span { class: "break-all text-right text-xs font-mono text-zinc-300", "{value}" }
                         }
                     }

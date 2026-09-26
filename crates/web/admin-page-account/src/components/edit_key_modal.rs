@@ -108,7 +108,7 @@ pub fn EditKeyModal(
 
                 div { class: "{ui::MODAL_HEADER}",
                     h3 { class: "text-base font-semibold text-zinc-100", "编辑密钥" }
-                    p { class: "truncate font-mono text-xs text-zinc-500", "{token.key_preview}" }
+                    p { class: "truncate font-mono {ui::TYPE_DESC}", "{token.key_preview}" }
                 }
 
                 // 字段较多, 弹窗保持 max-w-md 视觉, 字段区超高内部滚动

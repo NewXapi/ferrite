@@ -35,7 +35,7 @@ pub fn KeysProfileSection(user: Option<UserDto>, self_err: String, pending: Stri
                     div { class: "min-w-0",
                         if let Some(user) = user {
                             div { class: "mb-4 flex items-center gap-2",
-                                span { class: "truncate text-sm font-medium text-zinc-100", "{user.username}" }
+                                span { class: "truncate {ui::TYPE_CARD_TITLE}", "{user.username}" }
                                 span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{contract::api::user::role_label(user.role)}" }
                             }
                             div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",

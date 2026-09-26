@@ -49,7 +49,7 @@ pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element 
                 span { class: "truncate font-mono text-sm text-zinc-200", "{log.model_name}" }
             }
             div { class: "mt-2 flex items-baseline justify-between gap-2",
-                span { class: "font-mono text-xs text-zinc-500", "{time_str}" }
+                span { class: "font-mono {ui::TYPE_DESC}", "{time_str}" }
                 span { class: "shrink-0 font-medium tabular-nums text-sm text-emerald-400", "{cost_str}" }
             }
 

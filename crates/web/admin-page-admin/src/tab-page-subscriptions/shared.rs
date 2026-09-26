@@ -261,7 +261,7 @@ pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>)
 pub(crate) fn GhostBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 hover:border-zinc-600 hover:text-zinc-300",
+            class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} hover:border-zinc-600 hover:text-zinc-300",
             onclick: move |e| on_click.call(e),
             "{label}"
         }

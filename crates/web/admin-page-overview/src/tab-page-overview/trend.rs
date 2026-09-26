@@ -88,7 +88,7 @@ pub fn TrendPanel(
                 div {
                     h2 { class: "text-sm font-medium text-zinc-300", "{SEC_TREND}" }
                     // 时间窗动态副标题:与 window_start 的窗口语义一致(今天=24 小时桶/本周=7 天桶/本月=30 天桶/今年=12 月桶)
-                    p { class: "mt-0.5 text-xs text-zinc-500", "data-testid": "trend-window-caption", "{api::window_caption(tf)}" }
+                    p { class: "mt-0.5 {ui::TYPE_DESC}", "data-testid": "trend-window-caption", "{api::window_caption(tf)}" }
                 }
                 div { class: "flex items-center gap-4",
                     div { class: "text-right",

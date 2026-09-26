@@ -221,7 +221,7 @@ pub fn AliasFormModal(
                         // 输入价格:主通道,固定开启,不带 toggle
                         div { class: "space-y-1.5",
                             div {
-                                label { class: "block text-sm font-medium text-zinc-100", "{FIELD_INPUT_PRICE}" }
+                                label { class: "block {ui::TYPE_CARD_TITLE}", "{FIELD_INPUT_PRICE}" }
                                 p { class: "mt-0.5 text-[11px] text-zinc-500", "{LBL_INPUT_PRICE_DESC}" }
                             }
                             div { class: "flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2",

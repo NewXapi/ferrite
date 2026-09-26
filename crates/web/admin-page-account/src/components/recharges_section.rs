@@ -54,7 +54,7 @@ pub fn RechargesSection(
                             "data-testid": format!("recharge-row-{}", o.key),
                             div {
                                 div { class: "text-zinc-400", "{fmt_time(&o.created_at)}" }
-                                div { class: "mt-0.5 text-xs text-zinc-500",
+                                div { class: "mt-0.5 {ui::TYPE_DESC}",
                                     if o.provider.is_empty() {
                                         "{o.currency.clone()} · manual"
                                     } else {

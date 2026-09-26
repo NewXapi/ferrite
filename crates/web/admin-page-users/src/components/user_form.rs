@@ -216,7 +216,7 @@ pub fn UserForm(
                             value: "{quota}",
                             oninput: move |e| quota.set(e.value()),
                         }
-                        p { class: "mt-1 text-xs text-zinc-500", "{MSG_QUOTA_HINT} {quota_hint}" }
+                        p { class: "mt-1 {ui::TYPE_DESC}", "{MSG_QUOTA_HINT} {quota_hint}" }
                     }
                 }
             }
@@ -227,7 +227,7 @@ pub fn UserForm(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_GROUPS}" }
                         GroupChips { group, on_change: move |v: Vec<String>| group.set(v) }
-                        p { class: "mt-1 text-xs text-zinc-500", "{FIELD_GROUP_HINT}" }
+                        p { class: "mt-1 {ui::TYPE_DESC}", "{FIELD_GROUP_HINT}" }
                     }
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_NOTE}" }

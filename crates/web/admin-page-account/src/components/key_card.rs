@@ -70,7 +70,7 @@ pub fn KeyCard(
             class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
             div { class: "mb-3 flex items-start justify-between gap-2",
                 div { class: "min-w-0",
-                    h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }
+                    h3 { class: "truncate {ui::TYPE_CARD_TITLE}", "{entry.name}" }
                     // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
                     // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
                     p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }

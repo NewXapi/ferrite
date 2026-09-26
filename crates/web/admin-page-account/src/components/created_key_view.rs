@@ -68,7 +68,7 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
                         if copied() { "已复制" } else { "复制" }
                     }
                 }
-                p { class: "mt-2 text-xs text-zinc-500", "名称: {result.token.name}" }
+                p { class: "mt-2 {ui::TYPE_DESC}", "名称: {result.token.name}" }
 
                 div { class: "mt-5 flex justify-end",
                     Button {

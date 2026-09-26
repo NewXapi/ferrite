@@ -115,7 +115,7 @@ pub fn DrawerHeader(
             }
             div { class: "flex items-center gap-2 border-t border-zinc-800 px-3 py-2",
                 div { class: "min-w-0 flex-1",
-                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
+                    p { class: "truncate {ui::TYPE_CARD_TITLE}", "{title}" }
                     p { class: "truncate text-[11px] text-zinc-500", "{subtitle}" }
                 }
                 button {

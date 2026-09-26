@@ -113,7 +113,7 @@ pub fn RedemptionCard(
                     }
                     div { class: "min-w-0 flex-1",
                         div { class: "flex items-center justify-between gap-2",
-                            h3 { class: "truncate font-mono text-sm font-medium text-zinc-100", "{item.code_preview}" }
+                            h3 { class: "truncate font-mono {ui::TYPE_CARD_TITLE}", "{item.code_preview}" }
                         }
                         p { class: "mt-0.5 truncate text-[11px] text-zinc-400 font-mono", "{item.key}" }
                     }

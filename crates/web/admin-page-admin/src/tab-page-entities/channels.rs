@@ -357,7 +357,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     }
                 }
                 button {
-                    class: "rounded-full border border-dashed border-zinc-700 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-500 hover:text-zinc-300",
+                    class: "rounded-full border border-dashed border-zinc-700 px-3 py-1 {ui::TYPE_DESC} hover:border-zinc-500 hover:text-zinc-300",
                     onclick: move |_| {
                         // 只把表单置成草稿态（is_new），不动 current——
                         // current 还指向已选渠道行，启停/删除按它定位，

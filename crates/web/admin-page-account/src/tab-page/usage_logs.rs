@@ -263,7 +263,7 @@ pub fn UsageLogsPanel() -> Element {
                     }
                 }
             } else if shown_len > 0 {
-                div { class: "text-center text-xs text-zinc-500 py-6",
+                div { class: "text-center {ui::TYPE_DESC} py-6",
                     "已显示全部日志"
                 }
             }

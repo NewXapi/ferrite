@@ -113,7 +113,7 @@ pub fn SystemOptionsPanel() -> Element {
                                 div {
                                     key: "{i}",
                                     class: "flex items-center justify-between gap-4 py-2.5",
-                                    span { class: "shrink-0 text-xs text-zinc-500", "{o.key}" }
+                                    span { class: "shrink-0 {ui::TYPE_DESC}", "{o.key}" }
                                     span {
                                         "data-testid": "system-option-value",
                                         class: if editable { "break-all text-right text-xs font-mono text-zinc-300" } else { "break-all text-right text-xs font-mono text-zinc-500" },

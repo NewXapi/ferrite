@@ -101,7 +101,7 @@ pub fn InviteSection(
                             "data-testid": "affiliate-invite-count",
                             "{fmt_num(ov.invite_count)}"
                         }
-                        p { class: "mt-3 text-sm font-medium text-zinc-100", "已邀人数" }
+                        p { class: "mt-3 {ui::TYPE_CARD_TITLE}", "已邀人数" }
                         p { class: "mt-6 text-xs leading-snug text-zinc-500", "通过邀请完成注册的用户数" }
                     }
                     div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
@@ -110,7 +110,7 @@ pub fn InviteSection(
                             "data-testid": "affiliate-total-reward",
                             "{fmt_num(ov.total_reward)}"
                         }
-                        p { class: "mt-3 text-sm font-medium text-zinc-100", "累计奖励 (内部单位)" }
+                        p { class: "mt-3 {ui::TYPE_CARD_TITLE}", "累计奖励 (内部单位)" }
                         p { class: "mt-6 text-xs leading-snug text-zinc-500", "≈ {fmt_quota(ov.total_reward)} · 拉人奖励累计" }
                     }
                 }

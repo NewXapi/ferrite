@@ -59,7 +59,7 @@ pub fn InviteesSection(
                                 div { class: "font-medium text-zinc-100 group-hover:text-amber-100",
                                     if i.name.is_empty() { "(未命名用户)" } else { "{i.name}" }
                                 }
-                                div { class: "mt-0.5 text-xs text-zinc-500",
+                                div { class: "mt-0.5 {ui::TYPE_DESC}",
                                     "注册时间:{fmt_time(&i.joined_at)}"
                                 }
                             }

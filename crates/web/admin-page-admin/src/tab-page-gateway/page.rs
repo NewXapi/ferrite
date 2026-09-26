@@ -192,7 +192,7 @@ pub fn GatewayHealthPanel() -> Element {
                     div { class: "rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center",
                         "data-testid": "gateway-health-empty",
                         p { class: "text-sm text-zinc-400", "{SEC_EMPTY_NOTE}" }
-                        p { class: "mt-1 text-xs text-zinc-500",
+                        p { class: "mt-1 {ui::TYPE_DESC}",
                             "{SEC_EMPTY_HINT}" }
                     }
                 } else {

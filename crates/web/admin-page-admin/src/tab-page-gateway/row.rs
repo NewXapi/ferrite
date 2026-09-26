@@ -99,7 +99,7 @@ pub fn GatewayHealthRow(item: GatewayHealthItem) -> Element {
             class: "flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 first:pt-1 last:pb-1",
             "data-testid": "gateway-health-row",
             // 渠道名 (channelName,缺省 channelKey 前 8 位)
-            span { class: "min-w-0 truncate text-sm font-medium text-zinc-100",
+            span { class: "min-w-0 truncate {ui::TYPE_CARD_TITLE}",
                 title: "{item.unit_key}", "{name}" }
             // 模型 Badge
             span { class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",

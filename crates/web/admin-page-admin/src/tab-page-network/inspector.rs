@@ -475,7 +475,7 @@ pub fn DispatchInspect(index: usize) -> Element {
         DrawerNoticeBar { notice: ch_notice, on_clear: move |_| ch_notice.set(DrawerNotice::Idle) }
         div { class: "space-y-1",
             span { class: "text-[11px] text-zinc-500", {MSG_MODEL_NAME_READONLY} }
-            div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-300", "{model_name}" }
+            div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono {ui::TYPE_BODY}", "{model_name}" }
         }
         if row.is_some() {
             div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",

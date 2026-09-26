@@ -152,7 +152,7 @@ pub fn StatTabsCard(
             header { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0",
                     h3 { class: "truncate text-base font-semibold tracking-tight text-zinc-50", "{title}" }
-                    p { class: "mt-0.5 text-xs text-zinc-500", "{subtitle}" }
+                    p { class: "mt-0.5 {crate::TYPE_DESC}", "{subtitle}" }
                 }
                 div { class: "flex shrink-0 gap-1.5",
                     role: "tablist",
