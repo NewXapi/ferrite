@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use super::shared::RANK_FOOTNOTE;
 use crate::api::{UsageTopRow, fmt_usd, growth_of, share_text};
 use crate::shared::{MODEL_COLORS, fmt_raw};
-use ui::components::rank_board::{RankBoard, RankRowMeta, RankRowView};
+use ui::rank_board::{RankBoard, RankRowMeta, RankRowView};
 
 /// 排行榜取数口径:同一批 /api/log/top 聚合行,按不同字段重排展示。
 /// 用枚举而非 fn 指针传参:component 宏会为 props 生成 PartialEq,函数指针比较不可靠。
@@ -43,7 +43,7 @@ impl RankMetric {
 }
 
 /// 单个排行卡:按 `metric` 从真实聚合行里取前 N,画名次 + 名称 + 条形 + 数值。
-/// 呈现全部委托 ui-components 的 [`ui::components::rank_board::RankBoard`]
+/// 呈现全部委托 ui-components 的 [`ui::rank_board::RankBoard`]
 /// (维护者要求三张口径榜抽象为共享组件复用);本层只做口径排序/取前 10/份额分母
 /// 与字段格式化(业务换算不进共享组件)。
 ///

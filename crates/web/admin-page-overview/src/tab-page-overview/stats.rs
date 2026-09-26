@@ -12,7 +12,7 @@ use super::shared::{
 };
 use super::sparkline::Sparkline;
 use crate::api;
-use ui::components::card::Card;
+use ui::card::Card;
 
 /// 统计区外壳:区头(标题 + 右侧 asOf 裸本地时间) + 统计卡网格。
 ///

@@ -4,7 +4,7 @@
 
 use contract::api::token::{CreateTokenRequest, CreateTokenResult};
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+use ui::button::{Button, ButtonVariant};
 
 use crate::api;
 
@@ -22,7 +22,7 @@ use crate::api;
 /// 【样式】固定最大宽度 max-w-md，圆角边框、暗色背景、中等内边距，表单字段为上拉输入框风格，
 /// 错误信息以红色文字显示，按钮为 Ghost/Primary variant。
 ///
-/// 【子组件组成】ui::components::button::Button × 2 (取消/新建)
+/// 【子组件组成】ui::button::Button × 2 (取消/新建)
 ///
 /// 【数据流】
 /// - 对内（入）：三个 Signal (name/group/quota) 由父页面持有名，传值到组件内双向绑定；on_cancel/on_created EventHandler 由页面传入。

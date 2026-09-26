@@ -2,7 +2,7 @@
 //! 后端对设置做 deep-merge, 故前端只提交本次改动的键即可。
 
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+use ui::button::{Button, ButtonVariant};
 
 use crate::api;
 
@@ -14,7 +14,7 @@ use crate::api;
 ///
 /// 【样式】标题 + 两栏网格 (sm 起两列)；输入与下拉 rounded-xl 边框 + focus:border-zinc-500；卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；JSON 视图 pre max-h-60 可滚动等宽小字。
 ///
-/// 【子组件组成】ui::components::button::Button (保存设置) × 1
+/// 【子组件组成】ui::button::Button (保存设置) × 1
 ///
 /// 【数据流】无 props：settings/err/flash/busy/language/notifications 全为本组件私有信号，经 api 取用；跨组件状态不外泄。
 #[component]

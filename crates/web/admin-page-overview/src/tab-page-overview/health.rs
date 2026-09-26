@@ -11,7 +11,7 @@ use super::shared::{
 };
 use crate::api;
 use client::ApiClient;
-use ui::components::card::{Card, CardContent, CardHeader, CardTitle};
+use ui::card::{Card, CardContent, CardHeader, CardTitle};
 
 /// 一行渠道健康汇总。
 #[derive(Clone, PartialEq)]

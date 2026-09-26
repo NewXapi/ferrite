@@ -19,7 +19,7 @@ use page_users::UsersPanel;
 
 use client::TokenFuture;
 use serde::Deserialize;
-use ui::components::layout::{AppShell, SectionRail, StatusBar, TopNavBar};
+use ui::layout::{AppShell, SectionRail, StatusBar, TopNavBar};
 use ui::on_tab_wheel;
 
 /// 401 静默刷新接线 (应用启动时由 main 调用一次):

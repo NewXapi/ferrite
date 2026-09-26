@@ -66,3 +66,33 @@ pub const CARD_CONTENT: &str = "rounded-xl border border-zinc-800 bg-zinc-900/60
 
 /// 实体卡网格（手机 1 / 中屏 3 / 大屏 5 栏）。
 pub const CARD_GRID: &str = "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5";
+
+// ---------------------------------------------------------------------------
+// Typography roles — 复用文本样式（size + weight + color 固定组合，整仓统一）。
+// 颜色先用裸 zinc（视觉定稿前的过渡，非主题化；换主题另议）。
+// 组件在 rsx! 里引用 `ui::TYPE_*`，取代散落的 `text-*`/`font-*` 字面量。
+// ---------------------------------------------------------------------------
+
+/// 大字 / hero / 最大数值：很大 + 粗 + 最亮。
+pub const TYPE_DISPLAY: &str = "text-3xl font-bold text-zinc-50";
+
+/// 区段标题（角色①）：大 / 亮 / 粗。取代反复手抄的 `text-lg font-medium text-zinc-100`。
+pub const TYPE_TITLE: &str = "text-lg font-bold text-zinc-50";
+
+/// tab 文字（角色②）：中等 / 亮 / 不粗。用于 tab 切换器的文案部分。
+pub const TYPE_TAB: &str = "text-sm text-zinc-200";
+
+/// 卡牌标题（角色④）：正常 / 亮。卡片名 / 列表项标题。
+pub const TYPE_CARD_TITLE: &str = "text-sm font-medium text-zinc-100";
+
+/// 数值 / 字段值：亮 + 粗。统计大数字、Profile 的 NAME/EMAIL 值。
+pub const TYPE_VALUE: &str = "text-xl font-semibold text-zinc-50";
+
+/// 正文：正常 / 中亮。取代散落的 `text-sm text-zinc-300`。
+pub const TYPE_BODY: &str = "text-sm text-zinc-300";
+
+/// 描述 / 次要说明（角色③）：暗 / 正常。取代裸 `text-xs`（全仓最大头）。
+pub const TYPE_DESC: &str = "text-xs text-zinc-500";
+
+/// 微标签：暗 / 小 / 粗 + 字距。字段小标签（NAME/EMAIL/SIGN-IN 那种）。
+pub const TYPE_LABEL: &str = "text-[10px] font-medium tracking-wider text-zinc-500";

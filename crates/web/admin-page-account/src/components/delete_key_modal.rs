@@ -2,7 +2,7 @@
 
 use contract::api::token::TokenDto;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+use ui::button::{Button, ButtonVariant};
 
 use crate::api;
 
@@ -18,7 +18,7 @@ use crate::api;
 /// 【样式】固定最大宽度 max-w-md，圆角边框、危险主题色 (border-red-500/40 bg-zinc-900)，
 /// 按钮区等宽排列，删除按钮使用 Destructive variant。
 ///
-/// 【子组件组成】ui::components::button::Button × 2 (取消/确认删除)
+/// 【子组件组成】ui::button::Button × 2 (取消/确认删除)
 ///
 /// 【数据流】
 /// - 对内（入）：token (TokenDto) 含密钥名称 + 预览；on_cancel/on_confirmed EventHandler 由页面传入。

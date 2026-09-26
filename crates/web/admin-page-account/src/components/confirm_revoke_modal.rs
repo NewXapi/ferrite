@@ -3,7 +3,7 @@
 //! 「吊销其他设备」不弹窗, 维持现状。
 
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+use ui::button::{Button, ButtonVariant};
 
 /// 【是什么】吊销「当前设备」会话的二次确认弹窗。
 ///
@@ -13,7 +13,7 @@ use ui::components::button::{Button, ButtonVariant};
 ///
 /// 【样式】遮罩 fixed inset-0 z-50 黑半透明 + backdrop-blur-sm；弹窗 max-w-md rounded-2xl 红边 (border-red-500/40) shadow-xl；按钮 Outline / Destructive 各占一半。
 ///
-/// 【子组件组成】ui::components::button::Button × 2
+/// 【子组件组成】ui::button::Button × 2
 ///
 /// 【数据流】无入参数据；输出 on_cancel / on_confirmed 两个 EventHandler<()。
 #[component]

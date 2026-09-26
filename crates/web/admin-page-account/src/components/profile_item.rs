@@ -5,7 +5,7 @@
 //! 未传 (None) 时回退复制 `value` (对非短显项 = 复制原值, 向后兼容)。
 
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::button::{Button, ButtonSize, ButtonVariant};
 
 /// 【是什么】横向资料项组件，展示单个字段名 + 值，支持复制选项。
 ///
@@ -15,7 +15,7 @@ use ui::components::button::{Button, ButtonSize, ButtonVariant};
 ///
 /// 【样式】行内 flex 布局，gap-2；label 灰字 (text-zinc-400)，value 等宽字体 (font-mono text-zinc-200)，min-w-0 防溢出；复制按钮 Ghost variant + IconXs size，成功态 text-emerald-400。
 ///
-/// 【子组件组成】ui::components::button::Button (CopyPlaintextButton) × 0 或 1
+/// 【子组件组成】ui::button::Button (CopyPlaintextButton) × 0 或 1
 ///
 /// 【数据流】
 /// - 对内（入）：label (&'static str) 字段名；value (String) 展示值；copyable (bool) 是否显示复制按钮；copy_value (Option<String>) 实际要复制的内容 (不传则复制 value)。

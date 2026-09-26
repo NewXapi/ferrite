@@ -8,7 +8,7 @@
 
 use contract::api::user::SessionDto;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::api;
 use crate::components::{ConfirmRevokeCurrentModal, SessionRow};

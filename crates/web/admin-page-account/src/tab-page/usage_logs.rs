@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 use ui::StatCard;
 use ui::StatSize;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::button::{Button, ButtonSize, ButtonVariant};
 
 use contract::api::usage::{UsageLogDto, UsageStatDto};
 

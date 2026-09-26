@@ -4,7 +4,7 @@
 //! 状态与回调全部由页面层经 props 传入,本组件不发请求、不改状态。
 
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::button::{Button, ButtonSize, ButtonVariant};
 
 use contract::api::token::TokenDto;
 
