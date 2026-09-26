@@ -35,7 +35,7 @@
 
 :root {
   --radius: 0.625rem;
-  --background: rgb(21 21 23);
+  --background: rgb(13 13 15);
   --foreground: rgb(249 250 251);
   --card: rgb(18 18 21);
   --card-foreground: rgb(249 250 251);
@@ -79,7 +79,7 @@
 /* 与 :root 完全相同的暗色镜像；挂 .dark 类时生效。 */
 .dark {
   --radius: 0.625rem;
-  --background: rgb(21 21 23);
+  --background: rgb(13 13 15);
   --foreground: rgb(249 250 251);
   --card: rgb(18 18 21);
   --card-foreground: rgb(249 250 251);
