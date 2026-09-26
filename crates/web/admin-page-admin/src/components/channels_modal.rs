@@ -18,14 +18,14 @@ use crate::api::{
 use crate::state::CHANNEL_TYPES;
 use crate::tab_page_groups::Modal;
 
-use super::shared::{
-    BTN_CANCEL, BTN_CREATE_CHANNEL, BTN_SAVE_CHANGES, FIELD_API_KEY, FIELD_BASE_URL,
+use crate::shared::{
+    BTN_CANCEL_CHANNELS, BTN_CREATE_CHANNEL, BTN_SAVE_CHANGES, FIELD_API_KEY, FIELD_BASE_URL,
     FIELD_BOUND_GROUPS, FIELD_CHANNEL_NAME, FIELD_CHANNEL_TYPE, FIELD_REMARK,
     MSG_EXISTING_KEYS_PREFIX, MSG_EXISTING_KEYS_SUFFIX, MSG_FETCH_MODELS, MSG_FETCH_MODELS_FAILED,
     MSG_FETCH_MODELS_HINT, MSG_FETCHING_MODELS, MSG_GROUP_ERR_MID, MSG_GROUP_ERR_PREFIX,
     MSG_NO_GROUPS, MSG_NO_MODEL_CANDIDATES, MSG_PH_API_KEY_EDIT, MSG_PH_API_KEY_NEW,
-    MSG_PH_BASE_URL, MSG_PH_CHANNEL_NAME, MSG_PH_REMARK, MSG_SAVE_FAILED, TTL_EDIT, TTL_NEW,
-    parse_keys_input,
+    MSG_PH_BASE_URL, MSG_PH_CHANNEL_NAME, MSG_PH_REMARK, MSG_SAVE_FAILED, TTL_EDIT,
+    TTL_NEW_CHANNELS, parse_keys_input,
 };
 /// 渠道编辑/新建综合弹窗 (含类型、名称、URL、Key、分组、备注;后端暂不支持模型调度候补)。
 /// 编辑分支发 [`UpdateChannelBody`] 最小 diff 体;新建分支仍用全量
@@ -93,7 +93,7 @@ pub fn ChannelFormModal(
     on_cancel: EventHandler<()>,
     on_submit: EventHandler<()>,
 ) -> Element {
-    let title = if editing { TTL_EDIT } else { TTL_NEW };
+    let title = if editing { TTL_EDIT } else { TTL_NEW_CHANNELS };
     // 分组候选拉取失败/为空时的只读回退展示串（rsx 内不能嵌 let 语句）
     let bound_groups = group.read().join(", ");
     // chips 渲染数据（rsx 内不能嵌 let）：（分组名, 展示名, 是否已选）
@@ -411,7 +411,7 @@ pub fn ChannelFormModal(
                 button {
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
-                    "{BTN_CANCEL}"
+                    "{BTN_CANCEL_CHANNELS}"
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",

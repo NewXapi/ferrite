@@ -10,8 +10,9 @@
 use contract::api::admin::ChannelDto;
 use dioxus::prelude::*;
 
-use super::shared::{
-    BTN_RETRY, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST, OPT_BADGE_LOADING, SEC_LIST,
+use crate::shared::{
+    BTN_RETRY, MSG_EMPTY_CHANNELS, MSG_LOAD_FAILED_CHANNELS, MSG_LOADING_LIST_CHANNELS,
+    OPT_BADGE_LOADING, SEC_LIST_CHANNELS,
 };
 
 /// 渠道卡片网格区:错误 / 加载 / 空 / 网格 四态。
@@ -80,7 +81,7 @@ pub fn ChannelsListSection(
     rsx! {
         section { id: "channels-sec-list", class: "scroll-mt-8 space-y-4",
             ui::SectionHeader {
-                title: SEC_LIST.to_string(),
+                title: SEC_LIST_CHANNELS.to_string(),
                 badge: if loading { OPT_BADGE_LOADING.to_string() } else { format!("{} 个渠道", filtered.len()) },
                 trailing: rsx! {
                     ui::Pager {
@@ -94,7 +95,7 @@ pub fn ChannelsListSection(
 
             if let Some(e) = err {
                 div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED}" }
+                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED_CHANNELS}" }
                     p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                     button {
                         class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
@@ -104,11 +105,11 @@ pub fn ChannelsListSection(
                 }
             } else if loading {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_LOADING_LIST}" }
+                    p { class: "text-zinc-400", "{MSG_LOADING_LIST_CHANNELS}" }
                 }
             } else if filtered.is_empty() {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_EMPTY}" }
+                    p { class: "text-zinc-400", "{MSG_EMPTY_CHANNELS}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",

@@ -9,7 +9,7 @@
 //!
 //! 本文件只保留状态、拉取与写回逻辑(submit / open_edit / toggle / delete)
 //! 以及组件组合;渲染拆成 `stats`(概览统计)、`toolbar`(筛选与操作)、
-//! `list`(卡片网格)、`card`(单卡)、`modal`(弹窗),共享类型见 `shared`。
+//! `list`(卡片网格)、`card`(单卡)、`modal`(弹窗),共享类型见根级 `crate::shared`。
 //!
 //! 状态归属约定(页面层持有的都是跨组件交互的):
 //! - 列表状态(channels/loading/refreshing/err/reload):effect 拉取 + 三组件共享
@@ -28,15 +28,15 @@ use crate::api::{
     set_channel_status_api, update_channel_api,
 };
 
-use super::list::ChannelsListSection;
-use super::modal::ChannelFormModal;
-use super::shared::{
+use crate::components::ChannelFormModal;
+use crate::components::ChannelsListSection;
+use crate::components::ChannelsStatsSection;
+use crate::components::ChannelsToolbarSection;
+use crate::shared::{
     ChannelModalState, LBL_STAT_DISABLED, LBL_STAT_ENABLED, LBL_STAT_GROUPS, LBL_STAT_KEYS,
     LBL_STAT_TOTAL, MSG_NAME_REQUIRED, MSG_OP_FAILED, MSG_OP_OK, MSG_SAVE_FAILED, OPT_ALL,
     OPT_DISABLED, OPT_ENABLED, WriteOp, filter_channels,
 };
-use super::stats::ChannelsStatsSection;
-use super::toolbar::ChannelsToolbarSection;
 
 /// 渠道管理页
 ///

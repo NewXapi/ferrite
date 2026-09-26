@@ -2,5 +2,6 @@
 //! 组件在 `crate::components`,跨页复用在 `ui-components`,wire 在 `crate::api`。
 
 pub mod aliases;
+pub mod channels;
 pub mod currency;
 pub mod gateway;

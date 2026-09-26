@@ -6,8 +6,6 @@ pub mod drawer_write;
 pub mod shared;
 pub mod state;
 
-#[path = "tab-page-channels/mod.rs"]
-pub mod tab_page_channels;
 #[path = "tab-page-redemptions/mod.rs"]
 pub mod tab_page_redemptions;
 #[path = "tab-page-system/mod.rs"]
@@ -23,8 +21,8 @@ pub mod tab_page_network;
 pub mod tab_page_subscriptions;
 
 pub use tab_page::aliases::AliasesPage;
+pub use tab_page::channels::ChannelsPage;
 pub use tab_page::currency::CurrencyPage;
-pub use tab_page_channels::ChannelsPage;
 #[path = "tab-page/mod.rs"]
 pub mod tab_page;
 

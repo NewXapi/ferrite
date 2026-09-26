@@ -10,8 +10,9 @@
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
-use super::shared::{
-    BTN_NEW_CHANNEL, BTN_REFRESH, MSG_SEARCH_PLACEHOLDER, SEC_FILTER, SEC_FILTER_NOTE,
+use crate::shared::{
+    BTN_NEW_CHANNEL, BTN_REFRESH, MSG_SEARCH_PLACEHOLDER_CHANNELS, SEC_FILTER,
+    SEC_FILTER_NOTE_CHANNELS,
 };
 
 /// 渠道筛选与操作区。
@@ -63,7 +64,7 @@ pub fn ChannelsToolbarSection(
             div { class: "flex items-center justify-between gap-3",
                 div { class: "flex items-center gap-2",
                     h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                    span { class: "text-xs text-zinc-500", "{SEC_FILTER_NOTE}" }
+                    span { class: "text-xs text-zinc-500", "{SEC_FILTER_NOTE_CHANNELS}" }
                 }
                 div { class: "flex items-center gap-2",
                     button {
@@ -84,7 +85,7 @@ pub fn ChannelsToolbarSection(
             input {
                 class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                 r#type: "text",
-                placeholder: "{MSG_SEARCH_PLACEHOLDER}",
+                placeholder: "{MSG_SEARCH_PLACEHOLDER_CHANNELS}",
                 value: "{search}",
                 oninput: move |e| search.set(e.value()),
             }
