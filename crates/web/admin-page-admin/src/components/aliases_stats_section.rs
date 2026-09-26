@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-use super::shared::SEC_STATS;
+use crate::shared::SEC_STATS;
 use crate::tab_page_groups::StatCard;
 
 /// 别名概览统计区:总别名 / 标准 1.0× / 自定倍率 / 免费 / 平均倍率 五张卡。

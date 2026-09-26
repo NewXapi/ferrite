@@ -11,8 +11,8 @@
 
 use dioxus::prelude::*;
 
-use super::shared::{
-    BTN_CANCEL, BTN_CREATE_ALIAS, FIELD_ALIAS_ID, FIELD_DISPLAY, FIELD_INPUT_PRICE,
+use crate::shared::{
+    BTN_CANCEL_ALIAS, BTN_CREATE_ALIAS, FIELD_ALIAS_ID, FIELD_DISPLAY, FIELD_INPUT_PRICE,
     FIELD_MULTIPLIER, FIELD_PER_CALL_PRICE, FIELD_PRICE_MODE, LBL_CH_CACHE_READ,
     LBL_CH_CACHE_READ_DESC, LBL_CH_CACHE_WRITE, LBL_CH_CACHE_WRITE_DESC, LBL_CH_COMPLETION,
     LBL_CH_COMPLETION_DESC, LBL_CH_OUTPUT, LBL_CH_OUTPUT_DESC, LBL_INPUT_PRICE_DESC,
@@ -307,7 +307,7 @@ pub fn AliasFormModal(
                     class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     "data-testid": "alias-cancel",
                     onclick: move |_| on_cancel.call(()),
-                    "{BTN_CANCEL}"
+                    "{BTN_CANCEL_ALIAS}"
                 }
                 button {
                     class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",

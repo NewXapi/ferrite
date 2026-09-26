@@ -15,9 +15,9 @@ use contract::api::admin::GroupDto;
 use dioxus::prelude::*;
 use ui::{CardGrid, DangerBlock, GhostButton, PlaceholderBlock, SectionHeader};
 
-use super::shared::{
-    AliasItem, BTN_RETRY, LBL_ALIAS_LIST, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST,
-    OPT_BADGE_LOADING, PriceMode, SEC_LIST, usable_groups_for,
+use crate::shared::{
+    AliasItem, BTN_RETRY, LBL_ALIAS_LIST, MSG_EMPTY_ALIAS, MSG_LOAD_FAILED, MSG_LOADING_LIST,
+    OPT_BADGE_LOADING, PriceMode, SEC_LIST_ALIAS, usable_groups_for,
 };
 
 /// 别名卡片网格区:错误 / 加载 / 空 / 网格 四态。
@@ -108,7 +108,7 @@ pub fn AliasesListSection(
     rsx! {
         section { id: "aliases-sec-list", class: "scroll-mt-8 space-y-4",
             SectionHeader {
-                title: SEC_LIST,
+                title: SEC_LIST_ALIAS,
                 badge,
                 trailing: rsx! {
                     ui::Pager {
@@ -129,7 +129,7 @@ pub fn AliasesListSection(
             } else if loading {
                 PlaceholderBlock { message: MSG_LOADING_LIST }
             } else if filtered.is_empty() {
-                PlaceholderBlock { message: MSG_EMPTY }
+                PlaceholderBlock { message: MSG_EMPTY_ALIAS }
             } else {
                 CardGrid { aria_label: LBL_ALIAS_LIST, testid: "aliases-list",
                     for (idx, it) in visible {

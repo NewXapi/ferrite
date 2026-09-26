@@ -12,7 +12,7 @@
 //!
 //! 本文件只保留状态与写回逻辑;渲染拆成 `stats`(统计区)、`toolbar`
 //! (筛选与操作区)、`list`(卡片网格区)、`card`(卡片)、`modal`
-//! (新建/编辑弹窗),共享类型与判定见 `shared`。
+//! (新建/编辑弹窗),共享类型与判定见根级 `shared`。
 //!
 //! 状态归属约定(页面层持有的都是跨组件交互的):
 //! - 列表状态(rows/loading/err/reload/groups):effect 拉取 + stats/list 组件共享
@@ -26,18 +26,16 @@ use contract::api::admin::GroupDto;
 use contract::api::billing::AliasUpsertRequest;
 use dioxus::prelude::*;
 
-use super::list::AliasesListSection;
-use super::modal::AliasFormModal;
-use super::shared::{
+use crate::api::{
+    delete_model_alias_api, list_groups_api, list_model_aliases_api, update_model_alias_api,
+};
+use crate::components::{AliasFormModal, AliasesListSection};
+use crate::components::{AliasesStatsSection, AliasesToolbarSection};
+use crate::shared::{
     AliasItem, AliasModalState, LBL_STAT_AVG, LBL_STAT_CUSTOM, LBL_STAT_FREE, LBL_STAT_STANDARD,
     LBL_STAT_TOTAL, MSG_CREATE_REJECTED, MSG_DELETE_FAILED, MSG_DELETED, MSG_NAME_REQUIRED,
     MSG_NUM_INVALID, MSG_SAVE_FAILED, OPT_ALL, OPT_CUSTOM, OPT_FREE, OPT_STANDARD, PriceMode,
     SEC_DATA_NOTE,
-};
-use super::stats::AliasesStatsSection;
-use super::toolbar::AliasesToolbarSection;
-use crate::api::{
-    delete_model_alias_api, list_groups_api, list_model_aliases_api, update_model_alias_api,
 };
 use crate::state::AliasRow;
 /// 别名管理页

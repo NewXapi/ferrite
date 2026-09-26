@@ -11,7 +11,7 @@
 use dioxus::prelude::*;
 use ui::SegmentedCapsule;
 
-use super::shared::{
+use crate::shared::{
     BTN_NEW_ALIAS, BTN_REFRESH, MSG_SEARCH_PLACEHOLDER, SEC_FILTER, SEC_FILTER_NOTE,
 };
 
