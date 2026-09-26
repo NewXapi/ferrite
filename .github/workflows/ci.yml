@@ -17,10 +17,6 @@ on:
         description: '是否构建部署镜像验证（重构/快速验证传 false 跳过；发布 PR 仍需为 true）'
         default: 'true'
         required: false
-      deploy_images:
-        description: '是否构建部署镜像验证（重构/快速验证传 false 跳过；发布 PR 仍需为 true）'
-        default: 'true'
-        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
