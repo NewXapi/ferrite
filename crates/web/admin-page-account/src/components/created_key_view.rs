@@ -29,7 +29,7 @@ use ui::components::rui_input::{Input, InputType};
 pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> Element {
     let mut copied = use_signal(|| false);
     rsx! {
-        Dialog { class: "w-full max-w-md",
+        Dialog {
             DialogContent { open: true, on_close: move |_| on_close.call(()),
                 DialogHeader {
                     DialogTitle { class: "text-emerald-400", "密钥创建成功" }

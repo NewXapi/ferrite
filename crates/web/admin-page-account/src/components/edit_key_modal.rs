@@ -106,7 +106,7 @@ pub fn EditKeyModal(
     };
 
     rsx! {
-        Dialog { class: "w-full max-w-md",
+        Dialog {
             DialogContent { open: true, on_close: move |_| on_cancel.call(()),
                 DialogHeader {
                     DialogTitle { "编辑密钥" }

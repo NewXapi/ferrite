@@ -61,7 +61,7 @@ pub fn KeyCard(
         "bg-emerald-500"
     };
     rsx! {
-        Card { class: "gap-3 bg-zinc-900/60 px-4 py-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+        Card { class: "gap-3 px-4 py-4",
             div { class: "flex items-start justify-between gap-2",
                 div { class: "min-w-0",
                     h3 { class: "truncate text-sm font-medium text-zinc-100", "{entry.name}" }

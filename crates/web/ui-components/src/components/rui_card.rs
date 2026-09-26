@@ -18,15 +18,15 @@ pub fn Card(
     children: Element,
 ) -> Element {
     let size_classes = match size {
-        CardSize::Default => "py-6 gap-4",
-        CardSize::Sm => "py-4 gap-3",
+        CardSize::Default => "px-6 py-5 gap-4",
+        CardSize::Sm => "px-4 py-3 gap-1",
     };
     let data_size = match size {
         CardSize::Default => "default",
         CardSize::Sm => "sm",
     };
     let merged_class = tw_merge!(
-        "bg-card text-card-foreground flex flex-col rounded-xl border shadow-sm",
+        "flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 text-zinc-100 transition-colors hover:border-zinc-600",
         size_classes,
         class.as_deref().unwrap_or("")
     );

@@ -55,7 +55,7 @@ pub fn DeleteKeyModal(
     };
 
     rsx! {
-        AlertDialog { class: "w-full max-w-md",
+        AlertDialog {
             // 条件挂载弹窗: open 恒 true; AlertDialog 语义关遮罩点击, 经 on_close 走 on_cancel 卸载
             AlertDialogContent { open: true, on_close: move |_| on_cancel.call(()),
                 AlertDialogTitle { "删除密钥" }

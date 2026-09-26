@@ -92,7 +92,7 @@ pub fn NewKeyForm(
     };
 
     rsx! {
-        Dialog { class: "w-full max-w-md",
+        Dialog {
             DialogContent { open: true, on_close: move |_| on_cancel.call(()),
                 DialogHeader {
                     DialogTitle { "新建 API 密钥" }

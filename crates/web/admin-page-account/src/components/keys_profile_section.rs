@@ -38,9 +38,9 @@ pub fn KeysProfileSection(user: Option<UserDto>, self_err: String, pending: Stri
             class: "scroll-mt-8 space-y-3",
             h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
             if let Some(user) = user {
-                Card { class: "gap-4 bg-zinc-900/60 px-6 py-5 transition-colors hover:border-zinc-600",
+                Card { class: "gap-4 px-6 py-5",
                     div { class: "flex items-center gap-3",
-                        Avatar {
+                        Avatar { class: "size-12",
                             AvatarFallback { "{user.username.chars().next().unwrap_or('?')}" }
                         }
                         div { class: "min-w-0",
