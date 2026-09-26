@@ -104,7 +104,7 @@ pub fn NewKeyForm(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "密钥名称" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT}",
                             placeholder: "例如: 生产环境密钥",
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
@@ -113,7 +113,7 @@ pub fn NewKeyForm(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "分组 (可选)" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT}",
                             placeholder: "留空 = 跟随用户默认分组",
                             value: "{group}",
                             oninput: move |e| group.set(e.value()),
@@ -122,7 +122,7 @@ pub fn NewKeyForm(
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "额度限制 (额度单位)" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT_MONO}",
                             r#type: "text",
                             placeholder: "留空 = 不限额",
                             value: "{quota}",

@@ -159,7 +159,7 @@ pub fn ProxyRuntimePanel() -> Element {
             div { class: "flex items-center justify-between",
                 div { class: "flex items-center gap-2",
                     h2 { class: "text-lg font-semibold text-zinc-100", {LBL_PROXY_RUNTIME} }
-                    span { class: "text-xs text-zinc-500", {SEC_PROXY_RUNTIME_NOTE} }
+                    span { class: "{ui::TYPE_DESC}", {SEC_PROXY_RUNTIME_NOTE} }
                 }
                 button {
                     class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
@@ -217,7 +217,7 @@ pub fn ProxyRuntimePanel() -> Element {
                                     span { {MSG_DELAY_PREFIX} "{format_delay(s.last_delay_ms)}" }
                                 }
                             } else {
-                                div { class: "text-xs text-zinc-500", {MSG_NO_RUNTIME} }
+                                div { class: "{ui::TYPE_DESC}", {MSG_NO_RUNTIME} }
                             }
                         }
                     }

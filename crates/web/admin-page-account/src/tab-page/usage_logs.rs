@@ -194,7 +194,7 @@ pub fn UsageLogsPanel() -> Element {
         div { class: "flex flex-col gap-6",
             // 统计卡 - 1/3/5 grid (今日口径)
             section { id: "usage-sec-stats", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+                h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                     // 本页统计卡统一用 Lg 档（px-5 py-4 + text-2xl 等宽值），与迁移前标记逐字一致。
                     StatCard { value: stat_val(|v| v.requests), label: "今日请求", size: StatSize::Lg }
@@ -209,7 +209,7 @@ pub fn UsageLogsPanel() -> Element {
             section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-600",
                 div { class: "flex items-center justify-between",
                     h2 { class: "text-sm font-medium text-zinc-300", "{SEC_LOGS}" }
-                    span { class: "text-xs text-zinc-500", "共 {total_len} 条" }
+                    span { class: "{ui::TYPE_DESC}", "共 {total_len} 条" }
                 }
 
                 // 模型/时间: 胶囊分段 (状态筛选无数据源, 不渲染)
@@ -229,7 +229,7 @@ pub fn UsageLogsPanel() -> Element {
 
             // 日志卡片网格(宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏)
             section { id: "usage-sec-logs", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_LOGS}" }
+                h2 { class: "{ui::TYPE_TITLE}", "{SEC_LOGS}" }
                 if !load_err().is_empty() {
                     p { class: "text-sm text-amber-400", "无法加载日志 (未登录或请求失败): {load_err()}" }
                 } else if !loaded() {

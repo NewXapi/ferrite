@@ -57,7 +57,7 @@ pub fn PreferencesSection() -> Element {
     rsx! {
         div { class: "flex flex-col gap-6",
             div {
-                h2 { class: "text-lg font-medium text-zinc-100", "偏好设置" }
+                h2 { class: "{ui::TYPE_TITLE}", "偏好设置" }
                 p { class: "mt-1 text-sm text-zinc-500", "设置以 JSONB 形式存于账号, 修改即时合并保存" }
             }
 
@@ -66,7 +66,7 @@ pub fn PreferencesSection() -> Element {
                     div {
                         label { class: "mb-1.5 block text-xs text-zinc-400", "界面语言" }
                         select {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT}",
                             value: "{language}",
                             onchange: move |e| language.set(e.value()),
                             option { value: "zh", "简体中文" }
@@ -132,8 +132,8 @@ pub fn PreferencesSection() -> Element {
 
             div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
                 div { class: "mb-3 flex items-center justify-between",
-                    h3 { class: "text-sm font-medium text-zinc-100", "当前设置 (JSON)" }
-                    span { class: "text-xs text-zinc-500", "只读视图" }
+                    h3 { class: "{ui::TYPE_CARD_TITLE}", "当前设置 (JSON)" }
+                    span { class: "{ui::TYPE_DESC}", "只读视图" }
                 }
                 pre { class: "max-h-60 overflow-auto rounded-lg bg-zinc-950 p-4 font-mono text-xs text-zinc-300", "{raw_json}" }
             }

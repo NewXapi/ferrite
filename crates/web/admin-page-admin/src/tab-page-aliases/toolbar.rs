@@ -63,7 +63,7 @@ pub fn AliasesToolbarSection(
             div { class: "flex items-center justify-between gap-3",
                 div { class: "flex items-center gap-2",
                     h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                    span { class: "text-xs text-zinc-500", "{SEC_FILTER_NOTE}" }
+                    span { class: "{ui::TYPE_DESC}", "{SEC_FILTER_NOTE}" }
                 }
                 div { class: "flex items-center gap-2",
                     button {

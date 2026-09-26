@@ -29,7 +29,7 @@ pub fn WalletSection(
             class: "scroll-mt-8 space-y-4",
             role: "region",
             "aria-label": "钱包",
-            h2 { class: "text-lg font-medium text-zinc-100", "钱包" }
+            h2 { class: "{ui::TYPE_TITLE}", "钱包" }
 
             // 余额卡 — 三态: error 红边 / loading 骨架 / 数据(空余额虚线占位)
             section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
@@ -44,7 +44,7 @@ pub fn WalletSection(
                 } else if let Some(w) = wallet() {
                     div { class: "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
                         div {
-                            p { class: "text-xs text-zinc-500", "可用额度 (内部单位折算)" }
+                            p { class: "{ui::TYPE_DESC}", "可用额度 (内部单位折算)" }
                             p {
                                 class: "mt-1 text-6xl font-semibold tracking-tighter text-emerald-400 tabular-nums",
                                 "data-testid": "wallet-available",

@@ -91,7 +91,7 @@ pub fn GroupChips(group: Signal<Vec<String>>, on_change: EventHandler<Vec<String
             role: "group",
             aria_label: "生效分组选择".to_string(),
             if list.is_empty() {
-                p { class: "text-xs text-zinc-500", "{MSG_NO_GROUPS}" }
+                p { class: "{ui::TYPE_DESC}", "{MSG_NO_GROUPS}" }
             } else {
                 // chips 行:每分组一颗,点选切换
                 div { class: "flex flex-wrap gap-1.5",

@@ -139,7 +139,7 @@ pub fn GatewayHealthPanel() -> Element {
             // 标题 + 统计 + 手动刷新 (交互元素带 data-testid)
             div { class: "flex flex-wrap items-center justify-between gap-2",
                 div { class: "flex items-center gap-2",
-                    h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PANEL}" }
+                    h2 { class: "{ui::TYPE_TITLE}", "{SEC_PANEL}" }
                     span { class: "rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400",
                         if polling { "{LBL_POLLING}" } else { "{LBL_SYNCED}" }
                     }

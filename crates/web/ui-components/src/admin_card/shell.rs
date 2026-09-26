@@ -83,7 +83,7 @@ pub fn SectionHeader(
 ) -> Element {
     rsx! {
         div { class: "flex flex-wrap items-center justify-between gap-2",
-            h2 { class: "text-lg font-medium text-zinc-100", "{title}" }
+            h2 { class: "{crate::TYPE_TITLE}", "{title}" }
             div { class: "flex items-center gap-2",
                 span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{badge}" }
                 if let Some(extra) = trailing {

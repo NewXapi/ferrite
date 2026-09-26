@@ -183,7 +183,7 @@ pub fn StatTabsCard(
                     span { class: "text-zinc-500", "输出 " b { class: "font-semibold tabular-nums text-zinc-100", "{price.output}" } }
                     span { class: "text-zinc-500", "缓存 " b { class: "font-semibold tabular-nums text-zinc-100", "{price.cache}" } }
                 }
-                p { class: "text-xs text-zinc-500", "{description}" }
+                p { class: "{crate::TYPE_DESC}", "{description}" }
 
                 div { class: "border-t border-white/5" }
 

@@ -34,7 +34,7 @@ use crate::tab_page_groups::StatCard;
 pub fn ChannelsStatsSection(stats: Vec<(String, &'static str)>) -> Element {
     rsx! {
         section { id: "channels-sec-stats", class: "scroll-mt-8 space-y-3",
-            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+            h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
             div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                 for (value, label) in stats {
                     StatCard { value, label }

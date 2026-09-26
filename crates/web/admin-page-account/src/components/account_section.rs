@@ -46,15 +46,15 @@ pub fn AccountSection() -> Element {
             "aria-label": "资料与密码",
             "data-testid": "settings-account-card",
             div { class: "mb-3 flex items-center justify-between",
-                h3 { class: "text-sm font-medium text-zinc-100", "资料与密码" }
-                span { class: "text-xs text-zinc-500", "改密须原密码 + 新密码成对提供" }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", "资料与密码" }
+                span { class: "{ui::TYPE_DESC}", "改密须原密码 + 新密码成对提供" }
             }
 
             div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2",
                 div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "显示名" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                        class: "{ui::INPUT}",
                         "data-testid": "settings-display-name",
                         placeholder: "对外展示的名称",
                         value: "{display_name}",
@@ -112,7 +112,7 @@ pub fn AccountSection() -> Element {
                 div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "原密码" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none",
+                        class: "{ui::INPUT_MONO}",
                         r#type: "password",
                         "data-testid": "settings-original-password",
                         placeholder: "当前密码",
@@ -123,7 +123,7 @@ pub fn AccountSection() -> Element {
                 div {
                     label { class: "mb-1.5 block text-xs text-zinc-400", "新密码" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none",
+                        class: "{ui::INPUT_MONO}",
                         r#type: "password",
                         "data-testid": "settings-new-password",
                         placeholder: "留空 = 不修改密码",

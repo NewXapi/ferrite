@@ -664,7 +664,7 @@ pub fn GroupFormModal(
                             p { class: "mt-1 text-[11px] text-zinc-500", "{MSG_ALIAS_HINT}" }
                         }
                         if alias_options.is_empty() {
-                            p { class: "text-xs text-zinc-500", "{MSG_NO_ALIAS_OPTIONS}" }
+                            p { class: "{ui::TYPE_DESC}", "{MSG_NO_ALIAS_OPTIONS}" }
                         } else {
                             div { class: "flex flex-wrap gap-1.5",
                                 for opt in alias_options.clone() {

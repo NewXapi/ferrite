@@ -82,7 +82,7 @@ pub fn SystemOptionsPanel() -> Element {
             class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
             div {
                 h2 { class: "text-sm font-medium text-zinc-200", {LBL_SITE_OPTIONS} }
-                p { class: "text-xs text-zinc-500", {SEC_OPTIONS_NOTE} }
+                p { class: "{ui::TYPE_DESC}", {SEC_OPTIONS_NOTE} }
             }
             if let Some(e) = err {
                 div {

@@ -176,7 +176,7 @@ pub fn GridShell(children: Element) -> Element {
 pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Element {
     rsx! {
         section { class: "space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
-            p { class: "text-sm font-medium text-zinc-100", "{title}" }
+            p { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
             p { class: "text-[11px] text-zinc-600", "{hint}" }
             {children}
         }

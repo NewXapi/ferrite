@@ -225,7 +225,7 @@ pub fn AliasFormModal(
                                 p { class: "mt-0.5 text-[11px] text-zinc-500", "{LBL_INPUT_PRICE_DESC}" }
                             }
                             div { class: "flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2",
-                                span { class: "text-xs text-zinc-500", "$" }
+                                span { class: "{ui::TYPE_DESC}", "$" }
                                 input {
                                     class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
                                     r#type: "text",
@@ -286,7 +286,7 @@ pub fn AliasFormModal(
                         }
                         div {
                             class: "flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5",
-                            span { class: "text-xs text-zinc-500", "$" }
+                            span { class: "{ui::TYPE_DESC}", "$" }
                             input {
                                 class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
                                 r#type: "text",

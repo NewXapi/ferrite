@@ -32,7 +32,7 @@ pub fn RechargesSection(
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { class: "mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between",
                 h3 { class: "text-sm font-medium text-zinc-200", "最近充值记录" }
-                span { class: "text-xs text-zinc-500", "订单倒序,最近在前" }
+                span { class: "{ui::TYPE_DESC}", "订单倒序,最近在前" }
             }
             if !recharges_err().is_empty() {
                 ErrCard { testid: "recharge-error", what: "充值记录", msg: recharges_err() }

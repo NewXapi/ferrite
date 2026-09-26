@@ -20,7 +20,7 @@ pub fn Dialog(
                 "aria-hidden": "true",
             }
             div { class: "relative flex w-80 flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl shadow-black/50",
-                span { class: "text-sm font-medium text-zinc-100", "{title}" }
+                span { class: "{crate::TYPE_CARD_TITLE}", "{title}" }
                 div { class: "text-xs leading-5 text-zinc-400", {children} }
                 div { class: "flex items-center justify-end gap-2",
                     button {

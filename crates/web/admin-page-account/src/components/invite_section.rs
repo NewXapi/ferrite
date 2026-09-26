@@ -52,7 +52,7 @@ pub fn InviteSection(
     rsx! {
         // 邀请区
         section { id: "rewards-sec-invite", class: "scroll-mt-8 space-y-4",
-            h2 { class: "text-lg font-medium text-zinc-100", "邀请" }
+            h2 { class: "{ui::TYPE_TITLE}", "邀请" }
 
             // 邀请链接 — origin + 钱包 user_key 现拼;钱包未加载时占位
             section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",

@@ -228,7 +228,7 @@ pub fn ChannelFormModal(
                         div { class: "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1.5",
                             if group_options.read().is_empty() {
                                 // 候选拉取失败/为空：只读展示当前已绑分组，不阻断保存
-                                span { class: "text-xs text-zinc-500",
+                                span { class: "{ui::TYPE_DESC}",
                                     if let Some(e) = group_err.read().as_ref() {
                                         "{MSG_GROUP_ERR_PREFIX}{e}{MSG_GROUP_ERR_MID}{bound_groups}"
                                     } else if group.read().is_empty() {

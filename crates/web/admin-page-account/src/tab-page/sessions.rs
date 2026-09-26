@@ -75,7 +75,7 @@ pub fn SessionsPanel() -> Element {
         div { class: "flex flex-col gap-4", role: "region", "aria-label": "登录会话面板", "data-testid": "sessions-panel",
             div { class: "flex items-center justify-between gap-3",
                 div {
-                    h2 { class: "text-lg font-medium text-zinc-100", "登录会话" }
+                    h2 { class: "{ui::TYPE_TITLE}", "登录会话" }
                     p { class: "mt-1 text-sm text-zinc-500", "当前用户全部存活设备与登录记录" }
                 }
                 Button {

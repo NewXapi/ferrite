@@ -147,7 +147,7 @@ pub fn SystemOverview(
             "data-testid": "system-panel",
             class: "scroll-mt-8 space-y-3",
             div { class: "flex items-center justify-between",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+                h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
                 button {
                     class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
                     "data-testid": "refresh-system",
@@ -186,7 +186,7 @@ pub fn SystemOverview(
         // 2. 实体统计(核心业务实体行数)
         if !count_cards.is_empty() {
             section { id: "system-sec-counts", class: "scroll-mt-8 space-y-3",
-                h2 { class: "text-lg font-medium text-zinc-100", "{SEC_COUNTS}" }
+                h2 { class: "{ui::TYPE_TITLE}", "{SEC_COUNTS}" }
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                     for (value, label) in count_cards {
                         StatCard { value, label }
@@ -202,7 +202,7 @@ pub fn SystemOverview(
                 class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
                 div {
                     h2 { class: "text-sm font-medium text-zinc-200", "{SEC_ENV}" }
-                    p { class: "text-xs text-zinc-500", {SEC_ENV_NOTE} }
+                    p { class: "{ui::TYPE_DESC}", {SEC_ENV_NOTE} }
                 }
                 div { class: "divide-y divide-zinc-800/80",
                     for (label, value) in env_rows {

@@ -41,7 +41,7 @@ pub fn KeysListSection(
             div { class: "space-y-4",
                 div { class: "flex items-center justify-between gap-3",
                     div { class: "flex items-center gap-2",
-                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_KEYS}" }
+                        h2 { class: "{ui::TYPE_TITLE}", "{SEC_KEYS}" }
                         span { class: "text-xs px-3 py-1 rounded-full bg-zinc-800 text-zinc-400",
                             if keys_loaded() { "{keys.len()} 个" } else { "…" }
                         }
