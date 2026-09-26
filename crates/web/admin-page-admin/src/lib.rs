@@ -13,6 +13,9 @@ pub mod tab_page;
 
 pub use network_data::{GraphView, NodeKey, bump_topo_refresh, channel_models, edges_of};
 pub use parse_url_key::parse_url_key;
+pub use tab_page::aliases::AliasesPage;
+pub use tab_page::channels::ChannelsPage;
+pub use tab_page::currency::CurrencyPage;
 pub use tab_page::gateway::GatewayHealthPanel;
 pub use tab_page::groups::GroupsPage;
 pub use tab_page::network::NetworkPanel;
