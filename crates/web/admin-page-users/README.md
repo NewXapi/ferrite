@@ -8,12 +8,14 @@
 |---|---|
 | `src/lib.rs` | crate 导出面 |
 | `src/api.rs` | 用户数据请求 |
-| `src/data.rs` | 数据整形 |
-| `src/tab-page-users/` | `page` / `user_card` / `user_form` / `modal` / `topup_form` / `role_chips` / `group_chips` / `badge` / `shared` |
+| `src/shared.rs` | 用户页文案常量 |
+| `src/format.rs` | 用户页纯格式化函数 |
+| `src/tab-page/` | 每 tab 一个页面文件；本 crate 目前只有 `users.rs` 编排层 |
+| `src/components/` | 本 crate 独有的组件层（chips、cards、forms、filters 等） |
 
 ## 依赖
 
-`admin-client`（改名依赖 `client`）+ `contract`。
+`admin-client`（改名依赖 `client`）+ `contract` + `ui-components`。
 
 ## 硬约束
 
