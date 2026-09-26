@@ -26,8 +26,8 @@ fn App() -> Element {
 
     rsx! {
         document::Stylesheet { href: TAILWIND_CSS }
-        // 全局 toast 出口：组件内 ui::components::toast::toast() 触发。
-        ui::components::toast::Toaster {}
+        // 全局 toast 出口：组件内 ui::toast::toast() 触发。
+        ui::toast::Toaster {}
         {ainotation_js.map(|src| rsx! { document::Script { src } })}
         RootApp {}
     }

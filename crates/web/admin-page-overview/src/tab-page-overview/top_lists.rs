@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 
 use super::shared::{TOP_EMPTY, TOP_FOOTNOTE};
 use crate::api;
-use ui::components::card::{Card, CardContent, CardHeader};
+use ui::card::{Card, CardContent, CardHeader};
 
 /// Top 榜单行渲染所需的前端视图（在 use_effect 内从 `UsageTopRow` 整形一次）。
 #[derive(Clone, PartialEq)]

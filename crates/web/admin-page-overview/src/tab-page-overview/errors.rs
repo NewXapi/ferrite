@@ -13,7 +13,7 @@ use super::shared::{
 };
 use crate::api;
 use contract::api::usage::UsageErrorStatPage;
-use ui::components::card::{Card, CardAction, CardContent, CardHeader, CardTitle};
+use ui::card::{Card, CardAction, CardContent, CardHeader, CardTitle};
 
 /// 近 24 小时错误卡：卡头（标题 + 合计错误数大数字 + asOf 裸本地时间）+
 /// 行列表（左侧 count 比例条 + 模型名 + 次数 + lastSeen 本地时间 HH:MM）。

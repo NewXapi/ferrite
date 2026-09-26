@@ -4,7 +4,7 @@
 
 use contract::api::user::SessionDto;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::usage_support::{fmt_time_minute, summarize_ua};
 
@@ -16,7 +16,7 @@ use crate::usage_support::{fmt_time_minute, summarize_ua};
 ///
 /// 【样式】卡片 rounded-xl bg-zinc-900/60 p-4 + hover:border-zinc-600；短标签 truncate；当前设备 emerald 圆角徽标；明细 12px 灰字两列网格；按钮 Ghost Xs 红字。
 ///
-/// 【子组件组成】ui::components::button::Button (吊销) × 1
+/// 【子组件组成】ui::button::Button (吊销) × 1
 ///
 /// 【数据流】props 接收 session (SessionDto)、busy (bool)、on_revoke (EventHandler<String>)、on_request_current_revoke (EventHandler<String>)；输出为两个携带 sid 的回调。
 #[component]

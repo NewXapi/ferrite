@@ -3,7 +3,7 @@
 
 use contract::api::user::UpdateSelfRequest;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+use ui::button::{Button, ButtonVariant};
 
 use crate::api;
 
@@ -15,7 +15,7 @@ use crate::api;
 ///
 /// 【样式】卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；输入 rounded-xl 边框 + focus:border-zinc-500，密码框等宽字体；按钮 Primary 置于输入右侧 (items-end 对齐)。
 ///
-/// 【子组件组成】ui::components::button::Button (保存显示名 / 修改密码) × 2
+/// 【子组件组成】ui::button::Button (保存显示名 / 修改密码) × 2
 ///
 /// 【数据流】无 props：显示名与密码草稿、保存状态全为本组件私有，经 api 取用。
 #[component]
