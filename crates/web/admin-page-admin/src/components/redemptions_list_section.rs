@@ -31,7 +31,7 @@ use crate::shared::{
 ///
 /// 【样式】外壳 `section#reds-sec-list` 为 `scroll-mt-8 space-y-4`,并带
 /// `data-testid="redemptions-list"`、`role="list"`、`aria-label=LBL_LIST_ARIA`;
-/// 标题行左侧 `text-lg font-medium text-zinc-100`,右侧计数胶囊 `rounded-full
+/// 标题行左侧 `{ui::TYPE_TITLE}`,右侧计数胶囊 `rounded-full
 /// bg-zinc-800`(加载时 `OPT_BADGE_LOADING`,否则 `N 张`);错误态红底
 /// `rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6` 且 `role="alert"`;
 /// 加载/空态为虚线描边 `rounded-2xl border border-dashed border-zinc-700
@@ -99,10 +99,10 @@ pub fn RedemptionsListSection(
                     "aria-label": LBL_ERROR_ARIA,
                     class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
                     p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED_REDEMPTIONS}" }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                    p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
                         "data-testid": "retry-redemptions",
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:bg-secondary",
                         onclick: on_retry,
                         "{BTN_RETRY}"
                     }

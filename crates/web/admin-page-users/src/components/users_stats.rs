@@ -28,7 +28,7 @@ use crate::shared::SEC_STATS;
 pub fn UsersStatsSection(stats: [(String, &'static str); 5]) -> Element {
     rsx! {
         section { id: "users-sec-stats", class: "scroll-mt-8 space-y-3",
-            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+            h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
             // 宽度约定:手机 1 栏 / 平板 3 栏 / Web 5 栏,每卡各占 1 栏。
             div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                 for (value, label) in stats {

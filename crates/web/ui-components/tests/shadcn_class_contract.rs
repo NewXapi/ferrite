@@ -29,7 +29,7 @@ fn button_variant_classes_match_dsh_basis() {
         (
             ButtonVariant::Destructive,
             "destructive",
-            "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+            "bg-destructive text-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         ),
         (
             ButtonVariant::Outline,
@@ -39,7 +39,7 @@ fn button_variant_classes_match_dsh_basis() {
         (
             ButtonVariant::Ghost,
             "ghost",
-            "hover:bg-accent active:bg-white/15",
+            "hover:bg-accent active:bg-primary/15",
         ),
         (
             ButtonVariant::Link,
@@ -103,7 +103,7 @@ fn badge_variant_classes_match_shadcn() {
         (
             BadgeVariant::Destructive,
             "destructive",
-            "bg-destructive text-white focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive/90",
+            "bg-destructive text-foreground focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive/90",
         ),
         (
             BadgeVariant::Outline,

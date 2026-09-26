@@ -21,10 +21,10 @@ use crate::network_data::*;
 /// 【交互逻辑】点击某页签 → `on_tab.call(t)` 把目标 `DrawerTab` 抛回调用方
 /// (页面据以写 `drawer_tab` signal)。数据交互:纯本地状态,不发网络。
 ///
-/// 【样式】外壳 `shrink-0 border-b border-zinc-800`;页签 `flex-1 py-1.5
+/// 【样式】外壳 `shrink-0 border-b border-border`;页签 `flex-1 py-1.5
 /// text-xs font-medium transition-colors`,激活态 `border-b-2 border-zinc-100
-/// text-zinc-100`,未激活 `border-b-2 border-transparent text-zinc-500
-/// hover:text-zinc-300`。
+/// text-foreground`,未激活 `border-b-2 border-transparent text-muted-foreground
+/// hover:text-foreground`。
 ///
 /// 【子组件组成】无子组件:原生 `div` / `button`。
 ///
@@ -34,19 +34,19 @@ use crate::network_data::*;
 #[component]
 pub fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
     rsx! {
-        div { class: "shrink-0 border-b border-zinc-800",
+        div { class: "shrink-0 border-b border-border",
             div { class: "flex",
                 for (t, label) in [(DrawerTab::Node, LBL_NODES), (DrawerTab::Settings, BTN_SETTINGS), (DrawerTab::Import, BTN_IMPORT)] {
                     {
                         let active = t == active;
                         let tone = if active {
-                            "border-b-2 border-zinc-100 text-zinc-100"
+                            "border-b-2 border-zinc-100 text-foreground"
                         } else {
-                            "border-b-2 border-transparent text-zinc-500 hover:text-zinc-300"
+                            "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
                         };
                         rsx! {
                             button {
-                                class: "flex-1 py-1.5 text-xs font-medium transition-colors {tone}",
+                                class: "flex-1 py-1.5 {ui::TYPE_DESC} transition-colors {tone}",
                                 onclick: move |_| on_tab.call(t),
                                 "{label}"
                             }
@@ -71,10 +71,10 @@ pub fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element
 /// - 点「✕」→ `on_close.call(e)` 抛回调用方(调用方据以关抽屉/还原视图)。
 /// 数据交互:纯本地状态,不发网络。
 ///
-/// 【样式】外壳 `shrink-0 border-b border-zinc-800`;页签与 `DrawerTabs`
+/// 【样式】外壳 `shrink-0 border-b border-border`;页签与 `DrawerTabs`
 /// 同款激活/未激活两态;标题行 `flex items-center gap-2 border-t
-/// border-zinc-800 px-3 py-2`,标题 `truncate text-sm font-medium
-/// text-zinc-100`,副标题 `truncate text-[11px] text-zinc-500`。
+/// border-border px-3 py-2`,标题 `truncate text-sm font-medium
+/// text-foreground`,副标题 `truncate text-[11px] text-muted-foreground`。
 ///
 /// 【子组件组成】无子组件:原生 `div` / `button` / `p`。
 ///
@@ -92,20 +92,20 @@ pub fn DrawerHeader(
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
-        div { class: "shrink-0 border-b border-zinc-800",
+        div { class: "shrink-0 border-b border-border",
             // 页签栏放在最顶部（保持不动，下面才是标题）
             div { class: "flex",
                 for (t, label) in [(DrawerTab::Node, LBL_NODES), (DrawerTab::Settings, BTN_SETTINGS), (DrawerTab::Import, BTN_IMPORT)] {
                     {
                         let active = t == tab;
                         let tone = if active {
-                            "border-b-2 border-zinc-100 text-zinc-100"
+                            "border-b-2 border-zinc-100 text-foreground"
                         } else {
-                            "border-b-2 border-transparent text-zinc-500 hover:text-zinc-300"
+                            "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
                         };
                         rsx! {
                             button {
-                                class: "flex-1 py-1.5 text-xs font-medium transition-colors {tone}",
+                                class: "flex-1 py-1.5 {ui::TYPE_DESC} transition-colors {tone}",
                                 onclick: move |_| on_tab.call(t),
                                 "{label}"
                             }
@@ -113,13 +113,13 @@ pub fn DrawerHeader(
                     }
                 }
             }
-            div { class: "flex items-center gap-2 border-t border-zinc-800 px-3 py-2",
+            div { class: "flex items-center gap-2 border-t border-border px-3 py-2",
                 div { class: "min-w-0 flex-1",
-                    p { class: "truncate text-sm font-medium text-zinc-100", "{title}" }
-                    p { class: "truncate text-[11px] text-zinc-500", "{subtitle}" }
+                    p { class: "truncate {ui::TYPE_CARD_TITLE}", "{title}" }
+                    p { class: "truncate {ui::TYPE_LABEL}", "{subtitle}" }
                 }
                 button {
-                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    class: "rounded-md px-1.5 {ui::C_MUTED} hover:text-foreground",
                     title: BTN_CLOSE_TITLE,
                     onclick: move |e| on_close.call(e),
                     "✕"
@@ -151,10 +151,10 @@ pub fn DrawerHeader(
 /// 提交按钮 `disabled` 由 `can_import`(URL 与 Key 均非空)控制。
 ///
 /// 【样式】表单 `space-y-3`;字段 `label.block.space-y-1.5` + 标签
-/// `text-[11px] text-zinc-500`;输入框统一 `rounded-md border border-zinc-800
-/// bg-zinc-950 px-3 py-1.5 focus:border-zinc-500`;Key 用 `textarea` +
-/// `font-mono`;提交按钮 `w-full rounded-md border border-zinc-100 bg-zinc-100
-/// text-zinc-900`,可用时 hover 加深、不可用时 `cursor-not-allowed opacity-50`。
+/// `text-[11px] text-muted-foreground`;输入框统一 `rounded-md border border-border
+/// bg-background px-3 py-1.5 focus:border-border`;Key 用 `textarea` +
+/// `font-mono`;提交按钮 `w-full rounded-md border border-zinc-100 bg-primary
+/// text-primary-foreground`,可用时 hover 加深、不可用时 `cursor-not-allowed opacity-50`。
 ///
 /// 【子组件组成】`DrawerNoticeBar`(写操作通知条,来自 `crate::drawer_write`)。
 ///
@@ -213,27 +213,27 @@ pub fn ImportPanel() -> Element {
         div { class: "space-y-3",
             DrawerNoticeBar { notice, on_clear: move |_| notice.set(DrawerNotice::Idle) }
             label { class: "block space-y-1.5",
-                span { class: "text-[11px] text-zinc-500", {LBL_CHANNEL_NAME_OPT} }
+                span { class: "{ui::TYPE_LABEL}", {LBL_CHANNEL_NAME_OPT} }
                 input {
-                    class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                    class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                     value: "{alias.read()}",
                     placeholder: EXAMPLE_CHANNEL,
                     oninput: move |e| alias.set(e.value()),
                 }
             }
             label { class: "block space-y-1.5",
-                span { class: "text-[11px] text-zinc-500", {LBL_BASE_URL} }
+                span { class: "{ui::TYPE_LABEL}", {LBL_BASE_URL} }
                 input {
-                    class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                    class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                     value: "{url.read()}",
                     placeholder: "https://…",
                     oninput: move |e| url.set(e.value()),
                 }
             }
             label { class: "block space-y-1.5",
-                span { class: "text-[11px] text-zinc-500", {LBL_API_KEY_MULTI} }
+                span { class: "{ui::TYPE_LABEL}", {LBL_API_KEY_MULTI} }
                 textarea {
-                    class: "min-h-[96px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
+                    class: "min-h-[96px] w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-border",
                     value: "{key.read()}",
                     placeholder: "sk-…
     sk-…",
@@ -241,7 +241,7 @@ pub fn ImportPanel() -> Element {
                 }
             }
             button {
-                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors",
+                class: "w-full rounded-md border border-zinc-100 bg-primary px-3 py-1.5 {ui::TYPE_DESC} transition-colors",
                 class: if can_import { "hover:bg-zinc-300" } else { "cursor-not-allowed opacity-50" },
                 disabled: !can_import,
                 onclick: import,

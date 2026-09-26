@@ -28,11 +28,11 @@ use crate::shared::{
 ///   回写 `enabled=false`(该写回触发 PUT `/api/currency`,由页面发起)。
 /// 本组件自身**不发任何网络请求**。
 ///
-/// 【样式】外壳 `section.space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3`;
-/// 加载态为 3 条 `h-8 animate-pulse rounded-lg bg-zinc-800/60` 骨架;错误态为红底
-/// `rounded-xl border-red-800 bg-red-950/40` 条;空态为虚线描边
-/// `border-dashed border-zinc-700` 居中块;数据态为 `overflow-x-auto` 包
-/// `w-full text-left text-sm` 表格,行以 `border-t border-zinc-800` 分隔。
+/// 【样式】外壳 `section.space-y-2 rounded-xl border border-border bg-card/60 p-3`;
+/// 加载态为 3 条 `h-8 animate-pulse rounded-lg bg-secondary/60` 骨架;错误态为红底
+/// `rounded-xl border-destructive bg-destructive` 条;空态为虚线描边
+/// `border-dashed border-border` 居中块;数据态为 `overflow-x-auto` 包
+/// `w-full text-left text-sm` 表格,行以 `border-t border-border` 分隔。
 ///
 /// 【子组件组成】无独立子组件,全部 rsx 在本文件内联:标题 `h3`、骨架 `div`、
 /// 错误条、空态块、`table`(`thead` + `tbody`)与行内两个 `button`。
@@ -65,17 +65,17 @@ pub fn CurrencyList(
         .collect();
 
     rsx! {
-        section { class: "space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
+        section { class: "space-y-2 rounded-xl border border-border bg-card/60 p-3",
             role: "region",
             "aria-label": LBL_LIST_REGION,
             "data-testid": "currency-list-section",
-            h3 { class: "text-sm font-semibold text-zinc-300", "{SEC_LIST}" }
+            h3 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_LIST}" }
             if let Some(e) = err {
-                div { class: "rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                div { class: "rounded-lg border border-destructive bg-destructive p-3 text-sm {ui::C_DANGER}",
                     "data-testid": "currency-list-error",
                     "{MSG_LOAD_FAILED_PREFIX}{e}"
                     button {
-                        class: "ml-3 rounded-lg border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900/60",
+                        class: "ml-3 rounded-lg border border-destructive px-2 py-1 {ui::C_DANGER} hover:bg-destructive",
                         "data-testid": "currency-retry",
                         onclick: move |e| on_retry.call(e),
                         "{BTN_RETRY}"
@@ -84,18 +84,18 @@ pub fn CurrencyList(
             } else if loading {
                 div { class: "space-y-2",
                     for _i in 0..3 {
-                        div { class: "h-8 animate-pulse rounded-lg bg-zinc-800/60" }
+                        div { class: "h-8 animate-pulse rounded-lg bg-secondary/60" }
                     }
                 }
             } else if rows.is_empty() {
-                div { class: "rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500",
+                div { class: "rounded-lg border border-dashed border-border p-6 text-center {ui::TYPE_BODY}",
                     "{MSG_EMPTY}"
                 }
             } else {
                 div { class: "overflow-x-auto",
-                    table { class: "w-full text-left text-sm",
+                    table { class: "w-full text-left {ui::TYPE_BODY}",
                         "data-testid": "currency-list",
-                        thead { class: "text-zinc-500",
+                        thead { class: "{ui::C_MUTED}",
                             tr {
                                 th { class: "px-2 py-1", "{LBL_COL_CODE}" }
                                 th { class: "px-2 py-1", "{LBL_COL_SYMBOL}" }
@@ -109,34 +109,34 @@ pub fn CurrencyList(
                         }
                         tbody {
                             for (edit_id, disable_id, disable_code, d) in rows {
-                                tr { class: "border-t border-zinc-800",
-                                    td { class: "px-2 py-1 font-mono text-zinc-200", "{d.code}" }
+                                tr { class: "border-t border-border",
+                                    td { class: "px-2 py-1 font-mono text-foreground", "{d.code}" }
                                     td { class: "px-2 py-1", "{d.symbol}" }
-                                    td { class: "px-2 py-1 text-zinc-400", "{d.name}" }
+                                    td { class: "px-2 py-1 {ui::C_MUTED}", "{d.name}" }
                                     td { class: "px-2 py-1",
-                                        span { class: if d.kind == "fiat" { "rounded bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-300" } else { "rounded bg-sky-900/40 px-1.5 py-0.5 text-xs text-sky-300" },
+                                        span { class: if d.kind == "fiat" { "rounded bg-warning px-1.5 py-0.5 text-xs text-warning-foreground" } else { "rounded bg-info px-1.5 py-0.5 text-xs text-info-foreground" },
                                             "{d.kind}"
                                         }
                                     }
-                                    td { class: "px-2 py-1 text-zinc-400", "{d.internal_rate}" }
-                                    td { class: "px-2 py-1 text-zinc-400", "{d.precision}" }
+                                    td { class: "px-2 py-1 {ui::C_MUTED}", "{d.internal_rate}" }
+                                    td { class: "px-2 py-1 {ui::C_MUTED}", "{d.precision}" }
                                     td { class: "px-2 py-1",
                                         if d.enabled {
-                                            span { class: "text-emerald-400", "{LBL_STATUS_ENABLED}" }
+                                            span { class: "{ui::C_SUCCESS}", "{LBL_STATUS_ENABLED}" }
                                         } else {
-                                            span { class: "text-zinc-500", "{LBL_STATUS_DISABLED}" }
+                                            span { class: "{ui::C_MUTED}", "{LBL_STATUS_DISABLED}" }
                                         }
                                     }
                                     td { class: "px-2 py-1 text-right",
                                         button {
-                                            class: "mr-2 rounded-lg border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                                            class: "mr-2 rounded-lg border border-border px-2 py-0.5 {ui::TYPE_DESC} hover:bg-secondary",
                                             "data-testid": edit_id,
                                             onclick: move |_| on_edit(d.clone()),
                                             "{BTN_EDIT}"
                                         }
                                         if d.enabled {
                                             button {
-                                                class: "rounded-lg border border-red-800 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40",
+                                                class: "rounded-lg border border-destructive px-2 py-0.5 text-xs {ui::C_DANGER} hover:bg-destructive",
                                                 "data-testid": disable_id,
                                                 onclick: move |_| on_disable(disable_code.clone()),
                                                 "{BTN_DISABLE}"

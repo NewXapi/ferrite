@@ -53,15 +53,15 @@ pub fn ModelsPanel() -> Element {
             role: "region",
             "aria-label": MODELS_TITLE,
             div { class: "flex items-baseline justify-between",
-                h2 { class: "text-base font-semibold text-zinc-100", "{MODELS_TITLE}" }
-                span { class: "text-xs text-zinc-600", "{MODELS_COUNT_HEAD}{total}{MODELS_COUNT_TAIL}" }
+                h2 { class: "{ui::TYPE_TITLE}", "{MODELS_TITLE}" }
+                span { class: "{ui::TYPE_DESC}", "{MODELS_COUNT_HEAD}{total}{MODELS_COUNT_TAIL}" }
             }
             if let Some(e) = err {
-                div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                    p { class: "text-sm text-red-300", "{MODELS_ERR}" }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                div { class: "rounded-2xl border border-destructive bg-destructive px-4 py-6 text-center",
+                    p { class: "text-sm {ui::C_DANGER}", "{MODELS_ERR}" }
+                    p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
-                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent",
+                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} text-muted-foreground hover:bg-accent",
                         onclick: move |_| reload.set(reload() + 1),
                         "{BTN_RETRY}"
                     }
@@ -73,7 +73,7 @@ pub fn ModelsPanel() -> Element {
             } else if list.is_empty() {
                 div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                     p { class: "text-muted-foreground", "{MODELS_EMPTY}" }
-                    p { class: "mt-1 text-xs text-muted-foreground/70", "{MODELS_EMPTY_HINT}" }
+                    p { class: "mt-1 {ui::TYPE_DESC} text-muted-foreground/70", "{MODELS_EMPTY_HINT}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5",

@@ -19,7 +19,7 @@ use crate::shared::SEC_STATS;
 /// 【交互逻辑】纯展示,无交互 —— 组件内无按钮、无 `use_signal`、无网络调用。
 ///
 /// 【样式】外壳 `section#aliases-sec-stats` 带 `scroll-mt-8 space-y-3`(供 ScrollSpy
-/// 锚点定位);标题 `text-lg font-medium text-zinc-100`;卡片网格
+/// 锚点定位);标题 `text-lg font-medium text-foreground`;卡片网格
 /// `grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5` —— 手机 1 列、中屏 3 列、
 /// 大屏 5 列。
 ///
@@ -33,7 +33,7 @@ use crate::shared::SEC_STATS;
 pub fn AliasesStatsSection(stats: Vec<(String, &'static str)>) -> Element {
     rsx! {
         section { id: "aliases-sec-stats", class: "scroll-mt-8 space-y-3",
-            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+            h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
             div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                 for (value, label) in stats {
                     StatCard { value, label }

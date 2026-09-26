@@ -31,8 +31,8 @@ pub const MODEL_COLORS: [&str; 10] = [
 /// - 交互逻辑:`timeframe` 由页面持有并以 Signal 双向绑定 —— 组件只就地写回,
 ///   页面 `use_effect` 依赖该 signal 重拉趋势 / 榜单;组件内部零 `use_signal`。
 /// - 样式:zinc-950 底 + zinc-800 边框的胶囊容器,按钮 `rounded-md px-2.5 py-1
-///   text-xs`;激活段 `bg-zinc-800 text-zinc-100 shadow-sm`,非激活
-///   `text-zinc-400 hover:text-zinc-200`。
+///   text-xs`;激活段 `bg-secondary text-foreground shadow-sm`,非激活
+///   `text-muted-foreground hover:text-foreground`。
 /// - 测试锚点:`testid_prefix` 为 `Some` 时按 `{prefix}-{档位}` 输出
 ///   `data-testid`(排行榜);为 `None` 时该属性整体不渲染(总览趋势面板原 DOM
 ///   无 testid,保持逐字不变)。
@@ -46,7 +46,7 @@ pub fn TimeframeTabs(
 ) -> Element {
     let tf = timeframe();
     rsx! {
-        div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
+        div { class: "flex items-center gap-1.5 rounded-lg border border-border bg-background p-1",
             // 滚轮竖向滚动 → 循环切换时间窗档位(总览与排行榜共用)
             onwheel: move |e: WheelEvent| {
                 let cur = TIMEFRAMES.iter().position(|t| *t == tf).unwrap_or(0);
@@ -55,8 +55,8 @@ pub fn TimeframeTabs(
             for t in TIMEFRAMES {
                 button {
                     key: "{t}",
-                    class: "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                    class: if tf == t { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
+                    class: "rounded-md px-2.5 py-1 {ui::TYPE_DESC} transition-colors",
+                    class: if tf == t { "bg-secondary text-foreground shadow-sm" } else { "text-muted-foreground hover:text-foreground" },
                     onclick: move |_| timeframe.set(t),
                     "data-testid": testid_prefix.map(|prefix| format!("{prefix}-{t}")),
                     "{t}"

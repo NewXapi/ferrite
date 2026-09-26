@@ -1,8 +1,17 @@
 {
   "web_refactor": {
-    "intent": "Ferrite web page-crate refactor specification (self-contained; this text IS the rule). Canonical page-crate shape: src/lib.rs (module declarations plus `pub use tab_page::<tab>::XxxPanel;`, no business logic), src/api.rs (this page's wire), optional root-level src/shared.rs (LBL_/BTN_/SEC_/MSG_/FIELD_/OPT_ text constants) and src/format.rs (pure functions), src/tab-page/mod.rs plus one src/tab-page/<tab>.rs per tab holding the XxxPanel entry component and all cross-component state, and src/components/ containing ONLY #[component] functions. Flat per-tab directories named tab-page-<name>/ are the legacy shape and must not be created or kept. HARD RULES: (H1) zero behavior drift — data-testid, aria-* role and label, every class string, the four states (loading/error/empty/data), button text and button order all survive byte-for-byte; this is a move, not a redesign. (H2) tab-page/<tab>.rs is assembly only: no inline style detail, element nesting at most 1 level, direct children of the top container are #[component] calls or leaves. (R1.1) one *_section.rs component per numbered paragraph (statistics / filter / list / modal), always in components/, never inline in a tab file. (R1.2) every for-loop body that derives state or has a multi-line structure must be an extracted item component; inline `{ let ...; rsx! { ... } }` inside a loop is a violation. (R1.3) one #[component] has at most ONE content rsx! (the returned one); the only exception is slot-wiring rsx in an Option<Element> prop value position. (B2.1) extract when the same semantic block appears 2 or more times, when a subtree exceeds 30 lines with a clear boundary, or when one function has 3 or more rsx; do not over-fragment atomic utility classes. (B2.2) state used by only one component stays in that component; state crossing components lives in tab-page/<tab>.rs. (B2.3) a component never calls the API and never writes external signals; it takes props and returns EventHandler<T>. (H3) no user-visible Chinese inside rsx element bodies in tab-page/ or components/ — use LBL_/BTN_/SEC_/MSG_/FIELD_/OPT_ constants; data-testid values, numbers, symbols and units stay literal. (H4) every public #[component] needs six-element rustdoc covering what it is, what it does, interaction logic, style, child components, and data flow; every new file needs a //! module header. (B2.5) a repeated semantic style combination (card shell, modal shell, input shell, section header, focus shell, empty/error state) used in 2 or more places belongs in ui-components as a style constant or style component; single atomic utilities such as flex or gap-2 never count. (direction) tab-page -> components -> ui-components and page -> contract; never the reverse, and contract is the only source of DTOs. Flag only evidence visible in the file or the diff; never infer a violation from a path name alone.",
-    "paths_include": ["crates/web/**/*.rs", "apps/admin-web/**/*.rs", "apps/tavern-web/**/*.rs"],
-    "paths_exclude": ["target/", ".wt/", "**/tests/", "**/benches/"],
+    "intent": "Ferrite web page-crate refactor specification (self-contained; this text IS the rule). Canonical page-crate shape: src/lib.rs (module declarations plus `pub use tab_page::<tab>::XxxPanel;`, no business logic), src/api.rs (this page's wire), optional root-level src/shared.rs (LBL_/BTN_/SEC_/MSG_/FIELD_/OPT_ text constants) and src/format.rs (pure functions), src/tab-page/mod.rs plus one src/tab-page/<tab>.rs per tab holding the XxxPanel entry component and all cross-component state, and src/components/ containing ONLY #[component] functions. Flat per-tab directories named tab-page-<name>/ are the legacy shape and must not be created or kept. HARD RULES: (H1) zero behavior drift — data-testid, aria-* role and label, every class string, the four states (loading/error/empty/data), button text and button order all survive byte-for-byte; this is a move, not a redesign. (H2) tab-page/<tab>.rs is assembly only: no inline style detail, element nesting at most 1 level, direct children of the top container are #[component] calls or leaves. (R1.1) one *_section.rs component per numbered paragraph (statistics / filter / list / modal), always in components/, never inline in a tab file. (R1.2) every for-loop body that derives state or has a multi-line structure must be an extracted item component; inline `{ let ...; rsx! { ... } }` inside a loop is a violation. (R1.3) one #[component] has at most ONE content rsx! (the returned one); the only exception is slot-wiring rsx in an Option<Element> prop value position. (B2.1) extract when the same semantic block appears 2 or more times, when a subtree exceeds 30 lines with a clear boundary, or when one function has 3 or more rsx; do not over-fragment atomic utility classes. (B2.2) state used by only one component stays in that component; state crossing components lives in tab-page/<tab>.rs. (B2.3) a component never calls the API and never writes external signals; it takes props and returns EventHandler<T>. (H3) no user-visible Chinese inside rsx element bodies in tab-page/ or components/ — use LBL_/BTN_/SEC_/MSG_/FIELD_/OPT_ constants; data-testid values, numbers, symbols and units stay literal. (H4) every public #[component] needs six-element rustdoc covering what it is, what it does, interaction logic, style, child components, and data flow; every new file needs a //! module header. (B2.5) a repeated semantic style combination (card shell, modal shell, input shell, section header, focus shell, empty/error state) used in 2 or more places belongs in ui-components as a style constant or style component; single atomic utilities such as flex or gap-2 never count. (direction) tab-page -> components -> ui-components and page -> contract; never the reverse, and contract is the only source of DTOs. Flag only evidence visible in the file or the diff; never infer a violation from a path name alone. (STYLE-TOKENS) Color and text styling must route through the semantic CSS token layer in crates/web/ui-components/assets/tokens.css: semantic color classes (text-foreground, text-muted-foreground, text-primary-foreground, bg-background, bg-card, bg-secondary, border-border, text-destructive, text-success-foreground, text-warning-foreground, text-info-foreground) and .role-* text roles (role-title/role-card/role-body/role-desc/role-caption/role-label/role-value/role-button). Raw Tailwind shade utilities (text-zinc-N, bg-zinc-N, border-zinc-N, text-red/emerald/amber/sky-N) are a violation when a semantic token represents the same role; only genuinely one-off size/spacing/layout utilities may stay Tailwind.",
+    "paths_include": [
+      "crates/web/**/*.rs",
+      "apps/admin-web/**/*.rs",
+      "apps/tavern-web/**/*.rs"
+    ],
+    "paths_exclude": [
+      "target/",
+      ".wt/",
+      "**/tests/",
+      "**/benches/"
+    ],
     "state": {
       "file": true,
       "diff": true,
@@ -120,7 +129,17 @@
           "mixed": "At least two of the other categories apply.",
           "no_action": "The file already satisfies the target shape and shared-component/style rules."
         },
-        "fail_labels": ["page_shape", "style_unification", "shared_component", "composition", "state_boundary", "i18n", "documentation", "behavior_drift", "mixed"],
+        "fail_labels": [
+          "page_shape",
+          "style_unification",
+          "shared_component",
+          "composition",
+          "state_boundary",
+          "i18n",
+          "documentation",
+          "behavior_drift",
+          "mixed"
+        ],
         "fail": 0.99,
         "warn": 0.6
       },
@@ -142,6 +161,16 @@
         "criteria": {
           "true": "The evidence shows release-scale duplication, a structural diff that changes H1 behavior, or a new page shape that bypasses the canonical page-crate contract.",
           "false": "The issue is a local advisory, a single-file style opportunity, or a missing comment that does not alter runtime behavior."
+        },
+        "fail": 0.99,
+        "warn": 0.6
+      },
+      "semantic_style": {
+        "type": "noul",
+        "instructions": "Does the diff write raw Tailwind shade color utilities (text-zinc-N, bg-zinc-N, border-zinc-N, or text/bg-red|emerald|amber|sky-N) on text/background/border where a semantic class from tokens.css represents the same role (e.g. text-zinc-400 where text-muted-foreground exists, bg-zinc-900 where bg-card exists, text-red-400 where text-destructive exists)?",
+        "criteria": {
+          "true": "A raw *-zinc-N or *-red/emerald/amber/sky-N color utility is added or kept on a text/bg/border that a semantic token class in tokens.css already covers; i.e. the styling bypasses the managed CSS token layer.",
+          "false": "Color/style is expressed through semantic classes (text-*-foreground, bg-*/border-border, text-destructive/success/warning/info-foreground, .role-*) or via one-off size/spacing/layout utilities that have no semantic-token equivalent."
         },
         "fail": 0.99,
         "warn": 0.6

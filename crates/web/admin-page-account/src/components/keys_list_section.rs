@@ -41,8 +41,8 @@ pub fn KeysListSection(
             div { class: "space-y-4",
                 div { class: "flex items-center justify-between gap-3",
                     div { class: "flex items-center gap-2",
-                        h2 { class: "text-lg font-medium text-zinc-100", "{SEC_KEYS}" }
-                        span { class: "text-xs px-3 py-1 rounded-full bg-zinc-800 text-zinc-400",
+                        h2 { class: "{ui::TYPE_TITLE}", "{SEC_KEYS}" }
+                        span { class: "{ui::TYPE_DESC} px-3 py-1 rounded-full bg-secondary",
                             if keys_loaded() { "{keys.len()} 个" } else { "…" }
                         }
                     }
@@ -55,11 +55,11 @@ pub fn KeysListSection(
                 }
 
                 if !keys_err().is_empty() {
-                    p { class: "text-sm text-amber-400", "无法加载密钥 (未登录或请求失败): {keys_err()}" }
+                    p { class: "{ui::TYPE_BODY} {ui::C_WARNING}", "无法加载密钥 (未登录或请求失败): {keys_err()}" }
                 } else if !keys_loaded() {
-                    p { class: "text-sm text-zinc-500", "加载中…" }
+                    p { class: "{ui::TYPE_BODY}", "加载中…" }
                 } else if keys.is_empty() {
-                    p { class: "text-sm text-zinc-500", "还没有密钥,点「✚ 新建密钥」签发第一个" }
+                    p { class: "{ui::TYPE_BODY}", "还没有密钥,点「✚ 新建密钥」签发第一个" }
                 } else {
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                         for t in keys {

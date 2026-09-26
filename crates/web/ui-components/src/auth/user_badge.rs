@@ -27,7 +27,7 @@ pub fn UserBadge(
                         "{user.username.chars().next().unwrap_or('U')}"
                     }
                     span { class: "font-semibold text-zinc-200 max-w-[80px] truncate", "{user.display_name}" }
-                    span { class: "text-[9px] text-zinc-500", "⌵" }
+                    span { class: "text-[9px] {crate::C_MUTED}", "⌵" }
                 }
 
                 if dropdown_open() {
@@ -35,7 +35,7 @@ pub fn UserBadge(
                         class: "absolute right-0 top-full mt-2 z-50 w-44 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs flex flex-col gap-1",
                         div { class: "px-2.5 py-2 border-b border-zinc-800/80 flex flex-col gap-0.5",
                             span { class: "font-bold text-white truncate", "{user.display_name}" }
-                            span { class: "text-[10px] text-zinc-500 truncate", "@{user.username} · {role_label(user.role)}" }
+                            span { class: "text-[10px] {crate::C_MUTED} truncate", "@{user.username} · {role_label(user.role)}" }
                         }
                         button {
                             class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left",

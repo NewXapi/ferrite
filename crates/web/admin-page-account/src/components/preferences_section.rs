@@ -12,7 +12,7 @@ use crate::api;
 ///
 /// 【交互逻辑】改下拉/勾选只改本地信号；点「保存设置」置 busy 防重入，成功显绿字 flash，失败在卡下方红字展示后端错误。
 ///
-/// 【样式】标题 + 两栏网格 (sm 起两列)；输入与下拉 rounded-xl 边框 + focus:border-zinc-500；卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；JSON 视图 pre max-h-60 可滚动等宽小字。
+/// 【样式】标题 + 两栏网格 (sm 起两列)；输入与下拉 rounded-xl 边框 + focus:border-border；卡片 rounded-xl bg-card/60 p-6 + hover:border-border；JSON 视图 pre max-h-60 可滚动等宽小字。
 ///
 /// 【子组件组成】ui::button::Button (保存设置) × 1
 ///
@@ -57,16 +57,16 @@ pub fn PreferencesSection() -> Element {
     rsx! {
         div { class: "flex flex-col gap-6",
             div {
-                h2 { class: "text-lg font-medium text-zinc-100", "偏好设置" }
-                p { class: "mt-1 text-sm text-zinc-500", "设置以 JSONB 形式存于账号, 修改即时合并保存" }
+                h2 { class: "{ui::TYPE_TITLE}", "偏好设置" }
+                p { class: "mt-1 {ui::TYPE_BODY}", "设置以 JSONB 形式存于账号, 修改即时合并保存" }
             }
 
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
+            div { class: "rounded-xl border border-border bg-card/60 p-6 transition-colors hover:border-border",
                 div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "界面语言" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "界面语言" }
                         select {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT}",
                             value: "{language}",
                             onchange: move |e| language.set(e.value()),
                             option { value: "zh", "简体中文" }
@@ -75,7 +75,7 @@ pub fn PreferencesSection() -> Element {
                         }
                     }
                     div { class: "flex items-end",
-                        label { class: "flex w-full cursor-pointer items-center justify-between rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm",
+                        label { class: "flex w-full cursor-pointer items-center justify-between rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY}",
                             span { "接收通知" }
                             input {
                                 r#type: "checkbox",
@@ -121,21 +121,21 @@ pub fn PreferencesSection() -> Element {
                         "保存设置"
                     }
                     if let Some(m) = flash() {
-                        span { class: "text-xs text-emerald-400", "{m}" }
+                        span { class: "{ui::TYPE_DESC} {ui::C_SUCCESS}", "{m}" }
                     }
                 }
 
                 if !err().is_empty() {
-                    p { class: "mt-3 text-xs text-red-400", "操作失败: {err()}" }
+                    p { class: "mt-3 {ui::TYPE_DESC} {ui::C_DANGER}", "操作失败: {err()}" }
                 }
             }
 
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
+            div { class: "rounded-xl border border-border bg-card/60 p-6 transition-colors hover:border-border",
                 div { class: "mb-3 flex items-center justify-between",
-                    h3 { class: "text-sm font-medium text-zinc-100", "当前设置 (JSON)" }
-                    span { class: "text-xs text-zinc-500", "只读视图" }
+                    h3 { class: "{ui::TYPE_CARD_TITLE}", "当前设置 (JSON)" }
+                    span { class: "{ui::TYPE_DESC}", "只读视图" }
                 }
-                pre { class: "max-h-60 overflow-auto rounded-lg bg-zinc-950 p-4 font-mono text-xs text-zinc-300", "{raw_json}" }
+                pre { class: "max-h-60 overflow-auto rounded-lg bg-background p-4 font-mono text-xs text-foreground", "{raw_json}" }
             }
         }
     }

@@ -22,11 +22,11 @@ fn role_label(role: u16) -> &'static str {
 /// 额度进度条配色：随用量升高转告警（与页面旧卡同口径）。
 fn usage_tone(used_pct: f64) -> &'static str {
     if used_pct >= 90.0 {
-        "bg-red-500"
+        "bg-destructive"
     } else if used_pct >= 70.0 {
-        "bg-amber-500"
+        "bg-warning"
     } else {
-        "bg-emerald-500"
+        "bg-success"
     }
 }
 
@@ -88,16 +88,16 @@ pub fn UserCard(
                 span { class: "font-medium text-zinc-200", "{status_str}" }
             }
             div { class: "space-y-1.5",
-                p { class: "text-[11px] text-zinc-400", "分组" }
+                p { class: "{crate::TYPE_LABEL}", "分组" }
                 div { class: "flex flex-wrap gap-1.5",
                     for label in &group_labels {
                         span {
-                            class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
+                            class: "rounded-full border border-border bg-secondary/80 px-2 py-0.5 {crate::TYPE_LABEL}",
                             "{label}"
                         }
                     }
                     if group_labels.is_empty() {
-                        span { class: "text-[11px] text-zinc-500", "无分组" }
+                        span { class: "{crate::TYPE_LABEL}", "无分组" }
                     }
                 }
             }
@@ -117,7 +117,7 @@ pub fn UserCard(
                 span { class: "text-zinc-400", "总额" }
                 span { class: "font-medium text-zinc-200", "{fmt_quota_cny(user.quota)}" }
             }
-            div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+            div { class: "h-1.5 w-full overflow-hidden rounded-full bg-secondary",
                 div { class: "h-full rounded-full {usage_tone(used_pct)} transition-all", style: "width: {used_pct:.1}%" }
             }
             div { class: "flex justify-between gap-2 text-xs",
@@ -127,7 +127,7 @@ pub fn UserCard(
         }
     };
     let panel_system = rsx! {
-        div { class: "space-y-2 text-xs",
+        div { class: "space-y-2 {crate::TYPE_DESC}",
             div { class: "flex justify-between gap-2",
                 span { class: "text-zinc-400", "Key" }
                 span { class: "font-mono text-zinc-200", "{short_k}" }

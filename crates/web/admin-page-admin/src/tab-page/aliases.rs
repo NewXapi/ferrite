@@ -57,8 +57,8 @@ use crate::state::AliasRow;
 /// - 卡片删除(Dialog 确认后) → `delete_model_alias_api`(DELETE),成功后本地从 `rows` 移除。
 /// - 提交弹窗(仅剩新建) → 不造数据,置 `notice = MSG_CREATE_REJECTED` 诚实拒绝。
 ///
-/// 【样式】顶层 `div.flex flex-col gap-6`;通知条为 `rounded-xl border-zinc-700
-/// bg-zinc-900`,数据来源说明条为 `bg-zinc-900/60` 的窄横幅。页面自身不写卡片/网格样式。
+/// 【样式】顶层 `div.flex flex-col gap-6`;通知条为 `rounded-xl border-border
+/// bg-card`,数据来源说明条为 `bg-card/60` 的窄横幅。页面自身不写卡片/网格样式。
 ///
 /// 【子组件组成】`AliasesStatsSection` / `AliasesToolbarSection` / `AliasesListSection`,
 /// 条件渲染时挂载 `AliasFormModal`;`AliasCard` 由 list 区内部使用。
@@ -364,14 +364,14 @@ pub fn AliasesPage() -> Element {
             if let Some(msg) = notice() {
                 div {
                     role: "status",
-                    class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                    class: "rounded-xl border border-border bg-card px-4 py-2 {ui::TYPE_DESC}",
                     "{msg}"
                     if busy() { " ···" }
                 }
             }
 
             // 数据与写路径说明(后端 models 端点暂无计费字段)
-            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
+            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/60 px-4 py-2.5 {ui::TYPE_DESC}",
                 span { "{SEC_DATA_NOTE}" }
             }
 

@@ -12,7 +12,7 @@ pub fn SwipePicker(
         return rsx! {};
     }
     rsx! {
-        div { class: "inline-flex items-center gap-1 text-xs text-zinc-400 font-medium px-1",
+        div { class: "inline-flex items-center gap-1 {crate::TYPE_DESC} font-medium px-1",
             button {
                 class: "flex h-5 w-5 items-center justify-center rounded hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-30",
                 disabled: index == 0,

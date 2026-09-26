@@ -232,7 +232,7 @@ pub fn UsersPanel() -> Element {
 
             // 通知条(成功/错误/进行中)—— 1 层布局包装,豁免 R1
             if let Some(msg) = notice() {
-                div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                div { class: "rounded-xl border border-border bg-card px-4 py-2 {ui::TYPE_DESC}",
                     role: if msg.starts_with(MSG_ACTION_ERR) { "alert" } else { "status" },
                     "{msg}"
                     if busy() { " ···" }

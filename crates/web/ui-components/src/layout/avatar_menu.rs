@@ -71,10 +71,10 @@ pub fn AvatarMenu(
                                 AvatarFallback { "{initial}" }
                             }
                         }
-                        span { class: "truncate text-sm font-medium text-zinc-100", "{user_name}" }
+                        span { class: "truncate {crate::TYPE_CARD_TITLE}", "{user_name}" }
                     }
                     // 行 2：余额（左对齐）
-                    div { class: "px-2 pb-1.5 text-xs text-zinc-500", "{amount}" }
+                    div { class: "px-2 pb-1.5 {crate::TYPE_DESC}", "{amount}" }
                     DropdownMenuSeparator {}
                     // 行 3+：当前页面页签，一行一项
                     for (i, label) in menu_tabs.iter().enumerate() {

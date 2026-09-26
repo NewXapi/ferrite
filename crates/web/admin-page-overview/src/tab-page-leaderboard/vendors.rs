@@ -108,7 +108,7 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
     if loading {
         return rsx! {
             div {
-                class: "h-[148px] animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60 transition-[border-color] duration-150 hover:border-secondary-hover",
+                class: "h-[148px] animate-pulse rounded-xl border border-border bg-card/60 transition-[border-color] duration-150 hover:border-secondary-hover",
                 "data-testid": "leaderboard-vendor-share-loading",
             }
         };
@@ -137,13 +137,13 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
         })
         .collect();
     rsx! {
-        div { class: "space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
+        div { class: "space-y-4 rounded-xl border border-border bg-card p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "leaderboard-vendor-share",
             div {
-                h3 { class: "text-sm font-semibold text-zinc-100", "{VENDOR_TITLE}" }
-                p { class: "text-[11px] text-zinc-500", "{VENDOR_SUBTITLE}" }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", "{VENDOR_TITLE}" }
+                p { class: "{ui::TYPE_LABEL}", "{VENDOR_SUBTITLE}" }
             }
-            div { class: "h-2.5 w-full overflow-hidden rounded-full bg-zinc-800/80",
+            div { class: "h-2.5 w-full overflow-hidden rounded-full bg-secondary/80",
                 svg {
                     class: "h-full w-full",
                     view_box: "0 0 100 10",
@@ -171,16 +171,16 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
                         rsx! {
                             div {
                                 key: "{s.vendor}",
-                                class: "flex items-center justify-between gap-3 text-xs",
+                                class: "flex items-center justify-between gap-3 {ui::TYPE_DESC}",
                                 "data-testid": "leaderboard-vendor-{slug(s.vendor)}",
                                 div { class: "flex min-w-0 items-center gap-2",
                                     span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                    span { class: "truncate text-zinc-200", "{s.vendor}" }
+                                    span { class: "truncate text-foreground", "{s.vendor}" }
                                 }
                                 div { class: "flex shrink-0 items-center gap-2 font-mono tabular-nums",
-                                    span { class: "text-zinc-500", "{fmt_raw(s.tokens)}" }
+                                    span { class: "{ui::C_MUTED}", "{fmt_raw(s.tokens)}" }
                                     if let Some(p) = share {
-                                        span { class: "text-zinc-400", "{p}" }
+                                        span { class: "{ui::C_MUTED}", "{p}" }
                                     }
                                 }
                             }
@@ -188,7 +188,7 @@ pub fn VendorShareCard(rows: Vec<UsageTopRow>, loading: bool) -> Element {
                     }
                 }
             }
-            p { class: "text-[10px] text-zinc-600", "{VENDOR_FOOTNOTE}" }
+            p { class: "{ui::TYPE_LABEL}", "{VENDOR_FOOTNOTE}" }
         }
     }
 }

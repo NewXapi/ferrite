@@ -13,7 +13,7 @@ pub fn FormField(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1.5",
-            span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
+            span { class: "block {crate::TYPE_DESC} text-zinc-400 uppercase tracking-wide", "{label}" }
             input {
                 "data-testid": "{name}",
                 class: INPUT_CLASS,

@@ -97,8 +97,8 @@ pub fn StatCard(
             hoverable: true,
             class: "cursor-default gap-0! px-4 py-3!",
             "data-testid": "{label}",
-            p { class: "truncate text-base font-semibold text-foreground md:text-lg", "{value}" }
-            p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{label}" }
+            p { class: "truncate {ui::TYPE_TITLE} text-foreground md:text-lg", "{value}" }
+            p { class: "mt-0.5 truncate {ui::TYPE_DESC} text-muted-foreground", "{label}" }
             if let Some(series) = sparkline {
                 Sparkline { series, gradient_id }
             }
@@ -120,13 +120,13 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
         (
             RUNWAY_NO_USAGE.to_string(),
             "text-muted-foreground".to_string(),
-            "bg-zinc-500",
+            "bg-accent",
         )
     } else if remaining <= 0 {
         (
             RUNWAY_EXHAUSTED.to_string(),
-            "text-red-400".to_string(),
-            "bg-red-500",
+            "text-destructive".to_string(),
+            "bg-destructive",
         )
     } else {
         let days = remaining as f64 / today as f64;
@@ -146,8 +146,8 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
         } else {
             (
                 format!("{RUNWAY_AVAILABLE}{days_text}"),
-                "text-emerald-400".to_string(),
-                "bg-emerald-400",
+                "text-success-foreground".to_string(),
+                "bg-success",
             )
         }
     };
@@ -160,13 +160,13 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
                 p { class: "truncate text-base font-semibold font-mono tabular-nums text-foreground md:text-lg", "{api::fmt_usd(remaining)}" }
                 span { class: "h-2 w-2 shrink-0 rounded-full {dot_class}", aria_hidden: "true" }
             }
-            p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{LBL_QUOTA_REMAINING}" }
+            p { class: "mt-0.5 truncate {ui::TYPE_DESC} text-muted-foreground", "{LBL_QUOTA_REMAINING}" }
             p {
-                class: "mt-0.5 truncate text-xs font-medium {runway_class}",
+                class: "mt-0.5 truncate {ui::TYPE_DESC} {runway_class}",
                 "data-testid": "{TESTID_QUOTA_RUNWAY}",
                 "{runway_line}"
             }
-            p { class: "mt-1 text-[10px] leading-4 text-muted-foreground/70",
+            p { class: "mt-1 {ui::TYPE_LABEL} leading-4 text-muted-foreground/70",
                 "{QUOTA_FOOTNOTE}"
             }
         }

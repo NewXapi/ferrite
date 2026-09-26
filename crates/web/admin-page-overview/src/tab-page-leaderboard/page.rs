@@ -96,24 +96,24 @@ pub fn LeaderboardPanel() -> Element {
 
             section { "data-testid": "leaderboard-usage", role: "region", "aria-label": "{USAGE_ARIA_LABEL}",
                 if let Some(e) = error {
-                    div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                        p { class: "text-sm text-red-300", "{USAGE_ERR}" }
-                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                    div { class: "rounded-2xl border border-destructive bg-destructive px-4 py-6 text-center",
+                        p { class: "text-sm {ui::C_DANGER}", "{USAGE_ERR}" }
+                        p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                         button {
-                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                            class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:bg-secondary",
                             "data-testid": "retry-leaderboard",
                             onclick: move |_| reload.set(reload() + 1),
                             "{BTN_RETRY}"
                         }
                     }
                 } else if is_loading {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "{USAGE_LOADING}" }
+                    div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
+                        p { class: "{ui::C_MUTED}", "{USAGE_LOADING}" }
                     }
                 } else if data.is_empty() {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "{USAGE_EMPTY}" }
-                        p { class: "mt-1 text-xs text-zinc-600", "{USAGE_EMPTY_HINT}" }
+                    div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
+                        p { class: "{ui::C_MUTED}", "{USAGE_EMPTY}" }
+                        p { class: "mt-1 {ui::TYPE_DESC}", "{USAGE_EMPTY_HINT}" }
                     }
                 } else {
                     // 三卡间距 gap-6(8090 预览反馈④),卡片 p-5 保持

@@ -107,35 +107,35 @@ pub fn EditKeyModal(
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "{ui::MODAL_HEADER}",
-                    h3 { class: "text-base font-semibold text-zinc-100", "编辑密钥" }
-                    p { class: "truncate font-mono text-xs text-zinc-500", "{token.key_preview}" }
+                    h3 { class: "{ui::TYPE_TITLE}", "编辑密钥" }
+                    p { class: "truncate font-mono {ui::TYPE_DESC}", "{token.key_preview}" }
                 }
 
                 // 字段较多, 弹窗保持 max-w-md 视觉, 字段区超高内部滚动
                 div { class: "max-h-[60vh] space-y-4 overflow-y-auto",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "密钥名称" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "密钥名称" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT}",
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "分组 (可选)" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "分组 (可选)" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                            class: "{ui::INPUT}",
                             placeholder: "留空 = 保持不变",
                             value: "{group}",
                             oninput: move |e| group.set(e.value()),
                         }
-                        p { class: "mt-1 text-[11px] text-zinc-500",
+                        p { class: "mt-1 {ui::TYPE_LABEL}",
                             "分组决定计费与模型可见范围; 跟随用户默认分组的密钥此处显示为空"
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "额度限制 (额度单位)" }
-                        label { class: "mb-1.5 flex cursor-pointer items-center gap-2 text-xs text-zinc-400",
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "额度限制 (额度单位)" }
+                        label { class: "mb-1.5 flex cursor-pointer items-center gap-2 {ui::TYPE_DESC}",
                             input {
                                 r#type: "checkbox",
                                 class: "h-4 w-4 accent-emerald-500",
@@ -145,40 +145,40 @@ pub fn EditKeyModal(
                             "无限额度"
                         }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                            class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 font-mono text-sm focus:border-border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
                             r#type: "text",
                             placeholder: "额度单位, 500,000 ≈ $1",
                             value: "{quota}",
                             disabled: unlimited(),
                             oninput: move |e| quota.set(e.value()),
                         }
-                        p { class: "mt-1 text-[11px] text-zinc-500", "额度单位: 500,000 ≈ $1" }
+                        p { class: "mt-1 {ui::TYPE_LABEL}", "额度单位: 500,000 ≈ $1" }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "过期时间" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "过期时间" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 focus:border-zinc-500 focus:outline-none",
+                            class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                             r#type: "date",
                             value: "{expiry}",
                             oninput: move |e| expiry.set(e.value()),
                         }
-                        p { class: "mt-1 text-[11px] text-zinc-500",
+                        p { class: "mt-1 {ui::TYPE_LABEL}",
                             "留空 = 保持不变; 所选日期当日 (UTC) 结束后失效"
                         }
                     }
                     if !err().is_empty() {
-                        p { class: "text-xs text-red-400", "{err()}" }
+                        p { class: "{ui::TYPE_DESC} {ui::C_DANGER}", "{err()}" }
                     }
                 }
 
                 div { class: "mt-6 flex gap-3",
                     button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                        class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
                     button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                        class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                         disabled: busy(),
                         onclick: submit,
                         "保存"

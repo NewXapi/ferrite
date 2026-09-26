@@ -13,7 +13,7 @@ use crate::components::ErrCard;
 ///
 /// 【交互逻辑】纯展示；行 hover 边框转琥珀色，无点击动作。
 ///
-/// 【样式】卡片 rounded-xl p-6 + hover:border-zinc-600；行 rounded-2xl bg-zinc-950 p-5 gap-4；头像琥珀渐变方块；奖励额 emerald-400 tabular-nums 右对齐。
+/// 【样式】卡片 rounded-xl p-6 + hover:border-border；行 rounded-2xl bg-background p-5 gap-4；头像琥珀渐变方块；奖励额 emerald-400 tabular-nums 右对齐。
 ///
 /// 【子组件组成】ErrCard × 0 或 1
 ///
@@ -26,10 +26,10 @@ pub fn InviteesSection(
 ) -> Element {
     rsx! {
         // 被邀人列表
-        section { id: "rewards-sec-list", class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+        section { id: "rewards-sec-list", class: "scroll-mt-8 rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
             div { class: "mb-2 flex items-center justify-between",
-                h3 { class: "text-sm font-medium text-zinc-200", "被邀请用户" }
-                div { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400",
+                h3 { class: "{ui::TYPE_CARD_TITLE}", "被邀请用户" }
+                div { class: "rounded-full bg-secondary px-3 py-1 {ui::TYPE_DESC}",
                     "data-testid": "invitee-count",
                     "{invitees().map_or(0, |v| v.len())} 人"
                 }
@@ -38,36 +38,36 @@ pub fn InviteesSection(
                 ErrCard { testid: "invitee-error", what: "被邀人", msg: invitees_err() }
             } else if !invitees_loaded() {
                 div { class: "space-y-3", "data-testid": "invitee-skeleton",
-                    div { class: "h-16 w-full animate-pulse rounded-2xl bg-zinc-800" }
-                    div { class: "h-16 w-full animate-pulse rounded-2xl bg-zinc-800/70" }
+                    div { class: "h-16 w-full animate-pulse rounded-2xl bg-secondary" }
+                    div { class: "h-16 w-full animate-pulse rounded-2xl bg-secondary/70" }
                 }
             } else if invitees().is_none_or(|v| v.is_empty()) {
                 div {
-                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
+                    class: "rounded-2xl border border-dashed border-border bg-background/40 py-8 text-center",
                     "data-testid": "invitee-empty",
-                    p { class: "text-sm text-zinc-500", "暂无被邀请用户 (通过链接注册后在此显示)" }
+                    p { class: "{ui::TYPE_BODY}", "暂无被邀请用户 (通过链接注册后在此显示)" }
                 }
             } else if let Some(rows) = invitees() {
                 div { class: "space-y-3",
                     for i in &rows {
-                        div { class: "group flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 hover:border-amber-900",
+                        div { class: "group flex items-center gap-4 rounded-2xl border border-border bg-background p-5 hover:border-amber-900",
                             "data-testid": format!("invitee-row-{}", i.user_key),
-                            div { class: "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-900 to-zinc-700 text-xl font-semibold text-amber-200",
+                            div { class: "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-900 to-zinc-700 text-xl font-semibold {ui::C_WARNING}",
                                 "{i.name.chars().next().unwrap_or_default()}"
                             }
                             div { class: "min-w-0 flex-1",
-                                div { class: "font-medium text-zinc-100 group-hover:text-amber-100",
+                                div { class: "font-medium text-foreground group-hover:text-warning-foreground",
                                     if i.name.is_empty() { "(未命名用户)" } else { "{i.name}" }
                                 }
-                                div { class: "mt-0.5 text-xs text-zinc-500",
+                                div { class: "mt-0.5 {ui::TYPE_DESC}",
                                     "注册时间:{fmt_time(&i.joined_at)}"
                                 }
                             }
                             div { class: "text-right",
-                                div { class: "font-semibold text-emerald-400 tabular-nums",
+                                div { class: "font-semibold {ui::C_SUCCESS} tabular-nums",
                                     "{fmt_num(i.reward)}"
                                 }
-                                div { class: "mt-px text-[10px] text-zinc-500", "贡献奖励" }
+                                div { class: "mt-px {ui::TYPE_LABEL}", "贡献奖励" }
                             }
                         }
                     }

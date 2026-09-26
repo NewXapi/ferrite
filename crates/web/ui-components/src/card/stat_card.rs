@@ -48,14 +48,14 @@ impl StatSize {
 pub fn size_parts(size: StatSize) -> (&'static str, &'static str, &'static str) {
     match size {
         StatSize::Sm => (
-            "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
-            "text-xl font-semibold tracking-tight text-white",
-            "mt-0.5 text-xs text-zinc-500",
+            "rounded-xl border border-border bg-card/60 px-4 py-3 transition-colors hover:border-border",
+            "text-xl font-semibold tracking-tight text-foreground",
+            "mt-0.5 text-xs text-muted-foreground",
         ),
         StatSize::Lg => (
-            "rounded-xl border border-zinc-800 bg-zinc-900/60 px-5 py-4 hover:border-zinc-600 transition-colors",
-            "text-2xl font-semibold text-zinc-100 tabular-nums",
-            "mt-1 text-xs text-zinc-500",
+            "rounded-xl border border-border bg-card/60 px-5 py-4 hover:border-border transition-colors",
+            "text-2xl font-semibold text-foreground tabular-nums",
+            "mt-1 text-xs text-muted-foreground",
         ),
     }
 }

@@ -173,7 +173,7 @@ pub fn UserForm(
             if tab() == FormTab::Basic {
                 div { class: "space-y-4",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_USERNAME}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_USERNAME}" }
                         input {
                             class: MODAL_INPUT,
                             placeholder: FIELD_USERNAME_HINT,
@@ -184,7 +184,7 @@ pub fn UserForm(
                     // 初始密码仅新建时填写;编辑态改密走独立 reset_password 动作
                     if !editing {
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_INIT_PASSWORD}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_INIT_PASSWORD}" }
                             input {
                                 class: MODAL_INPUT,
                                 r#type: "password",
@@ -195,7 +195,7 @@ pub fn UserForm(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{LBL_EMAIL}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{LBL_EMAIL}" }
                         input {
                             class: MODAL_INPUT,
                             r#type: "email",
@@ -205,18 +205,18 @@ pub fn UserForm(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_ROLE}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_ROLE}" }
                         RoleChips { role, on_change: move |v: u16| role.set(v) }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{LBL_QUOTA}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{LBL_QUOTA}" }
                         input {
                             class: "{MODAL_INPUT} font-mono",
                             r#type: "text",
                             value: "{quota}",
                             oninput: move |e| quota.set(e.value()),
                         }
-                        p { class: "mt-1 text-xs text-zinc-500", "{MSG_QUOTA_HINT} {quota_hint}" }
+                        p { class: "mt-1 {ui::TYPE_DESC}", "{MSG_QUOTA_HINT} {quota_hint}" }
                     }
                 }
             }
@@ -225,12 +225,12 @@ pub fn UserForm(
             if tab() == FormTab::Group {
                 div { class: "space-y-4",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_GROUPS}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_GROUPS}" }
                         GroupChips { group, on_change: move |v: Vec<String>| group.set(v) }
-                        p { class: "mt-1 text-xs text-zinc-500", "{FIELD_GROUP_HINT}" }
+                        p { class: "mt-1 {ui::TYPE_DESC}", "{FIELD_GROUP_HINT}" }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_NOTE}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_NOTE}" }
                         textarea {
                             class: "{MODAL_INPUT} h-24 resize-none",
                             placeholder: FIELD_NOTE_HINT,
@@ -243,13 +243,13 @@ pub fn UserForm(
 
             // —— Tab 3:绑定(只读) ——
             if tab() == FormTab::Binding {
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
-                    p { class: "mb-2 text-[11px] text-zinc-500", "{MSG_BINDING_READONLY}" }
+                div { class: "rounded-xl border border-border bg-background px-4 py-3 {ui::TYPE_DESC}",
+                    p { class: "mb-2 {ui::TYPE_LABEL}", "{MSG_BINDING_READONLY}" }
                     div { class: "space-y-1.5",
                         for (label, value) in [("GitHub", "-"), ("Discord", "-"), ("OIDC", "-"), ("WeChat", "-"), ("Telegram", "-"), (LBL_EMAIL, email_bound)] {
                             div { class: "flex justify-between gap-2",
-                                span { class: "text-zinc-400", "{label}" }
-                                span { class: "font-medium text-zinc-200", "{value}" }
+                                span { class: "{ui::C_MUTED}", "{label}" }
+                                span { class: "font-medium text-foreground", "{value}" }
                             }
                         }
                     }
@@ -258,13 +258,13 @@ pub fn UserForm(
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     onclick: move |_| on_cancel.call(()),
                     {BTN_CANCEL}
                 }
                 if tab() != FormTab::Binding {
                     button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                        class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
                         // 每个 tab 只回写自己负责的字段(角色 / 分组)。
                         onclick: move |_| do_submit(),
                         "{submit_label}"

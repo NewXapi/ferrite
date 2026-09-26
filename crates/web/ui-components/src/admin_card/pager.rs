@@ -70,7 +70,7 @@ pub fn Pager(
             "aria-label": "分页",
             "data-testid": "{testid}",
             button {
-                class: "rounded-lg border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40",
+                class: "rounded-lg border border-border px-2 py-1 {crate::TYPE_LABEL} transition-colors hover:bg-secondary disabled:opacity-40",
                 "data-testid": "{testid}-prev",
                 "aria-label": "上一页",
                 disabled: current == 0,
@@ -84,9 +84,9 @@ pub fn Pager(
                         button {
                             key: "pager-page-{i}",
                             class: if is_active {
-                                "rounded-lg bg-white px-2.5 py-1 text-[11px] font-medium text-zinc-900 transition-colors"
+                                "rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground transition-colors"
                             } else {
-                                "rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800"
+                                "rounded-lg border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-secondary"
                             },
                             "data-testid": "{testid}-page-{i}",
                             "aria-label": "第 {i + 1} 页",
@@ -98,7 +98,7 @@ pub fn Pager(
                 }
             }
             button {
-                class: "rounded-lg border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40",
+                class: "rounded-lg border border-border px-2 py-1 {crate::TYPE_LABEL} transition-colors hover:bg-secondary disabled:opacity-40",
                 "data-testid": "{testid}-next",
                 "aria-label": "下一页",
                 disabled: current + 1 >= pages,

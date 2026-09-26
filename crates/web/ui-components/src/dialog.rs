@@ -24,12 +24,12 @@ pub fn Dialog(
                 div { class: "text-xs leading-5 text-zinc-400", {children} }
                 div { class: "flex items-center justify-end gap-2",
                     button {
-                        class: "rounded-full px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                        class: "rounded-full px-3 py-1.5 {crate::TYPE_BODY} transition-colors hover:bg-zinc-800 hover:text-zinc-100",
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
                     button {
-                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300",
+                        class: "rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300",
                         onclick: move |_| on_confirm.call(()),
                         "确认"
                     }

@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use ui::CloseButton;
 
 /// 弹窗内输入框的统一样式(用户表单与充值表单共用)。
-pub const MODAL_INPUT: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none";
+pub const MODAL_INPUT: &str = "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground focus:border-border focus:outline-none";
 
 /// 模态弹窗外壳。
 ///
@@ -38,12 +38,12 @@ pub fn Modal(title: String, on_close: EventHandler<()>, children: Element) -> El
             onclick: move |_| on_close.call(()),
             // 内容卡:拦截冒泡,卡内点击不触发遮罩的关闭
             div {
-                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
                 // 标题栏:标题 + 关闭按钮(复用 ui::CloseButton)
                 // DONE: 关闭按钮不自建,收敛为 ui-components 复用组件 CloseButton(全仓统一 X 按钮) in=demo by=agent
                 div { class: "mb-5 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-zinc-100", "{title}" }
+                    h3 { class: "{ui::TYPE_TITLE}", "{title}" }
                     CloseButton { on_click: on_close }
                 }
                 {children}

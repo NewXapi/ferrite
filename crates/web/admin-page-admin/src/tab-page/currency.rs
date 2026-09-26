@@ -43,9 +43,9 @@ use dioxus::prelude::*;
 ///   `reload + 1`,失败写 `action_err`。
 /// - 点「取消（转新增）」→ `start_create` 清空八格回到新增态(无网络)。
 ///
-/// 【样式】顶层 `div.space-y-4`;说明条 `text-sm text-zinc-500`;三条提示分别用
-/// `border-red-800 bg-red-950/40`(加载失败)、`border-red-800 bg-red-950/40`(动作错误)、
-/// `border-emerald-800 bg-emerald-950/40`(成功)。页面自身不写列表/表单样式。
+/// 【样式】顶层 `div.space-y-4`;说明条 `text-sm text-muted-foreground`;三条提示分别用
+/// `border-destructive bg-destructive`(加载失败)、`border-destructive bg-destructive`(动作错误)、
+/// `border-emerald-800 bg-success`(成功)。页面自身不写列表/表单样式。
 ///
 /// 【子组件组成】`CurrencyList`(列表四态 + 行操作)、`CurrencyForm`(录入表单)。
 ///
@@ -222,17 +222,17 @@ pub fn CurrencyPage() -> Element {
             role: "region",
             "aria-label": LBL_PAGE,
             "data-testid": "currency-page",
-            h2 { class: "text-lg font-semibold text-zinc-100", "{LBL_PAGE}" }
-            p { class: "text-sm text-zinc-500",
+            h2 { class: "{ui::TYPE_TITLE}", "{LBL_PAGE}" }
+            p { class: "{ui::TYPE_BODY}",
                 "{SEC_NOTE}"
             }
 
             // ---------- 错误 / 成功提示 ----------
             if let Some(e) = err() {
-                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-4 text-sm text-red-300",
+                div { class: "rounded-xl border border-destructive bg-destructive p-4 text-sm {ui::C_DANGER}",
                     "{MSG_LOAD_FAILED_PREFIX}{e}"
                     button {
-                        class: "ml-3 rounded-lg border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900/60",
+                        class: "ml-3 rounded-lg border border-destructive px-2 py-1 {ui::C_DANGER} hover:bg-destructive",
                         "data-testid": "currency-retry",
                         onclick: move |_| reload.set(reload() + 1),
                         "{BTN_RETRY}"
@@ -240,13 +240,13 @@ pub fn CurrencyPage() -> Element {
                 }
             }
             if let Some(e) = action_err() {
-                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                div { class: "rounded-xl border border-destructive bg-destructive p-3 text-sm {ui::C_DANGER}",
                     "data-testid": "currency-action-error",
                     "{e}"
                 }
             }
             if let Some(m) = ok_msg() {
-                div { class: "rounded-xl border border-emerald-800 bg-emerald-950/40 p-3 text-sm text-emerald-300",
+                div { class: "rounded-xl border border-emerald-800 bg-success p-3 text-sm {ui::C_SUCCESS}",
                     "data-testid": "currency-action-ok",
                     "{m}"
                 }

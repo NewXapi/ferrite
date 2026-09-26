@@ -13,7 +13,7 @@ use crate::api;
 ///
 /// 【交互逻辑】保存显示名前先 trim 并拒绝空值；改密两框都空则不发请求，只填一框则提示须成对提供；两个动作共用 saving 信号串行防重入，成功后清空密码框。
 ///
-/// 【样式】卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；输入 rounded-xl 边框 + focus:border-zinc-500，密码框等宽字体；按钮 Primary 置于输入右侧 (items-end 对齐)。
+/// 【样式】卡片 rounded-xl bg-card/60 p-6 + hover:border-border；输入 rounded-xl 边框 + focus:border-border，密码框等宽字体；按钮 Primary 置于输入右侧 (items-end 对齐)。
 ///
 /// 【子组件组成】ui::button::Button (保存显示名 / 修改密码) × 2
 ///
@@ -41,20 +41,20 @@ pub fn AccountSection() -> Element {
     });
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
+        div { class: "rounded-xl border border-border bg-card/60 p-6 transition-colors hover:border-border",
             role: "group",
             "aria-label": "资料与密码",
             "data-testid": "settings-account-card",
             div { class: "mb-3 flex items-center justify-between",
-                h3 { class: "text-sm font-medium text-zinc-100", "资料与密码" }
-                span { class: "text-xs text-zinc-500", "改密须原密码 + 新密码成对提供" }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", "资料与密码" }
+                span { class: "{ui::TYPE_DESC}", "改密须原密码 + 新密码成对提供" }
             }
 
             div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2",
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "显示名" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "显示名" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm focus:border-zinc-500 focus:outline-none",
+                        class: "{ui::INPUT}",
                         "data-testid": "settings-display-name",
                         placeholder: "对外展示的名称",
                         value: "{display_name}",
@@ -110,9 +110,9 @@ pub fn AccountSection() -> Element {
 
             div { class: "mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2",
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "原密码" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "原密码" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none",
+                        class: "{ui::INPUT_MONO}",
                         r#type: "password",
                         "data-testid": "settings-original-password",
                         placeholder: "当前密码",
@@ -121,9 +121,9 @@ pub fn AccountSection() -> Element {
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "新密码" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "新密码" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none",
+                        class: "{ui::INPUT_MONO}",
                         r#type: "password",
                         "data-testid": "settings-new-password",
                         placeholder: "留空 = 不修改密码",
@@ -183,12 +183,12 @@ pub fn AccountSection() -> Element {
                     "修改密码"
                 }
                 if let Some(m) = save_flash() {
-                    span { class: "text-xs text-emerald-400", "{m}" }
+                    span { class: "{ui::TYPE_DESC} {ui::C_SUCCESS}", "{m}" }
                 }
             }
 
             if !save_err().is_empty() {
-                p { class: "mt-3 text-xs text-red-400", "操作失败: {save_err()}" }
+                p { class: "mt-3 {ui::TYPE_DESC} {ui::C_DANGER}", "操作失败: {save_err()}" }
             }
         }
     }

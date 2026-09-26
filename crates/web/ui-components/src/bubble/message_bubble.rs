@@ -16,9 +16,9 @@ pub fn MessageBubble(
     let align = if mine { "flex-row-reverse" } else { "" };
     let name_align = if mine { "flex-row-reverse" } else { "" };
     let bubble = if mine {
-        "bg-zinc-100 text-zinc-900 cursor-pointer selection:bg-purple-400 selection:text-zinc-950"
+        "bg-primary text-primary-foreground cursor-pointer selection:bg-purple-400 selection:text-primary-foreground"
     } else {
-        "bg-zinc-800/90 text-zinc-100 cursor-pointer selection:bg-purple-900 selection:text-white"
+        "bg-secondary/90 text-foreground cursor-pointer selection:bg-purple-900 selection:text-foreground"
     };
 
     rsx! {
@@ -26,13 +26,13 @@ pub fn MessageBubble(
             Avatar { name: name.clone(), src: avatar_src }
             div { class: "flex min-w-0 max-w-[80%] sm:max-w-[75%] flex-col gap-1",
                 div { class: "flex items-baseline gap-2 px-1 {name_align}",
-                    span { class: "text-xs font-medium text-zinc-400", "{name}" }
-                    span { class: "text-[10px] text-zinc-600", "{time}" }
+                    span { class: "{crate::TYPE_DESC}", "{name}" }
+                    span { class: "{crate::TYPE_LABEL}", "{time}" }
                 }
                 div {
                     class: "relative group",
                     div {
-                        class: "whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 {bubble} transition-all duration-200 hover:ring-1 hover:ring-purple-500/50 active:scale-[0.99]",
+                        class: "whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 {crate::TYPE_BODY} leading-6 {bubble} transition-all duration-200 hover:ring-1 hover:ring-purple-500/50 active:scale-[0.99]",
                         onclick: move |e| {
                             if let Some(cb) = &on_click {
                                 cb.call(e);
@@ -44,7 +44,7 @@ pub fn MessageBubble(
                     if is_active_menu {
                         if let Some(actions) = actions {
                             div {
-                                class: "absolute -top-10 right-0 z-30 flex items-center gap-1 rounded-xl border border-purple-500/40 bg-zinc-950/95 px-2 py-1 shadow-2xl shadow-black/80 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150",
+                                class: "absolute -top-10 right-0 z-30 flex items-center gap-1 rounded-xl border border-purple-500/40 bg-background/95 px-2 py-1 shadow-2xl shadow-black/80 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150",
                                 onclick: move |e| e.stop_propagation(),
                                 {actions}
                             }

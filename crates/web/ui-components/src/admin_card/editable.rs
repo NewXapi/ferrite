@@ -17,13 +17,13 @@ use crate::dialog::Dialog;
 use crate::form::FormField;
 
 /// 展示行 class：label 左、当前值右，整行可点。
-pub const EDITABLE_ROW_CLASS: &str = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-zinc-800/60";
+pub const EDITABLE_ROW_CLASS: &str = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-secondary/60";
 
 /// 危险操作行 class（删除等破坏性入口，红色文本）。
-pub const DANGER_ROW_CLASS: &str = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-red-300 transition-colors hover:bg-red-950/40";
+pub const DANGER_ROW_CLASS: &str = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive";
 
 /// Popover 浮层 class：右对齐、贴行下方、高于网格。
-pub const EDIT_POPOVER_CLASS: &str = "absolute right-0 top-full z-50 mt-1 w-64 space-y-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3 shadow-2xl shadow-black/50";
+pub const EDIT_POPOVER_CLASS: &str = "absolute right-0 top-full z-50 mt-1 w-64 space-y-3 rounded-xl border border-border bg-card p-3 shadow-2xl shadow-black/50";
 
 /// 卡牌内的可编辑展示行：点击行弹出 Popover，内含输入框与保存 / 取消。
 ///
@@ -39,7 +39,7 @@ pub const EDIT_POPOVER_CLASS: &str = "absolute right-0 top-full z-50 mt-1 w-64 s
 /// - 点「保存」→ `on_commit(草稿)` → 调用方写回 → 本组件置 `open=false`。
 /// - 点「取消」/ 遮罩 / Escape → 只收关，不提交。
 ///
-/// 【样式】行 hover `bg-zinc-800/60`；浮层 `w-64` 右对齐，`z-50` 高于卡牌网格。
+/// 【样式】行 hover `bg-secondary/60`；浮层 `w-64` 右对齐，`z-50` 高于卡牌网格。
 ///
 /// 【数据流】对内(入)：`label` / `value`（当前值，纯展示）/ `open`（调用方持有的
 /// 受控开合 signal）/ `on_commit`。对外(出)：`on_commit(String)` 草稿原文；
@@ -92,8 +92,8 @@ pub fn EditableRow(
                 "data-testid": "{testid}",
                 "aria-expanded": "{open()}",
                 onclick: move |_| open.toggle(),
-                span { class: "text-zinc-400", "{label}" }
-                span { class: "font-medium text-zinc-200", "{value}" }
+                span { class: "{crate::C_MUTED}", "{label}" }
+                span { class: "font-medium text-foreground", "{value}" }
             }
             if open() {
                 // 外点收关遮罩（WCAG dismissible）；浮层在其上，点击浮层不触发。
@@ -117,13 +117,13 @@ pub fn EditableRow(
                     }
                     div { class: "flex justify-end gap-2",
                         button {
-                            class: "rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                            class: "rounded-lg border border-border px-2.5 py-1 {crate::TYPE_DESC} transition-colors hover:bg-secondary",
                             "data-testid": "{testid}-cancel",
                             onclick: move |_| open.set(false),
                             "取消"
                         }
                         button {
-                            class: "rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                            class: "rounded-lg bg-primary px-2.5 py-1 {crate::TYPE_DESC} transition-colors hover:bg-zinc-200",
                             "data-testid": "{testid}-save",
                             onclick: move |_| {
                                 on_commit.call(draft.peek().clone());

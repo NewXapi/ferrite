@@ -39,10 +39,10 @@ use crate::shared::{
 ///   按钮在 `submitting()` 为 true 时 `disabled:opacity-40`。
 ///
 /// 【样式】外壳复用 `Modal`(标题栏 + 关闭按钮);内容区 `div.space-y-4`。三页签用
-/// `flex w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 p-0.5`,
-/// 选中项 `bg-zinc-100 text-zinc-900`、未选中 `text-zinc-400 hover:text-zinc-200`;
+/// `flex w-full overflow-hidden rounded-lg border border-border bg-background p-0.5`,
+/// 选中项 `bg-primary text-primary-foreground`、未选中 `text-muted-foreground hover:text-foreground`;
 /// 三 tab 内容统一 `min-h-[300px]`(`TAB_CONTENT_H`)固定高度,**切换时弹窗不伸缩**;
-/// 底部按钮区 `mt-6 flex gap-3`,取消为描边 `border-zinc-700`,提交为白底 `bg-white`。
+/// 底部按钮区 `mt-6 flex gap-3`,取消为描边 `border-border`,提交为白底 `bg-primary`。
 ///
 /// 【子组件组成】`Modal`(弹窗外壳)、`PriceModeToggle`(定价模式开关);
 /// 按量 tab 的补充通道行由函数内闭包 `price_panel` 生成(标题 + 悬停说明 / 价格框 /
@@ -107,25 +107,25 @@ pub fn AliasFormModal(
                        testid: String| {
         rsx! {
             div {
-                class: "rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5",
+                class: "rounded-xl border border-border bg-background/60 px-3 py-2.5",
                 div { class: "flex items-center gap-3",
                     // 标题 + 悬停说明(title 属性,不占固定行高)
                     div {
                         class: "shrink-0 w-20",
                         title: "{channel_desc}",
-                        p { class: "text-xs font-medium text-zinc-100 truncate", "{channel_title}" }
+                        p { class: "{ui::TYPE_DESC} truncate", "{channel_title}" }
                     }
                     // 价格输入框
-                    div { class: "flex-1 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5",
-                        span { class: "text-[11px] text-zinc-500", "$" }
+                    div { class: "flex-1 flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5",
+                        span { class: "{ui::TYPE_LABEL}", "$" }
                         input {
-                            class: "w-full bg-transparent font-mono text-xs text-zinc-100 focus:outline-none",
+                            class: "w-full bg-transparent font-mono text-xs text-foreground focus:outline-none",
                             r#type: "text",
                             "data-testid": "{testid}",
                             value: "{price}",
                             oninput: move |e| price.set(e.value()),
                         }
-                        span { class: "shrink-0 text-[10px] text-zinc-500", "USD" }
+                        span { class: "shrink-0 {ui::TYPE_LABEL}", "USD" }
                     }
                     // 开关:点击切换启用状态
                     button {
@@ -136,7 +136,7 @@ pub fn AliasFormModal(
                         aria_checked: "{enabled()}",
                         onclick: move |_| enabled.set(!enabled()),
                         div {
-                            class: "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all",
+                            class: "absolute top-0.5 h-4 w-4 rounded-full bg-primary transition-all",
                             style: if enabled() { "left: 18px" } else { "left: 2px" },
                         }
                     }
@@ -150,16 +150,16 @@ pub fn AliasFormModal(
             div { class: "space-y-4",
                 // 顶部 tab 栏:基本 / 按量定价 / 按次定价
                 div {
-                    class: "flex w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-xs",
+                    class: "flex w-full overflow-hidden rounded-lg border border-border bg-background p-0.5 {ui::TYPE_DESC}",
                     role: "tablist",
                     "aria-label": "{LBL_MODAL_TABLIST}",
                     for (i, tab_label) in ([TAB_BASIC, TAB_PER_TOKEN, TAB_PER_CALL]).into_iter().enumerate() {
                         button {
                             key: "{i}",
                             class: if i == active_tab() {
-                                "flex-1 rounded-md bg-zinc-100 px-3 py-2 font-medium text-zinc-900 transition-colors"
+                                "flex-1 rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground transition-colors"
                             } else {
-                                "flex-1 rounded-md px-3 py-2 text-zinc-400 transition-colors hover:text-zinc-200"
+                                "flex-1 rounded-md px-3 py-2 text-muted-foreground transition-colors hover:text-foreground"
                             },
                             role: "tab",
                             aria_selected: "{i == active_tab()}",
@@ -174,9 +174,9 @@ pub fn AliasFormModal(
                 if active_tab() == 0 {
                     div { class: "space-y-4 {TAB_CONTENT_H}",
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_ALIAS_ID}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_ALIAS_ID}" }
                             input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
+                                class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                                 "data-testid": "alias-name",
                                 placeholder: "{MSG_PH_ALIAS_ID}",
                                 value: "{alias}",
@@ -185,9 +185,9 @@ pub fn AliasFormModal(
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_DISPLAY}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_DISPLAY}" }
                             input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
+                                class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                                 "data-testid": "alias-display",
                                 placeholder: "{MSG_PH_DISPLAY}",
                                 value: "{display}",
@@ -196,9 +196,9 @@ pub fn AliasFormModal(
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_MULTIPLIER}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_MULTIPLIER}" }
                             input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                                class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground font-mono focus:border-border focus:outline-none",
                                 "data-testid": "alias-multiplier",
                                 placeholder: "1.0",
                                 value: "{multiplier}",
@@ -208,9 +208,9 @@ pub fn AliasFormModal(
 
                         // 定价模式 toggle:与卡片面板同一状态(非 compact 全宽)
                         div { class: "space-y-1.5",
-                            label { class: "block text-xs text-zinc-400", "{FIELD_PRICE_MODE}" }
+                            label { class: "block {ui::TYPE_DESC}", "{FIELD_PRICE_MODE}" }
                             PriceModeToggle { active: price_mode(), on_change: on_mode_change, compact: false }
-                            p { class: "mt-1 text-[11px] text-zinc-500", "{SEC_MODE_NOTE}" }
+                            p { class: "mt-1 {ui::TYPE_LABEL}", "{SEC_MODE_NOTE}" }
                         }
                     }
                 }
@@ -221,19 +221,19 @@ pub fn AliasFormModal(
                         // 输入价格:主通道,固定开启,不带 toggle
                         div { class: "space-y-1.5",
                             div {
-                                label { class: "block text-sm font-medium text-zinc-100", "{FIELD_INPUT_PRICE}" }
-                                p { class: "mt-0.5 text-[11px] text-zinc-500", "{LBL_INPUT_PRICE_DESC}" }
+                                label { class: "block {ui::TYPE_CARD_TITLE}", "{FIELD_INPUT_PRICE}" }
+                                p { class: "mt-0.5 {ui::TYPE_LABEL}", "{LBL_INPUT_PRICE_DESC}" }
                             }
-                            div { class: "flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2",
-                                span { class: "text-xs text-zinc-500", "$" }
+                            div { class: "flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2",
+                                span { class: "{ui::TYPE_DESC}", "$" }
                                 input {
-                                    class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
+                                    class: "w-full bg-transparent font-mono text-sm text-foreground focus:outline-none",
                                     r#type: "text",
                                     "data-testid": "alias-input-price",
                                     value: "{p_input}",
                                     oninput: move |e| p_input.set(e.value()),
                                 }
-                                span { class: "shrink-0 text-[11px] text-zinc-500", "$/1M" }
+                                span { class: "shrink-0 {ui::TYPE_LABEL}", "$/1M" }
                             }
                         }
 
@@ -281,36 +281,36 @@ pub fn AliasFormModal(
                 if active_tab() == 2 {
                     div { class: "space-y-3 {TAB_CONTENT_H}",
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_PER_CALL_PRICE}" }
-                            p { class: "text-[11px] text-zinc-500", "{LBL_PER_CALL_DESC}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_PER_CALL_PRICE}" }
+                            p { class: "{ui::TYPE_LABEL}", "{LBL_PER_CALL_DESC}" }
                         }
                         div {
-                            class: "flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5",
-                            span { class: "text-xs text-zinc-500", "$" }
+                            class: "flex items-center gap-3 rounded-xl border border-border bg-background px-4 py-2.5",
+                            span { class: "{ui::TYPE_DESC}", "$" }
                             input {
-                                class: "w-full bg-transparent font-mono text-sm text-zinc-100 focus:outline-none",
+                                class: "w-full bg-transparent font-mono text-sm text-foreground focus:outline-none",
                                 r#type: "text",
                                 "data-testid": "alias-call-price",
                                 placeholder: "{MSG_PH_PER_CALL}",
                                 value: "{p_per_call}",
                                 oninput: move |e| p_per_call.set(e.value()),
                             }
-                            span { class: "shrink-0 text-[11px] text-zinc-500", "USD/次" }
+                            span { class: "shrink-0 {ui::TYPE_LABEL}", "USD/次" }
                         }
-                        p { class: "text-[11px] text-zinc-500", "{SEC_PER_CALL_NOTE}" }
+                        p { class: "{ui::TYPE_LABEL}", "{SEC_PER_CALL_NOTE}" }
                     }
                 }
             }
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     "data-testid": "alias-cancel",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL_ALIAS}"
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     "data-testid": "alias-submit",
                     disabled: submitting(),
                     onclick: do_submit,

@@ -33,7 +33,7 @@ pub fn KeysStatsSection(
         section {
             id: "keys-sec-stats",
             class: "scroll-mt-8 space-y-3",
-            h2 { class: "text-lg font-medium text-zinc-100", "{SEC_STATS}" }
+            h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
             div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
                 StatCard {
                     value: if keys_loaded() { keys_len.to_string() } else { pending.clone() },

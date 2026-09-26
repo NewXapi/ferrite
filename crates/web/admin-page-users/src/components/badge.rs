@@ -24,7 +24,7 @@ use dioxus::prelude::*;
 pub fn Badge(text: String, tone: &'static str) -> Element {
     rsx! {
         span {
-            class: "rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}",
+            class: "rounded-full border px-2 py-0.5 {ui::TYPE_LABEL} {tone}",
             "{text}"
         }
     }

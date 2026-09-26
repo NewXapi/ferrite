@@ -14,7 +14,7 @@ use crate::usage_support::{fmt_time_minute, summarize_ua};
 ///
 /// 【交互逻辑】点吊销：当前设备走 on_request_current_revoke (父面板弹二次确认，因为吊销即本机登出)，其它设备直接走 on_revoke；busy 时按钮禁用防重入。
 ///
-/// 【样式】卡片 rounded-xl bg-zinc-900/60 p-4 + hover:border-zinc-600；短标签 truncate；当前设备 emerald 圆角徽标；明细 12px 灰字两列网格；按钮 Ghost Xs 红字。
+/// 【样式】卡片 rounded-xl bg-card/60 p-4 + hover:border-border；短标签 truncate；当前设备 emerald 圆角徽标；明细 12px 灰字两列网格；按钮 Ghost Xs 红字。
 ///
 /// 【子组件组成】ui::button::Button (吊销) × 1
 ///
@@ -34,20 +34,20 @@ pub fn SessionRow(
     let expires_at = fmt_time_minute(&session.expires_at);
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-colors hover:border-zinc-600",
+        div { class: "rounded-xl border border-border bg-card/60 p-4 transition-colors hover:border-border",
             div { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0",
                     div { class: "flex items-center gap-2",
                         p {
-                            class: "truncate text-sm text-zinc-200",
+                            class: "truncate {ui::TYPE_BODY}",
                             title: "{session.user_agent}",
                             "{ua_label}"
                         }
                         if session.current {
-                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400", "当前设备" }
+                            span { class: "shrink-0 rounded-full bg-success px-2 py-0.5 {ui::TYPE_LABEL} {ui::C_SUCCESS}", "当前设备" }
                         }
                     }
-                    div { class: "mt-2 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2",
+                    div { class: "mt-2 grid grid-cols-1 gap-1 {ui::TYPE_DESC} sm:grid-cols-2",
                         span { "IP: {session.ip}" }
                         span { "登录方式: {session.login_method}" }
                         // 时间悬停可见原始 RFC3339 (与上方 UA 短标签同款处理)
@@ -58,7 +58,7 @@ pub fn SessionRow(
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "shrink-0 text-red-400",
+                    class: "shrink-0 {ui::C_DANGER}",
                     disabled: busy,
                     "data-testid": "revoke-session-{session.sid}",
                     "aria-label": "吊销此会话",

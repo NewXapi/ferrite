@@ -18,7 +18,7 @@ use dioxus::prelude::*;
 /// groups 弹窗里各复制了一份同样的串；`AdminCard` 里还多了一份（少了
 /// `justify-between`，导致单 panel 内容时底部留白与旧卡不一致）。统一到这里
 /// 后，四类卡与 `AdminCard` 共用同一条几何定义。
-pub const CARD_SHELL_CLASS: &str = "group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80";
+pub const CARD_SHELL_CLASS: &str = "group flex flex-col justify-between rounded-xl border border-border bg-card/60 p-4 transition-all duration-200 hover:border-border hover:bg-card/80";
 
 /// 卡片外壳组件：替代各实体卡里手写的 `div { class: CARD_SHELL_CLASS }`。
 ///
@@ -64,7 +64,7 @@ pub fn AdminSection(
     rsx! {
         section {
             id: id,
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 {extra}",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5 {extra}",
             {children}
         }
     }
@@ -83,9 +83,9 @@ pub fn SectionHeader(
 ) -> Element {
     rsx! {
         div { class: "flex flex-wrap items-center justify-between gap-2",
-            h2 { class: "text-lg font-medium text-zinc-100", "{title}" }
+            h2 { class: "{crate::TYPE_TITLE}", "{title}" }
             div { class: "flex items-center gap-2",
-                span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{badge}" }
+                span { class: "rounded-full bg-secondary px-3 py-1 {crate::TYPE_DESC}", "{badge}" }
                 if let Some(extra) = trailing {
                     {extra}
                 }
@@ -136,8 +136,8 @@ pub fn PlaceholderBlock(
     let pad = if large { "py-16" } else { "py-10" };
     rsx! {
         div {
-            class: "rounded-2xl border {border} border-zinc-700 bg-zinc-900/50 {pad} text-center",
-            p { class: "text-sm text-zinc-500", "{message}" }
+            class: "rounded-2xl border {border} border-border bg-card/50 {pad} text-center",
+            p { class: "{crate::TYPE_BODY}", "{message}" }
             {children}
         }
     }
@@ -156,10 +156,10 @@ pub fn DangerBlock(
     children: Option<Element>,
 ) -> Element {
     rsx! {
-        div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-            p { class: "text-sm text-red-300", "{title}" }
+        div { class: "rounded-2xl border border-destructive bg-destructive py-10 text-center",
+            p { class: "text-sm {crate::C_DANGER}", "{title}" }
             if let Some(detail) = detail {
-                p { class: "mt-1 text-xs text-red-400/70", "{detail}" }
+                p { class: "mt-1 text-xs {crate::C_DANGER}", "{detail}" }
             }
             if let Some(children) = children {
                 {children}

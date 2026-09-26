@@ -477,7 +477,7 @@ pub fn NetworkPanel() -> Element {
                 // 左上：分组图例（浮层）
                 div { class: "pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2",
                     for (i, g) in view_now.groups.iter().enumerate() {
-                        span { class: "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur",
+                        span { class: "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-card/85 px-2.5 py-1 {ui::TYPE_DESC} backdrop-blur",
                             span { class: "h-2 w-2 rounded-full", style: "background: {GROUP_PALETTE[i % GROUP_PALETTE.len()]}" }
                             "{g}"
                         }
@@ -495,17 +495,17 @@ pub fn NetworkPanel() -> Element {
                             class: "absolute top-3 z-10 flex items-center gap-1.5",
                             style: "right: {hud_right}px",
                     button {
-                        class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-border bg-card/85 px-2.5 py-1 {ui::TYPE_DESC} backdrop-blur hover:border-border hover:text-foreground",
                         onclick: move |_| drawer_tab.set(DrawerTab::Settings),
                         {BTN_SETTINGS}
                     }
                     button {
-                        class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-border bg-card/85 px-2.5 py-1 {ui::TYPE_DESC} backdrop-blur hover:border-border hover:text-foreground",
                         onclick: move |_| drawer_tab.set(DrawerTab::Import),
                         {BTN_IMPORT}
                     }
                     button {
-                        class: "rounded-md border border-zinc-800 bg-zinc-900/85 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-border bg-card/85 px-2.5 py-1 {ui::TYPE_DESC} backdrop-blur hover:border-border hover:text-foreground",
                         onclick: move |_| {
                             let pts: Vec<(f64, f64)> = layers_fit
                                 .iter()
@@ -531,7 +531,7 @@ pub fn NetworkPanel() -> Element {
                 }
                 // 右下：操作提示；抽屉开着时同样向右让
                 span {
-                    class: "pointer-events-none absolute bottom-3 z-10 text-[11px] text-zinc-600",
+                    class: "pointer-events-none absolute bottom-3 z-10 {ui::TYPE_LABEL}",
                     style: "right: {hint_right}px",
                     "{hint}"
                 }
@@ -546,12 +546,12 @@ pub fn NetworkPanel() -> Element {
                                 "aria-label": MSG_LOADING_ARIA,
                                 div { class: "flex flex-col items-center gap-2",
                                     div {
-                                        class: "h-4 w-40 animate-pulse rounded-full bg-zinc-800",
+                                        class: "h-4 w-40 animate-pulse rounded-full bg-secondary",
                                     }
                                     div {
-                                        class: "h-4 w-24 animate-pulse rounded-full bg-zinc-800/70",
+                                        class: "h-4 w-24 animate-pulse rounded-full bg-secondary/70",
                                     }
-                                    p { class: "text-[11px] text-zinc-500", {MSG_LOADING} }
+                                    p { class: "{ui::TYPE_LABEL}", {MSG_LOADING} }
                                 }
                             }
                         },
@@ -559,10 +559,10 @@ pub fn NetworkPanel() -> Element {
                             let m = msg.clone();
                             rsx! {
                                 div {
-                                    class: "absolute inset-x-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2",
+                                    class: "absolute inset-x-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-destructive bg-destructive px-3 py-2",
                                     "data-testid": "net-error",
                                     "role": "alert",
-                                    p { class: "text-[11px] text-red-300/80", "{m}" }
+                                    p { class: "text-[11px] {ui::C_DANGER}", "{m}" }
                                 }
                             }
                         }
@@ -575,7 +575,7 @@ pub fn NetworkPanel() -> Element {
                                     "data-testid": "net-empty",
                                     "role": "status",
                                     "aria-label": MSG_EMPTY,
-                                    p { class: "text-xs text-zinc-600", {MSG_EMPTY} }
+                                    p { class: "{ui::TYPE_DESC}", {MSG_EMPTY} }
                                 }
                             }
                         }
@@ -587,8 +587,8 @@ pub fn NetworkPanel() -> Element {
                 }
                 div {
                     class: match &net_state() {
-                        Some(Err(_)) => "h-full overflow-hidden rounded-xl border border-red-900/50 bg-zinc-950",
-                        _ => "h-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950",
+                        Some(Err(_)) => "h-full overflow-hidden rounded-xl border border-destructive bg-background",
+                        _ => "h-full overflow-hidden rounded-xl border border-border bg-background",
                     },
                 svg {                    view_box: "0 0 {VIEW_W:.0} {VIEW_H:.0}",
                     width: "100%",
@@ -1144,7 +1144,7 @@ pub fn NetworkPanel() -> Element {
                 // 设置抽屉:页签条(DrawerTabs)+ 实体面板(EntitiesPanel)+ 滚动钉(ScrollSpyNav)。
                 // 拉取失败时 store 是旧/空快照,顶部红条避免对着错误数据编辑。
                 if drawer_tab() == DrawerTab::Settings {
-                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-border bg-card/97 backdrop-blur sm:w-[320px]",
                         DrawerTabs {
                             active: DrawerTab::Settings,
                             on_tab: move |t: DrawerTab| drawer_tab.set(t),
@@ -1156,7 +1156,7 @@ pub fn NetworkPanel() -> Element {
                                 div {
                                     class: "px-4 py-2",
                                     "data-testid": "ent-blocked",
-                                    p { class: "text-[11px] text-red-300/80", {SEC_SETTINGS_STALE} }
+                                    p { class: "text-[11px] {ui::C_DANGER}", {SEC_SETTINGS_STALE} }
                                 }
                             }
                             // 导航钉在抽屉上，不随内容滚动
@@ -1177,7 +1177,7 @@ pub fn NetworkPanel() -> Element {
                     }
                 // 导入抽屉:头部(DrawerHeader 复用页签条)+ ImportPanel(JSON 批量导入渠道)。
                 } else if drawer_tab() == DrawerTab::Import {
-                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+                    aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-border bg-card/97 backdrop-blur sm:w-[320px]",
                         DrawerHeader {
                             tab: drawer_tab(),
                             title: BTN_IMPORT.to_string(),

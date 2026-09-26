@@ -35,16 +35,16 @@ use crate::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】外壳 class 取自共用样式壳 `ui::CARD_SHELL_CLASS`
-/// (`group flex flex-col justify-between rounded-xl border border-zinc-800
-/// bg-zinc-900/60 p-4`,悬停 `hover:border-zinc-600 hover:bg-zinc-900/80` 且
+/// (`group flex flex-col justify-between rounded-xl border border-border
+/// bg-card/60 p-4`,悬停 `hover:border-border hover:bg-card/80` 且
 /// `transition-all duration-200`),带 `data-testid="redemption-card"`、
 /// `role="listitem"`(父容器 `redemptions-list` 是 `role="list"`,故保留
 /// listitem 而不用 CardShell 的 region);头像圈 `h-9 w-9 rounded-full border
-/// border-zinc-700 bg-zinc-800`;卡密预览为
-/// `truncate font-mono text-sm text-zinc-100`;面额条 `h-1.5 w-full rounded-full
-/// bg-zinc-800` 内嵌 `transition-all duration-300` 的彩色进度;底部操作区
-/// `mt-4 flex gap-1.5 border-t border-zinc-800 pt-3`;复制按钮常态 zinc 系、复制后
-/// 切换为 emerald 高亮(`border-emerald-500/80 bg-emerald-950/60 text-emerald-300`)。
+/// border-border bg-secondary`;卡密预览为
+/// `truncate font-mono text-sm text-foreground`;面额条 `h-1.5 w-full rounded-full
+/// bg-secondary` 内嵌 `transition-all duration-300` 的彩色进度;底部操作区
+/// `mt-4 flex gap-1.5 border-t border-border pt-3`;复制按钮常态 zinc 系、复制后
+/// 切换为 emerald 高亮(`border-emerald-500/80 bg-success text-success-foreground`)。
 ///
 /// 【子组件组成】`Badge`(状态徽标 + 面值徽标,来自 `tab-page-groups`);其余为原生元素。
 ///
@@ -69,27 +69,27 @@ pub fn RedemptionCard(
     let (status_text, status_tone, bar_tone, bar_pct) = match item.status {
         1 => (
             LBL_STATUS_UNUSED,
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "bg-emerald-500",
+            "border-emerald-500/30 bg-success text-success-foreground",
+            "bg-success",
             100,
         ),
         2 => (
             LBL_STATUS_USED,
-            "border-zinc-700 bg-zinc-800/80 text-zinc-400",
-            "bg-zinc-700",
+            "border-border bg-secondary/80 text-muted-foreground",
+            "bg-secondary",
             0,
         ),
         3 => (
             LBL_STATUS_DISABLED,
-            "border-amber-500/30 bg-amber-500/20 text-amber-400",
-            "bg-amber-500",
+            "border-amber-500/30 bg-warning text-warning-foreground",
+            "bg-warning",
             40,
         ),
         // 后端只写 1/2/3;异常值兜底按中性 zinc 展示,与 prototype 卡"未知状态"口径一致。
         _ => (
             LBL_STATUS_UNKNOWN,
-            "border-zinc-700 bg-zinc-800/80 text-zinc-400",
-            "bg-zinc-700",
+            "border-border bg-secondary/80 text-muted-foreground",
+            "bg-secondary",
             0,
         ),
     };
@@ -108,50 +108,50 @@ pub fn RedemptionCard(
             div { class: "space-y-3",
                 // 头部
                 div { class: "flex items-start gap-3",
-                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
+                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary {ui::TYPE_CARD_TITLE} group-hover:border-border transition-colors",
                         "¥"
                     }
                     div { class: "min-w-0 flex-1",
                         div { class: "flex items-center justify-between gap-2",
-                            h3 { class: "truncate font-mono text-sm font-medium text-zinc-100", "{item.code_preview}" }
+                            h3 { class: "truncate font-mono {ui::TYPE_CARD_TITLE}", "{item.code_preview}" }
                         }
-                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400 font-mono", "{item.key}" }
+                        p { class: "mt-0.5 truncate text-[11px] text-muted-foreground font-mono", "{item.key}" }
                     }
                 }
 
                 // 徽标行
                 div { class: "flex flex-wrap gap-1.5",
                     Badge { text: status_text.to_string(), tone: status_tone }
-                    Badge { text: format!("{LBL_FACE_VALUE_PREFIX}{:.2}", item.quota_cny), tone: "border-zinc-700 bg-zinc-800/80 text-zinc-200 font-mono" }
+                    Badge { text: format!("{LBL_FACE_VALUE_PREFIX}{:.2}", item.quota_cny), tone: "border-border bg-secondary/80 text-foreground font-mono" }
                 }
 
                 // 额度有效条
                 div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 text-[11px]",
-                        span { class: "text-zinc-400", "{LBL_AVAILABLE_QUOTA}" }
-                        span { class: "whitespace-nowrap font-medium text-zinc-200 font-mono", "¥ {item.quota_cny:.2}" }
+                    div { class: "flex justify-between gap-2 {ui::TYPE_LABEL}",
+                        span { class: "{ui::C_MUTED}", "{LBL_AVAILABLE_QUOTA}" }
+                        span { class: "whitespace-nowrap font-medium text-foreground font-mono", "¥ {item.quota_cny:.2}" }
                     }
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-secondary",
                         div { class: "h-full rounded-full {bar_tone} transition-all duration-300", style: "width: {bar_pct}%" }
                     }
                 }
 
                 // 详情指标行
-                div { class: "space-y-1.5 text-xs pt-1",
+                div { class: "space-y-1.5 {ui::TYPE_DESC} pt-1",
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "{LBL_CREATED}" }
-                        span { class: "font-mono text-zinc-400", "{item.created}" }
+                        span { class: "shrink-0 {ui::C_MUTED}", "{LBL_CREATED}" }
+                        span { class: "font-mono text-muted-foreground", "{item.created}" }
                     }
                     if let Some(by) = &item.redeemed_by {
                         div { class: "flex justify-between gap-2",
-                            span { class: "shrink-0 text-zinc-400", "{LBL_REDEEMED_BY}" }
-                            span { class: "font-medium text-zinc-200", "{by}" }
+                            span { class: "shrink-0 {ui::C_MUTED}", "{LBL_REDEEMED_BY}" }
+                            span { class: "font-medium text-foreground", "{by}" }
                         }
                     }
                     if !item.redeemed_at.is_empty() {
                         div { class: "flex justify-between gap-2",
-                            span { class: "shrink-0 text-zinc-400", "{LBL_REDEEMED_AT}" }
-                            span { class: "font-mono text-zinc-300", "{item.redeemed_at}" }
+                            span { class: "shrink-0 {ui::C_MUTED}", "{LBL_REDEEMED_AT}" }
+                            span { class: "font-mono text-foreground", "{item.redeemed_at}" }
                         }
                     }
                 }
@@ -159,13 +159,13 @@ pub fn RedemptionCard(
 
             // 底部操作区: [复制预览] [停用] — 后端仅支持停用(无硬删/无重新启用)
             div {
-                class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
+                class: "mt-4 flex gap-1.5 border-t border-border pt-3",
                 button {
                     "data-testid": "copy-redemption",
                     class: if is_just_copied {
-                        "flex-1 rounded-lg border border-emerald-500/80 bg-emerald-950/60 py-1.5 text-xs text-emerald-300 transition-colors font-medium"
+                        "flex-1 rounded-lg border border-emerald-500/80 bg-success py-1.5 text-xs text-success-foreground transition-colors font-medium"
                     } else {
-                        "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+                        "flex-1 rounded-lg border border-border/80 bg-secondary/60 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground"
                     },
                     onclick: move |_| on_copy.call(key_clone.clone()),
                     if is_just_copied { "{BTN_COPIED}" } else { "{BTN_COPY}" }
@@ -173,21 +173,21 @@ pub fn RedemptionCard(
                 if item.status == 1 {
                     button {
                         "data-testid": "disable-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300",
+                        class: "flex-1 rounded-lg border border-border/80 bg-secondary/60 py-1.5 {ui::TYPE_DESC} {ui::C_WARNING} transition-colors hover:bg-secondary hover:text-warning-foreground",
                         onclick: move |_| on_disable.call(disable_key.clone()),
                         "{BTN_DISABLE}"
                     }
                 } else if item.status == 2 {
                     button {
                         "data-testid": "redeemed-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        class: "flex-1 rounded-lg border border-border bg-card py-1.5 {ui::TYPE_DESC} cursor-not-allowed",
                         disabled: true,
                         "{BTN_REDEEMED}"
                     }
                 } else {
                     button {
                         "data-testid": "disabled-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        class: "flex-1 rounded-lg border border-border bg-card py-1.5 {ui::TYPE_DESC} cursor-not-allowed",
                         disabled: true,
                         "{BTN_DISABLED}"
                     }

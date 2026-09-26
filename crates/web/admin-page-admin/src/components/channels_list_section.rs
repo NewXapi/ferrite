@@ -38,7 +38,7 @@ use crate::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】外壳 `section#channels-sec-list` 为 `scroll-mt-8 space-y-4`;标题
-/// `text-lg font-medium text-zinc-100` + 右侧 `rounded-full bg-zinc-800` 计数胶囊;
+/// `{ui::TYPE_TITLE}` + 右侧 `rounded-full bg-zinc-800` 计数胶囊;
 /// 错误态红底 `border-red-800/60 bg-red-950/40`,加载/空态为虚线描边
 /// `border-dashed border-zinc-700 bg-zinc-900/50 py-16`;网格
 /// `grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
@@ -96,9 +96,9 @@ pub fn ChannelsListSection(
             if let Some(e) = err {
                 div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
                     p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED_CHANNELS}" }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                    p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:bg-secondary",
                         onclick: on_retry,
                         "{BTN_RETRY}"
                     }

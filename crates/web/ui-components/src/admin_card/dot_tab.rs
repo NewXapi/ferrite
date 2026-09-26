@@ -52,7 +52,7 @@ pub fn DotTabBar(
                         button {
                             key: "dot-{i}",
                             class: if is_active {
-                                "h-2 w-2 rounded-full bg-white transition-colors"
+                                "h-2 w-2 rounded-full bg-primary transition-colors"
                             } else {
                                 "h-2 w-2 rounded-full border border-white/40 transition-colors hover:border-white/70"
                             },

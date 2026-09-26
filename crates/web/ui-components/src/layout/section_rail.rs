@@ -12,19 +12,19 @@ use crate::icons::{IconChartBar, IconSettings, IconUser};
 use crate::on_tab_wheel;
 
 /// Rail 容器：窄列、边框分隔、纵向排布；移动端隐藏。
-const RAIL_CLASS: &str = "hidden h-svh w-14 shrink-0 flex-col items-center border-r border-zinc-800 bg-zinc-950 py-3 md:flex";
+const RAIL_CLASS: &str = "hidden h-svh w-14 shrink-0 flex-col items-center border-r border-border bg-background py-3 md:flex";
 
 /// 单个 rail 按钮态 class（激活=浅底深字，默认=灰字 hover 提亮）。
 fn rail_button_class(active: bool) -> &'static str {
     if active {
-        "group relative flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-800 text-zinc-100"
+        "group relative flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-foreground"
     } else {
-        "group relative flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+        "group relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-card hover:text-foreground"
     }
 }
 
 /// hover 气泡：rail 右侧浮出 label。
-const TOOLTIP_CLASS: &str = "pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100";
+const TOOLTIP_CLASS: &str = "pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100";
 
 /// 左侧 section rail。
 ///

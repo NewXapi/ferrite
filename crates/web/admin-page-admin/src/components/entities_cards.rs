@@ -37,8 +37,8 @@ use ui::dialog::Dialog;
 /// 写操作期间 `saving` 为真会禁用提交按钮,避免双击重复提交。
 ///
 /// 【样式】卡片外壳与头部由 `CardPanel` 提供;录入行 `flex flex-wrap items-end gap-2`;
-/// 提交按钮 `rounded-md border-zinc-100 bg-zinc-100 ... hover:bg-zinc-300`,取消按钮
-/// `border-zinc-800 text-zinc-400 hover:border-zinc-600`;胶囊区在 `NodeArea` 里
+/// 提交按钮 `rounded-md border-zinc-100 bg-primary ... hover:bg-zinc-300`,取消按钮
+/// `border-border text-muted-foreground hover:border-border`;胶囊区在 `NodeArea` 里
 /// `flex flex-wrap gap-2`;确认弹窗用 `ui::dialog::Dialog`。
 ///
 /// 【子组件组成】`DrawerNoticeBar`(写操作提示条)、`CardPanel`(卡外壳)、
@@ -213,14 +213,14 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: MSG_PH_GROUP_DISPLAY, grow: true }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-primary px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     disabled: saving(),
                     onclick: commit,
                     if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
                 if editing().is_some() {
                     button {
-                        class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:border-border hover:text-foreground",
                         onclick: move |_| {
                             editing.set(None);
                             name.set(String::new());
@@ -268,7 +268,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                         open: true,
                         on_confirm: confirm_delete,
                         on_cancel: move |_| confirming.set(None),
-                        div { class: "text-xs text-zinc-400", "{MSG_CONFIRM_DELETE_GROUP_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
+                        div { class: "{ui::TYPE_DESC}", "{MSG_CONFIRM_DELETE_GROUP_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
                     }
                 }
             } else {
@@ -370,13 +370,13 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 InputCell { label: FIELD_OUTPUT_PRICE, value: output_rate, placeholder: "0.07" }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-primary px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     onclick: commit,
                     if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
                 if editing().is_some() {
                     button {
-                        class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:border-border hover:text-foreground",
                         onclick: move |_| {
                             editing.set(None);
                             name.set(String::new());

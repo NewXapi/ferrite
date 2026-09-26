@@ -151,8 +151,8 @@ pub fn StatTabsCard(
             // Top bar: title + internal tab switcher
             header { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0",
-                    h3 { class: "truncate text-base font-semibold tracking-tight text-zinc-50", "{title}" }
-                    p { class: "mt-0.5 text-xs text-zinc-500", "{subtitle}" }
+                    h3 { class: "truncate {crate::TYPE_TITLE} tracking-tight", "{title}" }
+                    p { class: "mt-0.5 {crate::TYPE_DESC}", "{subtitle}" }
                 }
                 div { class: "flex shrink-0 gap-1.5",
                     role: "tablist",
@@ -164,9 +164,9 @@ pub fn StatTabsCard(
                             role: "tab",
                             "aria-selected": tab() == i,
                             class: if tab() == i {
-                                "flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/10 text-zinc-100 shadow-inner"
+                                "flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-primary/10 text-foreground shadow-inner"
                             } else {
-                                "flex h-7 w-7 items-center justify-center rounded-lg border border-white/5 bg-black/20 text-zinc-600 transition-colors hover:text-zinc-300"
+                                "flex h-7 w-7 items-center justify-center rounded-lg border border-white/5 bg-black/20 text-muted-foreground transition-colors hover:text-foreground"
                             },
                             onclick: move |_| tab.set(i),
                             TabGlyph { kind: i }
@@ -178,21 +178,21 @@ pub fn StatTabsCard(
             // ---- tab 1: 概览 ----
             if tab() == 0 {
                 // Price line
-                div { class: "flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm",
-                    span { class: "text-zinc-500", "输入 " b { class: "font-semibold tabular-nums text-zinc-100", "{price.input}" } }
-                    span { class: "text-zinc-500", "输出 " b { class: "font-semibold tabular-nums text-zinc-100", "{price.output}" } }
-                    span { class: "text-zinc-500", "缓存 " b { class: "font-semibold tabular-nums text-zinc-100", "{price.cache}" } }
+                div { class: "flex flex-wrap items-baseline gap-x-4 gap-y-1 {crate::TYPE_BODY}",
+                    span { class: "{crate::C_MUTED}", "输入 " b { class: "font-semibold tabular-nums text-foreground", "{price.input}" } }
+                    span { class: "{crate::C_MUTED}", "输出 " b { class: "font-semibold tabular-nums text-foreground", "{price.output}" } }
+                    span { class: "{crate::C_MUTED}", "缓存 " b { class: "font-semibold tabular-nums text-foreground", "{price.cache}" } }
                 }
-                p { class: "text-xs text-zinc-500", "{description}" }
+                p { class: "{crate::TYPE_DESC}", "{description}" }
 
                 div { class: "border-t border-white/5" }
 
                 // 数据展示
                 div {
-                    p { class: "text-[11px] uppercase tracking-wider text-zinc-600", "{headline.label}" }
-                    p { class: "mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-50", "{headline.value}" }
+                    p { class: "{crate::TYPE_LABEL} uppercase tracking-wider", "{headline.label}" }
+                    p { class: "mt-1 {crate::TYPE_VALUE} tabular-nums tracking-tight", "{headline.value}" }
                     {headline.sub.as_ref().map(|sub| rsx! {
-                        p { class: "mt-0.5 text-xs tabular-nums text-zinc-500", "{sub}" }
+                        p { class: "mt-0.5 {crate::TYPE_DESC} tabular-nums", "{sub}" }
                     })}
                     div { class: "mt-3 grid grid-cols-3 gap-2",
                         for ms in mini_stats.iter() {
@@ -206,8 +206,8 @@ pub fn StatTabsCard(
                 // 画图展示 (trend 为空时跳过曲线, 热力条照常)
                 div {
                     div { class: "mb-2 flex items-baseline justify-between",
-                        p { class: "text-[11px] uppercase tracking-wider text-zinc-600", "趋势" }
-                        span { class: "text-[11px] text-zinc-600", "近 24 小时" }
+                        p { class: "{crate::TYPE_LABEL} uppercase tracking-wider", "趋势" }
+                        span { class: "{crate::TYPE_LABEL}", "近 24 小时" }
                     }
                     if !trend.is_empty() {
                         svg { class: "w-full", view_box: "0 0 200 56", preserve_aspect_ratio: "none",
@@ -228,11 +228,11 @@ pub fn StatTabsCard(
                             span {
                                 key: "{i}",
                                 class: match lv {
-                                    0 => "h-2.5 flex-1 rounded-[2px] bg-zinc-800",
-                                    1 => "h-2.5 flex-1 rounded-[2px] bg-zinc-700",
-                                    2 => "h-2.5 flex-1 rounded-[2px] bg-zinc-500",
+                                    0 => "h-2.5 flex-1 rounded-[2px] bg-secondary",
+                                    1 => "h-2.5 flex-1 rounded-[2px] bg-secondary",
+                                    2 => "h-2.5 flex-1 rounded-[2px] bg-accent",
                                     3 => "h-2.5 flex-1 rounded-[2px] bg-zinc-300",
-                                    _ => "h-2.5 flex-1 rounded-[2px] bg-zinc-100",
+                                    _ => "h-2.5 flex-1 rounded-[2px] bg-primary",
                                 },
                             }
                         }
@@ -244,7 +244,7 @@ pub fn StatTabsCard(
             if tab() == 1 {
                 // Rows can grow — scroll past a few, header stays pinned on top.
                 div { class: "max-h-64 overflow-y-auto scroll-subtle",
-                    div { class: "sticky top-0 grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-baseline gap-x-3 bg-zinc-900 text-[11px] uppercase tracking-wider text-zinc-600",
+                    div { class: "sticky top-0 grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-baseline gap-x-3 bg-card {crate::TYPE_LABEL} uppercase tracking-wider",
                         span { "分组" }
                         span { class: "text-right", "输入" }
                         span { class: "text-right", "输出" }
@@ -252,11 +252,11 @@ pub fn StatTabsCard(
                     }
                     div { class: "border-t border-white/5" }
                     for g in groups.iter() {
-                        div { class: "mt-2 grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-baseline gap-x-3 border-b border-white/5 pb-2 text-sm",
-                            span { class: "truncate font-medium text-zinc-200", "{g.name}" }
-                            span { class: "text-right tabular-nums text-zinc-400", "{g.price.input}" }
-                            span { class: "text-right tabular-nums text-zinc-400", "{g.price.output}" }
-                            span { class: "text-right tabular-nums text-zinc-400", "{g.price.cache}" }
+                        div { class: "mt-2 grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-baseline gap-x-3 border-b border-white/5 pb-2 {crate::TYPE_BODY}",
+                            span { class: "truncate font-medium text-foreground", "{g.name}" }
+                            span { class: "text-right tabular-nums {crate::C_MUTED}", "{g.price.input}" }
+                            span { class: "text-right tabular-nums {crate::C_MUTED}", "{g.price.output}" }
+                            span { class: "text-right tabular-nums {crate::C_MUTED}", "{g.price.cache}" }
                         }
                     }
                 }
@@ -264,7 +264,7 @@ pub fn StatTabsCard(
 
             // ---- tab 3: 待定 ----
             if tab() == 2 {
-                div { class: "flex flex-1 items-center justify-center rounded-xl border border-dashed border-zinc-700 py-14 text-sm text-zinc-600",
+                div { class: "flex flex-1 items-center justify-center rounded-xl border border-dashed border-border py-14 {crate::TYPE_BODY}",
                     "待定 · 预留位"
                 }
             }
@@ -303,8 +303,8 @@ fn TabGlyph(kind: u8) -> Element {
 fn MiniStat(label: String, value: String) -> Element {
     rsx! {
         div {
-            p { class: "text-[11px] text-zinc-600", "{label}" }
-            p { class: "mt-0.5 text-sm font-medium tabular-nums text-zinc-200", "{value}" }
+            p { class: "{crate::TYPE_LABEL}", "{label}" }
+            p { class: "mt-0.5 {crate::TYPE_CARD_TITLE} tabular-nums", "{value}" }
         }
     }
 }

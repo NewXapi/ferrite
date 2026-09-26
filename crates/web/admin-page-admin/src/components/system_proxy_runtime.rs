@@ -101,11 +101,11 @@ fn format_delay(ms: Option<u16>) -> String {
 /// 数据交互:仅挂载与点刷新时各发一次 GET;无写请求。
 ///
 /// 【样式】外壳 `section#proxy-runtime-section` 为 `scroll-mt-8 rounded-2xl
-/// border border-zinc-800 bg-zinc-900/60 p-6 space-y-6`;区段头 h2
-/// `text-lg font-semibold` + 副说明 `text-xs text-zinc-500`,右侧描边刷新按钮;
+/// border border-border bg-card/60 p-6 space-y-6`;区段头 h2
+/// `text-lg font-semibold` + 副说明 `text-xs text-muted-foreground`,右侧描边刷新按钮;
 /// 错误态红底圆角卡;加载/空态虚线描边;列表 `divide-y divide-zinc-800/80`,
 /// 每行 `flex flex-wrap items-center justify-between gap-x-4`,行内指标
-/// `text-xs text-zinc-400`,状态徽标 `rounded-full bg-zinc-800`。
+/// `text-xs text-muted-foreground`,状态徽标 `rounded-full bg-secondary`。
 ///
 /// 【子组件组成】无子组件:全部为原生 dioxus 元素(`section` / `div` / `h2`
 /// / `span` / `p` / `button`)。
@@ -154,15 +154,15 @@ pub fn ProxyRuntimePanel() -> Element {
             "aria-label": SEC_PROXY_RUNTIME,
             id: "proxy-runtime-section",
             "data-testid": "proxy-runtime-panel",
-            class: "scroll-mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-6",
+            class: "scroll-mt-8 rounded-2xl border border-border bg-card/60 p-6 space-y-6",
 
             div { class: "flex items-center justify-between",
                 div { class: "flex items-center gap-2",
-                    h2 { class: "text-lg font-semibold text-zinc-100", {LBL_PROXY_RUNTIME} }
-                    span { class: "text-xs text-zinc-500", {SEC_PROXY_RUNTIME_NOTE} }
+                    h2 { class: "{ui::TYPE_TITLE}", {LBL_PROXY_RUNTIME} }
+                    span { class: "{ui::TYPE_DESC}", {SEC_PROXY_RUNTIME_NOTE} }
                 }
                 button {
-                    class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                    class: "shrink-0 rounded-xl border border-border px-3 py-2 {ui::TYPE_DESC} transition-colors hover:bg-secondary",
                     "data-testid": "proxy-runtime-refresh",
                     onclick: move |_| reload.set(reload() + 1),
                     {BTN_REFRESH}
@@ -173,21 +173,21 @@ pub fn ProxyRuntimePanel() -> Element {
                 div {
                     role: "alert",
                     "data-testid": "proxy-runtime-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
+                    class: "rounded-xl border border-destructive bg-destructive p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
                     {MSG_RUNTIME_LOAD_FAILED} "{e}"
                 }
             } else if loading {
                 div {
                     "data-testid": "proxy-runtime-loading",
-                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", {MSG_RUNTIME_LOADING} }
+                    class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                    p { class: "{ui::C_MUTED}", {MSG_RUNTIME_LOADING} }
                 }
             } else if nodes.is_empty() {
                 div {
                     "data-testid": "proxy-runtime-empty",
-                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", {MSG_RUNTIME_EMPTY} }
-                    p { class: "mt-1 text-xs text-zinc-600", {MSG_RUNTIME_EMPTY_HINT} }
+                    class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
+                    p { class: "{ui::C_MUTED}", {MSG_RUNTIME_EMPTY} }
+                    p { class: "mt-1 {ui::TYPE_DESC}", {MSG_RUNTIME_EMPTY_HINT} }
                 }
             } else {
                 div {
@@ -201,23 +201,23 @@ pub fn ProxyRuntimePanel() -> Element {
                             class: "flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3",
                             div { class: "min-w-0",
                                 div { class: "flex items-center gap-2",
-                                    span { class: "text-sm text-zinc-200", "{node.name}" }
+                                    span { class: "{ui::TYPE_BODY}", "{node.name}" }
                                     span {
-                                        class: "rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400",
+                                        class: "rounded-full bg-secondary px-2 py-0.5 {ui::TYPE_DESC}",
                                         if node.enabled { {LBL_NODE_ENABLED} } else { {LBL_NODE_DISABLED} }
                                     }
                                 }
-                                p { class: "mt-0.5 truncate text-xs font-mono text-zinc-500", "{node.url_masked}" }
+                                p { class: "mt-0.5 truncate text-xs font-mono text-muted-foreground", "{node.url_masked}" }
                             }
                             if let Some(s) = &node.stats {
-                                div { class: "flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400",
+                                div { class: "flex flex-wrap items-center gap-x-4 gap-y-1 {ui::TYPE_DESC}",
                                     span { {MSG_INFLIGHT_PREFIX} "{s.inflight}" }
                                     span { {MSG_FAILURE_PREFIX} "{s.failure_count}" }
                                     span { {MSG_COOLDOWN_PREFIX} "{format_cooldown(s.cooldown_remaining_secs)}" }
                                     span { {MSG_DELAY_PREFIX} "{format_delay(s.last_delay_ms)}" }
                                 }
                             } else {
-                                div { class: "text-xs text-zinc-500", {MSG_NO_RUNTIME} }
+                                div { class: "{ui::TYPE_DESC}", {MSG_NO_RUNTIME} }
                             }
                         }
                     }

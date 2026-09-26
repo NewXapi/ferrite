@@ -6,7 +6,7 @@
 //!   单模型详情(`TrendTip::Segment`,事件 `stop_propagation` 防冒泡到整列);
 //!   移出图表区清空悬浮。悬浮状态由面板持有并以 Signal 传入,本组件零 `use_signal`。
 //! - 样式:柱间距 `gap: 3px`、堆叠段连续无间隙(subpixel 间隙旧版视觉不一致);
-//!   悬停整列时通顶半透明光柱 `group-hover:bg-zinc-100/10`,有色段 `hover:brightness-125`。
+//!   悬停整列时通顶半透明光柱 `group-hover:bg-primary/10`,有色段 `hover:brightness-125`。
 //! - 数据流通:入参 `buckets`/`names` 来自面板已 pivot 的窗口数据;出参只有
 //!   `tip` signal(就地写入)。柱明细的排序与折叠收在 `api::trend_column_tip`。
 
@@ -36,12 +36,12 @@ pub fn TrendHistogram(
                 div { class: "pointer-events-none absolute inset-0 flex flex-col justify-between py-0", aria_hidden: "true",
                     // 顶格是封顶线 (axis_max), 其下三条是 step 等分, 最后是 0 基线
                     for i in [4, 3, 2, 1] {
-                        div { class: "relative w-full border-t border-dashed border-zinc-800",
-                            span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((axis_max.max(1.0) * i as f64 / 4.0) as i64)}" }
+                        div { class: "relative w-full border-t border-dashed border-border",
+                            span { class: "absolute -top-2 right-0 {ui::TYPE_LABEL}", "{fmt_raw((axis_max.max(1.0) * i as f64 / 4.0) as i64)}" }
                         }
                     }
-                    div { class: "relative w-full border-t border-dashed border-zinc-800",
-                        span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "0" }
+                    div { class: "relative w-full border-t border-dashed border-border",
+                        span { class: "absolute -top-2 right-0 {ui::TYPE_LABEL}", "0" }
                     }
                 }
                 div { class: "relative flex h-56 items-end", style: "gap: 3px",
@@ -61,7 +61,7 @@ pub fn TrendHistogram(
                                     class: "group relative flex h-full flex-1 cursor-default flex-col justify-end",
                                     onmouseleave: move |_| tip.set(None),
                                     // 悬停整列: 通顶全高半透明背景光柱
-                                    div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-zinc-100/10" }
+                                    div { class: "pointer-events-none absolute inset-x-0 top-0 bottom-0 rounded-sm transition-colors duration-150 group-hover:bg-primary/10" }
 
                                     // 顶层无色透明区: 悬停时显示该列全部明细
                                     div {
@@ -123,7 +123,7 @@ pub fn TrendHistogram(
                     }
                 }
             }
-            div { class: "mt-2 flex text-[10px] text-zinc-600", style: "gap: 3px",
+            div { class: "mt-2 flex {ui::TYPE_LABEL}", style: "gap: 3px",
                 for b in buckets.iter() {
                     span { class: "flex-1 truncate text-center",
                         if b.show_label { "{b.label}" }

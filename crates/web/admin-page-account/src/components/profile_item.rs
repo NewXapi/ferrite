@@ -13,7 +13,7 @@ use ui::button::{Button, ButtonSize, ButtonVariant};
 ///
 /// 【交互逻辑】纯展示。当 copyable=true 时，点击右侧复制按钮触发 copy_text_to_clipboard，复制成功后短暂变绿色 + ✓ 图标，1.5 秒后恢复。不触发 API 调用，不修改外部状态。
 ///
-/// 【样式】行内 flex 布局，gap-2；label 灰字 (text-zinc-400)，value 等宽字体 (font-mono text-zinc-200)，min-w-0 防溢出；复制按钮 Ghost variant + IconXs size，成功态 text-emerald-400。
+/// 【样式】行内 flex 布局，gap-2；label 灰字 (text-muted-foreground)，value 等宽字体 (font-mono text-foreground)，min-w-0 防溢出；复制按钮 Ghost variant + IconXs size，成功态 text-success-foreground。
 ///
 /// 【子组件组成】ui::button::Button (CopyPlaintextButton) × 0 或 1
 ///
@@ -30,9 +30,9 @@ pub fn ProfileItem(
     let copy_text = copy_value.unwrap_or_else(|| value.clone());
     rsx! {
         div { class: "flex items-baseline gap-2",
-            span { class: "shrink-0 text-zinc-400", "{label}" }
+            span { class: "shrink-0 {ui::C_MUTED}", "{label}" }
             span {
-                class: "min-w-0 break-all font-mono text-zinc-200",
+                class: "min-w-0 break-all font-mono text-foreground",
                 title: "{value}",
                 "{value}"
             }
@@ -60,7 +60,7 @@ fn CopyPlaintextButton(text: String, label: String) -> Element {
             size: ButtonSize::IconXs,
             title: "{label}",
             "aria-label": "{label}",
-            class: if copied() { "text-emerald-400" } else { "" },
+            class: if copied() { "text-success-foreground" } else { "" },
             onclick: move |_| {
                 let ok = ui::copy_text_to_clipboard(text.as_str());
                 copied.set(ok);
@@ -71,7 +71,7 @@ fn CopyPlaintextButton(text: String, label: String) -> Element {
                 });
             },
             if copied() {
-                span { class: "block h-3.5 w-3.5 text-center text-[11px] leading-[14px]", "✓" }
+                span { class: "block h-3.5 w-3.5 text-center {ui::TYPE_LABEL} leading-[14px]", "✓" }
             } else {
                 svg {
                     class: "h-3.5 w-3.5",

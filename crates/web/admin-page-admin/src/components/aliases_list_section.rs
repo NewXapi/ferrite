@@ -40,8 +40,8 @@ use crate::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】外壳 `section#aliases-sec-list` 为 `scroll-mt-8 space-y-4`;标题行由
-/// `SectionHeader` 提供(左 `text-lg font-medium text-zinc-100` 标题 + 右
-/// `rounded-full bg-zinc-800` 计数胶囊);错误态用红底 `DangerBlock`,加载/空态用
+/// `SectionHeader` 提供(左 `text-lg font-medium text-foreground` 标题 + 右
+/// `rounded-full bg-secondary` 计数胶囊);错误态用红底 `DangerBlock`,加载/空态用
 /// 虚线描边 `PlaceholderBlock`;网格为 `grid grid-cols-1 gap-3 md:grid-cols-3
 /// lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///

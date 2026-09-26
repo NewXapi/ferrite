@@ -11,7 +11,7 @@ use ui::button::{Button, ButtonVariant};
 ///
 /// 【交互逻辑】点遮罩或「取消」触发 on_cancel；「确认吊销」触发 on_confirmed，真正的 DELETE 由父面板执行；点弹窗主体 stop_propagation 防误取消。
 ///
-/// 【样式】遮罩 fixed inset-0 z-50 黑半透明 + backdrop-blur-sm；弹窗 max-w-md rounded-2xl 红边 (border-red-500/40) shadow-xl；按钮 Outline / Destructive 各占一半。
+/// 【样式】遮罩 fixed inset-0 z-50 黑半透明 + backdrop-blur-sm；弹窗 max-w-md rounded-2xl 红边 (border-destructive) shadow-xl；按钮 Outline / Destructive 各占一半。
 ///
 /// 【子组件组成】ui::button::Button × 2
 ///
@@ -30,11 +30,11 @@ pub fn ConfirmRevokeCurrentModal(
             "data-testid": "confirm-revoke-current-modal",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-red-500/40 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-destructive bg-card p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
-                h3 { class: "text-base font-semibold text-zinc-100", "吊销当前设备" }
-                p { class: "mt-3 text-sm text-zinc-400",
+                h3 { class: "{ui::TYPE_TITLE}", "吊销当前设备" }
+                p { class: "mt-3 {ui::TYPE_BODY}",
                     "确认吊销当前设备的会话吗？吊销后本设备将立即退出登录, 且无法恢复。"
                 }
 

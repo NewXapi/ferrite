@@ -49,36 +49,36 @@ pub fn TopUpForm(
     rsx! {
         Modal { title: TTL_TOPUP.to_string(), on_close: move |_| on_cancel.call(()),
             div { class: "space-y-4",
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
+                div { class: "rounded-xl border border-border bg-background px-4 py-3 {ui::TYPE_DESC}",
                     div { class: "flex justify-between gap-2",
-                        span { class: "text-zinc-400", "{MSG_CUR_QUOTA}{LBL_QUOTA}" }
-                        span { class: "font-medium text-zinc-200", "{fmt_cny(current_quota)}" }
+                        span { class: "{ui::C_MUTED}", "{MSG_CUR_QUOTA}{LBL_QUOTA}" }
+                        span { class: "font-medium text-foreground", "{fmt_cny(current_quota)}" }
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_TOPUP_AMOUNT}" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_TOPUP_AMOUNT}" }
                     input {
                         class: "{MODAL_INPUT} font-mono",
                         r#type: "text",
                         value: "{amount}",
                         oninput: move |e| amount.set(e.value()),
                     }
-                    p { class: "mt-1 text-xs text-zinc-500", "{MSG_QUOTA_HINT} {fmt_cny(delta_quota.unwrap_or(0))}" }
+                    p { class: "mt-1 {ui::TYPE_DESC}", "{MSG_QUOTA_HINT} {fmt_cny(delta_quota.unwrap_or(0))}" }
                 }
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "{MSG_AFTER_QUOTA}{LBL_QUOTA}" }
-                    span { class: "font-medium text-emerald-400", "{after}" }
+                div { class: "flex justify-between gap-2 {ui::TYPE_DESC}",
+                    span { class: "{ui::C_MUTED}", "{MSG_AFTER_QUOTA}{LBL_QUOTA}" }
+                    span { class: "font-medium {ui::C_SUCCESS}", "{after}" }
                 }
             }
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     onclick: move |_| on_cancel.call(()),
                     {BTN_CANCEL}
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     disabled: parsed.is_none(),
                     onclick: move |_| on_submit.call((user_key.clone(), delta_quota.unwrap_or(0))),
                     "{BTN_TOPUP_CONFIRM}"

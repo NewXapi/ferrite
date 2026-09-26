@@ -20,8 +20,8 @@ use crate::shared::{BTN_NEW_USER, BTN_REFRESH, MSG_SEARCH_HINT, SEC_FILTER};
 /// - 点「新建用户」→ `on_new(())`,页面打开新建弹窗。
 /// 本组件自身**不发任何网络请求**(分组列表由页面拉取后以 `filter_groups` 传入)。
 ///
-/// 【样式】`section#users-sec-filter` 卡片壳 `rounded-xl border-zinc-800 bg-zinc-900 p-5`;
-/// 标题行 + 两按钮;搜索框 `rounded-xl border-zinc-700/80 bg-zinc-950`;
+/// 【样式】`section#users-sec-filter` 卡片壳 `rounded-xl border-border bg-card p-5`;
+/// 标题行 + 两按钮;搜索框 `rounded-xl border-border/80 bg-background`;
 /// 手机端胶囊每行最多 3 段(class 与原页面逐字一致)。
 ///
 /// 【子组件组成】`ui::SegmentedCapsule` ×3 + 原生 input/button。
@@ -45,18 +45,18 @@ pub fn UsersFilterSection(
     rsx! {
         section {
             id: "users-sec-filter",
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5",
             div { class: "flex items-center justify-between gap-3",
-                h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
+                h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_FILTER}" }
                 div { class: "flex gap-2",
                     button {
-                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                        class: "shrink-0 rounded-xl border border-border px-3 py-2 {ui::TYPE_DESC} transition-colors hover:bg-secondary",
                         "data-testid": "refresh-users",
                         onclick: move |_| on_refresh.call(()),
                         "{BTN_REFRESH}"
                     }
                     button {
-                        class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                        class: "shrink-0 rounded-xl bg-primary px-4 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                         "data-testid": "new-user",
                         onclick: move |_| on_new.call(()),
                         "{BTN_NEW_USER}"
@@ -65,7 +65,7 @@ pub fn UsersFilterSection(
             }
 
             input {
-                class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
+                class: "w-full rounded-xl border border-border/80 bg-background px-4 py-2.5 {ui::TYPE_BODY} placeholder:text-muted-foreground outline-none transition focus:border-border",
                 r#type: "text",
                 placeholder: MSG_SEARCH_HINT,
                 "data-testid": "users-search",

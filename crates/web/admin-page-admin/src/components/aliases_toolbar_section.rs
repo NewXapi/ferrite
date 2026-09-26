@@ -29,11 +29,11 @@ use crate::shared::{
 /// - 点「新建别名」→ 调 `on_new`(`MouseEvent`),由页面闭包打开弹窗,组件不自持弹窗状态。
 ///
 /// 【样式】外壳 `section#aliases-sec-filter`,class 为
-/// `scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5`
+/// `scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5`
 /// (ScrollSpy 锚点 + 圆角描边面板,子项纵向 `gap-4`)。刷新按钮为描边幽灵样式
-/// `border-zinc-700 bg-zinc-950` hover 转 `border-zinc-500`,新建按钮为白底
-/// `bg-white text-zinc-900` hover `bg-zinc-200`;搜索框 `rounded-xl border-zinc-700/80
-/// bg-zinc-950`,聚焦时 `focus:border-zinc-500`;胶囊行 `flex flex-wrap gap-2` 允许换行。
+/// `border-border bg-background` hover 转 `border-border`,新建按钮为白底
+/// `bg-primary text-primary-foreground` hover `bg-zinc-200`;搜索框 `rounded-xl border-border/80
+/// bg-background`,聚焦时 `focus:border-border`;胶囊行 `flex flex-wrap gap-2` 允许换行。
 ///
 /// 【子组件组成】`ui::SegmentedCapsule`(分档胶囊);按钮与输入框为原生元素,未抽组件。
 ///
@@ -59,21 +59,21 @@ pub fn AliasesToolbarSection(
     rsx! {
         section {
             id: "aliases-sec-filter",
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5",
             div { class: "flex items-center justify-between gap-3",
                 div { class: "flex items-center gap-2",
-                    h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
-                    span { class: "text-xs text-zinc-500", "{SEC_FILTER_NOTE}" }
+                    h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_FILTER}" }
+                    span { class: "{ui::TYPE_DESC}", "{SEC_FILTER_NOTE}" }
                 }
                 div { class: "flex items-center gap-2",
                     button {
-                        class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
+                        class: "rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_DESC} transition-colors hover:border-border hover:text-foreground",
                         "data-testid": "refresh-aliases",
                         onclick: move |_| reload.set(reload() + 1),
                         "{BTN_REFRESH}"
                     }
                     button {
-                        class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                        class: "shrink-0 rounded-xl bg-primary px-4 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                         onclick: on_new,
                         "{BTN_NEW_ALIAS}"
                     }
@@ -81,7 +81,7 @@ pub fn AliasesToolbarSection(
             }
 
             input {
-                class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
+                class: "w-full rounded-xl border border-border/80 bg-background px-4 py-2.5 {ui::TYPE_BODY} placeholder:text-muted-foreground outline-none transition focus:border-border",
                 r#type: "text",
                 placeholder: "{MSG_SEARCH_PLACEHOLDER}",
                 value: "{search}",

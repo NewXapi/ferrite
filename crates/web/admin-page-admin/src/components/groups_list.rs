@@ -40,10 +40,10 @@ use crate::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**;回调最终触发的写请求都在 `page.rs`。
 ///
 /// 【样式】外壳 `section#groups-sec-list` 为 `scroll-mt-8 space-y-4`;标题行左侧
-/// `text-lg font-medium text-zinc-100`,右侧计数胶囊 `rounded-full bg-zinc-800`
+/// `text-lg font-medium text-foreground`,右侧计数胶囊 `rounded-full bg-secondary`
 /// (加载时显示 `OPT_BADGE_LOADING`,否则 `N 组`);错误态红底
-/// `rounded-2xl border border-red-800/60 bg-red-950/40 py-10`;加载/空态为虚线描边
-/// `rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16`;示例区与
+/// `rounded-2xl border border-destructive bg-destructive py-10`;加载/空态为虚线描边
+/// `rounded-2xl border border-dashed border-border bg-card/50 py-16`;示例区与
 /// 网格均为 `grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///
 /// 【子组件组成】`modal::GroupCard`(可操作分组卡,外壳用共用样式壳
@@ -86,23 +86,23 @@ pub fn GroupsList(
             }
 
             if let Some(e) = err {
-                div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED}" }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                div { class: "rounded-2xl border border-destructive bg-destructive py-10 text-center",
+                    p { class: "text-sm {ui::C_DANGER}", "{MSG_LOAD_FAILED}" }
+                    p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:bg-secondary",
                         "data-testid": "retry-groups",
                         onclick: move |_| on_retry.call(()),
                         "{BTN_RETRY}"
                     }
                 }
             } else if loading {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_LOADING_LIST}" }
+                div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
+                    p { class: "{ui::C_MUTED}", "{MSG_LOADING_LIST}" }
                 }
             } else if filtered.is_empty() {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_EMPTY}" }
+                div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
+                    p { class: "{ui::C_MUTED}", "{MSG_EMPTY}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",

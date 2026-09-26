@@ -35,9 +35,9 @@ pub fn SegmentedCapsule(
                     role: "tab",
                     aria_selected: "{i == active}",
                     class: if i == active {
-                        "min-w-[30%] flex-1 truncate border-r border-zinc-800 bg-zinc-100 px-3 py-1.5 text-center text-xs font-medium text-zinc-900 last:border-r-0 sm:min-w-0 sm:flex-none"
+                        "min-w-[30%] flex-1 truncate border-r border-zinc-800 bg-primary px-3 py-1.5 text-center {crate::TYPE_DESC} text-zinc-900 last:border-r-0 sm:min-w-0 sm:flex-none"
                     } else {
-                        "min-w-[30%] flex-1 truncate border-r border-zinc-800 px-3 py-1.5 text-center text-xs text-zinc-400 transition-colors last:border-r-0 hover:bg-zinc-800 hover:text-zinc-200 sm:min-w-0 sm:flex-none"
+                        "min-w-[30%] flex-1 truncate border-r border-zinc-800 px-3 py-1.5 text-center {crate::TYPE_DESC} transition-colors last:border-r-0 hover:bg-zinc-800 hover:text-zinc-200 sm:min-w-0 sm:flex-none"
                     },
                     onclick: move |_| on_select.call(i),
                     "{item}"

@@ -12,7 +12,7 @@ pub fn SliderField(
 ) -> Element {
     rsx! {
         div { class: "flex items-center gap-3",
-            span { class: "w-28 shrink-0 text-xs font-medium text-zinc-400", "{label}" }
+            span { class: "w-28 shrink-0 {crate::TYPE_DESC} text-zinc-400", "{label}" }
             input {
                 r#type: "range",
                 class: "h-1 flex-1 accent-zinc-100",
