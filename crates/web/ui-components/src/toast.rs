@@ -105,7 +105,7 @@ fn push_toast(item: ToastItem) {
 ///
 /// # 示例
 /// ```no_run
-/// use ui_components::components::toast::toast;
+/// use ui_components::toast::toast;
 /// toast("已保存");
 /// ```
 pub fn toast(title: impl Into<String>) {
