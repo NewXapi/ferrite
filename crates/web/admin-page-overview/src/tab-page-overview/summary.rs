@@ -36,36 +36,36 @@ pub fn TrendSummary(
     top_models: Vec<TopModelRow>,
 ) -> Element {
     rsx! {
-        div { class: "flex flex-col justify-between gap-5 rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/50 p-5",
+        div { class: "flex flex-col justify-between gap-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5",
             div { class: "grid grid-cols-2 gap-3",
                 div {
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{TREND_PEAK}" }
-                    p { class: "mt-1 truncate {ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{peak_label}" }
-                    p { class: "{ui::T_text_xs} font-mono {ui::T_text_zinc_500}", "{fmt_raw(peak_total as i64)}" }
+                    p { class: "text-[11px] text-zinc-600", "{TREND_PEAK}" }
+                    p { class: "mt-1 truncate text-sm font-semibold text-zinc-100", "{peak_label}" }
+                    p { class: "text-xs font-mono text-zinc-500", "{fmt_raw(peak_total as i64)}" }
                 }
                 div {
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{TREND_AVG}" }
-                    p { class: "mt-1 {ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{fmt_raw(avg as i64)}" }
-                    p { class: "{ui::T_text_xs} font-mono {ui::T_text_zinc_500}", "{TREND_AVG_SUB}" }
+                    p { class: "text-[11px] text-zinc-600", "{TREND_AVG}" }
+                    p { class: "mt-1 text-sm font-semibold text-zinc-100", "{fmt_raw(avg as i64)}" }
+                    p { class: "text-xs font-mono text-zinc-500", "{TREND_AVG_SUB}" }
                 }
                 div {
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{TREND_MODELS}" }
-                    p { class: "mt-1 {ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{model_count}{TREND_MODELS_UNIT}" }
-                    p { class: "{ui::T_text_xs} font-mono {ui::T_text_zinc_500}", "{TREND_MODELS_SUB}" }
+                    p { class: "text-[11px] text-zinc-600", "{TREND_MODELS}" }
+                    p { class: "mt-1 text-sm font-semibold text-zinc-100", "{model_count}{TREND_MODELS_UNIT}" }
+                    p { class: "text-xs font-mono text-zinc-500", "{TREND_MODELS_SUB}" }
                 }
                 div {
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{TREND_RANGE_TOTAL}" }
-                    p { class: "mt-1 {ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{fmt_raw(total as i64)}" }
-                    p { class: "{ui::T_text_xs} font-mono {ui::T_text_zinc_500}", "{TREND_RANGE_SUB}" }
+                    p { class: "text-[11px] text-zinc-600", "{TREND_RANGE_TOTAL}" }
+                    p { class: "mt-1 text-sm font-semibold text-zinc-100", "{fmt_raw(total as i64)}" }
+                    p { class: "text-xs font-mono text-zinc-500", "{TREND_RANGE_SUB}" }
                 }
             }
             div { class: "border-t border-zinc-800/80 pt-3",
-                p { class: "mb-2 {ui::T_text_11px} {ui::T_font_medium} {ui::T_text_zinc_500}", "{TREND_TOP5}" }
+                p { class: "mb-2 text-[11px] font-medium text-zinc-500", "{TREND_TOP5}" }
                 for (name, color, pct) in top_models.iter() {
-                    div { class: "flex items-center gap-2 py-1 {ui::T_text_xs}",
+                    div { class: "flex items-center gap-2 py-1 text-xs",
                         span { class: "h-2 w-2 shrink-0 rounded-sm", style: "background: {color}" }
-                        span { class: "flex-1 truncate {ui::T_text_zinc_300}", "{name}" }
-                        span { class: "font-mono {ui::T_text_zinc_500}", "{pct:.1}%" }
+                        span { class: "flex-1 truncate text-zinc-300", "{name}" }
+                        span { class: "font-mono text-zinc-500", "{pct:.1}%" }
                     }
                 }
             }

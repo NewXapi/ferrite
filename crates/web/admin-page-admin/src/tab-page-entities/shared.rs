@@ -188,16 +188,16 @@ pub fn CardPanel(
 ) -> Element {
     let id = format!("ent-card-{section_index}");
     rsx! {
-        section { id: "{id}", class: "shrink-0 overflow-hidden rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60",
+        section { id: "{id}", class: "shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60",
             button {
-                class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:{ui::T_bg_zinc_900}",
+                class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900",
                 onclick: move |e| on_toggle.call(e),
                 span { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
-                span { class: "rounded-full border {ui::T_border_zinc_700} px-1.5 {ui::T_text_11px} {ui::T_text_zinc_400}", "{count}" }
-                span { class: "truncate {ui::T_text_11px} {ui::T_text_zinc_600}", "{hint}" }
+                span { class: "rounded-full border border-zinc-700 px-1.5 text-[11px] text-zinc-400", "{count}" }
+                span { class: "truncate text-[11px] text-zinc-600", "{hint}" }
             }
             if open {
-                div { class: "space-y-3 border-t {ui::T_border_zinc_800} p-4", {children} }
+                div { class: "space-y-3 border-t border-zinc-800 p-4", {children} }
             }
         }
     }
@@ -221,7 +221,7 @@ pub fn CardPanel(
 #[component]
 pub fn NodeArea(children: Element) -> Element {
     rsx! {
-        div { class: "min-h-[104px] rounded-lg border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} p-3", {children} }
+        div { class: "min-h-[104px] rounded-lg border border-zinc-800 bg-zinc-950 p-3", {children} }
     }
 }
 
@@ -245,7 +245,7 @@ pub fn NodeArea(children: Element) -> Element {
 pub fn EmptyHint(text: &'static str) -> Element {
     rsx! {
         div { class: "flex h-full min-h-[72px] items-center justify-center",
-            span { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{text}" }
+            span { class: "text-[11px] text-zinc-600", "{text}" }
         }
     }
 }
@@ -297,13 +297,13 @@ pub fn EntityChip(
             button {
                 class: "flex items-baseline gap-1.5",
                 onclick: move |e| on_pick.call(e),
-                span { class: "{ui::T_text_xs} {ui::T_font_medium}", "{label}" }
+                span { class: "text-xs font-medium", "{label}" }
                 if !sub.is_empty() {
-                    span { class: "{ui::T_text_11px} {sub_tone}", "{sub}" }
+                    span { class: "text-[11px] {sub_tone}", "{sub}" }
                 }
             }
             button {
-                class: "px-1 {ui::T_text_11px} opacity-50 hover:{ui::T_text_red_400} hover:opacity-100",
+                class: "px-1 text-[11px] opacity-50 hover:text-red-400 hover:opacity-100",
                 onclick: move |e| on_remove.call(e),
                 "✕"
             }
@@ -342,9 +342,9 @@ pub fn InputCell(
     let width = if grow { "min-w-[140px] flex-1" } else { "" };
     rsx! {
         label { class: "block space-y-1 {width}",
-            span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{label}" }
+            span { class: "text-[11px] text-zinc-500", "{label}" }
             input {
-                class: "w-full rounded-md border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-3 py-1.5 {ui::T_text_sm} {ui::T_text_zinc_200} outline-none transition-colors placeholder:{ui::T_text_zinc_600} focus:{ui::T_border_zinc_500}",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value.read()}",
                 placeholder: "{placeholder}",
                 oninput: move |e| value.set(e.value()),
@@ -381,9 +381,9 @@ pub fn SelectCell(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{label}" }
+            span { class: "text-[11px] text-zinc-500", "{label}" }
             select {
-                class: "w-full rounded-md border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-3 py-1.5 {ui::T_text_sm} {ui::T_text_zinc_200} outline-none transition-colors focus:{ui::T_border_zinc_500}",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors focus:border-zinc-500",
                 value: "{value}",
                 oninput: move |e| oninput.call(e.value()),
                 for opt in options {
@@ -420,9 +420,9 @@ pub fn TextCell(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{label}" }
+            span { class: "text-[11px] text-zinc-500", "{label}" }
             input {
-                class: "w-full rounded-md border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-3 py-1.5 {ui::T_text_sm} {ui::T_text_zinc_200} outline-none transition-colors placeholder:{ui::T_text_zinc_600} focus:{ui::T_border_zinc_500}",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |e| oninput.call(e.value()),

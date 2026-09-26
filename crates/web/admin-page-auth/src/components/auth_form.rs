@@ -15,7 +15,7 @@ fn SubmitStateBanner(error: Signal<Option<String>>) -> Element {
     match error.read().as_deref() {
         Some(e) if !e.is_empty() => rsx! {
             div {
-                class: "rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 {ui::T_text_xs} {ui::STATE_DANGER_TEXT}",
+                class: "rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs {ui::STATE_DANGER_TEXT}",
                 "{e}"
             }
         },
@@ -51,10 +51,10 @@ fn RememberMe(remember: Signal<bool>) -> Element {
                     oninput: move |ev| remember.set(ev.checked()),
                 }
                 if remember() {
-                    span { class: "{ui::T_text_11px} {ui::T_font_bold} leading-none {ui::T_text_white}", "✓" }
+                    span { class: "text-[11px] font-bold leading-none text-white", "✓" }
                 }
             }
-            span { class: "{ui::T_text_zinc_400} group-hover:{ui::T_text_zinc_300} transition-colors", "Remember me" }
+            span { class: "text-zinc-400 group-hover:text-zinc-300 transition-colors", "Remember me" }
         }
     }
 }
@@ -92,10 +92,10 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                 oninput: move |ev: dioxus::prelude::FormEvent| password.set(ev.value()),
             }
             div {
-                class: "flex items-center justify-between {ui::T_text_sm} pt-1",
+                class: "flex items-center justify-between text-sm pt-1",
                 RememberMe { remember }
                 span {
-                    class: "cursor-pointer {ui::T_text_zinc_400} hover:{ui::T_text_zinc_200} transition-colors hover:underline underline-offset-2",
+                    class: "cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
                     "Forgot password?"
                 }
             }
@@ -172,7 +172,7 @@ pub fn SignUpForm(submit: EventHandler<SignUpPayload>, remember: Signal<bool>) -
             }
 
             div {
-                class: "flex items-center justify-between {ui::T_text_sm} pt-1",
+                class: "flex items-center justify-between text-sm pt-1",
                 RememberMe { remember }
             }
             SubmitStateBanner { error }

@@ -19,7 +19,7 @@ pub fn GhostButton(
     let grow_cls = if grow { "flex-1 " } else { "" };
     rsx! {
         button {
-            class: "mt-3 {grow_cls}rounded-xl border {crate::T_border_zinc_700} px-3 py-1.5 {crate::T_text_xs} {crate::T_text_zinc_300} hover:{crate::T_bg_zinc_800}",
+            class: "mt-3 {grow_cls}rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
             "data-testid": testid.as_deref(),
             onclick: move |e| onclick.call(e),
             "{label}"

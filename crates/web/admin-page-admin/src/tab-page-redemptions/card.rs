@@ -108,14 +108,14 @@ pub fn RedemptionCard(
             div { class: "space-y-3",
                 // 头部
                 div { class: "flex items-start gap-3",
-                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border {ui::T_border_zinc_700} {ui::T_bg_zinc_800} {ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_200} group-hover:{ui::T_border_zinc_500} transition-colors",
+                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
                         "¥"
                     }
                     div { class: "min-w-0 flex-1",
                         div { class: "flex items-center justify-between gap-2",
                             h3 { class: "truncate font-mono {ui::TYPE_CARD_TITLE}", "{item.code_preview}" }
                         }
-                        p { class: "mt-0.5 truncate {ui::T_text_11px} {ui::T_text_zinc_400} font-mono", "{item.key}" }
+                        p { class: "mt-0.5 truncate text-[11px] text-zinc-400 font-mono", "{item.key}" }
                     }
                 }
 
@@ -127,31 +127,31 @@ pub fn RedemptionCard(
 
                 // 额度有效条
                 div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 {ui::T_text_11px}",
-                        span { class: "{ui::T_text_zinc_400}", "{LBL_AVAILABLE_QUOTA}" }
-                        span { class: "whitespace-nowrap {ui::T_font_medium} {ui::T_text_zinc_200} font-mono", "¥ {item.quota_cny:.2}" }
+                    div { class: "flex justify-between gap-2 text-[11px]",
+                        span { class: "text-zinc-400", "{LBL_AVAILABLE_QUOTA}" }
+                        span { class: "whitespace-nowrap font-medium text-zinc-200 font-mono", "¥ {item.quota_cny:.2}" }
                     }
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full {ui::T_bg_zinc_800}",
+                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                         div { class: "h-full rounded-full {bar_tone} transition-all duration-300", style: "width: {bar_pct}%" }
                     }
                 }
 
                 // 详情指标行
-                div { class: "space-y-1.5 {ui::T_text_xs} pt-1",
+                div { class: "space-y-1.5 text-xs pt-1",
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 {ui::T_text_zinc_400}", "{LBL_CREATED}" }
-                        span { class: "font-mono {ui::T_text_zinc_400}", "{item.created}" }
+                        span { class: "shrink-0 text-zinc-400", "{LBL_CREATED}" }
+                        span { class: "font-mono text-zinc-400", "{item.created}" }
                     }
                     if let Some(by) = &item.redeemed_by {
                         div { class: "flex justify-between gap-2",
-                            span { class: "shrink-0 {ui::T_text_zinc_400}", "{LBL_REDEEMED_BY}" }
-                            span { class: "{ui::T_font_medium} {ui::T_text_zinc_200}", "{by}" }
+                            span { class: "shrink-0 text-zinc-400", "{LBL_REDEEMED_BY}" }
+                            span { class: "font-medium text-zinc-200", "{by}" }
                         }
                     }
                     if !item.redeemed_at.is_empty() {
                         div { class: "flex justify-between gap-2",
-                            span { class: "shrink-0 {ui::T_text_zinc_400}", "{LBL_REDEEMED_AT}" }
-                            span { class: "font-mono {ui::T_text_zinc_300}", "{item.redeemed_at}" }
+                            span { class: "shrink-0 text-zinc-400", "{LBL_REDEEMED_AT}" }
+                            span { class: "font-mono text-zinc-300", "{item.redeemed_at}" }
                         }
                     }
                 }
@@ -159,7 +159,7 @@ pub fn RedemptionCard(
 
             // 底部操作区: [复制预览] [停用] — 后端仅支持停用(无硬删/无重新启用)
             div {
-                class: "mt-4 flex gap-1.5 border-t {ui::T_border_zinc_800} pt-3",
+                class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
                 button {
                     "data-testid": "copy-redemption",
                     class: if is_just_copied {
@@ -173,21 +173,21 @@ pub fn RedemptionCard(
                 if item.status == 1 {
                     button {
                         "data-testid": "disable-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 {ui::T_text_xs} {ui::T_font_medium} {ui::STATE_WARNING_TEXT} transition-colors hover:{ui::T_bg_zinc_700} hover:{ui::T_text_amber_300}",
+                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium {ui::STATE_WARNING_TEXT} transition-colors hover:bg-zinc-700 hover:text-amber-300",
                         onclick: move |_| on_disable.call(disable_key.clone()),
                         "{BTN_DISABLE}"
                     }
                 } else if item.status == 2 {
                     button {
                         "data-testid": "redeemed-redemption",
-                        class: "flex-1 rounded-lg border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} py-1.5 {ui::T_text_xs} {ui::T_text_zinc_600} cursor-not-allowed",
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "{BTN_REDEEMED}"
                     }
                 } else {
                     button {
                         "data-testid": "disabled-redemption",
-                        class: "flex-1 rounded-lg border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} py-1.5 {ui::T_text_xs} {ui::T_text_zinc_600} cursor-not-allowed",
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
                         disabled: true,
                         "{BTN_DISABLED}"
                     }

@@ -83,17 +83,17 @@ pub fn TrendPanel(
     let tip = use_signal(|| None::<TrendTip>);
 
     rsx! {
-        section { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 transition-all duration-300 hover:{ui::T_border_zinc_700}",
+        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-all duration-300 hover:border-zinc-700",
             div { class: "mb-4 flex flex-wrap items-center justify-between gap-3",
                 div {
-                    h2 { class: "{ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_300}", "{SEC_TREND}" }
+                    h2 { class: "text-sm font-medium text-zinc-300", "{SEC_TREND}" }
                     // 时间窗动态副标题:与 window_start 的窗口语义一致(今天=24 小时桶/本周=7 天桶/本月=30 天桶/今年=12 月桶)
                     p { class: "mt-0.5 {ui::TYPE_DESC}", "data-testid": "trend-window-caption", "{api::window_caption(tf)}" }
                 }
                 div { class: "flex items-center gap-4",
                     div { class: "text-right",
-                        p { class: "{ui::T_text_2xl} {ui::T_font_semibold} leading-none {ui::T_text_zinc_100}", "{fmt_raw(total_all as i64)}" }
-                        p { class: "mt-1 {ui::T_text_11px} {ui::T_text_zinc_600}", "{TREND_UNIT}" }
+                        p { class: "text-2xl font-semibold leading-none text-zinc-100", "{fmt_raw(total_all as i64)}" }
+                        p { class: "mt-1 text-[11px] text-zinc-600", "{TREND_UNIT}" }
                     }
                     // 时间窗切换胶囊(与排行榜共用组件);总览趋势面板无 testid 前缀
                     TimeframeTabs { timeframe }
@@ -101,17 +101,17 @@ pub fn TrendPanel(
             }
             if let Some(e) = err {
                 div { class: "rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-8 text-center",
-                    p { class: "{ui::T_text_sm} {ui::T_text_red_300}", "{TREND_ERR}" }
-                    p { class: "mt-1 {ui::T_text_xs} text-red-400/70", "{e}" }
+                    p { class: "text-sm text-red-300", "{TREND_ERR}" }
+                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                 }
             } else if loading {
-                div { class: "rounded-xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
-                    p { class: "{ui::T_text_zinc_400}", "{TREND_LOADING}" }
+                div { class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                    p { class: "text-zinc-400", "{TREND_LOADING}" }
                 }
             } else if !has_any || empty_window {
-                div { class: "rounded-xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
-                    p { class: "{ui::T_text_zinc_400}", "{TREND_EMPTY}" }
-                    p { class: "mt-1 {ui::T_text_xs} {ui::T_text_zinc_600}", "{TREND_EMPTY_HINT}" }
+                div { class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                    p { class: "text-zinc-400", "{TREND_EMPTY}" }
+                    p { class: "mt-1 text-xs text-zinc-600", "{TREND_EMPTY_HINT}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-5 xl:grid-cols-3",

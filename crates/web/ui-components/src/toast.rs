@@ -171,7 +171,7 @@ pub fn Toaster() -> Element {
                             "data-state": "open",
                             role: if item.variant == ToastVariant::Destructive { "alert" } else { "status" },
                             onclick: move |_| dismiss_toast(id),
-                            div { class: "{crate::T_font_medium}", "{item.title}" }
+                            div { class: "font-medium", "{item.title}" }
                             if let Some(description) = &item.description {
                                 div { class: "mt-0.5 text-muted-foreground", "{description}" }
                             }

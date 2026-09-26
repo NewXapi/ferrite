@@ -67,60 +67,60 @@ pub fn KeyCard(
     };
     rsx! {
         div {
-            class: "group rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-4 transition-all duration-200 hover:{ui::T_border_zinc_600} hover:bg-zinc-900/80",
+            class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
             div { class: "mb-3 flex items-start justify-between gap-2",
                 div { class: "min-w-0",
                     h3 { class: "truncate {ui::TYPE_CARD_TITLE}", "{entry.name}" }
                     // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
                     // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
-                    p { class: "min-w-0 truncate font-mono {ui::T_text_11px} {ui::T_text_zinc_500}", "{entry.key_preview}" }
+                    p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
                 }
                 span {
-                    class: "shrink-0 rounded-full border px-2.5 py-0.5 {ui::T_text_xs} {ui::T_font_medium} {status_color}",
+                    class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
                     if enabled { "启用" } else { "停用" }
                 }
             }
 
-            div { class: "space-y-2 {ui::T_text_xs}",
+            div { class: "space-y-2 text-xs",
                 div { class: "flex items-center justify-between gap-2",
-                    span { class: "shrink-0 whitespace-nowrap {ui::T_text_zinc_400}", "已用额度" }
+                    span { class: "shrink-0 whitespace-nowrap text-zinc-400", "已用额度" }
                     if unlimited {
                         span {
-                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 {ui::T_text_11px} {ui::T_font_medium} {ui::STATE_INFO_TEXT}",
+                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium {ui::STATE_INFO_TEXT}",
                             "无限"
                         }
                     } else {
-                        span { class: "whitespace-nowrap {ui::T_font_medium} {ui::T_text_zinc_200}",
+                        span { class: "whitespace-nowrap font-medium text-zinc-200",
                             "{fmt_quota(entry.used_quota)} / {fmt_quota(entry.quota)}"
                         }
                     }
                 }
                 // 用量进度条: 无限额度不渲染 (无分母, 百分比无意义)
                 if !unlimited {
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full {ui::T_bg_zinc_800}",
+                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                         div { class: "h-full rounded-full {bar_tone}", style: "width: {pct}%" }
                     }
                 }
                 if !created.is_empty() {
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 whitespace-nowrap {ui::T_text_zinc_400}", "创建时间" }
-                        span { class: "whitespace-nowrap font-mono {ui::T_text_zinc_400}", "{created}" }
+                        span { class: "shrink-0 whitespace-nowrap text-zinc-400", "创建时间" }
+                        span { class: "whitespace-nowrap font-mono text-zinc-400", "{created}" }
                     }
                 }
             }
 
-            div { class: "mt-4 flex items-center gap-2 border-t {ui::T_border_zinc_800} pt-3",
+            div { class: "mt-4 flex items-center gap-2 border-t border-zinc-800 pt-3",
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1 {ui::T_text_zinc_400}",
+                    class: "flex-1 text-zinc-400",
                     onclick: move |_| on_edit.call(e_edit.clone()),
                     "编辑"
                 }
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1 {ui::T_text_zinc_400}",
+                    class: "flex-1 text-zinc-400",
                     onclick: move |_| on_toggle.call(e_toggle.clone()),
                     if enabled { "停用" } else { "启用" }
                 }

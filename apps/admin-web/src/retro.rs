@@ -13,7 +13,7 @@ pub fn RetroPage() -> Element {
 
     rsx! {
         div {
-            class: "flex min-h-screen {ui::T_bg_zinc_950} {ui::T_text_zinc_100} transition-colors duration-300",
+            class: "flex min-h-screen bg-zinc-950 text-zinc-100 transition-colors duration-300",
             class: if is_light { "light" } else { "" },
 
             // Floating capsule header — same shell as the console page
@@ -21,22 +21,22 @@ pub fn RetroPage() -> Element {
                 class: "fixed top-4 left-1/2 z-30 hidden -translate-x-1/2 md:block",
                 div { class: "flex items-center gap-5 rounded-full border border-zinc-800/80 bg-zinc-900/75 px-5 py-2.5 backdrop-blur-xl shadow-lg shadow-black/20",
                     div { class: "flex items-center gap-1.5",
-                        span { class: "{ui::T_text_lg} {ui::T_font_semibold} tracking-tight {ui::T_text_zinc_100}", "New API" }
-                        span { class: "hidden sm:inline-flex items-center rounded-full {ui::T_bg_zinc_800} px-2 py-0.5 {ui::T_text_xs} {ui::T_font_medium} uppercase tracking-wider {ui::T_text_zinc_500}", "retro" }
+                        span { class: "text-lg font-semibold tracking-tight text-zinc-100", "New API" }
+                        span { class: "hidden sm:inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500", "retro" }
                     }
                     a {
-                        class: "{ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_400} transition-colors hover:{ui::T_text_zinc_100}",
+                        class: "text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100",
                         href: "#",
                         "控制台"
                     }
-                    span { class: "h-5 w-px {ui::T_bg_zinc_800}" }
+                    span { class: "h-5 w-px bg-zinc-800" }
                     button {
-                        class: "rounded-full px-3 py-1.5 {ui::T_text_sm} {ui::T_text_zinc_400} transition-colors hover:{ui::T_bg_zinc_800} hover:{ui::T_text_zinc_100}",
+                        class: "rounded-full px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
                         onclick: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         if is_light { "Dark" } else { "Light" }
                     }
                     a {
-                        class: "rounded-full {ui::T_bg_zinc_100} px-3 py-1.5 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors hover:{ui::T_bg_zinc_300} inline-flex items-center justify-center",
+                        class: "rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-300 inline-flex items-center justify-center",
                         href: "#signup",
                         "登录"
                     }
@@ -84,10 +84,10 @@ pub fn RetroPage() -> Element {
                         div { class: "retro-glow pointer-events-none absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full" }
                         div { class: "absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2",
                             div { class: "grid grid-cols-2 gap-2",
-                                button { class: "btn-tactile rounded-full border {ui::T_border_zinc_700} {ui::T_bg_zinc_800} px-4 py-2 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_200} hover:{ui::T_bg_zinc_700}", "新建" }
-                                button { class: "btn-tactile rounded-full border {ui::T_border_zinc_700} {ui::T_bg_zinc_800} px-4 py-2 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_200} hover:{ui::T_bg_zinc_700}", "同步" }
-                                button { class: "btn-tactile rounded-full border {ui::T_border_zinc_700} {ui::T_bg_zinc_800} px-4 py-2 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_200} hover:{ui::T_bg_zinc_700}", "测试" }
-                                button { class: "btn-tactile rounded-full border {ui::T_border_zinc_700} {ui::T_bg_zinc_800} px-4 py-2 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_200} hover:{ui::T_bg_zinc_700}", "停用" }
+                                button { class: "btn-tactile rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700", "新建" }
+                                button { class: "btn-tactile rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700", "同步" }
+                                button { class: "btn-tactile rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700", "测试" }
+                                button { class: "btn-tactile rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700", "停用" }
                             }
                         }
                     }

@@ -27,11 +27,11 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
         div {
             class: "{ui::MODAL_BACKDROP}",
             div {
-                class: "w-full max-w-md rounded-2xl border border-emerald-500/40 {ui::T_bg_zinc_900} p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-emerald-500/40 bg-zinc-900 p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-4 flex items-center justify-between",
-                    h3 { class: "{ui::T_text_base} {ui::T_font_semibold} {ui::STATE_SUCCESS_TEXT}", "密钥创建成功" }
+                    h3 { class: "text-base font-semibold {ui::STATE_SUCCESS_TEXT}", "密钥创建成功" }
                     button {
                         class: "{ui::CLOSE_BTN}",
                         onclick: move |_| on_close.call(()),
@@ -40,10 +40,10 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
                     }
                 }
 
-                p { class: "mb-2 {ui::T_text_xs} {ui::STATE_WARNING_TEXT}", "明文密钥只显示这一次,关闭后无法再查看" }
+                p { class: "mb-2 text-xs {ui::STATE_WARNING_TEXT}", "明文密钥只显示这一次,关闭后无法再查看" }
                 div { class: "flex items-center gap-2",
                     input {
-                        class: "min-w-0 flex-1 rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-3 font-mono {ui::T_text_sm} {ui::T_text_emerald_300} focus:outline-none",
+                        class: "min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
                         r#type: "text",
                         r#readonly: true,
                         value: "{result.plaintext}"

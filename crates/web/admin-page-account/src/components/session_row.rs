@@ -34,17 +34,17 @@ pub fn SessionRow(
     let expires_at = fmt_time_minute(&session.expires_at);
 
     rsx! {
-        div { class: "rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-4 transition-colors hover:{ui::T_border_zinc_600}",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-colors hover:border-zinc-600",
             div { class: "flex items-start justify-between gap-3",
                 div { class: "min-w-0",
                     div { class: "flex items-center gap-2",
                         p {
-                            class: "truncate {ui::T_text_sm} {ui::T_text_zinc_200}",
+                            class: "truncate text-sm text-zinc-200",
                             title: "{session.user_agent}",
                             "{ua_label}"
                         }
                         if session.current {
-                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 {ui::T_text_10px} {ui::T_font_medium} {ui::STATE_SUCCESS_TEXT}", "当前设备" }
+                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium {ui::STATE_SUCCESS_TEXT}", "当前设备" }
                         }
                     }
                     div { class: "mt-2 grid grid-cols-1 gap-1 {ui::TYPE_DESC} sm:grid-cols-2",

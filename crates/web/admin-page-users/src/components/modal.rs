@@ -38,12 +38,12 @@ pub fn Modal(title: String, on_close: EventHandler<()>, children: Element) -> El
             onclick: move |_| on_close.call(()),
             // 内容卡:拦截冒泡,卡内点击不触发遮罩的关闭
             div {
-                class: "w-full max-w-md rounded-2xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
                 // 标题栏:标题 + 关闭按钮(复用 ui::CloseButton)
                 // DONE: 关闭按钮不自建,收敛为 ui-components 复用组件 CloseButton(全仓统一 X 按钮) in=demo by=agent
                 div { class: "mb-5 flex items-center justify-between",
-                    h3 { class: "{ui::T_text_base} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{title}" }
+                    h3 { class: "text-base font-semibold text-zinc-100", "{title}" }
                     CloseButton { on_click: on_close }
                 }
                 {children}

@@ -58,13 +58,13 @@ pub fn PreferencesSection() -> Element {
         div { class: "flex flex-col gap-6",
             div {
                 h2 { class: "{ui::TYPE_TITLE}", "偏好设置" }
-                p { class: "mt-1 {ui::T_text_sm} {ui::T_text_zinc_500}", "设置以 JSONB 形式存于账号, 修改即时合并保存" }
+                p { class: "mt-1 text-sm text-zinc-500", "设置以 JSONB 形式存于账号, 修改即时合并保存" }
             }
 
-            div { class: "rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-6 transition-colors hover:{ui::T_border_zinc_600}",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
                 div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2",
                     div {
-                        label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "界面语言" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "界面语言" }
                         select {
                             class: "{ui::INPUT}",
                             value: "{language}",
@@ -75,7 +75,7 @@ pub fn PreferencesSection() -> Element {
                         }
                     }
                     div { class: "flex items-end",
-                        label { class: "flex w-full cursor-pointer items-center justify-between rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm}",
+                        label { class: "flex w-full cursor-pointer items-center justify-between rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm",
                             span { "接收通知" }
                             input {
                                 r#type: "checkbox",
@@ -121,21 +121,21 @@ pub fn PreferencesSection() -> Element {
                         "保存设置"
                     }
                     if let Some(m) = flash() {
-                        span { class: "{ui::T_text_xs} {ui::STATE_SUCCESS_TEXT}", "{m}" }
+                        span { class: "text-xs {ui::STATE_SUCCESS_TEXT}", "{m}" }
                     }
                 }
 
                 if !err().is_empty() {
-                    p { class: "mt-3 {ui::T_text_xs} {ui::STATE_DANGER_TEXT}", "操作失败: {err()}" }
+                    p { class: "mt-3 text-xs {ui::STATE_DANGER_TEXT}", "操作失败: {err()}" }
                 }
             }
 
-            div { class: "rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-6 transition-colors hover:{ui::T_border_zinc_600}",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
                 div { class: "mb-3 flex items-center justify-between",
                     h3 { class: "{ui::TYPE_CARD_TITLE}", "当前设置 (JSON)" }
                     span { class: "{ui::TYPE_DESC}", "只读视图" }
                 }
-                pre { class: "max-h-60 overflow-auto rounded-lg {ui::T_bg_zinc_950} p-4 font-mono {ui::T_text_xs} {ui::T_text_zinc_300}", "{raw_json}" }
+                pre { class: "max-h-60 overflow-auto rounded-lg bg-zinc-950 p-4 font-mono text-xs text-zinc-300", "{raw_json}" }
             }
         }
     }

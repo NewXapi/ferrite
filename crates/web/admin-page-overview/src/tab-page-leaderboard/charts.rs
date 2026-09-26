@@ -19,13 +19,13 @@ pub fn ModelDistributionCard() -> Element {
     let total_tokens: f64 = MODELS.iter().map(|m| m.tokens).sum();
 
     rsx! {
-        div { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between gap-3",
                 div {
-                    h3 { class: "{ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}",
+                    h3 { class: "text-sm font-semibold text-zinc-100",
                         "{CHART_DIST_TITLE}"
                                             }
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{CHART_DIST_SUBTITLE}" }
+                    p { class: "text-[11px] text-zinc-500", "{CHART_DIST_SUBTITLE}" }
                 }
             }
 
@@ -60,13 +60,13 @@ pub fn ModelDistributionCard() -> Element {
                                 div { class: "flex items-center gap-2.5 min-w-0",
                                     span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
                                     div { class: "min-w-0",
-                                        p { class: "truncate {ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_200} group-hover:{ui::T_text_white}", "{m.name}" }
-                                        p { class: "{ui::T_text_10px} {ui::T_text_zinc_500}", "{m.daily_req / 1e3:.0}{CHART_REQ_MID}{m.ctx:.0}K" }
+                                        p { class: "truncate text-xs font-medium text-zinc-200 group-hover:text-white", "{m.name}" }
+                                        p { class: "text-[10px] text-zinc-500", "{m.daily_req / 1e3:.0}{CHART_REQ_MID}{m.ctx:.0}K" }
                                     }
                                 }
                                 div { class: "text-right shrink-0 pl-2",
-                                    p { class: "font-mono {ui::T_text_xs} {ui::T_font_semibold} tabular-nums {ui::T_text_zinc_100}", "{m.tokens / 1e3:.1}B" }
-                                    p { class: "font-mono {ui::T_text_10px} {ui::T_text_zinc_500}", "${cost_est:.2} ({pct:.1}%)" }
+                                    p { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100", "{m.tokens / 1e3:.1}B" }
+                                    p { class: "font-mono text-[10px] text-zinc-500", "${cost_est:.2} ({pct:.1}%)" }
                                 }
                             }
                         }
@@ -81,15 +81,15 @@ pub fn ModelDistributionCard() -> Element {
 #[component]
 pub fn PerformanceLatencyCard() -> Element {
     rsx! {
-        div { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between",
                 div {
-                    h3 { class: "{ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}",
+                    h3 { class: "text-sm font-semibold text-zinc-100",
                         "{CHART_SLA_TITLE}"
                                             }
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{CHART_SLA_SUBTITLE}" }
+                    p { class: "text-[11px] text-zinc-500", "{CHART_SLA_SUBTITLE}" }
                 }
-                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 {ui::T_text_11px} {ui::T_font_medium} {ui::STATE_SUCCESS_TEXT}",
+                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium {ui::STATE_SUCCESS_TEXT}",
                     span { class: "h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" }
                     "{CHART_SLA_BADGE}"
                 }
@@ -98,20 +98,20 @@ pub fn PerformanceLatencyCard() -> Element {
             // 4 项关键健康指标
             div { class: "grid grid-cols-2 gap-2.5",
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "{ui::T_text_10px} {ui::T_text_zinc_500}", "{CHART_P50}" }
-                    p { class: "mt-0.5 font-mono {ui::T_text_base} {ui::T_font_bold} {ui::T_text_zinc_100}", "820 ms" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_P50}" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "820 ms" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "{ui::T_text_10px} {ui::T_text_zinc_500}", "{CHART_P90}" }
-                    p { class: "mt-0.5 font-mono {ui::T_text_base} {ui::T_font_bold} {ui::T_text_zinc_100}", "1,450 ms" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_P90}" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "1,450 ms" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "{ui::T_text_10px} {ui::T_text_zinc_500}", "{CHART_TPS}" }
-                    p { class: "mt-0.5 font-mono {ui::T_text_base} {ui::T_font_bold} {ui::T_text_zinc_100}", "4,210 tok/s" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_TPS}" }
+                    p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "4,210 tok/s" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "{ui::T_text_10px} {ui::T_text_zinc_500}", "{CHART_SUCCESS}" }
-                    p { class: "mt-0.5 font-mono {ui::T_text_base} {ui::T_font_bold} {ui::STATE_SUCCESS_TEXT}", "99.86%" }
+                    p { class: "text-[10px] text-zinc-500", "{CHART_SUCCESS}" }
+                    p { class: "mt-0.5 font-mono text-base font-bold {ui::STATE_SUCCESS_TEXT}", "99.86%" }
                 }
             }
 
@@ -121,15 +121,15 @@ pub fn PerformanceLatencyCard() -> Element {
                     {
                         let width_pct = (m.p50 / 3.0 * 100.0).min(100.0);
                         rsx! {
-                            div { key: "{m.name}", class: "space-y-1 {ui::T_text_xs}",
-                                div { class: "flex items-center justify-between {ui::T_text_zinc_300}",
-                                    span { class: "{ui::T_font_medium}", "{m.name}" }
-                                    div { class: "flex items-center gap-3 font-mono {ui::T_text_11px} {ui::T_text_zinc_400}",
+                            div { key: "{m.name}", class: "space-y-1 text-xs",
+                                div { class: "flex items-center justify-between text-zinc-300",
+                                    span { class: "font-medium", "{m.name}" }
+                                    div { class: "flex items-center gap-3 font-mono text-[11px] text-zinc-400",
                                         span { "{m.speed:.0} tok/s" }
-                                        span { class: "{ui::T_text_zinc_100} {ui::T_font_semibold}", "{m.p50:.1}s" }
+                                        span { class: "text-zinc-100 font-semibold", "{m.p50:.1}s" }
                                     }
                                 }
-                                div { class: "h-1.5 w-full overflow-hidden rounded-full {ui::T_bg_zinc_800}",
+                                div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                                     div {
                                         class: if m.p50 < 1.0 { "h-full rounded-full bg-emerald-400" } else if m.p50 < 2.0 { "h-full rounded-full bg-blue-400" } else { "h-full rounded-full bg-amber-400" },
                                         style: "width: {width_pct:.1}%"
@@ -155,15 +155,15 @@ pub fn GroupQuotaCard() -> Element {
     ];
 
     rsx! {
-        div { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
+        div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between",
                 div {
-                    h3 { class: "{ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}",
+                    h3 { class: "text-sm font-semibold text-zinc-100",
                         "{CHART_GROUP_TITLE}"
                                             }
-                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{CHART_GROUP_SUBTITLE}" }
+                    p { class: "text-[11px] text-zinc-500", "{CHART_GROUP_SUBTITLE}" }
                 }
-                span { class: "rounded border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-2 py-0.5 {ui::T_text_10px} {ui::T_text_zinc_400}",
+                span { class: "rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400",
                     "{CHART_GROUP_BADGE}"
                 }
             }
@@ -171,24 +171,24 @@ pub fn GroupQuotaCard() -> Element {
             div { class: "space-y-3 pt-1",
                 for (name, mult, quota, pct, color) in groups {
                     div { key: "{name}", class: "space-y-1.5",
-                        div { class: "flex items-center justify-between {ui::T_text_xs}",
+                        div { class: "flex items-center justify-between text-xs",
                             div { class: "flex items-center gap-2",
                                 span { class: "h-2 w-2 rounded-full", style: "background: {color}" }
-                                span { class: "{ui::T_font_medium} {ui::T_text_zinc_200} uppercase", "{name}" }
-                                span { class: "rounded bg-zinc-800/80 px-1.5 py-0.2 {ui::T_text_10px} {ui::T_text_zinc_400} font-mono", "{mult:.1}x" }
+                                span { class: "font-medium text-zinc-200 uppercase", "{name}" }
+                                span { class: "rounded bg-zinc-800/80 px-1.5 py-0.2 text-[10px] text-zinc-400 font-mono", "{mult:.1}x" }
                             }
-                            span { class: "font-mono {ui::T_font_semibold} {ui::T_text_zinc_100}", "{quota}" }
+                            span { class: "font-mono font-semibold text-zinc-100", "{quota}" }
                         }
-                        div { class: "h-1.5 w-full overflow-hidden rounded-full {ui::T_bg_zinc_800}",
+                        div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                             div { class: "h-full rounded-full transition-all duration-300", style: "width: {pct}%; background: {color}" }
                         }
                     }
                 }
             }
 
-            div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 {ui::T_text_xs} {ui::T_text_zinc_400} space-y-1",
-                div { class: "flex justify-between", span { "{CHART_ROUTE_WEIGHT}" } span { class: "{ui::T_text_zinc_200} font-mono {ui::T_font_medium}", "{CHART_ROUTE_PRIORITY}" } }
-                div { class: "flex justify-between", span { "{CHART_CIRCUIT_BREAKER}" } span { class: "{ui::STATE_SUCCESS_TEXT} font-mono {ui::T_font_medium}", "{CHART_CIRCUIT_ON}" } }
+            div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 text-xs text-zinc-400 space-y-1",
+                div { class: "flex justify-between", span { "{CHART_ROUTE_WEIGHT}" } span { class: "text-zinc-200 font-mono font-medium", "{CHART_ROUTE_PRIORITY}" } }
+                div { class: "flex justify-between", span { "{CHART_CIRCUIT_BREAKER}" } span { class: "{ui::STATE_SUCCESS_TEXT} font-mono font-medium", "{CHART_CIRCUIT_ON}" } }
             }
         }
     }

@@ -55,15 +55,15 @@ pub fn DeleteKeyModal(
             class: "{ui::MODAL_BACKDROP}",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-red-500/40 {ui::T_bg_zinc_900} p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-red-500/40 bg-zinc-900 p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
-                h3 { class: "{ui::T_text_base} {ui::T_font_semibold} {ui::T_text_zinc_100}", "删除密钥" }
-                p { class: "mt-3 {ui::T_text_sm} {ui::T_text_zinc_400}",
+                h3 { class: "text-base font-semibold text-zinc-100", "删除密钥" }
+                p { class: "mt-3 text-sm text-zinc-400",
                     "确认删除「{token.name}」({token.key_preview})？删除后使用该密钥的调用会立即失败, 且无法恢复。"
                 }
                 if !err().is_empty() {
-                    p { class: "mt-3 {ui::T_text_xs} {ui::STATE_DANGER_TEXT}", "{err()}" }
+                    p { class: "mt-3 text-xs {ui::STATE_DANGER_TEXT}", "{err()}" }
                 }
 
                 div { class: "mt-6 flex gap-3",

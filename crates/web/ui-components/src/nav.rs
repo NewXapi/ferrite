@@ -123,7 +123,7 @@ pub fn ScrollSpyNav(
             for (i, (label, target)) in items.iter().enumerate() {
                 if i > 0 {
                     // 点间短线,两端不留线头
-                    div { class: "my-1 h-2 w-px {crate::T_bg_zinc_800}" }
+                    div { class: "my-1 h-2 w-px bg-zinc-800" }
                 }
                 {
                     let target_id = target.clone();
@@ -145,7 +145,7 @@ pub fn ScrollSpyNav(
                                     "block h-2 w-2 rounded-full bg-zinc-700/60 transition-all group-hover:bg-zinc-400"
                                 }
                             }
-                            span { class: "spy-tooltip pointer-events-none absolute left-6 whitespace-nowrap rounded-md border {crate::T_border_zinc_800} {crate::T_bg_zinc_950} px-2 py-1 {crate::T_text_11px} {crate::T_text_zinc_300} shadow-xl z-50",
+                            span { class: "spy-tooltip pointer-events-none absolute left-6 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 shadow-xl z-50",
                                 "{label}"
                             }
                         }

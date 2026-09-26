@@ -86,22 +86,22 @@ pub fn GroupsList(
 
             if let Some(e) = err {
                 div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-                    p { class: "{ui::T_text_sm} {ui::T_text_red_300}", "{MSG_LOAD_FAILED}" }
-                    p { class: "mt-1 {ui::T_text_xs} text-red-400/70", "{e}" }
+                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED}" }
+                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                     button {
-                        class: "mt-3 rounded-xl border {ui::T_border_zinc_700} px-3 py-1.5 {ui::T_text_xs} {ui::T_text_zinc_300} hover:{ui::T_bg_zinc_800}",
+                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                         "data-testid": "retry-groups",
                         onclick: move |_| on_retry.call(()),
                         "{BTN_RETRY}"
                     }
                 }
             } else if loading {
-                div { class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
-                    p { class: "{ui::T_text_zinc_400}", "{MSG_LOADING_LIST}" }
+                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                    p { class: "text-zinc-400", "{MSG_LOADING_LIST}" }
                 }
             } else if filtered.is_empty() {
-                div { class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
-                    p { class: "{ui::T_text_zinc_400}", "{MSG_EMPTY}" }
+                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                    p { class: "text-zinc-400", "{MSG_EMPTY}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",

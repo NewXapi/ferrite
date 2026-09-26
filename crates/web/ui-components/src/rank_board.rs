@@ -73,8 +73,8 @@ pub fn RankBoard(
             "data-testid": "{testid}",
             div { class: "space-y-4",
                 CardHeader { class: "p-0",
-                    CardTitle { class: "{crate::T_text_sm} {crate::T_text_zinc_100}", "{title}" }
-                    CardDescription { class: "{crate::T_text_11px}", "{subtitle}" }
+                    CardTitle { class: "text-sm text-zinc-100", "{title}" }
+                    CardDescription { class: "text-[11px]", "{subtitle}" }
                 }
                 // 单列条目(xl 三卡并排时卡内容区仅 ~320px,双列会把名字+数值+环比挤到
                 // 158px/列,维护者多轮反馈的"间距没做好"根因在此);呼吸感由 gap-y-5 承担
@@ -83,27 +83,27 @@ pub fn RankBoard(
                         div {
                             key: "{r.key}",
                             class: "flex items-center gap-3",
-                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 {crate::T_text_10px} {crate::T_font_medium} {crate::T_text_zinc_400} shadow-sm",
+                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 text-[10px] font-medium text-zinc-400 shadow-sm",
                                 "{r.rank}"
                             }
                             div { class: "min-w-0 flex-1",
                                 div { class: "flex items-center justify-between gap-3",
-                                    span { class: "truncate {crate::T_text_xs} {crate::T_font_medium} {crate::T_text_zinc_200}", "{r.name}" }
+                                    span { class: "truncate text-xs font-medium text-zinc-200", "{r.name}" }
                                     div { class: "flex shrink-0 flex-col items-end gap-1",
-                                        span { class: "font-mono {crate::T_text_xs} {crate::T_font_semibold} tabular-nums {crate::T_text_zinc_100}",
+                                        span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100",
                                             "{r.value}"
                                         }
-                                        div { class: "flex items-center gap-1.5 {crate::T_text_10px} leading-none",
+                                        div { class: "flex items-center gap-1.5 text-[10px] leading-none",
                                             if let Some(m) = &r.meta {
-                                                span { class: "{crate::T_font_medium} tabular-nums {m.class}", "{m.label}" }
+                                                span { class: "font-medium tabular-nums {m.class}", "{m.label}" }
                                             }
                                             if let Some(s) = &r.share {
-                                                span { class: "tabular-nums {crate::T_text_zinc_500}", "{s}" }
+                                                span { class: "tabular-nums text-zinc-500", "{s}" }
                                             }
                                         }
                                     }
                                 }
-                                div { class: "mt-2 h-1.5 w-full overflow-hidden rounded-full {crate::T_bg_zinc_800}",
+                                div { class: "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                                     div {
                                         class: "h-full rounded-full transition-all duration-300",
                                         // bar_pct 钳到 0..=100;bar_color 只接受调用方静态
@@ -116,7 +116,7 @@ pub fn RankBoard(
                     }
                 }
                 if let Some(note) = footnote {
-                    p { class: "border-t border-zinc-800/60 pt-2.5 {crate::T_text_10px} {crate::T_text_zinc_500}", "{note}" }
+                    p { class: "border-t border-zinc-800/60 pt-2.5 text-[10px] text-zinc-500", "{note}" }
                 }
             }
         }

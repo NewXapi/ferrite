@@ -55,7 +55,7 @@ fn art_img(art: Option<Asset>, alt: &str, extra_style: &str) -> Element {
             }
         },
         None => rsx! {
-            span { class: "absolute inset-0 flex items-center justify-center text-9xl {crate::T_font_bold} text-zinc-600/40",
+            span { class: "absolute inset-0 flex items-center justify-center text-9xl font-bold text-zinc-600/40",
                 "{alt.chars().next().unwrap_or('?')}"
             }
         },

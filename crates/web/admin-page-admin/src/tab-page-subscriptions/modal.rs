@@ -80,16 +80,16 @@ pub fn SubscriptionFormModal(
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm",
             onclick: move |_| show_modal.set(false),
             div {
-                class: "w-full max-w-2xl rounded-2xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto scroll-subtle",
+                class: "w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto scroll-subtle",
                 onclick: move |e| e.stop_propagation(),
 
                 // 弹窗头部
                 div { class: "flex items-start justify-between",
                     div {
-                        h3 { class: "{ui::T_text_lg} {ui::T_font_bold} {ui::T_text_zinc_100}",
+                        h3 { class: "text-lg font-bold text-zinc-100",
                             if editing_idx().is_some() { "{TTL_EDIT}" } else { "{TTL_NEW}" }
                         }
-                        p { class: "mt-0.5 {ui::T_text_xs} {ui::T_text_zinc_400}",
+                        p { class: "mt-0.5 text-xs text-zinc-400",
                             if editing_idx().is_some() {
                                 "保存即按名称更新现有套餐"
                             } else {
@@ -98,7 +98,7 @@ pub fn SubscriptionFormModal(
                         }
                     }
                     button {
-                        class: "rounded-lg p-1.5 {ui::T_text_zinc_400} hover:{ui::T_bg_zinc_800} hover:{ui::T_text_white} transition-colors",
+                        class: "rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors",
                         onclick: move |_| show_modal.set(false),
                         "✕"
                     }
@@ -106,14 +106,14 @@ pub fn SubscriptionFormModal(
 
                 // 写请求失败提示(名称必填 / 后端 400 校验失败)
                 if let Some(e) = action_err() {
-                    div { class: "rounded-lg border {ui::T_border_red_800} bg-red-950/40 p-3 {ui::T_text_sm} {ui::T_text_red_300}",
+                    div { class: "rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
                         "data-testid": "subscriptions-form-error",
                         "{e}"
                     }
                 }
 
                 // 弹窗内部 Tab 切换条(两个 Tab:字段即后端入参,见组件文档)
-                div { class: "flex items-center gap-2 border-b {ui::T_border_zinc_800} pb-2 {ui::T_text_xs}",
+                div { class: "flex items-center gap-2 border-b border-zinc-800 pb-2 text-xs",
                     button {
                         class: if modal_tab() == 0 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
                         onclick: move |_| modal_tab.set(0),
@@ -130,52 +130,52 @@ pub fn SubscriptionFormModal(
                 if modal_tab() == 0 {
                     div { class: "space-y-4 pt-1",
                         label { class: "block space-y-1",
-                            span { class: "{ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_300}", "{FIELD_PLAN_TITLE}" }
+                            span { class: "text-xs font-medium text-zinc-300", "{FIELD_PLAN_TITLE}" }
                             input {
-                                class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                 "data-testid": "subscriptions-form-title",
                                 value: "{f_title()}",
                                 placeholder: MSG_PH_PLAN_TITLE,
                                 oninput: move |e| f_title.set(e.value()),
                             }
-                            p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_TITLE_HINT}" }
+                            p { class: "text-[11px] text-zinc-500", "{MSG_TITLE_HINT}" }
                         }
                         div { class: "grid grid-cols-1 sm:grid-cols-3 gap-4",
                             label { class: "block space-y-1",
-                                span { class: "{ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_300}", "{FIELD_PRICE}" }
+                                span { class: "text-xs font-medium text-zinc-300", "{FIELD_PRICE}" }
                                 input {
                                     r#type: "number",
                                     step: "0.01",
-                                    class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                     "data-testid": "subscriptions-form-price",
                                     value: "{f_price()}",
                                     oninput: move |e| f_price.set(e.value()),
                                 }
-                                p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_PRICE_HINT}" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_PRICE_HINT}" }
                             }
                             label { class: "block space-y-1",
-                                span { class: "{ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_300}", "计价币种" }
+                                span { class: "text-xs font-medium text-zinc-300", "计价币种" }
                                 select {
-                                    class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                     "data-testid": "subscriptions-form-currency",
                                     value: "{f_currency()}",
                                     onchange: move |e| f_currency.set(e.value()),
                                     option { value: "CNY", "CNY（¥）" }
                                     option { value: "USD", "USD（$）" }
                                 }
-                                p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_CURRENCY_HINT}" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_CURRENCY_HINT}" }
                             }
                             label { class: "block space-y-1",
-                                span { class: "{ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_300}", "{LBL_QUOTA}" }
+                                span { class: "text-xs font-medium text-zinc-300", "{LBL_QUOTA}" }
                                 input {
                                     r#type: "number",
                                     step: "0.01",
-                                    class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                     "data-testid": "subscriptions-form-quota",
                                     value: "{f_quota()}",
                                     oninput: move |e| f_quota.set(e.value()),
                                 }
-                                p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_QUOTA_HINT}" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_QUOTA_HINT}" }
                             }
                         }
                     }
@@ -185,37 +185,37 @@ pub fn SubscriptionFormModal(
                 if modal_tab() == 1 {
                     div { class: "space-y-4 pt-1",
                         div { class: "flex items-center justify-between py-2 border-b border-zinc-800/80",
-                            span { class: "{ui::T_text_sm} {ui::T_text_zinc_200} {ui::T_font_medium}", "{FIELD_ENABLED}" }
+                            span { class: "text-sm text-zinc-200 font-medium", "{FIELD_ENABLED}" }
                             ToggleSwitch { on: f_enabled(), on_toggle: move |_| f_enabled.set(!f_enabled()) }
                         }
                         div { class: "grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2",
                             label { class: "block space-y-1",
-                                span { class: "{ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_DURATION}" }
+                                span { class: "text-xs text-zinc-400", "{FIELD_DURATION}" }
                                 input {
                                     r#type: "number",
-                                    class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                     "data-testid": "subscriptions-form-duration",
                                     value: "{f_duration()}",
                                     oninput: move |e| f_duration.set(e.value()),
                                 }
-                                p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_DURATION_HINT}" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_DURATION_HINT}" }
                             }
                             label { class: "block space-y-1",
-                                span { class: "{ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_LIMIT}" }
+                                span { class: "text-xs text-zinc-400", "{FIELD_LIMIT}" }
                                 input {
                                     r#type: "number",
-                                    class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                     "data-testid": "subscriptions-form-limit",
                                     value: "{f_limit()}",
                                     oninput: move |e| f_limit.set(e.value()),
                                 }
-                                p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_LIMIT_HINT}" }
+                                p { class: "text-[11px] text-zinc-500", "{MSG_LIMIT_HINT}" }
                             }
                         }
                         label { class: "block space-y-1",
-                            span { class: "{ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_GROUP}" }
+                            span { class: "text-xs text-zinc-400", "{FIELD_GROUP}" }
                             select {
-                                class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3.5 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} outline-none",
+                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 text-sm text-zinc-100 focus:border-zinc-500 outline-none",
                                 "data-testid": "subscriptions-form-group",
                                 value: "{f_group()}",
                                 onchange: move |e| f_group.set(e.value()),
@@ -224,20 +224,20 @@ pub fn SubscriptionFormModal(
                                     option { value: "{g}", "{g}" }
                                 }
                             }
-                            p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{MSG_GROUP_HINT}" }
+                            p { class: "text-[11px] text-zinc-500", "{MSG_GROUP_HINT}" }
                         }
                     }
                 }
 
                 // 弹窗底部操作按钮
-                div { class: "flex items-center justify-end gap-3 pt-3 border-t {ui::T_border_zinc_800}",
+                div { class: "flex items-center justify-end gap-3 pt-3 border-t border-zinc-800",
                     button {
-                        class: "rounded-xl border {ui::T_border_zinc_700} px-4 py-2 {ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_400} hover:{ui::T_bg_zinc_800} hover:{ui::T_text_white} transition-colors",
+                        class: "rounded-xl border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors",
                         onclick: move |_| show_modal.set(false),
                         "{BTN_CLOSE}"
                     }
                     button {
-                        class: "rounded-xl {ui::T_bg_amber_400} px-5 py-2 {ui::T_text_xs} {ui::T_font_bold} {ui::T_text_zinc_950} hover:{ui::T_bg_amber_300} transition-colors shadow-lg shadow-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed",
+                        class: "rounded-xl bg-amber-400 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-300 transition-colors shadow-lg shadow-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed",
                         "data-testid": "subscriptions-form-submit",
                         disabled: saving(),
                         onclick: move |_| on_commit.call(()),

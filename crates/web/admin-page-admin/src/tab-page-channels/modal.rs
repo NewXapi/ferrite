@@ -213,9 +213,9 @@ pub fn ChannelFormModal(
             div { class: "space-y-4 max-h-[70vh] overflow-y-auto pr-1",
                 div { class: "grid grid-cols-2 gap-3",
                     div {
-                        label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_CHANNEL_TYPE}" }
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_CHANNEL_TYPE}" }
                         select {
-                            class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3 py-2 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} focus:outline-none",
+                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
                             value: "{ctype}",
                             onchange: move |e| ctype.set(e.value()),
                             for opt in CHANNEL_TYPES {
@@ -224,8 +224,8 @@ pub fn ChannelFormModal(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_BOUND_GROUPS}" }
-                        div { class: "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-2 py-1.5",
+                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_BOUND_GROUPS}" }
+                        div { class: "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1.5",
                             if group_options.read().is_empty() {
                                 // 候选拉取失败/为空：只读展示当前已绑分组，不阻断保存
                                 span { class: "{ui::TYPE_DESC}",
@@ -264,9 +264,9 @@ pub fn ChannelFormModal(
                 }
 
                 div {
-                    label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_CHANNEL_NAME}" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_CHANNEL_NAME}" }
                     input {
-                        class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} focus:outline-none",
+                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none",
                         placeholder: "{MSG_PH_CHANNEL_NAME}",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
@@ -274,9 +274,9 @@ pub fn ChannelFormModal(
                 }
 
                 div {
-                    label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_BASE_URL}" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_BASE_URL}" }
                     input {
-                        class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} font-mono focus:{ui::T_border_zinc_500} focus:outline-none",
+                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
                         placeholder: "{MSG_PH_BASE_URL}",
                         value: "{url}",
                         oninput: move |e| url.set(e.value()),
@@ -287,18 +287,18 @@ pub fn ChannelFormModal(
                     // 掩码只读展示：明文永不出后端（单查接口也回掩码）。
                     // 独立于下方 textarea，物理隔离保证掩码串不可能进入提交体。
                     div { class: "space-y-1",
-                        span { class: "block {ui::T_text_11px} {ui::T_text_zinc_500}",
+                        span { class: "block text-[11px] text-zinc-500",
                             "{MSG_EXISTING_KEYS_PREFIX}{existing_keys.read().len()}{MSG_EXISTING_KEYS_SUFFIX}"
                         }
                         for mk in existing_keys.read().iter() {
-                            div { class: "rounded-md border {ui::T_border_zinc_800} bg-zinc-900/60 px-2.5 py-1 font-mono {ui::T_text_xs} {ui::T_text_zinc_400}", "{mk}" }
+                            div { class: "rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 font-mono text-xs text-zinc-400", "{mk}" }
                         }
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_API_KEY}" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_API_KEY}" }
                     textarea {
-                        class: "w-full h-20 rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} font-mono focus:{ui::T_border_zinc_500} focus:outline-none resize-none",
+                        class: "w-full h-20 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none resize-none",
                         placeholder: if editing {
                             "{MSG_PH_API_KEY_EDIT}"
                         } else {
@@ -356,16 +356,16 @@ pub fn ChannelFormModal(
                                 },
                                 if *fetching_models.read() { "{MSG_FETCHING_MODELS}" } else { "{MSG_FETCH_MODELS}" }
                             }
-                            span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}",
+                            span { class: "text-[11px] text-zinc-500",
                                 "{MSG_FETCH_MODELS_HINT}"
                             }
                         }
-                        div { class: "max-h-40 overflow-y-auto rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} p-2 space-y-1",
+                        div { class: "max-h-40 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-2 space-y-1",
                             if model_pool.read().is_empty() {
-                                span { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{MSG_NO_MODEL_CANDIDATES}" }
+                                span { class: "text-[11px] text-zinc-600", "{MSG_NO_MODEL_CANDIDATES}" }
                             } else {
                                 for (idx, (id, checked)) in model_pool.read().iter().enumerate() {
-                                    label { class: "flex items-center gap-2 rounded-md px-1.5 py-0.5 hover:{ui::T_bg_zinc_900}",
+                                    label { class: "flex items-center gap-2 rounded-md px-1.5 py-0.5 hover:bg-zinc-900",
                                         input {
                                             r#type: "checkbox",
                                             checked: *checked,
@@ -378,7 +378,7 @@ pub fn ChannelFormModal(
                                                 models_touched.set(true);
                                             },
                                         }
-                                        span { class: "font-mono {ui::T_text_xs} {ui::T_text_zinc_300}", "{id}" }
+                                        span { class: "font-mono text-xs text-zinc-300", "{id}" }
                                     }
                                 }
                             }
@@ -386,9 +386,9 @@ pub fn ChannelFormModal(
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_REMARK}" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_REMARK}" }
                     textarea {
-                        class: "w-full h-16 rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} focus:{ui::T_border_zinc_500} focus:outline-none resize-none",
+                        class: "w-full h-16 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none resize-none",
                         placeholder: "{MSG_PH_REMARK}",
                         value: "{remark}",
                         oninput: move |e| remark.set(e.value()),
@@ -401,7 +401,7 @@ pub fn ChannelFormModal(
             if let Some(msg) = submit_err() {
                 div {
                     role: "alert",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::T_text_sm} {ui::STATE_DANGER_TEXT}",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::STATE_DANGER_TEXT}",
                     "data-testid": "channel-save-error",
                     "{msg}"
                 }
@@ -409,12 +409,12 @@ pub fn ChannelFormModal(
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border {ui::T_border_zinc_700} py-2.5 {ui::T_text_sm} {ui::T_text_zinc_400} transition-colors hover:{ui::T_bg_zinc_800}",
+                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
-                    class: "flex-1 rounded-xl {ui::T_bg_white} py-2.5 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors hover:{ui::T_bg_zinc_200} disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     disabled: submitting(),
                     onclick: do_submit,
                     "{submit_label}"

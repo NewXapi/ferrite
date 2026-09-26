@@ -38,13 +38,13 @@ pub fn StatsSection(
     rsx! {
         div { class: "space-y-3",
             div { class: "flex items-center justify-between",
-                h2 { class: "{ui::T_text_lg} {ui::T_font_medium} text-foreground", "{SEC_STATS}" }
+                h2 { class: "text-lg font-medium text-foreground", "{SEC_STATS}" }
                 div { class: "flex items-center gap-3",
                     // asOf 本地时间裸值(维护者要求:不写「数据截至」字样);
                     // 拉取失败时 summary 为 None,时间位自然隐藏(中性占位)。
                     if let Some(t) = as_of {
                         span {
-                            class: "{ui::T_text_xs} font-mono tabular-nums text-muted-foreground",
+                            class: "text-xs font-mono tabular-nums text-muted-foreground",
                             "data-testid": "overview-as-of",
                             "{t}"
                         }
@@ -97,8 +97,8 @@ pub fn StatCard(
             hoverable: true,
             class: "cursor-default gap-0! px-4 py-3!",
             "data-testid": "{label}",
-            p { class: "truncate {ui::T_text_base} {ui::T_font_semibold} text-foreground md:{ui::T_text_lg}", "{value}" }
-            p { class: "mt-0.5 truncate {ui::T_text_xs} text-muted-foreground", "{label}" }
+            p { class: "truncate text-base font-semibold text-foreground md:text-lg", "{value}" }
+            p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{label}" }
             if let Some(series) = sparkline {
                 Sparkline { series, gradient_id }
             }
@@ -157,16 +157,16 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
             class: "cursor-default gap-0! px-4 py-3!",
             "data-testid": "{LBL_QUOTA_REMAINING}",
             div { class: "flex items-center gap-1.5",
-                p { class: "truncate {ui::T_text_base} {ui::T_font_semibold} font-mono tabular-nums text-foreground md:{ui::T_text_lg}", "{api::fmt_usd(remaining)}" }
+                p { class: "truncate text-base font-semibold font-mono tabular-nums text-foreground md:text-lg", "{api::fmt_usd(remaining)}" }
                 span { class: "h-2 w-2 shrink-0 rounded-full {dot_class}", aria_hidden: "true" }
             }
-            p { class: "mt-0.5 truncate {ui::T_text_xs} text-muted-foreground", "{LBL_QUOTA_REMAINING}" }
+            p { class: "mt-0.5 truncate text-xs text-muted-foreground", "{LBL_QUOTA_REMAINING}" }
             p {
-                class: "mt-0.5 truncate {ui::T_text_xs} {ui::T_font_medium} {runway_class}",
+                class: "mt-0.5 truncate text-xs font-medium {runway_class}",
                 "data-testid": "{TESTID_QUOTA_RUNWAY}",
                 "{runway_line}"
             }
-            p { class: "mt-1 {ui::T_text_10px} leading-4 text-muted-foreground/70",
+            p { class: "mt-1 text-[10px] leading-4 text-muted-foreground/70",
                 "{QUOTA_FOOTNOTE}"
             }
         }

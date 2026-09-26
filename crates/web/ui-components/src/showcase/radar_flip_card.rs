@@ -82,7 +82,7 @@ pub fn RadarFlipCard(
 
     rsx! {
         div {
-            class: "card-tilt relative self-start rounded-xl border {crate::T_border_zinc_800} {crate::T_bg_zinc_900} p-5 {hover_cls}",
+            class: "card-tilt relative self-start rounded-xl border border-zinc-800 bg-zinc-900 p-5 {hover_cls}",
             "data-testid": testid,
             role: region_role,
             "aria-label": aria_label,
@@ -99,26 +99,26 @@ pub fn RadarFlipCard(
                     div { class: "poster-flip poster-flip-portrait",
                         onclick: move |_| flipped.set(!flipped()),
                         div { class: "{flip_cls}",
-                            div { class: "card-frame card-frosted poster-flip-face overflow-hidden rounded-xl border {crate::T_border_zinc_700} shadow-xl shadow-black/40",
+                            div { class: "card-frame card-frosted poster-flip-face overflow-hidden rounded-xl border border-zinc-700 shadow-xl shadow-black/40",
                                 {art_img(art, &name, "")}
                             }
-                            div { class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border {crate::T_border_zinc_700} {crate::T_bg_zinc_950} p-4",
+                            div { class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-4",
                                 div { class: "flex items-baseline justify-between",
-                                    h3 { class: "{crate::T_text_sm} {crate::T_font_semibold} {crate::T_text_zinc_100}", "{name}" }
-                                    span { class: "{crate::T_text_10px} {crate::T_text_zinc_500}", "#{rank}" }
+                                    h3 { class: "text-sm font-semibold text-zinc-100", "{name}" }
+                                    span { class: "text-[10px] text-zinc-500", "#{rank}" }
                                 }
-                                p { class: "mt-1 {crate::T_text_10px} {crate::T_text_zinc_500}", "{desc}" }
+                                p { class: "mt-1 text-[10px] text-zinc-500", "{desc}" }
                                 div { class: "mt-3 space-y-2",
                                     for row in dim_rows.iter() {
                                         div { class: "flex items-baseline justify-between border-b border-zinc-800/60 pb-1",
-                                            span { class: "{crate::T_text_11px} {crate::T_text_zinc_500}", "{row.label}" }
-                                            span { class: "{crate::T_text_11px} {crate::T_text_zinc_200}", "{row.value}" }
+                                            span { class: "text-[11px] text-zinc-500", "{row.label}" }
+                                            span { class: "text-[11px] text-zinc-200", "{row.value}" }
                                         }
                                     }
                                 }
                                 div { class: "mt-3 flex items-baseline justify-between",
-                                    span { class: "{crate::T_text_11px} {crate::T_text_zinc_500}", "综合分" }
-                                    span { class: "{crate::T_text_sm} {crate::T_font_semibold} {crate::T_text_zinc_100}", "{score:.1}" }
+                                    span { class: "text-[11px] text-zinc-500", "综合分" }
+                                    span { class: "text-sm font-semibold text-zinc-100", "{score:.1}" }
                                 }
                             }
                         }
@@ -128,12 +128,12 @@ pub fn RadarFlipCard(
                 div { class: "flex min-w-0 flex-1 flex-col justify-center gap-2",
                     div { class: "rounded-lg border border-white/10 bg-zinc-950/50 px-2.5 py-2",
                         div { class: "flex items-center gap-2",
-                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border {crate::T_border_zinc_600} bg-zinc-800/80 {crate::T_text_9px} {crate::T_font_medium} {crate::T_text_zinc_400}", "{initial}" }
-                            span { class: "min-w-0 truncate {crate::T_text_xs} {crate::T_font_medium} tracking-wide {crate::T_text_zinc_200}", "{name}" }
-                            span { class: "ml-auto {crate::T_text_10px} {crate::T_font_medium} italic {crate::T_text_zinc_500}", "#{rank}" }
+                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-600 bg-zinc-800/80 text-[9px] font-medium text-zinc-400", "{initial}" }
+                            span { class: "min-w-0 truncate text-xs font-medium tracking-wide text-zinc-200", "{name}" }
+                            span { class: "ml-auto text-[10px] font-medium italic text-zinc-500", "#{rank}" }
                         }
                     }
-                    p { class: "{crate::T_text_11px} leading-relaxed {crate::T_text_zinc_500}", "{desc}" }
+                    p { class: "text-[11px] leading-relaxed text-zinc-500", "{desc}" }
                 }
             }
         }

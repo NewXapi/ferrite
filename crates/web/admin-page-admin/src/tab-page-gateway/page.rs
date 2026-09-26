@@ -140,11 +140,11 @@ pub fn GatewayHealthPanel() -> Element {
             div { class: "flex flex-wrap items-center justify-between gap-2",
                 div { class: "flex items-center gap-2",
                     h2 { class: "{ui::TYPE_TITLE}", "{SEC_PANEL}" }
-                    span { class: "rounded-full {ui::T_bg_zinc_800} px-2 py-0.5 {ui::T_text_11px} {ui::T_text_zinc_400}",
+                    span { class: "rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400",
                         if polling { "{LBL_POLLING}" } else { "{LBL_SYNCED}" }
                     }
                 }
-                div { class: "flex flex-wrap items-center gap-1.5 {ui::T_text_11px}",
+                div { class: "flex flex-wrap items-center gap-1.5 text-[11px]",
                     span { class: "rounded-full border px-2 py-0.5 {TONE_COOLING}",
                         "{LBL_COUNT_COOLING_PREFIX}{cooling_count}" }
                     span { class: "rounded-full border px-2 py-0.5 {TONE_SLOW_START}",
@@ -152,7 +152,7 @@ pub fn GatewayHealthPanel() -> Element {
                     span { class: "rounded-full border px-2 py-0.5 {TONE_OK}",
                         "{LBL_COUNT_OK_PREFIX}{ok_count}" }
                     button {
-                        class: "rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-3 py-1 {ui::T_text_xs} {ui::T_text_zinc_300} transition-colors hover:{ui::T_border_zinc_500} hover:{ui::T_text_white}",
+                        class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
                         "data-testid": "refresh-gateway-health",
                         onclick: move |_| reload.set(reload() + 1),
                         "{BTN_REFRESH}"
@@ -162,17 +162,17 @@ pub fn GatewayHealthPanel() -> Element {
 
             // 卡片面板容器 (禁 table;rounded-xl border bg-card divide-y + flex-wrap 行)
             div {
-                class: "rounded-xl border {ui::T_border_zinc_800} bg-card p-4 divide-y divide-zinc-800",
+                class: "rounded-xl border border-zinc-800 bg-card p-4 divide-y divide-zinc-800",
                 "data-testid": "gateway-health-list",
 
                 if let Some(e) = err() {
                     // 错误态:柔和红边卡 (非满屏红),保留重试入口
                     div { class: "rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-6 text-center",
                         "data-testid": "gateway-health-error",
-                        p { class: "{ui::T_text_sm} {ui::T_text_red_300}", "{SEC_LOAD_FAILED}" }
-                        p { class: "mt-1 {ui::T_text_xs} text-red-400/70", "{e}" }
+                        p { class: "text-sm text-red-300", "{SEC_LOAD_FAILED}" }
+                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
                         button {
-                            class: "mt-3 rounded-xl border {ui::T_border_zinc_700} px-3 py-1.5 {ui::T_text_xs} {ui::T_text_zinc_300} hover:{ui::T_bg_zinc_800}",
+                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
                             "data-testid": "retry-gateway-health",
                             onclick: move |_| reload.set(reload() + 1),
                             "{BTN_RETRY}"
@@ -182,16 +182,16 @@ pub fn GatewayHealthPanel() -> Element {
                     // loading=skeleton (animate-pulse 骨架行 ×3)
                     for _ in 0..3 {
                         div { class: "flex flex-wrap items-center gap-2 py-3 first:pt-1 last:pb-1",
-                            div { class: "h-4 w-32 animate-pulse rounded {ui::T_bg_zinc_800}" }
+                            div { class: "h-4 w-32 animate-pulse rounded bg-zinc-800" }
                             div { class: "h-4 w-24 animate-pulse rounded bg-zinc-800/70" }
                             div { class: "h-4 w-16 animate-pulse rounded bg-zinc-800/50" }
                         }
                     }
                 } else if list.is_empty() {
                     // 空态:虚线占位卡 (正常态,后端只返回有记录渠道)
-                    div { class: "rounded-lg border border-dashed {ui::T_border_zinc_700} bg-zinc-900/40 px-4 py-8 text-center",
+                    div { class: "rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center",
                         "data-testid": "gateway-health-empty",
-                        p { class: "{ui::T_text_sm} {ui::T_text_zinc_400}", "{SEC_EMPTY_NOTE}" }
+                        p { class: "text-sm text-zinc-400", "{SEC_EMPTY_NOTE}" }
                         p { class: "mt-1 {ui::TYPE_DESC}",
                             "{SEC_EMPTY_HINT}" }
                     }

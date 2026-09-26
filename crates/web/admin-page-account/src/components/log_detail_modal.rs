@@ -44,20 +44,20 @@ pub fn LogDetailModal(log: UsageLogDto, on_close: EventHandler<()>) -> Element {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
             onclick: move |_| on_close.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-4 flex items-center justify-between",
-                    h3 { class: "{ui::T_text_base} {ui::T_font_semibold} {ui::T_text_zinc_100}", "日志详情" }
+                    h3 { class: "text-base font-semibold text-zinc-100", "日志详情" }
                     button {
-                        class: "rounded-lg p-1.5 {ui::T_text_zinc_500} transition-colors hover:{ui::T_bg_zinc_800} hover:{ui::T_text_zinc_200}",
+                        class: "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
                         onclick: move |_| on_close.call(()),
                         "aria-label": "关闭",
                         "✕"
                     }
                 }
 
-                div { class: "space-y-2.5 {ui::T_text_sm}",
+                div { class: "space-y-2.5 text-sm",
                     DetailRow { label: "模型", value: log.model_name.clone() }
                     DetailRow { label: "时间", value: time_str }
                     DetailRow { label: "密钥", value: log.token_name.clone() }
@@ -80,8 +80,8 @@ pub fn LogDetailModal(log: UsageLogDto, on_close: EventHandler<()>) -> Element {
 fn DetailRow(label: &'static str, value: String) -> Element {
     rsx! {
         div { class: "flex justify-between gap-2",
-            span { class: "shrink-0 {ui::T_text_zinc_500}", "{label}" }
-            span { class: "min-w-0 break-all text-right font-mono {ui::T_text_zinc_200}", "{value}" }
+            span { class: "shrink-0 text-zinc-500", "{label}" }
+            span { class: "min-w-0 break-all text-right font-mono text-zinc-200", "{value}" }
         }
     }
 }

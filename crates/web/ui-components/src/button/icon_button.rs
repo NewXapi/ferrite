@@ -9,7 +9,7 @@ pub fn IconButton(
 ) -> Element {
     rsx! {
         button {
-            class: "flex h-6 w-6 items-center justify-center rounded-md {crate::T_text_zinc_400} transition-colors hover:{crate::T_bg_zinc_800} hover:{crate::T_text_zinc_100}",
+            class: "flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100",
             title: "{title}",
             onclick: move |e| onclick.call(e),
             {children}

@@ -102,19 +102,19 @@ pub fn GatewayHealthRow(item: GatewayHealthItem) -> Element {
             span { class: "min-w-0 truncate {ui::TYPE_CARD_TITLE}",
                 title: "{item.unit_key}", "{name}" }
             // 模型 Badge
-            span { class: "rounded-full border {ui::T_border_zinc_700} bg-zinc-800/80 px-2 py-0.5 {ui::T_text_11px} {ui::T_text_zinc_300}",
+            span { class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
                 "{model}" }
             // 三态 Badge (cooling=红 / slow_start=黄 / ok=绿)
-            span { class: "rounded-full border px-2 py-0.5 {ui::T_text_11px} {ui::T_font_medium} {tone}",
+            span { class: "rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}",
                 "{state_text}" }
             // 冷却中才显示倒计时秒
             if let Some(sec) = remaining {
-                span { class: "font-mono {ui::T_text_xs} {ui::T_text_red_300}",
+                span { class: "font-mono text-xs text-red-300",
                     "{LBL_REMAINING_PREFIX}{sec}s" }
             }
             // lastCoolingOutcome (有则小字)
             if let Some(o) = outcome {
-                span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{o}" }
+                span { class: "text-[11px] text-zinc-500", "{o}" }
             }
         }
     }

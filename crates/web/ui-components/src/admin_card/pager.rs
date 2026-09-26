@@ -70,7 +70,7 @@ pub fn Pager(
             "aria-label": "分页",
             "data-testid": "{testid}",
             button {
-                class: "rounded-lg border {crate::T_border_zinc_700} px-2 py-1 {crate::T_text_11px} {crate::T_text_zinc_300} transition-colors hover:{crate::T_bg_zinc_800} disabled:opacity-40",
+                class: "rounded-lg border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40",
                 "data-testid": "{testid}-prev",
                 "aria-label": "上一页",
                 disabled: current == 0,
@@ -98,7 +98,7 @@ pub fn Pager(
                 }
             }
             button {
-                class: "rounded-lg border {crate::T_border_zinc_700} px-2 py-1 {crate::T_text_11px} {crate::T_text_zinc_300} transition-colors hover:{crate::T_bg_zinc_800} disabled:opacity-40",
+                class: "rounded-lg border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40",
                 "data-testid": "{testid}-next",
                 "aria-label": "下一页",
                 disabled: current + 1 >= pages,

@@ -79,29 +79,29 @@ pub fn SystemOptionsPanel() -> Element {
             "data-testid": "system-options-panel",
             role: "region",
             "aria-label": LBL_SITE_OPTIONS,
-            class: "scroll-mt-8 rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-5 space-y-4",
+            class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
             div {
-                h2 { class: "{ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_200}", {LBL_SITE_OPTIONS} }
+                h2 { class: "text-sm font-medium text-zinc-200", {LBL_SITE_OPTIONS} }
                 p { class: "{ui::TYPE_DESC}", {SEC_OPTIONS_NOTE} }
             }
             if let Some(e) = err {
                 div {
                     role: "alert",
                     "data-testid": "system-options-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::T_text_sm} {ui::STATE_DANGER_TEXT}",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::STATE_DANGER_TEXT}",
                     "{e}"
                 }
             } else if loading {
                 div {
                     "data-testid": "system-options-loading",
-                    class: "rounded-xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-6 text-center",
-                    p { class: "{ui::T_text_zinc_400}", {MSG_OPTIONS_LOADING} }
+                    class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
+                    p { class: "text-zinc-400", {MSG_OPTIONS_LOADING} }
                 }
             } else if list.is_empty() {
                 div {
                     "data-testid": "system-options-empty",
-                    class: "rounded-xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-6 text-center",
-                    p { class: "{ui::T_text_zinc_400}", {MSG_OPTIONS_EMPTY} }
+                    class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
+                    p { class: "text-zinc-400", {MSG_OPTIONS_EMPTY} }
                 }
             } else {
                 div { class: "divide-y divide-zinc-800/80",

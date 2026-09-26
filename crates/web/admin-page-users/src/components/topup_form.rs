@@ -49,14 +49,14 @@ pub fn TopUpForm(
     rsx! {
         Modal { title: TTL_TOPUP.to_string(), on_close: move |_| on_cancel.call(()),
             div { class: "space-y-4",
-                div { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-4 py-3 {ui::T_text_xs}",
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs",
                     div { class: "flex justify-between gap-2",
-                        span { class: "{ui::T_text_zinc_400}", "{MSG_CUR_QUOTA}{LBL_QUOTA}" }
-                        span { class: "{ui::T_font_medium} {ui::T_text_zinc_200}", "{fmt_cny(current_quota)}" }
+                        span { class: "text-zinc-400", "{MSG_CUR_QUOTA}{LBL_QUOTA}" }
+                        span { class: "font-medium text-zinc-200", "{fmt_cny(current_quota)}" }
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_TOPUP_AMOUNT}" }
+                    label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_TOPUP_AMOUNT}" }
                     input {
                         class: "{MODAL_INPUT} font-mono",
                         r#type: "text",
@@ -65,20 +65,20 @@ pub fn TopUpForm(
                     }
                     p { class: "mt-1 {ui::TYPE_DESC}", "{MSG_QUOTA_HINT} {fmt_cny(delta_quota.unwrap_or(0))}" }
                 }
-                div { class: "flex justify-between gap-2 {ui::T_text_xs}",
-                    span { class: "{ui::T_text_zinc_400}", "{MSG_AFTER_QUOTA}{LBL_QUOTA}" }
-                    span { class: "{ui::T_font_medium} {ui::STATE_SUCCESS_TEXT}", "{after}" }
+                div { class: "flex justify-between gap-2 text-xs",
+                    span { class: "text-zinc-400", "{MSG_AFTER_QUOTA}{LBL_QUOTA}" }
+                    span { class: "font-medium {ui::STATE_SUCCESS_TEXT}", "{after}" }
                 }
             }
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border {ui::T_border_zinc_700} py-2.5 {ui::T_text_sm} {ui::T_text_zinc_400} transition-colors hover:{ui::T_bg_zinc_800}",
+                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
                     {BTN_CANCEL}
                 }
                 button {
-                    class: "flex-1 rounded-xl {ui::T_bg_white} py-2.5 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors hover:{ui::T_bg_zinc_200} disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     disabled: parsed.is_none(),
                     onclick: move |_| on_submit.call((user_key.clone(), delta_quota.unwrap_or(0))),
                     "{BTN_TOPUP_CONFIRM}"

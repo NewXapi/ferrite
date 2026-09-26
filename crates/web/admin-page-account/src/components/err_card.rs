@@ -10,9 +10,9 @@ use dioxus::prelude::*;
 pub fn ErrCard(testid: &'static str, what: &'static str, msg: String) -> Element {
     rsx! {
         div {
-            class: "rounded-xl border border-red-500/40 {ui::T_bg_zinc_900} p-4",
+            class: "rounded-xl border border-red-500/40 bg-zinc-900 p-4",
             "data-testid": testid,
-            p { class: "{ui::T_text_sm} {ui::T_text_red_300}", "无法加载{what} (未登录或请求失败): {msg}" }
+            p { class: "text-sm text-red-300", "无法加载{what} (未登录或请求失败): {msg}" }
         }
     }
 }

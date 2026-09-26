@@ -14,7 +14,7 @@ pub fn PasswordField(
     let eye = if visible() { "隐藏" } else { "显示" };
     rsx! {
         label { class: "block space-y-1.5",
-            span { class: "block {crate::T_text_xs} {crate::T_font_medium} {crate::T_text_zinc_400} uppercase tracking-wide", "{label}" }
+            span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
             div { class: "relative", style: "position:relative; width:100%;",
                 input {
                     class: "{INPUT_CLASS} pr-10",
@@ -29,7 +29,7 @@ pub fn PasswordField(
                     },
                 }
                 button {
-                    class: "{crate::T_text_sm} {crate::T_text_zinc_500} hover:{crate::T_text_zinc_300} transition-colors",
+                    class: "text-sm text-zinc-500 hover:text-zinc-300 transition-colors",
                     r#type: "button",
                     tabindex: "-1",
                     style: "position:absolute; right:12px; top:50%; transform:translateY(-50%);",

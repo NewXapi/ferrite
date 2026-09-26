@@ -64,7 +64,7 @@ pub fn AdminSection(
     rsx! {
         section {
             id: id,
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border {crate::T_border_zinc_800} {crate::T_bg_zinc_900} p-5 {extra}",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 {extra}",
             {children}
         }
     }
@@ -85,7 +85,7 @@ pub fn SectionHeader(
         div { class: "flex flex-wrap items-center justify-between gap-2",
             h2 { class: "{crate::TYPE_TITLE}", "{title}" }
             div { class: "flex items-center gap-2",
-                span { class: "rounded-full {crate::T_bg_zinc_800} px-3 py-1 {crate::T_text_xs} {crate::T_text_zinc_400}", "{badge}" }
+                span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{badge}" }
                 if let Some(extra) = trailing {
                     {extra}
                 }
@@ -136,8 +136,8 @@ pub fn PlaceholderBlock(
     let pad = if large { "py-16" } else { "py-10" };
     rsx! {
         div {
-            class: "rounded-2xl border {border} {crate::T_border_zinc_700} bg-zinc-900/50 {pad} text-center",
-            p { class: "{crate::T_text_sm} {crate::T_text_zinc_500}", "{message}" }
+            class: "rounded-2xl border {border} border-zinc-700 bg-zinc-900/50 {pad} text-center",
+            p { class: "text-sm text-zinc-500", "{message}" }
             {children}
         }
     }
@@ -157,9 +157,9 @@ pub fn DangerBlock(
 ) -> Element {
     rsx! {
         div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-            p { class: "{crate::T_text_sm} {crate::T_text_red_300}", "{title}" }
+            p { class: "text-sm text-red-300", "{title}" }
             if let Some(detail) = detail {
-                p { class: "mt-1 {crate::T_text_xs} text-red-400/70", "{detail}" }
+                p { class: "mt-1 text-xs text-red-400/70", "{detail}" }
             }
             if let Some(children) = children {
                 {children}

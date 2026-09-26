@@ -206,9 +206,9 @@ pub fn UsageLogsPanel() -> Element {
             }
 
             // 过滤器
-            section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 transition-colors hover:{ui::T_border_zinc_600}",
+            section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-600",
                 div { class: "flex items-center justify-between",
-                    h2 { class: "{ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_300}", "{SEC_LOGS}" }
+                    h2 { class: "text-sm font-medium text-zinc-300", "{SEC_LOGS}" }
                     span { class: "{ui::TYPE_DESC}", "共 {total_len} 条" }
                 }
 
@@ -231,12 +231,12 @@ pub fn UsageLogsPanel() -> Element {
             section { id: "usage-sec-logs", class: "scroll-mt-8 space-y-3",
                 h2 { class: "{ui::TYPE_TITLE}", "{SEC_LOGS}" }
                 if !load_err().is_empty() {
-                    p { class: "{ui::T_text_sm} {ui::STATE_WARNING_TEXT}", "无法加载日志 (未登录或请求失败): {load_err()}" }
+                    p { class: "text-sm {ui::STATE_WARNING_TEXT}", "无法加载日志 (未登录或请求失败): {load_err()}" }
                 } else if !loaded() {
-                    p { class: "{ui::T_text_sm} {ui::T_text_zinc_500}", "加载中…" }
+                    p { class: "text-sm text-zinc-500", "加载中…" }
                 } else if shown_len == 0 {
-                    div { class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
-                        p { class: "{ui::T_text_zinc_400}", "没有找到匹配的日志记录" }
+                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                        p { class: "text-zinc-400", "没有找到匹配的日志记录" }
                     }
                 } else {
                     div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",

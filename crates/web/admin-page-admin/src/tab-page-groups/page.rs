@@ -338,7 +338,7 @@ pub fn GroupsPage() -> Element {
             "aria-label": SEC_PAGE_ARIA,
             // 通知条(成功/错误/进行中)
             if let Some(msg) = notice() {
-                div { class: "rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_900} px-4 py-2 {ui::T_text_xs} {ui::T_text_zinc_300}",
+                div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
                     "{msg}"
                     if busy() { " ···" }
                 }

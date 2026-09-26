@@ -45,18 +45,18 @@ pub fn UsersFilterSection(
     rsx! {
         section {
             id: "users-sec-filter",
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
             div { class: "flex items-center justify-between gap-3",
-                h2 { class: "{ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_300}", "{SEC_FILTER}" }
+                h2 { class: "text-sm font-medium text-zinc-300", "{SEC_FILTER}" }
                 div { class: "flex gap-2",
                     button {
-                        class: "shrink-0 rounded-xl border {ui::T_border_zinc_700} px-3 py-2 {ui::T_text_xs} {ui::T_text_zinc_300} transition-colors hover:{ui::T_bg_zinc_800}",
+                        class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
                         "data-testid": "refresh-users",
                         onclick: move |_| on_refresh.call(()),
                         "{BTN_REFRESH}"
                     }
                     button {
-                        class: "shrink-0 rounded-xl {ui::T_bg_white} px-4 py-2 {ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors hover:{ui::T_bg_zinc_200} active:{ui::T_bg_zinc_300}",
+                        class: "shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                         "data-testid": "new-user",
                         onclick: move |_| on_new.call(()),
                         "{BTN_NEW_USER}"
@@ -65,7 +65,7 @@ pub fn UsersFilterSection(
             }
 
             input {
-                class: "w-full rounded-xl border border-zinc-700/80 {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} placeholder:{ui::T_text_zinc_500} outline-none transition focus:{ui::T_border_zinc_500}",
+                class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
                 r#type: "text",
                 placeholder: MSG_SEARCH_HINT,
                 "data-testid": "users-search",
