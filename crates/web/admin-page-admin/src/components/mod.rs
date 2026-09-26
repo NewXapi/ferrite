@@ -23,8 +23,11 @@ pub mod currency_list_section;
 pub mod entities_cards_section;
 pub mod entities_channels_section;
 
-// Gateway
-pub mod gateway_row_section;
+pub mod gateway_card;
+pub mod gateway_health_row;
+pub mod gateway_health_section;
+pub mod gateway_health_shared;
+pub mod gateway_health_toolbar_section;
 
 // Groups
 pub mod groups_list_section;
