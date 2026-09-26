@@ -31,7 +31,7 @@ pub fn RechargesSection(
         // 最近充值记录 — GET /api/user/topup/orders (真实端点)
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
             div { class: "mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between",
-                h3 { class: "text-sm font-medium text-zinc-200", "最近充值记录" }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", "最近充值记录" }
                 span { class: "{ui::TYPE_DESC}", "订单倒序,最近在前" }
             }
             if !recharges_err().is_empty() {
@@ -45,15 +45,15 @@ pub fn RechargesSection(
                 div {
                     class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
                     "data-testid": "recharge-empty",
-                    p { class: "text-sm text-zinc-500", "暂无充值记录 (开单后待管理员确认入账)" }
+                    p { class: "{ui::TYPE_BODY}", "暂无充值记录 (开单后待管理员确认入账)" }
                 }
             } else if let Some(rows) = recharges() {
                 div { class: "divide-y divide-zinc-800",
                     for o in &rows {
-                        div { class: "flex justify-between py-4 text-sm first:pt-0 last:pb-0",
+                        div { class: "flex justify-between py-4 {ui::TYPE_BODY} first:pt-0 last:pb-0",
                             "data-testid": format!("recharge-row-{}", o.key),
                             div {
-                                div { class: "text-zinc-400", "{fmt_time(&o.created_at)}" }
+                                div { class: "{ui::C_MUTED}", "{fmt_time(&o.created_at)}" }
                                 div { class: "mt-0.5 {ui::TYPE_DESC}",
                                     if o.provider.is_empty() {
                                         "{o.currency.clone()} · manual"
@@ -67,7 +67,7 @@ pub fn RechargesSection(
                                     "{fmt_num(o.amount)}"
                                 }
                                 // 状态机字符串原样展示,前端不解释
-                                div { class: "mt-0.5 text-[10px] text-zinc-500", "{o.state}" }
+                                div { class: "mt-0.5 {ui::TYPE_LABEL}", "{o.state}" }
                             }
                         }
                     }

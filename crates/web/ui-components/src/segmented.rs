@@ -26,7 +26,7 @@ pub fn SegmentedCapsule(
     let n = items.len();
     rsx! {
         div {
-            class: "flex w-full flex-wrap overflow-hidden rounded-full border border-zinc-700 bg-zinc-950 text-xs sm:w-fit",
+            class: "flex w-full flex-wrap overflow-hidden rounded-full border border-zinc-700 bg-zinc-950 {crate::TYPE_DESC} sm:w-fit",
             onwheel: move |e: WheelEvent| on_tab_wheel(e, n, active, |i| on_select.call(i)),
             for (i, item) in items.iter().enumerate() {
                 button {

@@ -72,18 +72,18 @@ pub fn AuthModal(
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl p-4 select-none animate-in fade-in duration-200",
             onclick: move |_| on_close.call(()),
             div {
-                class: "relative flex w-full max-w-sm flex-col gap-5 rounded-3xl border border-purple-500/40 bg-gradient-to-b from-zinc-900/95 via-zinc-950/95 to-black p-6 sm:p-7 shadow-2xl shadow-purple-950/40 text-xs text-zinc-100",
+                class: "relative flex w-full max-w-sm flex-col gap-5 rounded-3xl border border-purple-500/40 bg-gradient-to-b from-zinc-900/95 via-zinc-950/95 to-black p-6 sm:p-7 shadow-2xl shadow-purple-950/40 {crate::TYPE_DESC}",
                 onclick: move |e| e.stop_propagation(),
 
                 // 顶部标题与关闭
                 div { class: "flex items-center justify-between border-b border-zinc-800/80 pb-3",
                     div { class: "flex items-center gap-2",
-                        span { class: "font-serif text-sm font-bold text-white",
+                        span { class: "font-serif {crate::TYPE_BODY}",
                             if is_register() { "加入 Tavern · 账号注册" } else { "登录 Tavern 平台" }
                         }
                     }
                     button {
-                        class: "text-zinc-500 hover:text-white transition-colors text-sm",
+                        class: "{crate::TYPE_BODY} hover:text-white transition-colors",
                         onclick: move |_| on_close.call(()),
                         "关闭"
                     }
@@ -119,7 +119,7 @@ pub fn AuthModal(
 
                 // 错误提示条
                 if let Some(err) = error_msg() {
-                    div { class: "flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-950/30 p-2.5 text-[11px] text-rose-300",
+                    div { class: "flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-950/30 p-2.5 {crate::TYPE_LABEL} text-rose-300",
                         span { "{err}" }
                     }
                 }
@@ -162,7 +162,7 @@ pub fn AuthModal(
 
                 // 提交按钮
                 button {
-                    class: "mt-1 flex items-center justify-center gap-2 w-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 py-3 text-xs font-bold text-white shadow-xl shadow-purple-600/30 hover:opacity-90 active:scale-[0.99] transition-all disabled:opacity-50",
+                    class: "mt-1 flex items-center justify-center gap-2 w-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 py-3 {crate::TYPE_DESC} shadow-xl shadow-purple-600/30 hover:opacity-90 active:scale-[0.99] transition-all disabled:opacity-50",
                     disabled: loading(),
                     onclick: submit,
                     if loading() {
@@ -175,7 +175,7 @@ pub fn AuthModal(
                     }
                 }
 
-                div { class: "text-center text-[10px] text-zinc-500 pt-1",
+                div { class: "text-center {crate::TYPE_LABEL} pt-1",
                     "跨端通用安全鉴权中心 · 数据由 Argon2 与 HS256 JWT 加密保护"
                 }
             }

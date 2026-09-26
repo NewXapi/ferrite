@@ -66,42 +66,42 @@ pub fn CurrencyForm(
             role: "region",
             "aria-label": LBL_FORM_REGION,
             "data-testid": "currency-form-section",
-            h3 { class: "text-sm font-semibold text-zinc-300",
+            h3 { class: "{ui::TYPE_CARD_TITLE}",
                 if let Some(c) = editing.as_ref() { "编辑货币 {c}" } else { "{SEC_FORM}" }
             }
             div { class: "grid grid-cols-2 gap-3 md:grid-cols-4",
-                label { class: "space-y-1 text-xs text-zinc-400",
+                label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_CODE}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-code-input",
                         value: "{f_code()}",
                         disabled: editing.is_some(),
                         oninput: move |e| f_code.set(e.value()),
                     }
                 }
-                label { class: "space-y-1 text-xs text-zinc-400",
+                label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{LBL_FIELD_NAME}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-name-input",
                         value: "{f_name()}",
                         oninput: move |e| f_name.set(e.value()),
                     }
                 }
-                label { class: "space-y-1 text-xs text-zinc-400",
+                label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_SYMBOL}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-symbol-input",
                         value: "{f_symbol()}",
                         oninput: move |e| f_symbol.set(e.value()),
                     }
                 }
-                label { class: "space-y-1 text-xs text-zinc-400",
+                label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_KIND}"
                     select {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-kind-select",
                         value: "{f_kind().as_str()}",
                         onchange: move |e| f_kind.set(Kind::parse(&e.value())),
@@ -109,37 +109,37 @@ pub fn CurrencyForm(
                         option { value: "fiat", "{OPT_KIND_FIAT}" }
                     }
                 }
-                label { class: "space-y-1 text-xs text-zinc-400",
+                label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_RATE}"
                     if usd_locked {
                         div { class: "space-y-1",
                             input {
-                                class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-500",
+                                class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                                 "data-testid": "currency-rate-input",
                                 value: "1",
                                 disabled: true,
                             }
-                            p { class: "text-xs text-amber-400/90", "{MSG_USD_LOCKED}" }
+                            p { class: "text-xs {ui::C_WARNING}", "{MSG_USD_LOCKED}" }
                         }
                     } else {
                         input {
-                            class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                            class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                             "data-testid": "currency-rate-input",
                             value: "{f_rate()}",
                             oninput: move |e| f_rate.set(e.value()),
                         }
                     }
                 }
-                label { class: "space-y-1 text-xs text-zinc-400",
+                label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_PRECISION}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-precision-input",
                         value: "{f_precision()}",
                         oninput: move |e| f_precision.set(e.value()),
                     }
                 }
-                label { class: "flex items-end space-x-2 pb-1 text-xs text-zinc-400",
+                label { class: "flex items-end space-x-2 pb-1 {ui::TYPE_DESC}",
                     input {
                         r#type: "checkbox",
                         "data-testid": "currency-enabled-check",
@@ -148,10 +148,10 @@ pub fn CurrencyForm(
                     }
                     "{FIELD_ENABLED}"
                 }
-                label { class: "space-y-1 text-xs text-zinc-400 md:col-span-2",
+                label { class: "space-y-1 {ui::TYPE_DESC} md:col-span-2",
                     "{LBL_FIELD_REMARK}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-sm text-zinc-200",
+                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-remark-input",
                         value: "{f_remark()}",
                         oninput: move |e| f_remark.set(e.value()),
@@ -160,18 +160,18 @@ pub fn CurrencyForm(
             }
 
             // 维护者定稿的两条警示
-            div { class: "space-y-1 text-xs",
+            div { class: "space-y-1 {ui::TYPE_DESC}",
                 p { class: "{ui::C_DANGER}",
                     "{MSG_WARN_RATE}"
                 }
-                p { class: "text-red-400/80",
+                p { class: "{ui::C_DANGER}",
                     "{MSG_WARN_DISABLE}"
                 }
             }
 
             div { class: "flex space-x-2",
                 button {
-                    class: "rounded-lg bg-sky-700 px-3 py-1.5 text-sm text-white hover:bg-sky-600",
+                    class: "rounded-lg bg-sky-700 px-3 py-1.5 {ui::TYPE_BODY} hover:bg-sky-600",
                     "data-testid": "currency-submit",
                     onclick: on_submit,
                     if editing.is_some() { "{BTN_SAVE_CHANGES}" } else { "{BTN_CREATE}" }

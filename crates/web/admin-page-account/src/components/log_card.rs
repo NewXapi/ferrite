@@ -50,20 +50,20 @@ pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element 
             }
             div { class: "mt-2 flex items-baseline justify-between gap-2",
                 span { class: "font-mono {ui::TYPE_DESC}", "{time_str}" }
-                span { class: "shrink-0 font-medium tabular-nums text-sm {ui::C_SUCCESS}", "{cost_str}" }
+                span { class: "shrink-0 {ui::TYPE_CARD_TITLE} tabular-nums {ui::C_SUCCESS}", "{cost_str}" }
             }
 
             // 摘要两行:Tokens、耗时
-            div { class: "mt-3 space-y-1.5 text-xs",
+            div { class: "mt-3 space-y-1.5 {ui::TYPE_DESC}",
                 div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-500", "Tokens" }
+                    span { class: "shrink-0 {ui::C_MUTED}", "Tokens" }
                     span { class: "whitespace-nowrap font-medium tabular-nums text-zinc-200",
                         "{tokens_pair}"
                     }
                 }
                 div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-500", "耗时" }
-                    span { class: "whitespace-nowrap tabular-nums text-zinc-400", "{timing_str}" }
+                    span { class: "shrink-0 {ui::C_MUTED}", "耗时" }
+                    span { class: "whitespace-nowrap tabular-nums {ui::C_MUTED}", "{timing_str}" }
                 }
             }
         }

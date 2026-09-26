@@ -81,27 +81,27 @@ pub fn SystemOptionsPanel() -> Element {
             "aria-label": LBL_SITE_OPTIONS,
             class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
             div {
-                h2 { class: "text-sm font-medium text-zinc-200", {LBL_SITE_OPTIONS} }
+                h2 { class: "{ui::TYPE_CARD_TITLE}", {LBL_SITE_OPTIONS} }
                 p { class: "{ui::TYPE_DESC}", {SEC_OPTIONS_NOTE} }
             }
             if let Some(e) = err {
                 div {
                     role: "alert",
                     "data-testid": "system-options-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::C_DANGER}",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
                     "{e}"
                 }
             } else if loading {
                 div {
                     "data-testid": "system-options-loading",
                     class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
-                    p { class: "text-zinc-400", {MSG_OPTIONS_LOADING} }
+                    p { class: "{ui::C_MUTED}", {MSG_OPTIONS_LOADING} }
                 }
             } else if list.is_empty() {
                 div {
                     "data-testid": "system-options-empty",
                     class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
-                    p { class: "text-zinc-400", {MSG_OPTIONS_EMPTY} }
+                    p { class: "{ui::C_MUTED}", {MSG_OPTIONS_EMPTY} }
                 }
             } else {
                 div { class: "divide-y divide-zinc-800/80",

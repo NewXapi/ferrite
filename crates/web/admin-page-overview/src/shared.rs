@@ -55,7 +55,7 @@ pub fn TimeframeTabs(
             for t in TIMEFRAMES {
                 button {
                     key: "{t}",
-                    class: "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    class: "rounded-md px-2.5 py-1 {ui::TYPE_DESC} transition-colors",
                     class: if tf == t { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
                     onclick: move |_| timeframe.set(t),
                     "data-testid": testid_prefix.map(|prefix| format!("{prefix}-{t}")),

@@ -92,7 +92,7 @@ pub fn EditableRow(
                 "data-testid": "{testid}",
                 "aria-expanded": "{open()}",
                 onclick: move |_| open.toggle(),
-                span { class: "text-zinc-400", "{label}" }
+                span { class: "{crate::C_MUTED}", "{label}" }
                 span { class: "font-medium text-zinc-200", "{value}" }
             }
             if open() {
@@ -117,13 +117,13 @@ pub fn EditableRow(
                     }
                     div { class: "flex justify-end gap-2",
                         button {
-                            class: "rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                            class: "rounded-lg border border-zinc-700 px-2.5 py-1 {crate::TYPE_DESC} transition-colors hover:bg-zinc-800",
                             "data-testid": "{testid}-cancel",
                             onclick: move |_| open.set(false),
                             "取消"
                         }
                         button {
-                            class: "rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                            class: "rounded-lg bg-white px-2.5 py-1 {crate::TYPE_DESC} transition-colors hover:bg-zinc-200",
                             "data-testid": "{testid}-save",
                             onclick: move |_| {
                                 on_commit.call(draft.peek().clone());

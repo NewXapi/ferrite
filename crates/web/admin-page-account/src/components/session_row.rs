@@ -39,12 +39,12 @@ pub fn SessionRow(
                 div { class: "min-w-0",
                     div { class: "flex items-center gap-2",
                         p {
-                            class: "truncate text-sm text-zinc-200",
+                            class: "truncate {ui::TYPE_BODY}",
                             title: "{session.user_agent}",
                             "{ua_label}"
                         }
                         if session.current {
-                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium {ui::C_SUCCESS}", "当前设备" }
+                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 {ui::TYPE_LABEL} {ui::C_SUCCESS}", "当前设备" }
                         }
                     }
                     div { class: "mt-2 grid grid-cols-1 gap-1 {ui::TYPE_DESC} sm:grid-cols-2",

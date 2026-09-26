@@ -52,7 +52,7 @@ pub fn Chip(
 
     rsx! {
         button {
-            class: "rounded-full border {size} text-xs font-medium transition-colors {tone}",
+            class: "rounded-full border {size} {ui::TYPE_DESC} transition-colors {tone}",
             "data-testid": "{testid}",
             "aria-pressed": "{selected}",
             onclick: move |_| on_press.call(()),

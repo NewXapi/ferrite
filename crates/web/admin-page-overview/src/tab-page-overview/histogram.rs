@@ -37,11 +37,11 @@ pub fn TrendHistogram(
                     // 顶格是封顶线 (axis_max), 其下三条是 step 等分, 最后是 0 基线
                     for i in [4, 3, 2, 1] {
                         div { class: "relative w-full border-t border-dashed border-zinc-800",
-                            span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "{fmt_raw((axis_max.max(1.0) * i as f64 / 4.0) as i64)}" }
+                            span { class: "absolute -top-2 right-0 {ui::TYPE_LABEL}", "{fmt_raw((axis_max.max(1.0) * i as f64 / 4.0) as i64)}" }
                         }
                     }
                     div { class: "relative w-full border-t border-dashed border-zinc-800",
-                        span { class: "absolute -top-2 right-0 text-[10px] text-zinc-600", "0" }
+                        span { class: "absolute -top-2 right-0 {ui::TYPE_LABEL}", "0" }
                     }
                 }
                 div { class: "relative flex h-56 items-end", style: "gap: 3px",
@@ -123,7 +123,7 @@ pub fn TrendHistogram(
                     }
                 }
             }
-            div { class: "mt-2 flex text-[10px] text-zinc-600", style: "gap: 3px",
+            div { class: "mt-2 flex {ui::TYPE_LABEL}", style: "gap: 3px",
                 for b in buckets.iter() {
                     span { class: "flex-1 truncate text-center",
                         if b.show_label { "{b.label}" }

@@ -148,8 +148,8 @@ fn MoveList(
         div { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "{testid}",
             div {
-                h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
-                p { class: "text-[11px] text-zinc-500", "{subtitle}" }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
+                p { class: "{ui::TYPE_LABEL}", "{subtitle}" }
             }
             if moves.is_empty() {
                 p { class: "py-6 text-center {ui::TYPE_DESC}", "{MOVERS_EMPTY}" }
@@ -179,7 +179,7 @@ fn MoveList(
                                     }
                                     div { class: "min-w-0 flex-1",
                                         div { class: "flex items-center justify-between gap-3",
-                                            span { class: "truncate text-xs font-medium text-zinc-200", "{m.name}" }
+                                            span { class: "truncate {ui::TYPE_DESC}", "{m.name}" }
                                             div { class: "flex shrink-0 items-center gap-2",
                                                 span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100",
                                                     "{fmt_raw(tokens)}"
@@ -225,7 +225,7 @@ pub fn MoversCards(state: MoversState) -> Element {
             }
         },
         MoversState::Failed(e) => rsx! {
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-400 transition-[border-color] duration-150 hover:border-secondary-hover",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 {ui::TYPE_DESC} transition-[border-color] duration-150 hover:border-secondary-hover",
                 "data-testid": "leaderboard-movers-error",
                 "{MOVERS_ERR_PREFIX}{e}"
             }

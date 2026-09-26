@@ -13,7 +13,7 @@ pub fn CodeField(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1.5",
-            span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
+            span { class: "block {crate::TYPE_DESC} uppercase tracking-wide", "{label}" }
             div { class: "flex gap-2",
                 input {
                     "data-testid": "{name}",
@@ -31,7 +31,7 @@ pub fn CodeField(
                 }
                 button {
                     "data-testid": "{name}-send",
-                    class: "shrink-0 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5 text-xs font-medium text-zinc-300 transition-all hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 active:scale-95",
+                    class: "shrink-0 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5 {crate::TYPE_DESC} transition-all hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 active:scale-95",
                     r#type: "button",
                     onclick: move |_| on_send.call(()),
                     "Send code"

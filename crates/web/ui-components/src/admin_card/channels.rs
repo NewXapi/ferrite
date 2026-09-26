@@ -162,8 +162,8 @@ pub fn ChannelCard(
                     on_commit: commit_name,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "名称" }
+                div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                    span { class: "{crate::C_MUTED}", "名称" }
                     span { class: "font-medium text-zinc-200", "{channel.name}" }
                 }
             }
@@ -177,38 +177,38 @@ pub fn ChannelCard(
                     on_commit: commit_url,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "基址" }
+                div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                    span { class: "{crate::C_MUTED}", "基址" }
                     span { class: "font-medium text-zinc-200 break-all", "{channel.base_url}" }
                 }
             }
             // 状态行：开关类操作，保留旧卡「行内一点即切换」交互（不走 Popover）
-            div { class: "flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs",
-                span { class: "text-zinc-400", "状态" }
+            div { class: "flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "状态" }
                 span { class: "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 {status_tone}",
                     "{channel_status_str}"
                 }
                 if let Some(cb) = on_toggle {
                     button {
-                        class: "rounded-lg border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800",
+                        class: "rounded-lg border border-zinc-700 px-2 py-0.5 {crate::TYPE_LABEL} transition-colors hover:bg-zinc-800",
                         "data-testid": "channel-toggle-status",
                         onclick: move |_| cb.call(()),
                         if channel.status == 1 { "停用" } else { "启用" }
                     }
                 }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "类型" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "类型" }
                 span { class: "font-medium text-zinc-200", "{channel.channel_type}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "标识" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "标识" }
                 span { class: "font-mono text-zinc-200", "{short_k}" }
             }
             // 完整编辑入口：密钥 / 模型 / 分组等弹窗专属能力（§2.4：多字段表单走 Modal）
             if let Some(cb) = on_full_edit {
                 button {
-                    class: "mt-1 w-full rounded-lg border border-zinc-700 px-2 py-1.5 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800",
+                    class: "mt-1 w-full rounded-lg border border-zinc-700 px-2 py-1.5 {crate::TYPE_LABEL} transition-colors hover:bg-zinc-800",
                     "data-testid": "channel-full-edit",
                     onclick: move |_| cb.call(()),
                     "完整编辑（密钥 / 模型 / 分组）"
@@ -218,12 +218,12 @@ pub fn ChannelCard(
     };
     let panel_keys = rsx! {
         div { class: "space-y-2",
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "密钥" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "密钥" }
                 span { class: "font-medium text-zinc-200", "{channel.key_count} 个" }
             }
             if masked_keys.is_empty() {
-                span { class: "text-[11px] text-zinc-500", "列表不返回密钥明文，点「完整编辑」管理" }
+                span { class: "{crate::TYPE_LABEL}", "列表不返回密钥明文，点「完整编辑」管理" }
             } else {
                 div { class: "flex flex-wrap gap-1.5",
                     for k in masked_keys {
@@ -233,18 +233,18 @@ pub fn ChannelCard(
                     }
                 }
             }
-            p { class: "pt-1 text-[11px] text-zinc-400", "调度模型" }
+            p { class: "pt-1 {crate::TYPE_LABEL}", "调度模型" }
             if dispatch_models.is_empty() {
-                span { class: "text-[11px] text-zinc-500", "未配置" }
+                span { class: "{crate::TYPE_LABEL}", "未配置" }
             } else {
                 div { class: "flex flex-wrap gap-1.5",
                     for m in dispatch_models.iter().take(6) {
-                        span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-300",
+                        span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 {crate::TYPE_LABEL}",
                             "{m}"
                         }
                     }
                     if dispatch_models.len() > 6 {
-                        span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-400",
+                        span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 {crate::TYPE_LABEL}",
                             "+{dispatch_models.len() - 6}"
                         }
                     }
@@ -254,16 +254,16 @@ pub fn ChannelCard(
     };
     let panel_dispatch = rsx! {
         div { class: "space-y-2",
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "优先级" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "优先级" }
                 span { class: "font-medium text-zinc-200", "{channel.priority}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "权重" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "权重" }
                 span { class: "font-medium text-zinc-200", "{channel.weight}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "绑定分组" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "绑定分组" }
                 span { class: "font-medium text-zinc-200", "{groups_joined}" }
             }
             if on_edit.is_some() {
@@ -276,8 +276,8 @@ pub fn ChannelCard(
                     on_commit: commit_test_model,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "测速模型" }
+                div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                    span { class: "{crate::C_MUTED}", "测速模型" }
                     span { class: "font-medium text-zinc-200", "{test_model}" }
                 }
             }
@@ -291,8 +291,8 @@ pub fn ChannelCard(
                     on_commit: commit_remark,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "备注" }
+                div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                    span { class: "{crate::C_MUTED}", "备注" }
                     span { class: "font-medium text-zinc-200", "{remark}" }
                 }
             }

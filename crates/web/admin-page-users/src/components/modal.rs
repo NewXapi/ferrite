@@ -43,7 +43,7 @@ pub fn Modal(title: String, on_close: EventHandler<()>, children: Element) -> El
                 // 标题栏:标题 + 关闭按钮(复用 ui::CloseButton)
                 // DONE: 关闭按钮不自建,收敛为 ui-components 复用组件 CloseButton(全仓统一 X 按钮) in=demo by=agent
                 div { class: "mb-5 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-zinc-100", "{title}" }
+                    h3 { class: "{ui::TYPE_TITLE}", "{title}" }
                     CloseButton { on_click: on_close }
                 }
                 {children}

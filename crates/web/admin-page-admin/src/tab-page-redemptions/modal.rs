@@ -75,7 +75,7 @@ pub fn RedemptionGenerateModal(
             div { class: "space-y-4 max-h-[70vh] overflow-y-auto pr-1",
                 div { class: "grid grid-cols-2 gap-3",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_COUNT}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_COUNT}" }
                     input {
                         "data-testid": "redemption-count",
                         class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
@@ -87,7 +87,7 @@ pub fn RedemptionGenerateModal(
                     }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_QUOTA}" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_QUOTA}" }
                     input {
                         "data-testid": "redemption-quota",
                         class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
@@ -100,7 +100,7 @@ pub fn RedemptionGenerateModal(
 
                 // 快捷面额按钮
                 div { class: "space-y-1.5",
-                    p { class: "text-[11px] text-zinc-500", "{LBL_QUOTA_PRESETS}" }
+                    p { class: "{ui::TYPE_LABEL}", "{LBL_QUOTA_PRESETS}" }
                     div { class: "flex flex-wrap gap-1.5",
                         for (lbl, val) in preset_quotas {
                             {
@@ -112,7 +112,7 @@ pub fn RedemptionGenerateModal(
                                 };
                                 rsx! {
                                     button {
-                                        class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
+                                        class: "rounded-lg border px-2.5 py-1 {ui::TYPE_DESC} transition-colors {btn_tone}",
                                         onclick: move |_| quota.set(val.to_string()),
                                         "{lbl}"
                                     }
@@ -123,8 +123,8 @@ pub fn RedemptionGenerateModal(
                 }
 
                 // 测算卡片
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1.5",
-                    div { class: "flex justify-between text-zinc-400",
+                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 {ui::TYPE_DESC} space-y-1.5",
+                    div { class: "flex justify-between {ui::C_MUTED}",
                         span { "{LBL_BATCH}" }
                         span { "{parsed_count} 张卡密" }
                     }
@@ -136,7 +136,7 @@ pub fn RedemptionGenerateModal(
                     }
                 }
 
-                p { class: "text-[11px] text-zinc-600",
+                p { class: "{ui::TYPE_LABEL}",
                     "{MSG_GENERATE_HINT}"
                 }
             }
@@ -144,13 +144,13 @@ pub fn RedemptionGenerateModal(
             div { class: "mt-6 flex gap-3",
                 button {
                     "data-testid": "cancel-generate",
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
                     "data-testid": "submit-generate",
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_submit.call(()),
                     "{BTN_SUBMIT_GENERATE}"
                 }
@@ -188,7 +188,7 @@ pub fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> El
     rsx! {
         Modal { title: format!("{TTL_GENERATED_PREFIX}{}{TTL_GENERATED_SUFFIX}", codes.len()), on_close: move |_| on_close.call(()),
             div { class: "space-y-3",
-                p { class: "text-xs {ui::C_WARNING}",
+                p { class: "{ui::TYPE_DESC} {ui::C_WARNING}",
                     "{MSG_CODES_WARNING}"
                 }
                 pre {
@@ -200,7 +200,7 @@ pub fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> El
             div { class: "mt-6 flex",
                 button {
                     "data-testid": "close-codes",
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_close.call(()),
                     "{BTN_CLOSE_SAVED}"
                 }

@@ -22,10 +22,10 @@ pub fn ModelDistributionCard() -> Element {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between gap-3",
                 div {
-                    h3 { class: "text-sm font-semibold text-zinc-100",
+                    h3 { class: "{ui::TYPE_CARD_TITLE}",
                         "{CHART_DIST_TITLE}"
                                             }
-                    p { class: "text-[11px] text-zinc-500", "{CHART_DIST_SUBTITLE}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_DIST_SUBTITLE}" }
                 }
             }
 
@@ -60,8 +60,8 @@ pub fn ModelDistributionCard() -> Element {
                                 div { class: "flex items-center gap-2.5 min-w-0",
                                     span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
                                     div { class: "min-w-0",
-                                        p { class: "truncate text-xs font-medium text-zinc-200 group-hover:text-white", "{m.name}" }
-                                        p { class: "text-[10px] text-zinc-500", "{m.daily_req / 1e3:.0}{CHART_REQ_MID}{m.ctx:.0}K" }
+                                        p { class: "truncate {ui::TYPE_DESC} group-hover:text-white", "{m.name}" }
+                                        p { class: "{ui::TYPE_LABEL}", "{m.daily_req / 1e3:.0}{CHART_REQ_MID}{m.ctx:.0}K" }
                                     }
                                 }
                                 div { class: "text-right shrink-0 pl-2",
@@ -84,12 +84,12 @@ pub fn PerformanceLatencyCard() -> Element {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between",
                 div {
-                    h3 { class: "text-sm font-semibold text-zinc-100",
+                    h3 { class: "{ui::TYPE_CARD_TITLE}",
                         "{CHART_SLA_TITLE}"
                                             }
-                    p { class: "text-[11px] text-zinc-500", "{CHART_SLA_SUBTITLE}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_SLA_SUBTITLE}" }
                 }
-                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium {ui::C_SUCCESS}",
+                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 {ui::TYPE_LABEL} {ui::C_SUCCESS}",
                     span { class: "h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" }
                     "{CHART_SLA_BADGE}"
                 }
@@ -98,19 +98,19 @@ pub fn PerformanceLatencyCard() -> Element {
             // 4 项关键健康指标
             div { class: "grid grid-cols-2 gap-2.5",
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "{CHART_P50}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_P50}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "820 ms" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "{CHART_P90}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_P90}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "1,450 ms" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "{CHART_TPS}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_TPS}" }
                     p { class: "mt-0.5 font-mono text-base font-bold text-zinc-100", "4,210 tok/s" }
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
-                    p { class: "text-[10px] text-zinc-500", "{CHART_SUCCESS}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_SUCCESS}" }
                     p { class: "mt-0.5 font-mono text-base font-bold {ui::C_SUCCESS}", "99.86%" }
                 }
             }
@@ -121,7 +121,7 @@ pub fn PerformanceLatencyCard() -> Element {
                     {
                         let width_pct = (m.p50 / 3.0 * 100.0).min(100.0);
                         rsx! {
-                            div { key: "{m.name}", class: "space-y-1 text-xs",
+                            div { key: "{m.name}", class: "space-y-1 {ui::TYPE_DESC}",
                                 div { class: "flex items-center justify-between text-zinc-300",
                                     span { class: "font-medium", "{m.name}" }
                                     div { class: "flex items-center gap-3 font-mono text-[11px] text-zinc-400",
@@ -158,12 +158,12 @@ pub fn GroupQuotaCard() -> Element {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4 transition-[border-color] duration-150 hover:border-secondary-hover",
             div { class: "flex items-center justify-between",
                 div {
-                    h3 { class: "text-sm font-semibold text-zinc-100",
+                    h3 { class: "{ui::TYPE_CARD_TITLE}",
                         "{CHART_GROUP_TITLE}"
                                             }
-                    p { class: "text-[11px] text-zinc-500", "{CHART_GROUP_SUBTITLE}" }
+                    p { class: "{ui::TYPE_LABEL}", "{CHART_GROUP_SUBTITLE}" }
                 }
-                span { class: "rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400",
+                span { class: "rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 {ui::TYPE_LABEL}",
                     "{CHART_GROUP_BADGE}"
                 }
             }
@@ -171,7 +171,7 @@ pub fn GroupQuotaCard() -> Element {
             div { class: "space-y-3 pt-1",
                 for (name, mult, quota, pct, color) in groups {
                     div { key: "{name}", class: "space-y-1.5",
-                        div { class: "flex items-center justify-between text-xs",
+                        div { class: "flex items-center justify-between {ui::TYPE_DESC}",
                             div { class: "flex items-center gap-2",
                                 span { class: "h-2 w-2 rounded-full", style: "background: {color}" }
                                 span { class: "font-medium text-zinc-200 uppercase", "{name}" }
@@ -186,7 +186,7 @@ pub fn GroupQuotaCard() -> Element {
                 }
             }
 
-            div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 text-xs text-zinc-400 space-y-1",
+            div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 {ui::TYPE_DESC} space-y-1",
                 div { class: "flex justify-between", span { "{CHART_ROUTE_WEIGHT}" } span { class: "text-zinc-200 font-mono font-medium", "{CHART_ROUTE_PRIORITY}" } }
                 div { class: "flex justify-between", span { "{CHART_CIRCUIT_BREAKER}" } span { class: "{ui::C_SUCCESS} font-mono font-medium", "{CHART_CIRCUIT_ON}" } }
             }

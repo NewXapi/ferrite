@@ -108,7 +108,7 @@ pub fn RedemptionCard(
             div { class: "space-y-3",
                 // 头部
                 div { class: "flex items-start gap-3",
-                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-sm font-semibold text-zinc-200 group-hover:border-zinc-500 transition-colors",
+                    div { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 {ui::TYPE_CARD_TITLE} group-hover:border-zinc-500 transition-colors",
                         "¥"
                     }
                     div { class: "min-w-0 flex-1",
@@ -127,8 +127,8 @@ pub fn RedemptionCard(
 
                 // 额度有效条
                 div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 text-[11px]",
-                        span { class: "text-zinc-400", "{LBL_AVAILABLE_QUOTA}" }
+                    div { class: "flex justify-between gap-2 {ui::TYPE_LABEL}",
+                        span { class: "{ui::C_MUTED}", "{LBL_AVAILABLE_QUOTA}" }
                         span { class: "whitespace-nowrap font-medium text-zinc-200 font-mono", "¥ {item.quota_cny:.2}" }
                     }
                     div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
@@ -137,20 +137,20 @@ pub fn RedemptionCard(
                 }
 
                 // 详情指标行
-                div { class: "space-y-1.5 text-xs pt-1",
+                div { class: "space-y-1.5 {ui::TYPE_DESC} pt-1",
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "{LBL_CREATED}" }
+                        span { class: "shrink-0 {ui::C_MUTED}", "{LBL_CREATED}" }
                         span { class: "font-mono text-zinc-400", "{item.created}" }
                     }
                     if let Some(by) = &item.redeemed_by {
                         div { class: "flex justify-between gap-2",
-                            span { class: "shrink-0 text-zinc-400", "{LBL_REDEEMED_BY}" }
+                            span { class: "shrink-0 {ui::C_MUTED}", "{LBL_REDEEMED_BY}" }
                             span { class: "font-medium text-zinc-200", "{by}" }
                         }
                     }
                     if !item.redeemed_at.is_empty() {
                         div { class: "flex justify-between gap-2",
-                            span { class: "shrink-0 text-zinc-400", "{LBL_REDEEMED_AT}" }
+                            span { class: "shrink-0 {ui::C_MUTED}", "{LBL_REDEEMED_AT}" }
                             span { class: "font-mono text-zinc-300", "{item.redeemed_at}" }
                         }
                     }
@@ -173,21 +173,21 @@ pub fn RedemptionCard(
                 if item.status == 1 {
                     button {
                         "data-testid": "disable-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium {ui::C_WARNING} transition-colors hover:bg-zinc-700 hover:text-amber-300",
+                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 {ui::TYPE_DESC} {ui::C_WARNING} transition-colors hover:bg-zinc-700 hover:text-amber-300",
                         onclick: move |_| on_disable.call(disable_key.clone()),
                         "{BTN_DISABLE}"
                     }
                 } else if item.status == 2 {
                     button {
                         "data-testid": "redeemed-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 {ui::TYPE_DESC} cursor-not-allowed",
                         disabled: true,
                         "{BTN_REDEEMED}"
                     }
                 } else {
                     button {
                         "data-testid": "disabled-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 text-xs text-zinc-600 cursor-not-allowed",
+                        class: "flex-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1.5 {ui::TYPE_DESC} cursor-not-allowed",
                         disabled: true,
                         "{BTN_DISABLED}"
                     }

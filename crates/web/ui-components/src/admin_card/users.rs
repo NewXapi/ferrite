@@ -71,33 +71,33 @@ pub fn UserCard(
     // 容器高度取最高者，切页签时卡片高度不跳动。
     let panel_basic = rsx! {
         div { class: "space-y-2.5",
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "用户名" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "用户名" }
                 span { class: "font-medium text-zinc-200 truncate", "{user.username}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "邮箱" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "邮箱" }
                 span { class: "font-medium text-zinc-200 truncate", "{user.email}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "角色" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "角色" }
                 span { class: "font-medium text-zinc-200", "{role_str}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "状态" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "状态" }
                 span { class: "font-medium text-zinc-200", "{status_str}" }
             }
             div { class: "space-y-1.5",
-                p { class: "text-[11px] text-zinc-400", "分组" }
+                p { class: "{crate::TYPE_LABEL}", "分组" }
                 div { class: "flex flex-wrap gap-1.5",
                     for label in &group_labels {
                         span {
-                            class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] text-zinc-300",
+                            class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 {crate::TYPE_LABEL}",
                             "{label}"
                         }
                     }
                     if group_labels.is_empty() {
-                        span { class: "text-[11px] text-zinc-500", "无分组" }
+                        span { class: "{crate::TYPE_LABEL}", "无分组" }
                     }
                 }
             }
@@ -109,31 +109,31 @@ pub fn UserCard(
     };
     let panel_quota = rsx! {
         div { class: "space-y-2",
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "已用" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "已用" }
                 span { class: "font-medium text-zinc-200", "{fmt_quota_cny(user.used_quota)}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "总额" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "总额" }
                 span { class: "font-medium text-zinc-200", "{fmt_quota_cny(user.quota)}" }
             }
             div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
                 div { class: "h-full rounded-full {usage_tone(used_pct)} transition-all", style: "width: {used_pct:.1}%" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "请求数" }
+            div { class: "flex justify-between gap-2 {crate::TYPE_DESC}",
+                span { class: "{crate::C_MUTED}", "请求数" }
                 span { class: "font-medium text-zinc-200", "{user.request_count}" }
             }
         }
     };
     let panel_system = rsx! {
-        div { class: "space-y-2 text-xs",
+        div { class: "space-y-2 {crate::TYPE_DESC}",
             div { class: "flex justify-between gap-2",
-                span { class: "text-zinc-400", "Key" }
+                span { class: "{crate::C_MUTED}", "Key" }
                 span { class: "font-mono text-zinc-200", "{short_k}" }
             }
             div { class: "flex justify-between gap-2",
-                span { class: "text-zinc-400", "创建" }
+                span { class: "{crate::C_MUTED}", "创建" }
                 span { class: "text-zinc-200", "{user.created_at}" }
             }
         }

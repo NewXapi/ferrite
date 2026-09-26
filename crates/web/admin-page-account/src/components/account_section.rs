@@ -52,7 +52,7 @@ pub fn AccountSection() -> Element {
 
             div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2",
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "显示名" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "显示名" }
                     input {
                         class: "{ui::INPUT}",
                         "data-testid": "settings-display-name",
@@ -110,7 +110,7 @@ pub fn AccountSection() -> Element {
 
             div { class: "mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2",
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "原密码" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "原密码" }
                     input {
                         class: "{ui::INPUT_MONO}",
                         r#type: "password",
@@ -121,7 +121,7 @@ pub fn AccountSection() -> Element {
                     }
                 }
                 div {
-                    label { class: "mb-1.5 block text-xs text-zinc-400", "新密码" }
+                    label { class: "mb-1.5 block {ui::TYPE_DESC}", "新密码" }
                     input {
                         class: "{ui::INPUT_MONO}",
                         r#type: "password",
@@ -183,12 +183,12 @@ pub fn AccountSection() -> Element {
                     "修改密码"
                 }
                 if let Some(m) = save_flash() {
-                    span { class: "text-xs {ui::C_SUCCESS}", "{m}" }
+                    span { class: "{ui::TYPE_DESC} {ui::C_SUCCESS}", "{m}" }
                 }
             }
 
             if !save_err().is_empty() {
-                p { class: "mt-3 text-xs {ui::C_DANGER}", "操作失败: {save_err()}" }
+                p { class: "mt-3 {ui::TYPE_DESC} {ui::C_DANGER}", "操作失败: {save_err()}" }
             }
         }
     }

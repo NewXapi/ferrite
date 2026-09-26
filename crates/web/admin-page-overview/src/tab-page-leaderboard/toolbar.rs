@@ -26,8 +26,8 @@ pub fn UsageToolbar(
     rsx! {
         div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
             div {
-                h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "{USAGE_TITLE}" }
-                p { class: "mt-1 text-xs text-zinc-400", "{USAGE_SUBTITLE_HEAD}{model_count}{USAGE_SUBTITLE_TAIL}" }
+                h2 { class: "{ui::TYPE_TITLE} tracking-tight md:text-xl", "{USAGE_TITLE}" }
+                p { class: "mt-1 {ui::TYPE_DESC}", "{USAGE_SUBTITLE_HEAD}{model_count}{USAGE_SUBTITLE_TAIL}" }
             }
             TimeframeTabs { timeframe, testid_prefix: TESTID_TIMEFRAME_PREFIX }
         }

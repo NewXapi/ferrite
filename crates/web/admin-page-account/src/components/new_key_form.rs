@@ -91,7 +91,7 @@ pub fn NewKeyForm(
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "{ui::MODAL_HEADER}",
-                    h3 { class: "text-base font-semibold text-zinc-100", "新建 API 密钥" }
+                    h3 { class: "{ui::TYPE_TITLE}", "新建 API 密钥" }
                     button {
                         class: "{ui::CLOSE_BTN}",
                         onclick: move |_| on_cancel.call(()),
@@ -102,7 +102,7 @@ pub fn NewKeyForm(
 
                 div { class: "space-y-4",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "密钥名称" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "密钥名称" }
                         input {
                             class: "{ui::INPUT}",
                             placeholder: "例如: 生产环境密钥",
@@ -111,7 +111,7 @@ pub fn NewKeyForm(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "分组 (可选)" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "分组 (可选)" }
                         input {
                             class: "{ui::INPUT}",
                             placeholder: "留空 = 跟随用户默认分组",
@@ -120,7 +120,7 @@ pub fn NewKeyForm(
                         }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "额度限制 (额度单位)" }
+                        label { class: "mb-1.5 block {ui::TYPE_DESC}", "额度限制 (额度单位)" }
                         input {
                             class: "{ui::INPUT_MONO}",
                             r#type: "text",
@@ -131,7 +131,7 @@ pub fn NewKeyForm(
                     }
 
                     if !err().is_empty() {
-                        p { class: "text-xs {ui::C_DANGER}", "{err()}" }
+                        p { class: "{ui::TYPE_DESC} {ui::C_DANGER}", "{err()}" }
                     }
                 }
 

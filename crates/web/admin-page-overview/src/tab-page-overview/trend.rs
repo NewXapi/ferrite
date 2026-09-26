@@ -86,14 +86,14 @@ pub fn TrendPanel(
         section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-all duration-300 hover:border-zinc-700",
             div { class: "mb-4 flex flex-wrap items-center justify-between gap-3",
                 div {
-                    h2 { class: "text-sm font-medium text-zinc-300", "{SEC_TREND}" }
+                    h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_TREND}" }
                     // 时间窗动态副标题:与 window_start 的窗口语义一致(今天=24 小时桶/本周=7 天桶/本月=30 天桶/今年=12 月桶)
                     p { class: "mt-0.5 {ui::TYPE_DESC}", "data-testid": "trend-window-caption", "{api::window_caption(tf)}" }
                 }
                 div { class: "flex items-center gap-4",
                     div { class: "text-right",
-                        p { class: "text-2xl font-semibold leading-none text-zinc-100", "{fmt_raw(total_all as i64)}" }
-                        p { class: "mt-1 text-[11px] text-zinc-600", "{TREND_UNIT}" }
+                        p { class: "{ui::TYPE_VALUE} leading-none", "{fmt_raw(total_all as i64)}" }
+                        p { class: "mt-1 {ui::TYPE_LABEL}", "{TREND_UNIT}" }
                     }
                     // 时间窗切换胶囊(与排行榜共用组件);总览趋势面板无 testid 前缀
                     TimeframeTabs { timeframe }
@@ -101,17 +101,17 @@ pub fn TrendPanel(
             }
             if let Some(e) = err {
                 div { class: "rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-8 text-center",
-                    p { class: "text-sm text-red-300", "{TREND_ERR}" }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                    p { class: "text-sm {ui::C_DANGER}", "{TREND_ERR}" }
+                    p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                 }
             } else if loading {
                 div { class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{TREND_LOADING}" }
+                    p { class: "{ui::C_MUTED}", "{TREND_LOADING}" }
                 }
             } else if !has_any || empty_window {
                 div { class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{TREND_EMPTY}" }
-                    p { class: "mt-1 text-xs text-zinc-600", "{TREND_EMPTY_HINT}" }
+                    p { class: "{ui::C_MUTED}", "{TREND_EMPTY}" }
+                    p { class: "mt-1 {ui::TYPE_DESC}", "{TREND_EMPTY_HINT}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-5 xl:grid-cols-3",

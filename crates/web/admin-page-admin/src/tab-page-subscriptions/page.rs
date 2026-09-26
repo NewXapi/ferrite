@@ -291,21 +291,21 @@ pub fn SubscriptionsPage() -> Element {
 
             // ---- error:写请求(upsert / delete)失败的红条 ----
             if let Some(e) = action_err() {
-                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm {ui::C_DANGER}",
                     "data-testid": "subscriptions-action-error",
                     "{e}"
                 }
             }
             // ---- ok:写成功反馈(点击后立即可见,列表也已同步刷新) ----
             if let Some(m) = ok_msg() {
-                div { class: "rounded-xl border border-emerald-800 bg-emerald-950/40 p-3 text-sm text-emerald-300",
+                div { class: "rounded-xl border border-emerald-800 bg-emerald-950/40 p-3 text-sm {ui::C_SUCCESS}",
                     "data-testid": "subscriptions-action-ok",
                     "{m}"
                 }
             }
             // ---- loading:写请求在途(保存中…,弹窗保存按钮同时禁用) ----
             if saving() {
-                div { class: "rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
+                div { class: "rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-2.5 {ui::TYPE_DESC}",
                     "data-testid": "subscriptions-saving",
                     "{MSG_SAVING}"
                 }
@@ -313,29 +313,29 @@ pub fn SubscriptionsPage() -> Element {
 
             // 顶部栏: 提示横幅 + 新建按钮
             div { class: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3",
-                div { class: "flex items-center gap-2 text-xs text-amber-300",
+                div { class: "flex items-center gap-2 text-xs {ui::C_WARNING}",
                     span { class: "flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/20 font-bold", "ℹ" }
                     span { "{SEC_NAME_DEDUP}" }
                 }
                 button {
-                    class: "flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-amber-300 shadow-sm",
+                    class: "flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 {ui::TYPE_DESC} transition-colors hover:bg-amber-300 shadow-sm",
                     "data-testid": "subscriptions-new",
                     onclick: open_new,
-                    span { class: "text-sm", "+" }
+                    span { class: "{ui::TYPE_BODY}", "+" }
                     "{BTN_NEW_PLAN}"
                 }
             }
 
             // ---- loading:首次/重拉在途(与写请求的 saving 指示区分开) ----
             if loading() {
-                div { class: "rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center text-sm text-zinc-500",
+                div { class: "rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-center {ui::TYPE_BODY}",
                     "data-testid": "subscriptions-loading",
                     "{MSG_LOADING}"
                 }
             }
             // ---- error:列表拉取失败(与写请求的 action_err 红条区分开) ----
             if let Some(e) = err() {
-                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-300",
+                div { class: "rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm {ui::C_DANGER}",
                     "data-testid": "subscriptions-load-error",
                     "{MSG_LOAD_FAIL_PREFIX}{e}{MSG_LOAD_FAIL_SUFFIX}"
                 }
@@ -343,7 +343,7 @@ pub fn SubscriptionsPage() -> Element {
 
             // ---- empty / data ----
             if !loading() && plans.read().is_empty() {
-                div { class: "rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500",
+                div { class: "rounded-lg border border-dashed border-zinc-700 p-6 text-center {ui::TYPE_BODY}",
                     "data-testid": "subscriptions-empty",
                     "{MSG_EMPTY}"
                 }

@@ -12,7 +12,7 @@ pub fn ErrCard(testid: &'static str, what: &'static str, msg: String) -> Element
         div {
             class: "rounded-xl border border-red-500/40 bg-zinc-900 p-4",
             "data-testid": testid,
-            p { class: "text-sm text-red-300", "无法加载{what} (未登录或请求失败): {msg}" }
+            p { class: "text-sm {ui::C_DANGER}", "无法加载{what} (未登录或请求失败): {msg}" }
         }
     }
 }

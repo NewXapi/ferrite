@@ -356,7 +356,7 @@ pub fn ChannelsPage() -> Element {
         div { class: "flex flex-col gap-6",
             // 通知条(成功/错误/进行中)
             if let Some(msg) = notice() {
-                div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 {ui::TYPE_DESC}",
                     "{msg}"
                     if busy() { " ···" }
                 }

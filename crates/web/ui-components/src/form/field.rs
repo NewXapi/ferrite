@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 pub fn Field(label: &'static str, children: Element) -> Element {
     rsx! {
         label { class: "block space-y-1.5",
-            span { class: "block text-xs font-medium text-zinc-400 uppercase tracking-wide", "{label}" }
+            span { class: "block {crate::TYPE_DESC} uppercase tracking-wide", "{label}" }
             {children}
         }
     }

@@ -171,7 +171,7 @@ pub fn NodeInspector(
             // 底部操作条
             div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2",
                 button {
-                    class: "rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400",
+                    class: "rounded-md border border-zinc-800 px-2.5 py-1 {ui::TYPE_DESC} hover:border-red-700 hover:text-red-400",
                     disabled: !can_delete,
                     title: if can_delete { del_label } else { MSG_DELETE_DISABLED_TITLE },
                     onclick: move |_| confirming.set(true),
@@ -179,7 +179,7 @@ pub fn NodeInspector(
                 }
                 span { class: "flex-1" }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 {ui::TYPE_DESC} hover:bg-zinc-300",
                     disabled: !can_delete,
                     title: if can_delete { MSG_SAVE_TITLE } else { MSG_SAVE_DISABLED_TITLE },
                     {BTN_SAVE}
@@ -239,7 +239,7 @@ pub fn GroupInspect(index: usize) -> Element {
         .map(|l| view_title(&view, l))
         .collect();
     let Some(r) = row else {
-        return rsx! { p { class: "text-xs text-zinc-600", {MSG_GROUP_ABSENT} } };
+        return rsx! { p { class: "{ui::TYPE_DESC}", {MSG_GROUP_ABSENT} } };
     };
     // 分组改名/删除走真实后端（drawer_write）：分组名后端无更新路径
     // （UpdateGroupRequest 只有 ratio/model_whitelist/remark/status），
@@ -289,7 +289,7 @@ pub fn GroupInspect(index: usize) -> Element {
                 on_change: move |v: String| display_sig.set(v),
             }
             button {
-                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                 onclick: save_display,
                 {BTN_SAVE_DISPLAY}
             }
@@ -342,7 +342,7 @@ pub fn AliasInspect(index: usize) -> Element {
         .map(|l| view_title(&view, l))
         .collect();
     let Some(r) = row else {
-        return rsx! { p { class: "text-xs text-zinc-600", {MSG_ALIAS_ABSENT} } };
+        return rsx! { p { class: "{ui::TYPE_DESC}", {MSG_ALIAS_ABSENT} } };
     };
     // 别名写路径（#175/#182）按 UUID key 走 /api/models/{key}，本 inspector
     // 只有名字定位不到 key → 锁读不丢写（与 b37a407 的锁读修复同型）。
@@ -474,12 +474,12 @@ pub fn DispatchInspect(index: usize) -> Element {
     rsx! {
         DrawerNoticeBar { notice: ch_notice, on_clear: move |_| ch_notice.set(DrawerNotice::Idle) }
         div { class: "space-y-1",
-            span { class: "text-[11px] text-zinc-500", {MSG_MODEL_NAME_READONLY} }
+            span { class: "{ui::TYPE_LABEL}", {MSG_MODEL_NAME_READONLY} }
             div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono {ui::TYPE_BODY}", "{model_name}" }
         }
         if row.is_some() {
             div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
-                span { class: "text-[11px] uppercase tracking-wider text-zinc-600", {MSG_OWNER_CHANNEL} }
+                span { class: "{ui::TYPE_LABEL} uppercase tracking-wider", {MSG_OWNER_CHANNEL} }
                 BoundField {
                     label: MSG_CHANNEL_NAME,
                     value: ch_name,
@@ -499,7 +499,7 @@ pub fn DispatchInspect(index: usize) -> Element {
                     on_change: move |v: String| ch_keys.set(v),
                 }
                 button {
-                    class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     onclick: save_channel,
                     {BTN_SAVE_CHANNEL}
                 }
@@ -537,7 +537,7 @@ pub fn BoundArea(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "text-[11px] text-zinc-500", "{label}" }
+            span { class: "{ui::TYPE_LABEL}", "{label}" }
             textarea {
                 class: "min-h-[72px] w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value}",
@@ -574,9 +574,9 @@ fn BoundField(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "text-[11px] text-zinc-500", "{label}" }
+            span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |e| on_change.call(e.value()),
@@ -605,7 +605,7 @@ fn BoundField(
 fn CredRow(label: &'static str, value: &'static str) -> Element {
     rsx! {
         div { class: "flex items-baseline gap-2",
-            span { class: "w-8 shrink-0 text-[11px] text-zinc-600", "{label}" }
+            span { class: "w-8 shrink-0 {ui::TYPE_LABEL}", "{label}" }
             span { class: "truncate font-mono text-[11px] text-zinc-400", "{value}" }
         }
     }
@@ -634,9 +634,9 @@ fn CredRow(label: &'static str, value: &'static str) -> Element {
 fn InspectField(label: &'static str, value: Signal<String>, placeholder: &'static str) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "text-[11px] text-zinc-500", "{label}" }
+            span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value.read()}",
                 placeholder: "{placeholder}",
                 oninput: move |e| value.set(e.value()),
@@ -669,13 +669,13 @@ fn InspectField(label: &'static str, value: Signal<String>, placeholder: &'stati
 fn InspectList(title: &'static str, items: Vec<String>, empty: &'static str) -> Element {
     rsx! {
         div { class: "space-y-1.5",
-            span { class: "text-[11px] text-zinc-500", "{title}" }
+            span { class: "{ui::TYPE_LABEL}", "{title}" }
             if items.is_empty() {
-                p { class: "text-[11px] text-zinc-600", "{empty}" }
+                p { class: "{ui::TYPE_LABEL}", "{empty}" }
             } else {
                 div { class: "flex flex-wrap gap-1.5",
                     for it in items.iter() {
-                        span { class: "inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300",
+                        span { class: "inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 {ui::TYPE_LABEL}",
                             "{it}"
                             button { class: "text-zinc-600 hover:text-red-400", "✕" }
                         }

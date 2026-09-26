@@ -193,8 +193,8 @@ pub fn CardPanel(
                 class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900",
                 onclick: move |e| on_toggle.call(e),
                 span { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
-                span { class: "rounded-full border border-zinc-700 px-1.5 text-[11px] text-zinc-400", "{count}" }
-                span { class: "truncate text-[11px] text-zinc-600", "{hint}" }
+                span { class: "rounded-full border border-zinc-700 px-1.5 {ui::TYPE_LABEL}", "{count}" }
+                span { class: "truncate {ui::TYPE_LABEL}", "{hint}" }
             }
             if open {
                 div { class: "space-y-3 border-t border-zinc-800 p-4", {children} }
@@ -245,7 +245,7 @@ pub fn NodeArea(children: Element) -> Element {
 pub fn EmptyHint(text: &'static str) -> Element {
     rsx! {
         div { class: "flex h-full min-h-[72px] items-center justify-center",
-            span { class: "text-[11px] text-zinc-600", "{text}" }
+            span { class: "{ui::TYPE_LABEL}", "{text}" }
         }
     }
 }
@@ -297,13 +297,13 @@ pub fn EntityChip(
             button {
                 class: "flex items-baseline gap-1.5",
                 onclick: move |e| on_pick.call(e),
-                span { class: "text-xs font-medium", "{label}" }
+                span { class: "{ui::TYPE_DESC}", "{label}" }
                 if !sub.is_empty() {
-                    span { class: "text-[11px] {sub_tone}", "{sub}" }
+                    span { class: "{ui::TYPE_LABEL} {sub_tone}", "{sub}" }
                 }
             }
             button {
-                class: "px-1 text-[11px] opacity-50 hover:text-red-400 hover:opacity-100",
+                class: "px-1 {ui::TYPE_LABEL} opacity-50 hover:text-red-400 hover:opacity-100",
                 onclick: move |e| on_remove.call(e),
                 "✕"
             }
@@ -342,9 +342,9 @@ pub fn InputCell(
     let width = if grow { "min-w-[140px] flex-1" } else { "" };
     rsx! {
         label { class: "block space-y-1 {width}",
-            span { class: "text-[11px] text-zinc-500", "{label}" }
+            span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value.read()}",
                 placeholder: "{placeholder}",
                 oninput: move |e| value.set(e.value()),
@@ -381,9 +381,9 @@ pub fn SelectCell(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "text-[11px] text-zinc-500", "{label}" }
+            span { class: "{ui::TYPE_LABEL}", "{label}" }
             select {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors focus:border-zinc-500",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors focus:border-zinc-500",
                 value: "{value}",
                 oninput: move |e| oninput.call(e.value()),
                 for opt in options {
@@ -420,9 +420,9 @@ pub fn TextCell(
 ) -> Element {
     rsx! {
         label { class: "block space-y-1",
-            span { class: "text-[11px] text-zinc-500", "{label}" }
+            span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |e| oninput.call(e.value()),

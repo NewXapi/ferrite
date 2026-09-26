@@ -85,7 +85,7 @@ pub fn SectionHeader(
         div { class: "flex flex-wrap items-center justify-between gap-2",
             h2 { class: "{crate::TYPE_TITLE}", "{title}" }
             div { class: "flex items-center gap-2",
-                span { class: "rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400", "{badge}" }
+                span { class: "rounded-full bg-zinc-800 px-3 py-1 {crate::TYPE_DESC}", "{badge}" }
                 if let Some(extra) = trailing {
                     {extra}
                 }
@@ -137,7 +137,7 @@ pub fn PlaceholderBlock(
     rsx! {
         div {
             class: "rounded-2xl border {border} border-zinc-700 bg-zinc-900/50 {pad} text-center",
-            p { class: "text-sm text-zinc-500", "{message}" }
+            p { class: "{crate::TYPE_BODY}", "{message}" }
             {children}
         }
     }
@@ -157,9 +157,9 @@ pub fn DangerBlock(
 ) -> Element {
     rsx! {
         div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
-            p { class: "text-sm text-red-300", "{title}" }
+            p { class: "text-sm {crate::C_DANGER}", "{title}" }
             if let Some(detail) = detail {
-                p { class: "mt-1 text-xs text-red-400/70", "{detail}" }
+                p { class: "mt-1 text-xs {crate::C_DANGER}", "{detail}" }
             }
             if let Some(children) = children {
                 {children}

@@ -149,7 +149,7 @@ pub fn SystemOverview(
             div { class: "flex items-center justify-between",
                 h2 { class: "{ui::TYPE_TITLE}", "{SEC_STATS}" }
                 button {
-                    class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                    class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-800",
                     "data-testid": "refresh-system",
                     onclick: on_refresh,
                     {BTN_REFRESH}
@@ -157,22 +157,22 @@ pub fn SystemOverview(
             }
             if let Some(e) = err {
                 div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                    p { class: "text-sm text-red-300", {MSG_LOAD_FAILED} }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                    p { class: "text-sm {ui::C_DANGER}", {MSG_LOAD_FAILED} }
+                    p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-800",
                         onclick: on_refresh,
                         {BTN_RETRY}
                     }
                 }
             } else if loading {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", {MSG_LOADING} }
+                    p { class: "{ui::C_MUTED}", {MSG_LOADING} }
                 }
             } else if stats.is_empty() {
                 div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", {MSG_EMPTY} }
-                    p { class: "mt-1 text-xs text-zinc-600", {MSG_EMPTY_HINT} }
+                    p { class: "{ui::C_MUTED}", {MSG_EMPTY} }
+                    p { class: "mt-1 {ui::TYPE_DESC}", {MSG_EMPTY_HINT} }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",
@@ -201,7 +201,7 @@ pub fn SystemOverview(
                 id: "system-sec-env",
                 class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
                 div {
-                    h2 { class: "text-sm font-medium text-zinc-200", "{SEC_ENV}" }
+                    h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_ENV}" }
                     p { class: "{ui::TYPE_DESC}", {SEC_ENV_NOTE} }
                 }
                 div { class: "divide-y divide-zinc-800/80",

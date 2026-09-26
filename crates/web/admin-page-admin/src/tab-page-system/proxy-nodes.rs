@@ -164,34 +164,34 @@ pub fn ProxyNodesPanel() -> Element {
             class: "scroll-mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-6",
 
             div { class: "flex items-center justify-between mb-4",
-                h2 { class: "text-lg font-semibold text-zinc-100", {LBL_PROXY_NODES} }
+                h2 { class: "{ui::TYPE_TITLE}", {LBL_PROXY_NODES} }
             }
 
             // 订阅导入
             div { class: "space-y-4 border-b border-zinc-800 pb-6",
-                h3 { class: "text-sm font-medium text-zinc-300", {FIELD_SUB_IMPORT} }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", {FIELD_SUB_IMPORT} }
                 div { class: "space-y-3",
                     input {
-                        class: "w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500",
+                        class: "w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 {ui::TYPE_BODY} placeholder-zinc-500 focus:outline-none focus:border-blue-500",
                         placeholder: FIELD_SUB_URL_PLACEHOLDER,
                         value: sub_url(),
                         oninput: move |e| sub_url.set(e.value()),
                         "data-testid": "proxy-subscription-url"
                     }
                     input {
-                        class: "w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500",
+                        class: "w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 {ui::TYPE_BODY} placeholder-zinc-500 focus:outline-none focus:border-blue-500",
                         placeholder: FIELD_CHANNELS_PLACEHOLDER,
                         value: channels_str(),
                         oninput: move |e| channels_str.set(e.value()),
                     }
                     input {
-                        class: "w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500",
+                        class: "w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 {ui::TYPE_BODY} placeholder-zinc-500 focus:outline-none focus:border-blue-500",
                         placeholder: FIELD_PRIORITY_PLACEHOLDER,
                         value: priority_str(),
                         oninput: move |e| priority_str.set(e.value()),
                     }
                     button {
-                        class: "w-full px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-600 rounded-xl text-white text-sm font-medium transition-colors",
+                        class: "w-full px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-600 rounded-xl {ui::TYPE_CARD_TITLE} transition-colors",
                         "data-testid": "proxy-subscription-import",
                         disabled: is_importing(),
                         onclick: on_sub_import,
@@ -202,7 +202,7 @@ pub fn ProxyNodesPanel() -> Element {
 
             // 粘贴分享链接
             div { class: "space-y-4",
-                h3 { class: "text-sm font-medium text-zinc-300", {FIELD_SHARE_IMPORT} }
+                h3 { class: "{ui::TYPE_CARD_TITLE}", {FIELD_SHARE_IMPORT} }
                 textarea {
                     class: "w-full h-32 bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-mono resize-y",
                     placeholder: "vless://...\nvmess://...\nss://...",
@@ -212,20 +212,20 @@ pub fn ProxyNodesPanel() -> Element {
                 }
                 div { class: "grid grid-cols-2 gap-3",
                     input {
-                        class: "bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500",
+                        class: "bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 {ui::TYPE_BODY} placeholder-zinc-500 focus:outline-none focus:border-blue-500",
                         placeholder: FIELD_CHANNELS_PLACEHOLDER,
                         value: channels_str(),
                         oninput: move |e| channels_str.set(e.value()),
                     }
                     input {
-                        class: "bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500",
+                        class: "bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 {ui::TYPE_BODY} placeholder-zinc-500 focus:outline-none focus:border-blue-500",
                         placeholder: FIELD_PRIORITY_PLACEHOLDER,
                         value: priority_str(),
                         oninput: move |e| priority_str.set(e.value()),
                     }
                 }
                 button {
-                    class: "w-full px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-600 rounded-xl text-white text-sm font-medium transition-colors",
+                    class: "w-full px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-600 rounded-xl {ui::TYPE_CARD_TITLE} transition-colors",
                     "data-testid": "proxy-sharelink-import",
                     disabled: is_importing(),
                     onclick: on_share_import,
@@ -237,7 +237,7 @@ pub fn ProxyNodesPanel() -> Element {
             if let Some(e) = err_msg() {
                 div {
                     role: "alert",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::C_DANGER}",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
                     "data-testid": "proxy-import-error",
                     "{e}"
                 }
@@ -246,25 +246,25 @@ pub fn ProxyNodesPanel() -> Element {
                     role: "status",
                     class: "rounded-xl border border-emerald-500/30 bg-emerald-950/30 p-5",
                     "data-testid": "proxy-import-report",
-                    div { class: "flex gap-6 text-sm mb-4",
+                    div { class: "flex gap-6 {ui::TYPE_BODY} mb-4",
                         span { class: "{ui::C_SUCCESS} font-medium", {MSG_CREATED_PREFIX} "{r.created}" }
                         span { class: "{ui::C_WARNING} font-medium", {MSG_SKIPPED_PREFIX} "{r.skipped}" }
                     }
                     if !r.failures.is_empty() {
                         div { class: "mt-3 pt-3 border-t border-zinc-700",
-                            p { class: "text-xs text-zinc-400 mb-3", {MSG_FAILURES_TITLE} }
+                            p { class: "{ui::TYPE_DESC} mb-3", {MSG_FAILURES_TITLE} }
                             for f in &r.failures {
                                 div {
-                                    class: "mb-2 text-xs p-3 bg-zinc-950 rounded border-l-4 {ui::B_DANGER}",
+                                    class: "mb-2 {ui::TYPE_DESC} p-3 bg-zinc-950 rounded border-l-4 {ui::B_DANGER}",
                                     "data-testid": "proxy-import-failure",
                                     span { class: "font-mono {ui::C_DANGER}", "{f.source}" }
-                                    span { class: "text-zinc-500 mx-2", "→" }
+                                    span { class: "{ui::C_MUTED} mx-2", "→" }
                                     span { class: "text-zinc-300", "{f.reason}" }
                                 }
                             }
                         }
                     } else {
-                        p { class: "text-xs text-emerald-400/80", {MSG_ALL_IMPORTED} }
+                        p { class: "text-xs {ui::C_SUCCESS}", {MSG_ALL_IMPORTED} }
                     }
                 }
             }

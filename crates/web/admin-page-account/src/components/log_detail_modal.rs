@@ -48,16 +48,16 @@ pub fn LogDetailModal(log: UsageLogDto, on_close: EventHandler<()>) -> Element {
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-4 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-zinc-100", "日志详情" }
+                    h3 { class: "{ui::TYPE_TITLE}", "日志详情" }
                     button {
-                        class: "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                        class: "rounded-lg p-1.5 {ui::C_MUTED} transition-colors hover:bg-zinc-800 hover:text-zinc-200",
                         onclick: move |_| on_close.call(()),
                         "aria-label": "关闭",
                         "✕"
                     }
                 }
 
-                div { class: "space-y-2.5 text-sm",
+                div { class: "space-y-2.5 {ui::TYPE_BODY}",
                     DetailRow { label: "模型", value: log.model_name.clone() }
                     DetailRow { label: "时间", value: time_str }
                     DetailRow { label: "密钥", value: log.token_name.clone() }
@@ -80,7 +80,7 @@ pub fn LogDetailModal(log: UsageLogDto, on_close: EventHandler<()>) -> Element {
 fn DetailRow(label: &'static str, value: String) -> Element {
     rsx! {
         div { class: "flex justify-between gap-2",
-            span { class: "shrink-0 text-zinc-500", "{label}" }
+            span { class: "shrink-0 {ui::C_MUTED}", "{label}" }
             span { class: "min-w-0 break-all text-right font-mono text-zinc-200", "{value}" }
         }
     }

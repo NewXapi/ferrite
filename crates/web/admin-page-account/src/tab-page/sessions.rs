@@ -76,7 +76,7 @@ pub fn SessionsPanel() -> Element {
             div { class: "flex items-center justify-between gap-3",
                 div {
                     h2 { class: "{ui::TYPE_TITLE}", "登录会话" }
-                    p { class: "mt-1 text-sm text-zinc-500", "当前用户全部存活设备与登录记录" }
+                    p { class: "mt-1 {ui::TYPE_BODY}", "当前用户全部存活设备与登录记录" }
                 }
                 Button {
                     variant: ButtonVariant::Outline,
@@ -113,15 +113,15 @@ pub fn SessionsPanel() -> Element {
             }
 
             if let Some(m) = flash() {
-                p { class: "text-xs {ui::C_SUCCESS}", "{m}" }
+                p { class: "{ui::TYPE_DESC} {ui::C_SUCCESS}", "{m}" }
             }
             if !action_err().is_empty() {
-                p { class: "text-xs {ui::C_DANGER}", "吊销失败: {action_err()}" }
+                p { class: "{ui::TYPE_DESC} {ui::C_DANGER}", "吊销失败: {action_err()}" }
             }
 
             if let Some(list) = sessions() {
                 if list.is_empty() {
-                    p { class: "text-sm text-zinc-500", "暂无存活会话" }
+                    p { class: "{ui::TYPE_BODY}", "暂无存活会话" }
                 } else {
                     div { class: "flex flex-col gap-3",
                         for s in list {
@@ -155,9 +155,9 @@ pub fn SessionsPanel() -> Element {
                     }
                 }
             } else if !err().is_empty() {
-                p { class: "text-sm {ui::C_WARNING}", "无法加载会话 (未登录或请求失败): {err()}" }
+                p { class: "{ui::TYPE_BODY} {ui::C_WARNING}", "无法加载会话 (未登录或请求失败): {err()}" }
             } else {
-                p { class: "text-sm text-zinc-500", "加载中…" }
+                p { class: "{ui::TYPE_BODY}", "加载中…" }
             }
 
             // 当前设备吊销确认弹窗 (fixed 覆盖层, 位置无关渲染)

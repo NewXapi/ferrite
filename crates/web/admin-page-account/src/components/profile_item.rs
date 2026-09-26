@@ -30,7 +30,7 @@ pub fn ProfileItem(
     let copy_text = copy_value.unwrap_or_else(|| value.clone());
     rsx! {
         div { class: "flex items-baseline gap-2",
-            span { class: "shrink-0 text-zinc-400", "{label}" }
+            span { class: "shrink-0 {ui::C_MUTED}", "{label}" }
             span {
                 class: "min-w-0 break-all font-mono text-zinc-200",
                 title: "{value}",
@@ -71,7 +71,7 @@ fn CopyPlaintextButton(text: String, label: String) -> Element {
                 });
             },
             if copied() {
-                span { class: "block h-3.5 w-3.5 text-center text-[11px] leading-[14px]", "✓" }
+                span { class: "block h-3.5 w-3.5 text-center {ui::TYPE_LABEL} leading-[14px]", "✓" }
             } else {
                 svg {
                     class: "h-3.5 w-3.5",

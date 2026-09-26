@@ -213,14 +213,14 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 InputCell { label: FIELD_DISPLAY, value: display, placeholder: MSG_PH_GROUP_DISPLAY, grow: true }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     disabled: saving(),
                     onclick: commit,
                     if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
                 if editing().is_some() {
                     button {
-                        class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} hover:border-zinc-600 hover:text-zinc-200",
                         onclick: move |_| {
                             editing.set(None);
                             name.set(String::new());
@@ -268,7 +268,7 @@ pub fn GroupsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                         open: true,
                         on_confirm: confirm_delete,
                         on_cancel: move |_| confirming.set(None),
-                        div { class: "text-xs text-zinc-400", "{MSG_CONFIRM_DELETE_GROUP_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
+                        div { class: "{ui::TYPE_DESC}", "{MSG_CONFIRM_DELETE_GROUP_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
                     }
                 }
             } else {
@@ -370,13 +370,13 @@ pub fn AliasesCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element {
                 InputCell { label: FIELD_OUTPUT_PRICE, value: output_rate, placeholder: "0.07" }
                 InputCell { label: LBL_MULTIPLIER, value: mult, placeholder: "1.0" }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     onclick: commit,
                     if editing().is_some() { {BTN_UPDATE} } else { {BTN_NEW} }
                 }
                 if editing().is_some() {
                     button {
-                        class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                        class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} hover:border-zinc-600 hover:text-zinc-200",
                         onclick: move |_| {
                             editing.set(None);
                             name.set(String::new());

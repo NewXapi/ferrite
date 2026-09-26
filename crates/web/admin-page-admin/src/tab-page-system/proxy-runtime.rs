@@ -158,11 +158,11 @@ pub fn ProxyRuntimePanel() -> Element {
 
             div { class: "flex items-center justify-between",
                 div { class: "flex items-center gap-2",
-                    h2 { class: "text-lg font-semibold text-zinc-100", {LBL_PROXY_RUNTIME} }
+                    h2 { class: "{ui::TYPE_TITLE}", {LBL_PROXY_RUNTIME} }
                     span { class: "{ui::TYPE_DESC}", {SEC_PROXY_RUNTIME_NOTE} }
                 }
                 button {
-                    class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-zinc-800",
+                    class: "shrink-0 rounded-xl border border-zinc-700 px-3 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-800",
                     "data-testid": "proxy-runtime-refresh",
                     onclick: move |_| reload.set(reload() + 1),
                     {BTN_REFRESH}
@@ -173,21 +173,21 @@ pub fn ProxyRuntimePanel() -> Element {
                 div {
                     role: "alert",
                     "data-testid": "proxy-runtime-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::C_DANGER}",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
                     {MSG_RUNTIME_LOAD_FAILED} "{e}"
                 }
             } else if loading {
                 div {
                     "data-testid": "proxy-runtime-loading",
                     class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", {MSG_RUNTIME_LOADING} }
+                    p { class: "{ui::C_MUTED}", {MSG_RUNTIME_LOADING} }
                 }
             } else if nodes.is_empty() {
                 div {
                     "data-testid": "proxy-runtime-empty",
                     class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-10 text-center",
-                    p { class: "text-zinc-400", {MSG_RUNTIME_EMPTY} }
-                    p { class: "mt-1 text-xs text-zinc-600", {MSG_RUNTIME_EMPTY_HINT} }
+                    p { class: "{ui::C_MUTED}", {MSG_RUNTIME_EMPTY} }
+                    p { class: "mt-1 {ui::TYPE_DESC}", {MSG_RUNTIME_EMPTY_HINT} }
                 }
             } else {
                 div {
@@ -201,16 +201,16 @@ pub fn ProxyRuntimePanel() -> Element {
                             class: "flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3",
                             div { class: "min-w-0",
                                 div { class: "flex items-center gap-2",
-                                    span { class: "text-sm text-zinc-200", "{node.name}" }
+                                    span { class: "{ui::TYPE_BODY}", "{node.name}" }
                                     span {
-                                        class: "rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400",
+                                        class: "rounded-full bg-zinc-800 px-2 py-0.5 {ui::TYPE_DESC}",
                                         if node.enabled { {LBL_NODE_ENABLED} } else { {LBL_NODE_DISABLED} }
                                     }
                                 }
                                 p { class: "mt-0.5 truncate text-xs font-mono text-zinc-500", "{node.url_masked}" }
                             }
                             if let Some(s) = &node.stats {
-                                div { class: "flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400",
+                                div { class: "flex flex-wrap items-center gap-x-4 gap-y-1 {ui::TYPE_DESC}",
                                     span { {MSG_INFLIGHT_PREFIX} "{s.inflight}" }
                                     span { {MSG_FAILURE_PREFIX} "{s.failure_count}" }
                                     span { {MSG_COOLDOWN_PREFIX} "{format_cooldown(s.cooldown_remaining_secs)}" }

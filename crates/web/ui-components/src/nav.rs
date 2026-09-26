@@ -145,7 +145,7 @@ pub fn ScrollSpyNav(
                                     "block h-2 w-2 rounded-full bg-zinc-700/60 transition-all group-hover:bg-zinc-400"
                                 }
                             }
-                            span { class: "spy-tooltip pointer-events-none absolute left-6 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 shadow-xl z-50",
+                            span { class: "spy-tooltip pointer-events-none absolute left-6 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 {crate::TYPE_LABEL} shadow-xl z-50",
                                 "{label}"
                             }
                         }

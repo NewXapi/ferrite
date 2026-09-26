@@ -104,21 +104,21 @@ pub fn RadarFlipCard(
                             }
                             div { class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-4",
                                 div { class: "flex items-baseline justify-between",
-                                    h3 { class: "text-sm font-semibold text-zinc-100", "{name}" }
-                                    span { class: "text-[10px] text-zinc-500", "#{rank}" }
+                                    h3 { class: "{crate::TYPE_CARD_TITLE}", "{name}" }
+                                    span { class: "{crate::TYPE_LABEL}", "#{rank}" }
                                 }
-                                p { class: "mt-1 text-[10px] text-zinc-500", "{desc}" }
+                                p { class: "mt-1 {crate::TYPE_LABEL}", "{desc}" }
                                 div { class: "mt-3 space-y-2",
                                     for row in dim_rows.iter() {
                                         div { class: "flex items-baseline justify-between border-b border-zinc-800/60 pb-1",
-                                            span { class: "text-[11px] text-zinc-500", "{row.label}" }
-                                            span { class: "text-[11px] text-zinc-200", "{row.value}" }
+                                            span { class: "{crate::TYPE_LABEL}", "{row.label}" }
+                                            span { class: "{crate::TYPE_LABEL}", "{row.value}" }
                                         }
                                     }
                                 }
                                 div { class: "mt-3 flex items-baseline justify-between",
-                                    span { class: "text-[11px] text-zinc-500", "综合分" }
-                                    span { class: "text-sm font-semibold text-zinc-100", "{score:.1}" }
+                                    span { class: "{crate::TYPE_LABEL}", "综合分" }
+                                    span { class: "{crate::TYPE_CARD_TITLE}", "{score:.1}" }
                                 }
                             }
                         }
@@ -128,12 +128,12 @@ pub fn RadarFlipCard(
                 div { class: "flex min-w-0 flex-1 flex-col justify-center gap-2",
                     div { class: "rounded-lg border border-white/10 bg-zinc-950/50 px-2.5 py-2",
                         div { class: "flex items-center gap-2",
-                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-600 bg-zinc-800/80 text-[9px] font-medium text-zinc-400", "{initial}" }
-                            span { class: "min-w-0 truncate text-xs font-medium tracking-wide text-zinc-200", "{name}" }
-                            span { class: "ml-auto text-[10px] font-medium italic text-zinc-500", "#{rank}" }
+                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-600 bg-zinc-800/80 {crate::TYPE_LABEL}", "{initial}" }
+                            span { class: "min-w-0 truncate {crate::TYPE_DESC} tracking-wide", "{name}" }
+                            span { class: "ml-auto {crate::TYPE_LABEL} italic", "#{rank}" }
                         }
                     }
-                    p { class: "text-[11px] leading-relaxed text-zinc-500", "{desc}" }
+                    p { class: "{crate::TYPE_LABEL} leading-relaxed", "{desc}" }
                 }
             }
         }

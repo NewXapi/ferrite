@@ -36,18 +36,18 @@ pub fn KeysProfileSection(user: Option<UserDto>, self_err: String, pending: Stri
                         if let Some(user) = user {
                             div { class: "mb-4 flex items-center gap-2",
                                 span { class: "truncate {ui::TYPE_CARD_TITLE}", "{user.username}" }
-                                span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{contract::api::user::role_label(user.role)}" }
+                                span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 {ui::TYPE_LABEL}", "{contract::api::user::role_label(user.role)}" }
                             }
-                            div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",
+                            div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 {ui::TYPE_BODY}",
                                 ProfileItem { label: "显示名", value: user.display_name.clone(), copyable: false }
                                 ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() }, copyable: false }
                                 ProfileItem { label: "用户ID", value: short_key(&user.key), copy_value: Some(user.key.clone()), copyable: true }
                                 ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                             }
                         } else if !self_err.is_empty() {
-                            p { class: "text-sm {ui::C_WARNING}", "无法加载用户信息 (未登录或请求失败): {self_err}" }
+                            p { class: "{ui::TYPE_BODY} {ui::C_WARNING}", "无法加载用户信息 (未登录或请求失败): {self_err}" }
                         } else {
-                            p { class: "text-sm text-zinc-500", "{pending}" }
+                            p { class: "{ui::TYPE_BODY}", "{pending}" }
                         }
                     }
                 }

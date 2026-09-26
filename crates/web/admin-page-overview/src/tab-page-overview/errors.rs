@@ -69,7 +69,7 @@ pub fn ErrorsPanel() -> Element {
                         // 合计错误数大数字 + asOf 本地时间（裸值，不写「数据截至」）
                         div { class: "text-right", "data-testid": "errors-total",
                             p { class: "text-xl font-semibold leading-none font-mono tabular-nums text-foreground", "{total_text}" }
-                            p { class: "mt-0.5 text-[10px] text-muted-foreground", "{ERRORS_TOTAL_LABEL}" }
+                            p { class: "mt-0.5 {ui::TYPE_LABEL} text-muted-foreground", "{ERRORS_TOTAL_LABEL}" }
                         }
                         if let Some(t) = as_of_time {
                             span {
@@ -90,7 +90,7 @@ pub fn ErrorsPanel() -> Element {
                     // 重新执行即重新拉取);err 仅留在内存不渲染。
                     if err.is_some() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-sm text-zinc-500", "{NEUTRAL_NO_DATA}" }
+                            p { class: "{ui::TYPE_BODY}", "{NEUTRAL_NO_DATA}" }
                         }
                     } else if loading {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
@@ -99,7 +99,7 @@ pub fn ErrorsPanel() -> Element {
                     } else if items.is_empty() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                             p { class: "text-muted-foreground", "{ERRORS_EMPTY}" }
-                            p { class: "mt-1 text-xs text-muted-foreground/70", "{ERRORS_EMPTY_HINT}" }
+                            p { class: "mt-1 {ui::TYPE_DESC} text-muted-foreground/70", "{ERRORS_EMPTY_HINT}" }
                         }
                     } else {
                         for r in items {
@@ -113,7 +113,7 @@ pub fn ErrorsPanel() -> Element {
                                         }
                                     }
                                 }
-                                span { class: "min-w-0 flex-1 truncate text-sm text-foreground", "{r.model_name}" }
+                                span { class: "min-w-0 flex-1 truncate {ui::TYPE_BODY} text-foreground", "{r.model_name}" }
                                 span { class: "shrink-0 text-xs font-mono tabular-nums text-muted-foreground", "{r.count}" }
                                 span { class: "w-12 shrink-0 text-right text-xs font-mono tabular-nums text-muted-foreground/70",
                                     {api::last_seen_local_time(&r.last_seen_at).unwrap_or_else(|| DASH.into())}

@@ -24,11 +24,11 @@ pub fn StatusCard(
     rsx! {
         div { class: "flex flex-col gap-2 rounded-2xl border p-3.5 shadow-md {border_color}",
             div { class: "flex items-center gap-2",
-                span { class: "rounded-lg border px-2 py-0.5 text-xs font-semibold {badge_color}",
+                span { class: "rounded-lg border px-2 py-0.5 {crate::TYPE_DESC} {badge_color}",
                     "{title}"
                 }
             }
-            div { class: "text-xs leading-5 text-zinc-300",
+            div { class: "{crate::TYPE_DESC} leading-5",
                 {children}
             }
         }

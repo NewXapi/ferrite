@@ -56,7 +56,7 @@ pub fn InviteSection(
 
             // 邀请链接 — origin + 钱包 user_key 现拼;钱包未加载时占位
             section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
-                h3 { class: "mb-4 text-sm font-medium text-zinc-200", "邀请好友得奖励" }
+                h3 { class: "mb-4 {ui::TYPE_CARD_TITLE}", "邀请好友得奖励" }
                 div { class: "flex flex-col gap-3 sm:flex-row",
                     div {
                         class: "flex-1 break-all rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-4 font-mono text-sm text-zinc-400",
@@ -97,21 +97,21 @@ pub fn InviteSection(
                 } else if let Some(ov) = overview() {
                     div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
                         p {
-                            class: "text-4xl font-semibold tracking-tight text-amber-300 tabular-nums",
+                            class: "text-4xl font-semibold tracking-tight {ui::C_WARNING} tabular-nums",
                             "data-testid": "affiliate-invite-count",
                             "{fmt_num(ov.invite_count)}"
                         }
                         p { class: "mt-3 {ui::TYPE_CARD_TITLE}", "已邀人数" }
-                        p { class: "mt-6 text-xs leading-snug text-zinc-500", "通过邀请完成注册的用户数" }
+                        p { class: "mt-6 {ui::TYPE_DESC} leading-snug", "通过邀请完成注册的用户数" }
                     }
                     div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
                         p {
-                            class: "text-4xl font-semibold tracking-tight text-amber-300 tabular-nums",
+                            class: "text-4xl font-semibold tracking-tight {ui::C_WARNING} tabular-nums",
                             "data-testid": "affiliate-total-reward",
                             "{fmt_num(ov.total_reward)}"
                         }
                         p { class: "mt-3 {ui::TYPE_CARD_TITLE}", "累计奖励 (内部单位)" }
-                        p { class: "mt-6 text-xs leading-snug text-zinc-500", "≈ {fmt_quota(ov.total_reward)} · 拉人奖励累计" }
+                        p { class: "mt-6 {ui::TYPE_DESC} leading-snug", "≈ {fmt_quota(ov.total_reward)} · 拉人奖励累计" }
                     }
                 }
             }

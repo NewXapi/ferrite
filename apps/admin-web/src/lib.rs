@@ -299,7 +299,7 @@ pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -
     };
     rsx! {
         button {
-            class: "relative flex h-full items-center px-2 text-sm font-medium transition-colors {tone}",
+            class: "relative flex h-full items-center px-2 {ui::TYPE_CARD_TITLE} transition-colors {tone}",
             onclick: move |event| onclick.call(event),
             "{label}"
             if active {

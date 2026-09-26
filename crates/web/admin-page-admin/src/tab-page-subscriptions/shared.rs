@@ -177,7 +177,7 @@ pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Elem
     rsx! {
         section { class: "space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
             p { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
-            p { class: "text-[11px] text-zinc-600", "{hint}" }
+            p { class: "{ui::TYPE_LABEL}", "{hint}" }
             {children}
         }
     }
@@ -204,7 +204,7 @@ pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Elem
 pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+            class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -233,7 +233,7 @@ pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -
 pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-red-900/60 px-3 py-1.5 text-xs {ui::C_DANGER} hover:border-red-700",
+            class: "rounded-md border border-red-900/60 px-3 py-1.5 {ui::TYPE_DESC} {ui::C_DANGER} hover:border-red-700",
             onclick: move |e| on_click.call(e),
             "{label}"
         }

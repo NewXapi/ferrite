@@ -76,17 +76,17 @@ pub fn KeyCard(
                     p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
                 }
                 span {
-                    class: "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium {status_color}",
+                    class: "shrink-0 rounded-full border px-2.5 py-0.5 {ui::TYPE_DESC} {status_color}",
                     if enabled { "启用" } else { "停用" }
                 }
             }
 
-            div { class: "space-y-2 text-xs",
+            div { class: "space-y-2 {ui::TYPE_DESC}",
                 div { class: "flex items-center justify-between gap-2",
-                    span { class: "shrink-0 whitespace-nowrap text-zinc-400", "已用额度" }
+                    span { class: "shrink-0 whitespace-nowrap {ui::C_MUTED}", "已用额度" }
                     if unlimited {
                         span {
-                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium {ui::C_INFO}",
+                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 {ui::TYPE_LABEL} {ui::C_INFO}",
                             "无限"
                         }
                     } else {
@@ -103,7 +103,7 @@ pub fn KeyCard(
                 }
                 if !created.is_empty() {
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 whitespace-nowrap text-zinc-400", "创建时间" }
+                        span { class: "shrink-0 whitespace-nowrap {ui::C_MUTED}", "创建时间" }
                         span { class: "whitespace-nowrap font-mono text-zinc-400", "{created}" }
                     }
                 }
@@ -113,14 +113,14 @@ pub fn KeyCard(
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1 text-zinc-400",
+                    class: "flex-1 {ui::C_MUTED}",
                     onclick: move |_| on_edit.call(e_edit.clone()),
                     "编辑"
                 }
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1 text-zinc-400",
+                    class: "flex-1 {ui::C_MUTED}",
                     onclick: move |_| on_toggle.call(e_toggle.clone()),
                     if enabled { "停用" } else { "启用" }
                 }

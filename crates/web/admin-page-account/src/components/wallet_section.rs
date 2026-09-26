@@ -50,9 +50,9 @@ pub fn WalletSection(
                                 "data-testid": "wallet-available",
                                 "{fmt_num(w.available_i64)}"
                             }
-                            p { class: "mt-1 text-xl text-zinc-400", "≈ {fmt_quota(w.available_i64)}" }
+                            p { class: "mt-1 {ui::TYPE_VALUE}", "≈ {fmt_quota(w.available_i64)}" }
                         }
-                        div { class: "flex items-center gap-2 self-start rounded-3xl bg-emerald-950/80 px-5 py-2 text-xs font-medium {ui::C_SUCCESS}",
+                        div { class: "flex items-center gap-2 self-start rounded-3xl bg-emerald-950/80 px-5 py-2 {ui::TYPE_DESC} {ui::C_SUCCESS}",
                             span { class: "text-lg leading-none {ui::C_SUCCESS}", "●" }
                             "已连后端"
                         }
@@ -62,15 +62,15 @@ pub fn WalletSection(
                         div {
                             class: "mt-6 rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
                             "data-testid": "wallet-empty",
-                            p { class: "text-sm text-zinc-500", "暂无币种余额 (新账号未 seed 或已全部消耗)" }
+                            p { class: "{ui::TYPE_BODY}", "暂无币种余额 (新账号未 seed 或已全部消耗)" }
                         }
                     } else {
                         div { class: "mt-6 divide-y divide-zinc-800 border-t border-zinc-800",
                             for b in &w.balances {
                                 div {
-                                    class: "flex justify-between py-3 text-sm first:pt-0 last:pb-0",
+                                    class: "flex justify-between py-3 {ui::TYPE_BODY} first:pt-0 last:pb-0",
                                     "data-testid": format!("wallet-balance-{}", b.currency_code),
-                                    span { class: "text-zinc-400",
+                                    span { class: "{ui::C_MUTED}",
                                         if b.symbol.is_empty() { "{b.currency_code.clone()}" } else { "{b.symbol.clone()}" }
                                     }
                                     span { class: "font-medium text-zinc-100 tabular-nums", "{fmt_num(b.amount)}" }

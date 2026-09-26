@@ -54,7 +54,7 @@ use ui::SegmentedCapsule;
 pub fn StatCard(value: String, label: &'static str) -> Element {
     rsx! {
         div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
-            p { class: "text-xl font-semibold tracking-tight text-white", "{value}" }
+            p { class: "{ui::TYPE_VALUE} tracking-tight", "{value}" }
             p { class: "mt-0.5 {ui::TYPE_DESC}", "{label}" }
         }
     }
@@ -83,7 +83,7 @@ pub fn StatCard(value: String, label: &'static str) -> Element {
 #[component]
 pub fn Badge(text: String, tone: &'static str) -> Element {
     rsx! {
-        span { class: "rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}",
+        span { class: "rounded-full border px-2 py-0.5 {ui::TYPE_LABEL} {tone}",
             "{text}"
         }
     }
@@ -225,8 +225,8 @@ pub fn GroupCard(
                 // 倍率滑条 (两段式): 静态时只有色块无 thumb (指针划过不吸附);
                 // 第一次点击 → 进入调整态出现 thumb 可拖预览; 第二次点击 → 确认写回 + thumb 消失。
                 div { class: "space-y-1.5",
-                    div { class: "flex justify-between gap-2 text-[11px]",
-                        span { class: "text-zinc-400", "{LBL_RATIO}" }
+                    div { class: "flex justify-between gap-2 {ui::TYPE_LABEL}",
+                        span { class: "{ui::C_MUTED}", "{LBL_RATIO}" }
                         span { class: "whitespace-nowrap font-medium text-zinc-200", "×{display_ratio:.2}" }
                     }
                     div {
@@ -298,13 +298,13 @@ pub fn GroupCard(
 
                 // 详情指标行: 保留「100额度实扣」与「调度作用域」;
                 // 「费率模式」行与弹窗预览的「标准消耗」同义 (溢价/优惠/标准 已在徽标表达), 删除。
-                div { class: "space-y-1.5 text-xs pt-1",
+                div { class: "space-y-1.5 {ui::TYPE_DESC} pt-1",
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "{LBL_EXAMPLE_COST}" }
+                        span { class: "shrink-0 {ui::C_MUTED}", "{LBL_EXAMPLE_COST}" }
                         span { class: "font-medium text-zinc-200 font-mono", "{example_cost} 点" }
                     }
                     div { class: "flex justify-between gap-2",
-                        span { class: "shrink-0 text-zinc-400", "{LBL_SCOPE}" }
+                        span { class: "shrink-0 {ui::C_MUTED}", "{LBL_SCOPE}" }
                         span { class: "font-medium text-zinc-200", "{LBL_SCOPE_VALUE}" }
                     }
                 }
@@ -409,9 +409,9 @@ pub(crate) fn Modal(title: String, on_close: EventHandler<()>, children: Element
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-5 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold text-zinc-100", "{title}" }
+                    h3 { class: "{ui::TYPE_TITLE}", "{title}" }
                     button {
-                        class: "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                        class: "rounded-lg p-1.5 {ui::C_MUTED} transition-colors hover:bg-zinc-800 hover:text-zinc-200",
                         onclick: move |_| on_close.call(()),
                         "aria-label": LBL_CLOSE,
                         svg {
@@ -564,7 +564,7 @@ pub fn GroupFormModal(
                 if active_tab() == 0 {
                     div { class: "space-y-4",
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_GROUP_NAME}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_GROUP_NAME}" }
                             input {
                                 class: MODAL_INPUT,
                                 "data-testid": "group-name",
@@ -579,7 +579,7 @@ pub fn GroupFormModal(
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_REMARK}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_REMARK}" }
                             input {
                                 class: MODAL_INPUT,
                                 "data-testid": "group-remark",
@@ -590,7 +590,7 @@ pub fn GroupFormModal(
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_WHITELIST}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_WHITELIST}" }
                             input {
                                 class: MODAL_INPUT,
                                 "data-testid": "group-whitelist",
@@ -598,11 +598,11 @@ pub fn GroupFormModal(
                                 value: "{whitelist}",
                                 oninput: move |e| whitelist.set(e.value()),
                             }
-                            p { class: "mt-1 text-[11px] text-zinc-500", "{MSG_WHITELIST_HINT}" }
+                            p { class: "mt-1 {ui::TYPE_LABEL}", "{MSG_WHITELIST_HINT}" }
                         }
 
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_RATIO}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_RATIO}" }
                             input {
                                 class: "{MODAL_INPUT} font-mono",
                                 r#type: "text",
@@ -615,7 +615,7 @@ pub fn GroupFormModal(
 
                         // 快捷预设按钮
                         div { class: "space-y-1.5",
-                            p { class: "text-[11px] text-zinc-500", "{OPT_RATIO_PRESETS}" }
+                            p { class: "{ui::TYPE_LABEL}", "{OPT_RATIO_PRESETS}" }
                             div { class: "flex flex-wrap gap-1.5",
                                 for (lbl, val) in preset_ratios {
                                     {
@@ -627,7 +627,7 @@ pub fn GroupFormModal(
                                         };
                                         rsx! {
                                             button {
-                                                class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
+                                                class: "rounded-lg border px-2.5 py-1 {ui::TYPE_DESC} transition-colors {btn_tone}",
                                                 onclick: move |_| ratio.set(val.to_string()),
                                                 "{lbl}"
                                             }
@@ -638,7 +638,7 @@ pub fn GroupFormModal(
                         }
 
                         // 计费预览: 仅保留「该分组实际扣费」(「标准消耗」行已删)
-                        div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1.5",
+                        div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 {ui::TYPE_DESC} space-y-1.5",
                             div { class: "flex justify-between font-medium",
                                 span { class: "text-zinc-300", "{LBL_ACTUAL_COST}" }
                                 span { class: if parsed_ratio < 1.0 { "text-emerald-400" } else if parsed_ratio > 1.0 { "text-amber-400" } else { "text-zinc-200" },
@@ -653,7 +653,7 @@ pub fn GroupFormModal(
                 if active_tab() == 1 {
                     div { class: "space-y-3",
                         div {
-                            label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_ALIAS}" }
+                            label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_ALIAS}" }
                             input {
                                 class: MODAL_INPUT,
                                 "data-testid": "group-alias",
@@ -661,7 +661,7 @@ pub fn GroupFormModal(
                                 value: "{f_alias}",
                                 oninput: move |e| f_alias.set(e.value()),
                             }
-                            p { class: "mt-1 text-[11px] text-zinc-500", "{MSG_ALIAS_HINT}" }
+                            p { class: "mt-1 {ui::TYPE_LABEL}", "{MSG_ALIAS_HINT}" }
                         }
                         if alias_options.is_empty() {
                             p { class: "{ui::TYPE_DESC}", "{MSG_NO_ALIAS_OPTIONS}" }
@@ -677,7 +677,7 @@ pub fn GroupFormModal(
                                         };
                                         rsx! {
                                             button {
-                                                class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {cls}",
+                                                class: "rounded-lg border px-2.5 py-1 {ui::TYPE_DESC} transition-colors {cls}",
                                                 "data-testid": "group-alias-opt",
                                                 onclick: move |_| {
                                                     let mut cur = parse_whitelist_raw(&f_alias.peek());
@@ -701,13 +701,13 @@ pub fn GroupFormModal(
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
                     "data-testid": "group-cancel",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     "data-testid": "group-submit",
                     disabled: submitting(),
                     onclick: do_submit,

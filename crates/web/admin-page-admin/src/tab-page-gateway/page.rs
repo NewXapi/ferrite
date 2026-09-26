@@ -140,11 +140,11 @@ pub fn GatewayHealthPanel() -> Element {
             div { class: "flex flex-wrap items-center justify-between gap-2",
                 div { class: "flex items-center gap-2",
                     h2 { class: "{ui::TYPE_TITLE}", "{SEC_PANEL}" }
-                    span { class: "rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400",
+                    span { class: "rounded-full bg-zinc-800 px-2 py-0.5 {ui::TYPE_LABEL}",
                         if polling { "{LBL_POLLING}" } else { "{LBL_SYNCED}" }
                     }
                 }
-                div { class: "flex flex-wrap items-center gap-1.5 text-[11px]",
+                div { class: "flex flex-wrap items-center gap-1.5 {ui::TYPE_LABEL}",
                     span { class: "rounded-full border px-2 py-0.5 {TONE_COOLING}",
                         "{LBL_COUNT_COOLING_PREFIX}{cooling_count}" }
                     span { class: "rounded-full border px-2 py-0.5 {TONE_SLOW_START}",
@@ -152,7 +152,7 @@ pub fn GatewayHealthPanel() -> Element {
                     span { class: "rounded-full border px-2 py-0.5 {TONE_OK}",
                         "{LBL_COUNT_OK_PREFIX}{ok_count}" }
                     button {
-                        class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white",
+                        class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1 {ui::TYPE_DESC} transition-colors hover:border-zinc-500 hover:text-white",
                         "data-testid": "refresh-gateway-health",
                         onclick: move |_| reload.set(reload() + 1),
                         "{BTN_REFRESH}"
@@ -169,10 +169,10 @@ pub fn GatewayHealthPanel() -> Element {
                     // 错误态:柔和红边卡 (非满屏红),保留重试入口
                     div { class: "rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-6 text-center",
                         "data-testid": "gateway-health-error",
-                        p { class: "text-sm text-red-300", "{SEC_LOAD_FAILED}" }
-                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                        p { class: "text-sm {ui::C_DANGER}", "{SEC_LOAD_FAILED}" }
+                        p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                         button {
-                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-800",
                             "data-testid": "retry-gateway-health",
                             onclick: move |_| reload.set(reload() + 1),
                             "{BTN_RETRY}"
@@ -191,7 +191,7 @@ pub fn GatewayHealthPanel() -> Element {
                     // 空态:虚线占位卡 (正常态,后端只返回有记录渠道)
                     div { class: "rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center",
                         "data-testid": "gateway-health-empty",
-                        p { class: "text-sm text-zinc-400", "{SEC_EMPTY_NOTE}" }
+                        p { class: "{ui::TYPE_BODY}", "{SEC_EMPTY_NOTE}" }
                         p { class: "mt-1 {ui::TYPE_DESC}",
                             "{SEC_EMPTY_HINT}" }
                     }

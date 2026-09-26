@@ -346,7 +346,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         };
                         rsx! {
                             button {
-                                class: "rounded-full border px-3 py-1 text-xs font-medium transition-colors {tone}",
+                                class: "rounded-full border px-3 py-1 {ui::TYPE_DESC} transition-colors {tone}",
                                 onclick: move |_| {
                                     current.set(i);
                                     load_row(i);
@@ -394,20 +394,20 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     oninput: move |v: String| keys.set(v),
                 }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     disabled: saving(),
                     onclick: save,
                     "{BTN_SAVE}"
                 }
                 button {
-                    class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200",
+                    class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} hover:border-zinc-600 hover:text-zinc-200",
                     disabled: is_new(),
                     title: if is_new() { MSG_TITLE_DRAFT_NO_TOGGLE } else { "" },
                     onclick: toggle_status,
                     if status() == 1 { "{BTN_DISABLE}" } else { "{BTN_ENABLE}" }
                 }
                 button {
-                    class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs {ui::C_DANGER} hover:border-red-700",
+                    class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} {ui::C_DANGER} hover:border-red-700",
                     disabled: is_new(),
                     title: if is_new() { MSG_TITLE_DRAFT_NO_DELETE } else { "" },
                     onclick: move |_| request_delete(idx),
@@ -426,8 +426,8 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         div { class: "flex min-h-0 flex-col gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/60 p-3",
                             div { class: "flex items-center justify-between gap-2",
                                 div {
-                                    p { class: "text-xs text-zinc-300", "{LBL_CANDIDATE_POOL}" }
-                                    p { class: "text-[11px] text-zinc-600", "{LBL_CANDIDATE_POOL_HINT}" }
+                                    p { class: "{ui::TYPE_DESC}", "{LBL_CANDIDATE_POOL}" }
+                                    p { class: "{ui::TYPE_LABEL}", "{LBL_CANDIDATE_POOL_HINT}" }
                                 }
                             }
                             if c.candidates.is_empty() {
@@ -458,7 +458,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                                 }
                                 div { class: "flex gap-1.5 border-t border-zinc-800 pt-2",
                                     button {
-                                        class: "rounded border border-zinc-100 bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-900 hover:bg-zinc-300",
+                                        class: "rounded border border-zinc-100 bg-zinc-100 px-2 py-0.5 {ui::TYPE_LABEL} hover:bg-zinc-300",
                                         onclick: move |_| {
                                             let mut w = channels.write();
                                             let picked: Vec<String> = w[idx]
@@ -477,7 +477,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                                         "{BTN_JOIN_DISPATCH}"
                                     }
                                     button {
-                                        class: "rounded border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-500 hover:border-zinc-600 hover:text-zinc-300",
+                                        class: "rounded border border-zinc-800 px-2 py-0.5 {ui::TYPE_LABEL} hover:border-zinc-600 hover:text-zinc-300",
                                         onclick: move |_| { channels.write()[idx].candidates.clear(); },
                                         "{BTN_CLEAR_CANDIDATES}"
                                     }
@@ -488,8 +488,8 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         // 调度模型
                         div { class: "flex min-h-0 flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
                             div {
-                                p { class: "text-xs text-zinc-300", "{LBL_DISPATCH_MODELS}" }
-                                p { class: "text-[11px] text-zinc-600", "{LBL_DISPATCH_MODELS_HINT}" }
+                                p { class: "{ui::TYPE_DESC}", "{LBL_DISPATCH_MODELS}" }
+                                p { class: "{ui::TYPE_LABEL}", "{LBL_DISPATCH_MODELS_HINT}" }
                             }
                             if c.dispatch.is_empty() {
                                 EmptyHint { text: MSG_EMPTY_DISPATCH }
@@ -502,7 +502,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                                                 div { class: "flex items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-900 px-2 py-1",
                                                     span { class: "truncate font-mono text-xs text-zinc-200", "{label}" }
                                                     button {
-                                                        class: "shrink-0 text-[11px] text-zinc-600 hover:text-red-400",
+                                                        class: "shrink-0 {ui::TYPE_LABEL} hover:text-red-400",
                                                         title: MSG_TITLE_MOVE_OUT,
                                                         onclick: move |_| {
                                                             let mut w = channels.write();
@@ -534,7 +534,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                         open: true,
                         on_confirm: confirm_delete,
                         on_cancel: move |_| confirming.set(None),
-                        div { class: "text-xs text-zinc-400", "{MSG_CONFIRM_DELETE_CHANNEL_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
+                        div { class: "{ui::TYPE_DESC}", "{MSG_CONFIRM_DELETE_CHANNEL_PREFIX}{cname}{MSG_CONFIRM_DELETE_SUFFIX}" }
                     }
                 }
             } else {

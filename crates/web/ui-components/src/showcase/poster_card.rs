@@ -140,7 +140,7 @@ pub fn PosterCard(
                         // 顶部：模型名称与排名角标
                         div { class: "pointer-events-none absolute top-3 inset-x-3 flex items-center justify-between",
                             div { class: "flex items-center gap-1.5 rounded-full border border-white/20 bg-black/60 px-2.5 py-1",
-                                span { class: "text-xs font-bold tracking-wide text-white row-text", "{name}" }
+                                span { class: "{crate::TYPE_DESC} tracking-wide row-text", "{name}" }
                             }
                             div { class: "flex items-center justify-center rounded-full border border-white/20 bg-black/60 px-2 py-0.5",
                                 span {
@@ -206,26 +206,26 @@ pub fn PosterCard(
                         div { class: "card-vignette pointer-events-none absolute inset-0" }
                         div { class: "absolute inset-0 flex flex-col px-4 pb-3 pt-3",
                             div { class: "flex items-baseline justify-between",
-                                h3 { class: "text-sm font-semibold text-white row-text", "{name}" }
-                                span { class: "text-[10px] font-semibold text-zinc-400", "#{rank}" }
+                                h3 { class: "{crate::TYPE_CARD_TITLE} row-text", "{name}" }
+                                span { class: "{crate::TYPE_LABEL}", "#{rank}" }
                             }
-                            p { class: "mt-0.5 text-[10px] leading-snug text-zinc-400", "{desc}" }
+                            p { class: "mt-0.5 {crate::TYPE_LABEL} leading-snug", "{desc}" }
                             div { class: "my-2.5 flex items-center gap-3",
                                 div { class: "h-px flex-1 bg-white/12" }
                                 div { class: "flex items-baseline gap-1.5",
-                                    span { class: "text-2xl font-bold tracking-tight text-white row-text", "{score:.1}" }
-                                    span { class: "text-[9px] font-medium uppercase tracking-widest text-zinc-500", "Score" }
+                                    span { class: "{crate::TYPE_VALUE} tracking-tight row-text", "{score:.1}" }
+                                    span { class: "{crate::TYPE_LABEL} uppercase tracking-widest", "Score" }
                                 }
                                 div { class: "h-px flex-1 bg-white/12" }
                             }
                             div { class: "flex-1 space-y-1.5",
                                 for i in 0..6 {
                                     div { class: "flex items-center gap-2",
-                                        span { class: "w-9 text-[11px] font-medium leading-none text-zinc-300", "{dim_labels[i]}" }
+                                        span { class: "w-9 {crate::TYPE_LABEL} leading-none", "{dim_labels[i]}" }
                                         div { class: "h-1 flex-1 overflow-hidden rounded-full bg-white/15",
                                             div { class: "h-full rounded-full bg-zinc-100", style: "width: {radar_values[i] * 100.0:.0}%" }
                                         }
-                                        span { class: "w-14 text-right text-[11px] font-medium leading-none text-zinc-100", "{dim_raws[i]}" }
+                                        span { class: "w-14 text-right {crate::TYPE_LABEL} leading-none", "{dim_raws[i]}" }
                                         span {
                                             class: if dim_ranks[i] <= 3 { "w-6 text-right text-[8px] font-bold text-amber-300" } else { "w-6 text-right text-[8px] text-zinc-600" },
                                             "#{dim_ranks[i]}"
@@ -248,10 +248,10 @@ fn KeyStatRows(stats: Vec<KeyStatLine>) -> Element {
     rsx! {
         div { class: "pointer-events-auto rounded-lg border border-white/10 bg-black/60 px-2 py-1.5 space-y-0.5",
             for s in stats.iter() {
-                div { class: "row-tip-anchor relative flex items-baseline justify-between gap-2 text-[10px]",
+                div { class: "row-tip-anchor relative flex items-baseline justify-between gap-2 {crate::TYPE_LABEL}",
                     span { class: "text-zinc-400 font-medium", "{s.short}" }
                     span { class: "text-zinc-100 font-mono font-bold row-text text-right", "{s.text}" }
-                    div { class: "pointer-events-none absolute -top-1 left-0 z-20 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-zinc-950/95 px-2 py-1 text-[10px] text-zinc-200 opacity-0 transition-opacity duration-200 row-tip shadow-lg",
+                    div { class: "pointer-events-none absolute -top-1 left-0 z-20 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-zinc-950/95 px-2 py-1 {crate::TYPE_LABEL} opacity-0 transition-opacity duration-200 row-tip shadow-lg",
                         "{s.full}"
                     }
                 }
@@ -267,8 +267,8 @@ fn KeyStatFooter(stats: Vec<KeyStatLine>) -> Element {
         div { class: "mt-2 flex justify-between border-t border-white/10 pt-2",
             for s in stats.iter() {
                 div { class: "text-center",
-                    p { class: "text-[10px] font-semibold text-zinc-100", "{s.text}" }
-                    p { class: "text-[8px] uppercase tracking-wide text-zinc-500", "{s.short}" }
+                    p { class: "{crate::TYPE_LABEL}", "{s.text}" }
+                    p { class: "{crate::TYPE_LABEL} uppercase tracking-wide", "{s.short}" }
                 }
             }
         }
