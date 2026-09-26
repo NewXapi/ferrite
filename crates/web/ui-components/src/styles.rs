@@ -96,3 +96,39 @@ pub const TYPE_DESC: &str = "text-xs text-zinc-500";
 
 /// 微标签：暗 / 小 / 粗 + 字距。字段小标签（NAME/EMAIL/SIGN-IN 那种）。
 pub const TYPE_LABEL: &str = "text-[10px] font-medium tracking-wider text-zinc-500";
+
+// ---------------------------------------------------------------------------
+// Semantic state colors — 状态色（红=危险 / 绿=成功 / 琥珀=警告 / 蓝=信息）。
+// v1：按当前全仓最高频的色阶取值，每项独立可调（改一处全仓生效）。
+// 组件用 `ui::STATE_*` 引用；迁移铺开是下一步，调色以这份为准。
+// ---------------------------------------------------------------------------
+
+/// 危险 / 错误：主文字色。
+pub const STATE_DANGER_TEXT: &str = "text-red-400";
+
+/// 危险 / 错误：底色。
+pub const STATE_DANGER_BG: &str = "bg-red-950";
+
+/// 危险 / 错误：描边色。
+pub const STATE_DANGER_BORDER: &str = "border-red-500";
+
+/// 成功：主文字色。
+pub const STATE_SUCCESS_TEXT: &str = "text-emerald-400";
+
+/// 成功：底色。
+pub const STATE_SUCCESS_BG: &str = "bg-emerald-950";
+
+/// 成功：描边色。
+pub const STATE_SUCCESS_BORDER: &str = "border-emerald-500";
+
+/// 警告 / 进行中：主文字色。
+pub const STATE_WARNING_TEXT: &str = "text-amber-400";
+
+/// 警告 / 进行中：底色。
+pub const STATE_WARNING_BG: &str = "bg-amber-500";
+
+/// 信息 / 提示：主文字色。
+pub const STATE_INFO_TEXT: &str = "text-sky-300";
+
+/// 信息 / 提示：描边色。
+pub const STATE_INFO_BORDER: &str = "border-sky-500";
