@@ -93,7 +93,9 @@ fi
 # ------------------------------------------------------------------------------
 # 2. 全量触发规则检查
 # ------------------------------------------------------------------------------
-# 只有"影响面无法从依赖图推导"的改动才升级为全量：依赖版本、toolchain、CI 自身。
+# 只有"影响面无法从依赖图推导"的改动才升级为全量：依赖版本、toolchain。
+# .github/* 不再触发全量：workflow 自身运行即是验证，crate 影响由反向依赖
+# 闭包精确推导；纯 .github 改动会走到底部 "No code crates affected" 秒级放行。
 # crates/contract 不在此列 —— 它是普通 workspace 成员，反向依赖闭包能精确算出
 # 受影响的下游包（实测 33 个，比全量 53 个更准）。
 IS_GLOBAL=false
@@ -101,7 +103,7 @@ GLOBAL_TRIGGER=""
 
 for f in $ALL_CHANGED; do
   case "$f" in
-    Cargo.lock|Cargo.toml|rust-toolchain.toml|.github/*)
+    Cargo.lock|Cargo.toml|rust-toolchain.toml)
       IS_GLOBAL=true
       GLOBAL_TRIGGER="$f"
       break

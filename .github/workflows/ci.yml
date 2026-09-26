@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       base:
-        description: '受影响 crate diff 的基线 ref'
-        default: 'main'
+        description: '受影响 crate diff 的基线 ref（web 车道分支默认 web-dev 即可；其他域分支显式传 main）'
+        default: 'web-dev'
         required: false
 
 concurrency:
