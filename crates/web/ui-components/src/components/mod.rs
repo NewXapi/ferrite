@@ -1,18 +1,6 @@
-//! rust-ui registry 拷贝线（shadcn copy-paste，rui_ 前缀）。
+//! rust-ui registry 拷贝线过渡层（rui_ 前缀）。
+//!
+//! 上游 rust-ui-keys-replace 已拆除其余 rui_* 组件；仅剩 `rui_avatar`
+//! 在用（layout/avatar_menu 引用）。替换完成后随目录一起删除。
 
-//! 过渡层：待 rust-ui-keys-replace 全部替换后整目录删除
-//! （见 todo/rust-ui-keys-replace-plan.md）。
-pub mod rui_alert;
-pub mod rui_alert_dialog;
 pub mod rui_avatar;
-pub mod rui_badge;
-pub mod rui_button;
-pub mod rui_card;
-pub mod rui_dialog;
-pub mod rui_empty;
-pub mod rui_input;
-pub mod rui_label;
-pub mod rui_progress;
-pub mod rui_separator;
-pub mod rui_skeleton;
-pub mod rui_switch;

@@ -10,8 +10,12 @@ on:
   workflow_dispatch:
     inputs:
       base:
-        description: '受影响 crate diff 的基线 ref'
-        default: 'main'
+        description: '受影响 crate diff 的基线 ref（web 车道分支默认 web-dev 即可；其他域分支显式传 main）'
+        default: 'web-dev'
+        required: false
+      deploy_images:
+        description: '是否构建部署镜像验证（重构/快速验证传 false 跳过；发布 PR 仍需为 true）'
+        default: 'true'
         required: false
       deploy_images:
         description: '是否构建部署镜像验证（重构/快速验证传 false 跳过；发布 PR 仍需为 true）'
