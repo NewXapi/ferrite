@@ -6,8 +6,8 @@
 //!
 //! 本文件只留面板外壳:状态 (拉取/错误/刷新) + 轮询拉取 + 四态分支;
 //! 单行渲染 (渠道名 / 模型 Badge / 三态 Badge / 倒计时) 见
-//! [`super::row::GatewayHealthRow`],三态语义色见
-//! [`super::shared`]。
+//! [`crate::components::GatewayHealthRow`],三态语义色见
+//! [`crate::shared`]。
 //!
 //! 渲染约定(仓库铁律):
 //! - 卡片面板模式,禁 `<table>`:`rounded-xl border bg-card divide-y`
@@ -19,7 +19,7 @@
 //! 交互元素带 `data-testid`,容器带 `role` + `aria-label`
 //! (仓库 UI 验证约定,PR smoke 走 ariaSnapshot)。
 //!
-//! 边界:文案常量与语义色在 `shared`,单行渲染在 `row`;本文件不发写请求
+//! 边界:文案常量与语义色在根级 `shared`,单行渲染在 `components/gateway_health_row`;本文件不发写请求
 //! (本 tab 只读),也不做失败重试策略(交给用户点按钮)。
 
 use dioxus::prelude::*;
@@ -28,8 +28,8 @@ use gloo_timers::future::TimeoutFuture;
 use client::fetch_gateway_health;
 use client::{ApiClient, GatewayHealthItem, HealthItemState};
 
-use super::row::GatewayHealthRow;
-use super::shared::{
+use crate::components::GatewayHealthRow;
+use crate::shared::{
     BTN_REFRESH, BTN_RETRY, LBL_COUNT_COOLING_PREFIX, LBL_COUNT_OK_PREFIX, LBL_COUNT_SLOW_PREFIX,
     LBL_POLLING, LBL_SYNCED, SEC_EMPTY_HINT, SEC_EMPTY_NOTE, SEC_LOAD_FAILED, SEC_PANEL,
     TONE_COOLING, TONE_OK, TONE_SLOW_START,

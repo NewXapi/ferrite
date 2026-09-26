@@ -1,17 +1,17 @@
 //! 网关渠道健康单行:渠道展示名 + 模型 Badge + 三态 Badge + 冷却倒计时 +
 //! lastCoolingOutcome 小字。纯展示组件,单项数据由
-//! `page` 的 `GatewayHealthPanel` 遍历注入,无交互回调。
+//! `tab-page/gateway.rs` 的 `GatewayHealthPanel` 遍历注入,无交互回调。
 //!
 //! 行级回退计算 (channelName / publicModel 缺省) 与三态取色都在本文件内;
-//! 语义色常量与面板表头计数共用,见 `shared`。
+//! 语义色常量与面板表头计数共用,见根级 `crate::shared`。
 //!
-//! 边界:四态分支与拉取/轮询在 `page.rs`;本文件只负责一行之内的排版与回退。
+//! 边界:四态分支与拉取/轮询在 `tab-page/gateway.rs`;本文件只负责一行之内的排版与回退。
 
 use dioxus::prelude::*;
 
 use client::{GatewayHealthItem, HealthItemState};
 
-use super::shared::{
+use crate::shared::{
     LBL_REMAINING_PREFIX, MSG_CHANNEL_FALLBACK_PREFIX, MSG_CHANNEL_FALLBACK_SUFFIX,
     MSG_MODEL_FALLBACK, TONE_COOLING, TONE_OK, TONE_SLOW_START,
 };
@@ -69,7 +69,7 @@ fn state_tone(state: HealthItemState) -> &'static str {
 ///
 /// 【做什么】渲染单个 [`GatewayHealthItem`],并在字段缺省时做行内回退(渠道名回退
 /// channelKey 前 8 位、再回退占位串;模型名回退 unitKey 末段、再回退「未知模型」)。
-/// 不负责拉取与四态分支(在 `page.rs`)、不负责轮询节奏(在 `page.rs`)。
+/// 不负责拉取与四态分支(在 `tab-page/gateway.rs`)、不负责轮询节奏(在 `tab-page/gateway.rs`)。
 ///
 /// 【交互逻辑】纯展示，无交互(无 onclick、不改状态、不发网络)。
 ///
@@ -83,7 +83,7 @@ fn state_tone(state: HealthItemState) -> &'static str {
 ///
 /// 【数据流】
 /// - 对内(入):`item`(单条健康记录,由页面遍历 `view.items` 注入;`key` 取
-///   `unit_key`,在 `page.rs` 的调用处设置)。
+///   `unit_key`,在 `tab-page/gateway.rs` 的调用处设置)。
 /// - 对外(出):无 —— 无 EventHandler、无 Signal 写回。
 #[component]
 pub fn GatewayHealthRow(item: GatewayHealthItem) -> Element {
