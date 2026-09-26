@@ -63,7 +63,7 @@ pub fn RechargesSection(
                                 }
                             }
                             div { class: "text-right",
-                                div { class: "font-medium text-emerald-400 tabular-nums",
+                                div { class: "font-medium {ui::STATE_SUCCESS_TEXT} tabular-nums",
                                     "{fmt_num(o.amount)}"
                                 }
                                 // 状态机字符串原样展示,前端不解释

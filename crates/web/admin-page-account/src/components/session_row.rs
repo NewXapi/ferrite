@@ -44,7 +44,7 @@ pub fn SessionRow(
                             "{ua_label}"
                         }
                         if session.current {
-                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400", "当前设备" }
+                            span { class: "shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium {ui::STATE_SUCCESS_TEXT}", "当前设备" }
                         }
                     }
                     div { class: "mt-2 grid grid-cols-1 gap-1 {ui::TYPE_DESC} sm:grid-cols-2",
@@ -58,7 +58,7 @@ pub fn SessionRow(
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "shrink-0 text-red-400",
+                    class: "shrink-0 {ui::STATE_DANGER_TEXT}",
                     disabled: busy,
                     "data-testid": "revoke-session-{session.sid}",
                     "aria-label": "吊销此会话",

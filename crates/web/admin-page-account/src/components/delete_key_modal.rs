@@ -63,7 +63,7 @@ pub fn DeleteKeyModal(
                     "确认删除「{token.name}」({token.key_preview})？删除后使用该密钥的调用会立即失败, 且无法恢复。"
                 }
                 if !err().is_empty() {
-                    p { class: "mt-3 text-xs text-red-400", "{err()}" }
+                    p { class: "mt-3 text-xs {ui::STATE_DANGER_TEXT}", "{err()}" }
                 }
 
                 div { class: "mt-6 flex gap-3",

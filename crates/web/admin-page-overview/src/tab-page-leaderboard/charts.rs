@@ -89,7 +89,7 @@ pub fn PerformanceLatencyCard() -> Element {
                                             }
                     p { class: "text-[11px] text-zinc-500", "{CHART_SLA_SUBTITLE}" }
                 }
-                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400",
+                div { class: "flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium {ui::STATE_SUCCESS_TEXT}",
                     span { class: "h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" }
                     "{CHART_SLA_BADGE}"
                 }
@@ -111,7 +111,7 @@ pub fn PerformanceLatencyCard() -> Element {
                 }
                 div { class: "rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-2.5",
                     p { class: "text-[10px] text-zinc-500", "{CHART_SUCCESS}" }
-                    p { class: "mt-0.5 font-mono text-base font-bold text-emerald-400", "99.86%" }
+                    p { class: "mt-0.5 font-mono text-base font-bold {ui::STATE_SUCCESS_TEXT}", "99.86%" }
                 }
             }
 
@@ -188,7 +188,7 @@ pub fn GroupQuotaCard() -> Element {
 
             div { class: "mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3 text-xs text-zinc-400 space-y-1",
                 div { class: "flex justify-between", span { "{CHART_ROUTE_WEIGHT}" } span { class: "text-zinc-200 font-mono font-medium", "{CHART_ROUTE_PRIORITY}" } }
-                div { class: "flex justify-between", span { "{CHART_CIRCUIT_BREAKER}" } span { class: "text-emerald-400 font-mono font-medium", "{CHART_CIRCUIT_ON}" } }
+                div { class: "flex justify-between", span { "{CHART_CIRCUIT_BREAKER}" } span { class: "{ui::STATE_SUCCESS_TEXT} font-mono font-medium", "{CHART_CIRCUIT_ON}" } }
             }
         }
     }

@@ -46,14 +46,14 @@ pub fn WalletSection(
                         div {
                             p { class: "{ui::TYPE_DESC}", "可用额度 (内部单位折算)" }
                             p {
-                                class: "mt-1 text-6xl font-semibold tracking-tighter text-emerald-400 tabular-nums",
+                                class: "mt-1 text-6xl font-semibold tracking-tighter {ui::STATE_SUCCESS_TEXT} tabular-nums",
                                 "data-testid": "wallet-available",
                                 "{fmt_num(w.available_i64)}"
                             }
                             p { class: "mt-1 text-xl text-zinc-400", "≈ {fmt_quota(w.available_i64)}" }
                         }
-                        div { class: "flex items-center gap-2 self-start rounded-3xl bg-emerald-950/80 px-5 py-2 text-xs font-medium text-emerald-400",
-                            span { class: "text-lg leading-none text-emerald-400", "●" }
+                        div { class: "flex items-center gap-2 self-start rounded-3xl bg-emerald-950/80 px-5 py-2 text-xs font-medium {ui::STATE_SUCCESS_TEXT}",
+                            span { class: "text-lg leading-none {ui::STATE_SUCCESS_TEXT}", "●" }
                             "已连后端"
                         }
                     }

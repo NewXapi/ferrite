@@ -64,7 +64,7 @@ pub fn InviteesSection(
                                 }
                             }
                             div { class: "text-right",
-                                div { class: "font-semibold text-emerald-400 tabular-nums",
+                                div { class: "font-semibold {ui::STATE_SUCCESS_TEXT} tabular-nums",
                                     "{fmt_num(i.reward)}"
                                 }
                                 div { class: "mt-px text-[10px] text-zinc-500", "贡献奖励" }

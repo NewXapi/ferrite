@@ -231,7 +231,7 @@ pub fn UsageLogsPanel() -> Element {
             section { id: "usage-sec-logs", class: "scroll-mt-8 space-y-3",
                 h2 { class: "{ui::TYPE_TITLE}", "{SEC_LOGS}" }
                 if !load_err().is_empty() {
-                    p { class: "text-sm text-amber-400", "无法加载日志 (未登录或请求失败): {load_err()}" }
+                    p { class: "text-sm {ui::STATE_WARNING_TEXT}", "无法加载日志 (未登录或请求失败): {load_err()}" }
                 } else if !loaded() {
                     p { class: "text-sm text-zinc-500", "加载中…" }
                 } else if shown_len == 0 {

@@ -258,7 +258,7 @@ pub fn DrawerNoticeBar(notice: Signal<DrawerNotice>, on_clear: EventHandler<()>)
                     role: "alert",
                     class: "mx-3 my-2 rounded-xl border-red-500/30 bg-red-950/30 px-3 py-2",
                     "data-testid": "ent-write-error",
-                    p { class: "text-[11px] text-red-400", "{m}" }
+                    p { class: "text-[11px] {ui::STATE_DANGER_TEXT}", "{m}" }
                     button {
                         class: "ml-2 text-[11px] text-red-300/70 hover:text-red-200",
                         onclick: move |_| on_clear.call(()),

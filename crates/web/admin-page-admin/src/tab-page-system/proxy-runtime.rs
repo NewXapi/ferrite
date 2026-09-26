@@ -173,7 +173,7 @@ pub fn ProxyRuntimePanel() -> Element {
                 div {
                     role: "alert",
                     "data-testid": "proxy-runtime-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::STATE_DANGER_TEXT}",
                     {MSG_RUNTIME_LOAD_FAILED} "{e}"
                 }
             } else if loading {

@@ -15,7 +15,7 @@ fn SubmitStateBanner(error: Signal<Option<String>>) -> Element {
     match error.read().as_deref() {
         Some(e) if !e.is_empty() => rsx! {
             div {
-                class: "rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400",
+                class: "rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs {ui::STATE_DANGER_TEXT}",
                 "{e}"
             }
         },

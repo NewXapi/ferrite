@@ -401,7 +401,7 @@ pub fn ChannelFormModal(
             if let Some(msg) = submit_err() {
                 div {
                     role: "alert",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::STATE_DANGER_TEXT}",
                     "data-testid": "channel-save-error",
                     "{msg}"
                 }

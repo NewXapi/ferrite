@@ -124,7 +124,7 @@ pub fn PlanCard(
                         "{BTN_EDIT}"
                     }
                     button {
-                        class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300",
+                        class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 text-xs {ui::STATE_DANGER_TEXT} transition-colors hover:bg-red-900/30 hover:text-red-300",
                         "data-testid": del_id,
                         onclick: move |_| on_delete.call(index),
                         "{BTN_DELETE}"
@@ -136,7 +136,7 @@ pub fn PlanCard(
             div { class: "mt-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3 border-t border-zinc-800/70 text-xs",
                 div {
                     span { class: "text-[11px] text-zinc-500 block", "{LBL_PRICE}" }
-                    span { class: "font-mono font-bold text-sm text-emerald-400", "{price_str}" }
+                    span { class: "font-mono font-bold text-sm {ui::STATE_SUCCESS_TEXT}", "{price_str}" }
                 }
                 div {
                     span { class: "text-[11px] text-zinc-500 block", "{LBL_PERIOD}" }

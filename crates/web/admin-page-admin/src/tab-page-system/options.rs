@@ -88,7 +88,7 @@ pub fn SystemOptionsPanel() -> Element {
                 div {
                     role: "alert",
                     "data-testid": "system-options-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-400",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::STATE_DANGER_TEXT}",
                     "{e}"
                 }
             } else if loading {
