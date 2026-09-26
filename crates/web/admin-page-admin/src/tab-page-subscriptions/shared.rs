@@ -233,7 +233,7 @@ pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -
 pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-red-900/60 px-3 py-1.5 text-xs {ui::STATE_DANGER_TEXT} hover:border-red-700",
+            class: "rounded-md border border-red-900/60 px-3 py-1.5 text-xs {ui::C_DANGER} hover:border-red-700",
             onclick: move |e| on_click.call(e),
             "{label}"
         }

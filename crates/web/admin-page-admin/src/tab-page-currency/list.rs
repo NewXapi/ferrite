@@ -122,7 +122,7 @@ pub fn CurrencyList(
                                     td { class: "px-2 py-1 text-zinc-400", "{d.precision}" }
                                     td { class: "px-2 py-1",
                                         if d.enabled {
-                                            span { class: "{ui::STATE_SUCCESS_TEXT}", "{LBL_STATUS_ENABLED}" }
+                                            span { class: "{ui::C_SUCCESS}", "{LBL_STATUS_ENABLED}" }
                                         } else {
                                             span { class: "text-zinc-500", "{LBL_STATUS_DISABLED}" }
                                         }

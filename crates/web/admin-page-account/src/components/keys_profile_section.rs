@@ -45,7 +45,7 @@ pub fn KeysProfileSection(user: Option<UserDto>, self_err: String, pending: Stri
                                 ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                             }
                         } else if !self_err.is_empty() {
-                            p { class: "text-sm {ui::STATE_WARNING_TEXT}", "无法加载用户信息 (未登录或请求失败): {self_err}" }
+                            p { class: "text-sm {ui::C_WARNING}", "无法加载用户信息 (未登录或请求失败): {self_err}" }
                         } else {
                             p { class: "text-sm text-zinc-500", "{pending}" }
                         }

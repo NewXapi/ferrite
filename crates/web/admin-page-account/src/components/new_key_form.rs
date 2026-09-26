@@ -131,7 +131,7 @@ pub fn NewKeyForm(
                     }
 
                     if !err().is_empty() {
-                        p { class: "text-xs {ui::STATE_DANGER_TEXT}", "{err()}" }
+                        p { class: "text-xs {ui::C_DANGER}", "{err()}" }
                     }
                 }
 

@@ -50,7 +50,7 @@ pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element 
             }
             div { class: "mt-2 flex items-baseline justify-between gap-2",
                 span { class: "font-mono {ui::TYPE_DESC}", "{time_str}" }
-                span { class: "shrink-0 font-medium tabular-nums text-sm {ui::STATE_SUCCESS_TEXT}", "{cost_str}" }
+                span { class: "shrink-0 font-medium tabular-nums text-sm {ui::C_SUCCESS}", "{cost_str}" }
             }
 
             // 摘要两行:Tokens、耗时

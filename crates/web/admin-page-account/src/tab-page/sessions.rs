@@ -113,10 +113,10 @@ pub fn SessionsPanel() -> Element {
             }
 
             if let Some(m) = flash() {
-                p { class: "text-xs {ui::STATE_SUCCESS_TEXT}", "{m}" }
+                p { class: "text-xs {ui::C_SUCCESS}", "{m}" }
             }
             if !action_err().is_empty() {
-                p { class: "text-xs {ui::STATE_DANGER_TEXT}", "吊销失败: {action_err()}" }
+                p { class: "text-xs {ui::C_DANGER}", "吊销失败: {action_err()}" }
             }
 
             if let Some(list) = sessions() {
@@ -155,7 +155,7 @@ pub fn SessionsPanel() -> Element {
                     }
                 }
             } else if !err().is_empty() {
-                p { class: "text-sm {ui::STATE_WARNING_TEXT}", "无法加载会话 (未登录或请求失败): {err()}" }
+                p { class: "text-sm {ui::C_WARNING}", "无法加载会话 (未登录或请求失败): {err()}" }
             } else {
                 p { class: "text-sm text-zinc-500", "加载中…" }
             }

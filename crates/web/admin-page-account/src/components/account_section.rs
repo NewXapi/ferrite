@@ -183,12 +183,12 @@ pub fn AccountSection() -> Element {
                     "修改密码"
                 }
                 if let Some(m) = save_flash() {
-                    span { class: "text-xs {ui::STATE_SUCCESS_TEXT}", "{m}" }
+                    span { class: "text-xs {ui::C_SUCCESS}", "{m}" }
                 }
             }
 
             if !save_err().is_empty() {
-                p { class: "mt-3 text-xs {ui::STATE_DANGER_TEXT}", "操作失败: {save_err()}" }
+                p { class: "mt-3 text-xs {ui::C_DANGER}", "操作失败: {save_err()}" }
             }
         }
     }

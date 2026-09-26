@@ -407,7 +407,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     if status() == 1 { "{BTN_DISABLE}" } else { "{BTN_ENABLE}" }
                 }
                 button {
-                    class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs {ui::STATE_DANGER_TEXT} hover:border-red-700",
+                    class: "rounded-md border border-zinc-800 px-3 py-1.5 text-xs {ui::C_DANGER} hover:border-red-700",
                     disabled: is_new(),
                     title: if is_new() { MSG_TITLE_DRAFT_NO_DELETE } else { "" },
                     onclick: move |_| request_delete(idx),

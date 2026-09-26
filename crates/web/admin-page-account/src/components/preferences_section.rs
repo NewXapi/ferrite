@@ -121,12 +121,12 @@ pub fn PreferencesSection() -> Element {
                         "保存设置"
                     }
                     if let Some(m) = flash() {
-                        span { class: "text-xs {ui::STATE_SUCCESS_TEXT}", "{m}" }
+                        span { class: "text-xs {ui::C_SUCCESS}", "{m}" }
                     }
                 }
 
                 if !err().is_empty() {
-                    p { class: "mt-3 text-xs {ui::STATE_DANGER_TEXT}", "操作失败: {err()}" }
+                    p { class: "mt-3 text-xs {ui::C_DANGER}", "操作失败: {err()}" }
                 }
             }
 

@@ -237,7 +237,7 @@ pub fn ProxyNodesPanel() -> Element {
             if let Some(e) = err_msg() {
                 div {
                     role: "alert",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::STATE_DANGER_TEXT}",
+                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm {ui::C_DANGER}",
                     "data-testid": "proxy-import-error",
                     "{e}"
                 }
@@ -247,17 +247,17 @@ pub fn ProxyNodesPanel() -> Element {
                     class: "rounded-xl border border-emerald-500/30 bg-emerald-950/30 p-5",
                     "data-testid": "proxy-import-report",
                     div { class: "flex gap-6 text-sm mb-4",
-                        span { class: "{ui::STATE_SUCCESS_TEXT} font-medium", {MSG_CREATED_PREFIX} "{r.created}" }
-                        span { class: "{ui::STATE_WARNING_TEXT} font-medium", {MSG_SKIPPED_PREFIX} "{r.skipped}" }
+                        span { class: "{ui::C_SUCCESS} font-medium", {MSG_CREATED_PREFIX} "{r.created}" }
+                        span { class: "{ui::C_WARNING} font-medium", {MSG_SKIPPED_PREFIX} "{r.skipped}" }
                     }
                     if !r.failures.is_empty() {
                         div { class: "mt-3 pt-3 border-t border-zinc-700",
                             p { class: "text-xs text-zinc-400 mb-3", {MSG_FAILURES_TITLE} }
                             for f in &r.failures {
                                 div {
-                                    class: "mb-2 text-xs p-3 bg-zinc-950 rounded border-l-4 {ui::STATE_DANGER_BORDER}",
+                                    class: "mb-2 text-xs p-3 bg-zinc-950 rounded border-l-4 {ui::B_DANGER}",
                                     "data-testid": "proxy-import-failure",
-                                    span { class: "font-mono {ui::STATE_DANGER_TEXT}", "{f.source}" }
+                                    span { class: "font-mono {ui::C_DANGER}", "{f.source}" }
                                     span { class: "text-zinc-500 mx-2", "→" }
                                     span { class: "text-zinc-300", "{f.reason}" }
                                 }

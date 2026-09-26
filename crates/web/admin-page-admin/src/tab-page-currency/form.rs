@@ -161,7 +161,7 @@ pub fn CurrencyForm(
 
             // 维护者定稿的两条警示
             div { class: "space-y-1 text-xs",
-                p { class: "{ui::STATE_DANGER_TEXT}",
+                p { class: "{ui::C_DANGER}",
                     "{MSG_WARN_RATE}"
                 }
                 p { class: "text-red-400/80",

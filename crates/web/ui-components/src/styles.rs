@@ -67,68 +67,85 @@ pub const CARD_CONTENT: &str = "rounded-xl border border-zinc-800 bg-zinc-900/60
 /// 实体卡网格（手机 1 / 中屏 3 / 大屏 5 栏）。
 pub const CARD_GRID: &str = "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5";
 
-// ---------------------------------------------------------------------------
-// Typography roles — 复用文本样式（size + weight + color 固定组合，整仓统一）。
-// 颜色先用裸 zinc（视觉定稿前的过渡，非主题化；换主题另议）。
-// 组件在 rsx! 里引用 `ui::TYPE_*`，取代散落的 `text-*`/`font-*` 字面量。
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// 语义设计 token —— 整仓样式的单一来源（页面组件只引用这些，不写裸 Tailwind）。
+//
+// 三层，全部在本文件；改一处 = 全站生效：
+//   ① 文本角色  TYPE_*   —— 标题 / 卡牌标题 / 正文 / 描述 / 微标签 / 数值 / 按钮。
+//                            按"这是什么文字"放对应角色，不逐字拆字号颜色。
+//   ② 语义色    C_*      —— 主/次/状态文字色（按语义，不按色号）。
+//   ③ 表面      S_* / B_* —— 背景（面板/凸起/浅底）与描边。
+//
+// 主题化：换肤时只改这三个小节里各 token 的右值（都在 styles.rs），全站换。
+// 反例（别做）：把 `text-zinc-400` 这种原子拆成常量——那是把颜色写死，没法换主题，
+//   且 token 数量爆炸。语义层已够，原子留 Tailwind。
+// ===========================================================================
 
-/// 大字 / hero / 最大数值：很大 + 粗 + 最亮。
-pub const TYPE_DISPLAY: &str = "text-3xl font-bold text-zinc-50";
+// ① 文本角色（size + weight + color 组合；颜色值跟 ② 一致，换肤时同步改）
 
-/// 区段标题（角色①）：大 / 亮 / 粗。取代反复手抄的 `text-lg font-medium text-zinc-100`。
-pub const TYPE_TITLE: &str = "text-lg font-bold text-zinc-50";
+/// 区段 / 页面标题：大、亮、粗。
+pub const TYPE_TITLE: &str = "text-lg font-bold text-zinc-100";
 
-/// tab 文字（角色②）：中等 / 亮 / 不粗。用于 tab 切换器的文案部分。
-pub const TYPE_TAB: &str = "text-sm text-zinc-200";
-
-/// 卡牌标题（角色④）：正常 / 亮。卡片名 / 列表项标题。
+/// 卡牌 / 列表项标题：中、亮。
 pub const TYPE_CARD_TITLE: &str = "text-sm font-medium text-zinc-100";
 
-/// 数值 / 字段值：亮 + 粗。统计大数字、Profile 的 NAME/EMAIL 值。
-pub const TYPE_VALUE: &str = "text-xl font-semibold text-zinc-50";
-
-/// 正文：正常 / 中亮。取代散落的 `text-sm text-zinc-300`。
+/// 正文 / 字段说明正文。
 pub const TYPE_BODY: &str = "text-sm text-zinc-300";
 
-/// 描述 / 次要说明（角色③）：暗 / 正常。取代裸 `text-xs`（全仓最大头）。
-pub const TYPE_DESC: &str = "text-xs text-zinc-500";
+/// 描述 / 次要说明（全仓最大头的 `text-xs` 说明文字）。
+pub const TYPE_DESC: &str = "text-xs text-zinc-400";
 
-/// 微标签：暗 / 小 / 粗 + 字距。字段小标签（NAME/EMAIL/SIGN-IN 那种）。
-pub const TYPE_LABEL: &str = "text-[10px] font-medium tracking-wider text-zinc-500";
+/// 表单微标签（NAME / EMAIL / 字段小标签）。
+pub const TYPE_LABEL: &str = "text-[11px] font-medium text-zinc-400";
 
-// ---------------------------------------------------------------------------
-// Semantic state colors — 状态色（红=危险 / 绿=成功 / 琥珀=警告 / 蓝=信息）。
-// v1：按当前全仓最高频的色阶取值，每项独立可调（改一处全仓生效）。
-// 组件用 `ui::STATE_*` 引用；迁移铺开是下一步，调色以这份为准。
-// ---------------------------------------------------------------------------
+/// 大数值 / 统计主数字。
+pub const TYPE_VALUE: &str = "text-2xl font-semibold text-zinc-50";
 
-/// 危险 / 错误：主文字色。
-pub const STATE_DANGER_TEXT: &str = "text-red-400";
+/// 按钮文字：只定字号字重，颜色随所在底色（浅底用 `C_ON`、深底用 `TYPE_CARD_TITLE` 同款）。
+pub const TYPE_BUTTON: &str = "text-sm font-medium";
 
-/// 危险 / 错误：底色。
-pub const STATE_DANGER_BG: &str = "bg-red-950";
+// ② 语义色（文字）——按语义引用，不按色号
 
-/// 危险 / 错误：描边色。
-pub const STATE_DANGER_BORDER: &str = "border-red-500";
+/// 主文字（面板内默认正文色）。
+pub const C_TEXT: &str = "text-zinc-100";
 
-/// 成功：主文字色。
-pub const STATE_SUCCESS_TEXT: &str = "text-emerald-400";
+/// 次要 / 弱化文字。
+pub const C_MUTED: &str = "text-zinc-400";
 
-/// 成功：底色。
-pub const STATE_SUCCESS_BG: &str = "bg-emerald-950";
+/// 浅底（白底按钮等）上的文字。
+pub const C_ON: &str = "text-zinc-900";
 
-/// 成功：描边色。
-pub const STATE_SUCCESS_BORDER: &str = "border-emerald-500";
+/// 成功。
+pub const C_SUCCESS: &str = "text-emerald-400";
 
-/// 警告 / 进行中：主文字色。
-pub const STATE_WARNING_TEXT: &str = "text-amber-400";
+/// 危险 / 错误。
+pub const C_DANGER: &str = "text-red-400";
 
-/// 警告 / 进行中：底色。
-pub const STATE_WARNING_BG: &str = "bg-amber-500";
+/// 警告 / 进行中。
+pub const C_WARNING: &str = "text-amber-400";
 
-/// 信息 / 提示：主文字色。
-pub const STATE_INFO_TEXT: &str = "text-sky-300";
+/// 信息 / 提示。
+pub const C_INFO: &str = "text-sky-300";
 
-/// 信息 / 提示：描边色。
-pub const STATE_INFO_BORDER: &str = "border-sky-500";
+// ③ 表面（背景）与描边
+
+/// 面板 / 卡片背景。
+pub const S_PANEL: &str = "bg-zinc-900";
+
+/// 凸起表面（hover / 选中 / 次级块）。
+pub const S_RAISED: &str = "bg-zinc-800";
+
+/// 浅底表面（主按钮白底）。
+pub const S_ON: &str = "bg-white";
+
+/// 成功 / 危险 / 警告 / 信息 的语义表面（浅色底）。
+pub const S_SUCCESS: &str = "bg-emerald-950";
+pub const S_DANGER: &str = "bg-red-950";
+pub const S_WARNING: &str = "bg-amber-500";
+
+/// 面板描边。
+pub const B_PANEL: &str = "border-zinc-800";
+/// 成功 / 危险 / 信息 的语义描边。
+pub const B_DANGER: &str = "border-red-500";
+pub const B_SUCCESS: &str = "border-emerald-500";
+pub const B_INFO: &str = "border-sky-500";

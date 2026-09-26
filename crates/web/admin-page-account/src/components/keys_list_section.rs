@@ -55,7 +55,7 @@ pub fn KeysListSection(
                 }
 
                 if !keys_err().is_empty() {
-                    p { class: "text-sm {ui::STATE_WARNING_TEXT}", "无法加载密钥 (未登录或请求失败): {keys_err()}" }
+                    p { class: "text-sm {ui::C_WARNING}", "无法加载密钥 (未登录或请求失败): {keys_err()}" }
                 } else if !keys_loaded() {
                     p { class: "text-sm text-zinc-500", "加载中…" }
                 } else if keys.is_empty() {

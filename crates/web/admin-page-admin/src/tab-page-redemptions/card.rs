@@ -173,7 +173,7 @@ pub fn RedemptionCard(
                 if item.status == 1 {
                     button {
                         "data-testid": "disable-redemption",
-                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium {ui::STATE_WARNING_TEXT} transition-colors hover:bg-zinc-700 hover:text-amber-300",
+                        class: "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium {ui::C_WARNING} transition-colors hover:bg-zinc-700 hover:text-amber-300",
                         onclick: move |_| on_disable.call(disable_key.clone()),
                         "{BTN_DISABLE}"
                     }

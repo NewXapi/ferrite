@@ -130,7 +130,7 @@ pub fn RedemptionGenerateModal(
                     }
                     div { class: "flex justify-between font-medium",
                         span { class: "text-zinc-300", "{LBL_TOTAL_VALUE}" }
-                        span { class: "{ui::STATE_SUCCESS_TEXT} font-mono text-sm",
+                        span { class: "{ui::C_SUCCESS} font-mono text-sm",
                             "¥ {total_value:.2}"
                         }
                     }
@@ -188,7 +188,7 @@ pub fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> El
     rsx! {
         Modal { title: format!("{TTL_GENERATED_PREFIX}{}{TTL_GENERATED_SUFFIX}", codes.len()), on_close: move |_| on_close.call(()),
             div { class: "space-y-3",
-                p { class: "text-xs {ui::STATE_WARNING_TEXT}",
+                p { class: "text-xs {ui::C_WARNING}",
                     "{MSG_CODES_WARNING}"
                 }
                 pre {

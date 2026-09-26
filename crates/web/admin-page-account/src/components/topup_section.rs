@@ -232,7 +232,7 @@ pub fn TopupSection(
                 }
             }
             if let Some(msg) = order_ok() {
-                p { class: "mt-4 flex items-center gap-2 text-sm {ui::STATE_SUCCESS_TEXT}",
+                p { class: "mt-4 flex items-center gap-2 text-sm {ui::C_SUCCESS}",
                     "data-testid": "topup-order-result",
                     "{msg}"
                 }
@@ -241,13 +241,13 @@ pub fn TopupSection(
                 a {
                     href: "{url}",
                     target: "_blank",
-                    class: "mt-3 inline-flex items-center gap-1 rounded-2xl border border-emerald-700 {ui::STATE_SUCCESS_BG} px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900",
+                    class: "mt-3 inline-flex items-center gap-1 rounded-2xl border border-emerald-700 {ui::S_SUCCESS} px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900",
                     "data-testid": "topup-pay-button",
                     "去支付 →"
                 }
             }
             if !order_err().is_empty() {
-                p { class: "mt-4 text-sm {ui::STATE_DANGER_TEXT}",
+                p { class: "mt-4 text-sm {ui::C_DANGER}",
                     "data-testid": "topup-order-error",
                     "开单失败: {order_err()}"
                 }
@@ -277,13 +277,13 @@ pub fn TopupSection(
                 }
             }
             if let Some(msg) = topup_ok() {
-                p { class: "mt-4 flex items-center gap-2 text-sm {ui::STATE_SUCCESS_TEXT}",
+                p { class: "mt-4 flex items-center gap-2 text-sm {ui::C_SUCCESS}",
                     "data-testid": "topup-result",
                     "{msg}"
                 }
             }
             if !topup_err().is_empty() {
-                p { class: "mt-4 text-sm {ui::STATE_DANGER_TEXT}",
+                p { class: "mt-4 text-sm {ui::C_DANGER}",
                     "data-testid": "topup-error",
                     "兑换失败: {topup_err()}"
                 }

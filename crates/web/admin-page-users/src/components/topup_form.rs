@@ -67,7 +67,7 @@ pub fn TopUpForm(
                 }
                 div { class: "flex justify-between gap-2 text-xs",
                     span { class: "text-zinc-400", "{MSG_AFTER_QUOTA}{LBL_QUOTA}" }
-                    span { class: "font-medium {ui::STATE_SUCCESS_TEXT}", "{after}" }
+                    span { class: "font-medium {ui::C_SUCCESS}", "{after}" }
                 }
             }
 

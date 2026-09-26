@@ -31,7 +31,7 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-4 flex items-center justify-between",
-                    h3 { class: "text-base font-semibold {ui::STATE_SUCCESS_TEXT}", "密钥创建成功" }
+                    h3 { class: "text-base font-semibold {ui::C_SUCCESS}", "密钥创建成功" }
                     button {
                         class: "{ui::CLOSE_BTN}",
                         onclick: move |_| on_close.call(()),
@@ -40,7 +40,7 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
                     }
                 }
 
-                p { class: "mb-2 text-xs {ui::STATE_WARNING_TEXT}", "明文密钥只显示这一次,关闭后无法再查看" }
+                p { class: "mb-2 text-xs {ui::C_WARNING}", "明文密钥只显示这一次,关闭后无法再查看" }
                 div { class: "flex items-center gap-2",
                     input {
                         class: "min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",

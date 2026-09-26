@@ -154,7 +154,7 @@ pub fn GroupsToolbar(
                         "data-testid": "bulk-bar",
                         span { class: "text-xs text-zinc-400", "{MSG_BULK_SELECTED_PREFIX}{selected().len()}{MSG_BULK_SELECTED_SUFFIX}" }
                         button {
-                            class: "rounded-lg border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-1 text-xs font-medium {ui::STATE_SUCCESS_TEXT} transition-colors hover:bg-emerald-800/50",
+                            class: "rounded-lg border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-1 text-xs font-medium {ui::C_SUCCESS} transition-colors hover:bg-emerald-800/50",
                             "data-testid": "bulk-enable",
                             onclick: move |_| on_bulk_enable.call(()),
                             "{BTN_BULK_ENABLE}"

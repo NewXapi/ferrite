@@ -86,7 +86,7 @@ pub fn KeyCard(
                     span { class: "shrink-0 whitespace-nowrap text-zinc-400", "已用额度" }
                     if unlimited {
                         span {
-                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium {ui::STATE_INFO_TEXT}",
+                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 text-[11px] font-medium {ui::C_INFO}",
                             "无限"
                         }
                     } else {
@@ -127,7 +127,7 @@ pub fn KeyCard(
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,
-                    class: "flex-1 {ui::STATE_DANGER_TEXT}",
+                    class: "flex-1 {ui::C_DANGER}",
                     onclick: move |_| on_delete.call(e_del.clone()),
                     "删除"
                 }
