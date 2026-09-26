@@ -248,7 +248,7 @@ pub fn SectionPill(active: Section, on_select: EventHandler<Section>) -> Element
                     class: if active == s {
                         "h-9 w-2 rounded-full bg-gradient-to-b from-zinc-400 to-zinc-500 shadow-sm shadow-black/60 ring-1 ring-white/10 transition-all hover:from-zinc-300 hover:to-zinc-400"
                     } else {
-                        "h-2 w-2 rounded-full bg-zinc-700/60 ring-1 ring-white/5 transition-all hover:bg-zinc-500"
+                        "h-2 w-2 rounded-full bg-secondary/60 ring-1 ring-white/5 transition-all hover:bg-accent"
                     },
                     "aria-label": "{s.label()}",
                     title: "{s.label()}",
@@ -273,13 +273,13 @@ pub fn TopNavMeter(active: Section, on_select: EventHandler<Section>) -> Element
                 button {
                     key: "{SECTIONS[i].label()}",
                     class: if active == SECTIONS[i] {
-                        if i == 0 { "flex h-6 items-center rounded-l-full bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
-                        else if i == len - 1 { "flex h-6 items-center rounded-r-full bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
-                        else { "flex h-6 items-center bg-zinc-100 px-2 text-xs font-semibold text-zinc-900 transition-all" }
+                        if i == 0 { "flex h-6 items-center rounded-l-full bg-primary px-2 text-xs font-semibold text-primary-foreground transition-all" }
+                        else if i == len - 1 { "flex h-6 items-center rounded-r-full bg-primary px-2 text-xs font-semibold text-primary-foreground transition-all" }
+                        else { "flex h-6 items-center bg-primary px-2 text-xs font-semibold text-primary-foreground transition-all" }
                     } else {
-                        if i == 0 { "flex h-6 items-center rounded-l-full px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
-                        else if i == len - 1 { "flex h-6 items-center rounded-r-full px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
-                        else { "flex h-6 items-center px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100" }
+                        if i == 0 { "flex h-6 items-center rounded-l-full px-2 text-xs font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground" }
+                        else if i == len - 1 { "flex h-6 items-center rounded-r-full px-2 text-xs font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground" }
+                        else { "flex h-6 items-center px-2 text-xs font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground" }
                     },
                     onclick: move |_| on_select.call(SECTIONS[i]),
                     "{SECTIONS[i].label()}"
@@ -293,9 +293,9 @@ pub fn TopNavMeter(active: Section, on_select: EventHandler<Section>) -> Element
 #[component]
 pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
     let tone = if active {
-        "text-zinc-100"
+        "text-foreground"
     } else {
-        "text-zinc-500 hover:text-zinc-300"
+        "text-muted-foreground hover:text-foreground"
     };
     rsx! {
         button {
@@ -303,7 +303,7 @@ pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -
             onclick: move |event| onclick.call(event),
             "{label}"
             if active {
-                span { class: "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 bg-zinc-100" }
+                span { class: "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 bg-primary" }
             }
         }
     }
@@ -451,7 +451,7 @@ pub fn HomePage() -> Element {
     let section_idx = SECTIONS.iter().position(|s| *s == section()).unwrap_or(0);
     rsx! {
         div {
-            class: "h-svh overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
+            class: "h-svh overflow-hidden bg-background text-foreground transition-all duration-300",
             class: if is_light { "light" } else { "" },
             AppShell {
                 rail: rsx! {
