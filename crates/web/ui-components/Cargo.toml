@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 contract   = { path = "../../contract" }
 dioxus     = { workspace = true }
+tw_merge   = { workspace = true }
 serde      = { workspace = true }
 serde_json = { workspace = true }
 gloo-net   = { workspace = true }

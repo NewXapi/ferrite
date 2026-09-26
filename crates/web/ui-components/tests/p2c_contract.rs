@@ -7,8 +7,8 @@
 //! 用户可见的样式回归。改 class 串的唯一合法理由是「同步 shadcn 上游新版本」，
 //! 此时本测试的期望值应随上游 diff 一起更新，并在 PR 里贴出上游对照。
 
-use ui_components::components::sheet::{SheetSide, side_parts};
-use ui_components::components::sidebar::{menu_button_parts, state_parts as sidebar_state_parts};
+use ui_components::sheet::{SheetSide, side_parts};
+use ui_components::sidebar::{menu_button_parts, state_parts as sidebar_state_parts};
 
 #[test]
 fn sidebar_menu_button_active_parts_match_shadcn() {

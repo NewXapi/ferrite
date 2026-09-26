@@ -1,0 +1,66 @@
+use contract::api::user::{UserDto, role_label};
+use dioxus::prelude::*;
+
+use crate::session::{clear_cached_session, get_cached_user};
+
+/// 顶部栏用户态徽标: 未登录显示「登录/注册」，已登录显示头像和昵称菜单
+#[component]
+pub fn UserBadge(
+    #[props(default)] on_open_login: EventHandler<()>,
+    #[props(default)] user: Option<Option<UserDto>>,
+    #[props(default)] on_logout: EventHandler<()>,
+) -> Element {
+    let mut local_user = use_signal(get_cached_user);
+    let mut dropdown_open = use_signal(|| false);
+
+    let current_user = match user {
+        Some(u) => u,
+        None => local_user(),
+    };
+    rsx! {
+        div { class: "relative select-none",
+            if let Some(user) = current_user {
+                div {
+                    class: "flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/90 px-2.5 py-1 text-xs cursor-pointer hover:border-purple-500/40 transition-colors",
+                    onclick: move |_| dropdown_open.set(!dropdown_open()),
+                    div { class: "flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-bold text-white",
+                        "{user.username.chars().next().unwrap_or('U')}"
+                    }
+                    span { class: "font-semibold text-zinc-200 max-w-[80px] truncate", "{user.display_name}" }
+                    span { class: "text-[9px] text-zinc-500", "⌵" }
+                }
+
+                if dropdown_open() {
+                    div {
+                        class: "absolute right-0 top-full mt-2 z-50 w-44 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-2xl backdrop-blur-2xl text-xs flex flex-col gap-1",
+                        div { class: "px-2.5 py-2 border-b border-zinc-800/80 flex flex-col gap-0.5",
+                            span { class: "font-bold text-white truncate", "{user.display_name}" }
+                            span { class: "text-[10px] text-zinc-500 truncate", "@{user.username} · {role_label(user.role)}" }
+                        }
+                        button {
+                            class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left",
+                            onclick: move |_| dropdown_open.set(false),
+                            span { "个人资料" }
+                        }
+                        button {
+                            class: "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors text-left border-t border-zinc-800/80 mt-1",
+                            onclick: move |_| {
+                                clear_cached_session();
+                                local_user.set(None);
+                                on_logout.call(());
+                                dropdown_open.set(false);
+                            },
+                            span { "退出登录" }
+                        }
+                    }
+                }
+            } else {
+                button {
+                    class: "flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-3.5 py-1 text-xs font-bold text-white shadow-md shadow-purple-600/30 hover:scale-105 active:scale-95 transition-all",
+                    onclick: move |_| on_open_login.call(()),
+                    span { "登录 / 注册" }
+                }
+            }
+        }
+    }
+}

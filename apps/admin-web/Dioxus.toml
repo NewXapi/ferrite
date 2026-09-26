@@ -2,6 +2,12 @@
 name = "admin-web"
 asset_dir = "assets"
 
+# tailwind.out.css 是构建产物（dx 内置 tailwind watcher 每次 build 再生），
+# mtime 抖动会触发非热重载重建 → 重建循环（客户端永远显示 "being rebuilt"）。
+# 断开循环：watch 忽略该产物。
+[watch]
+ignore = ["assets/tailwind.out.css"]
+
 [web.app]
 title = "Ferrite Admin"
 

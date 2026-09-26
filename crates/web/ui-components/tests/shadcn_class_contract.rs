@@ -9,8 +9,8 @@
 //! 为什么逐字断言：这些映射是组件的**视觉契约**——任何一串 class 的漂移都是一次
 //! 用户可见的样式回归。
 
-use ui_components::components::badge::{BadgeVariant, variant_parts as badge_variant_parts};
-use ui_components::components::button::{ButtonSize, ButtonVariant, size_parts, variant_parts};
+use ui_components::badge::{BadgeVariant, variant_parts as badge_variant_parts};
+use ui_components::button::{ButtonSize, ButtonVariant, size_parts, variant_parts};
 
 #[test]
 fn button_variant_classes_match_dsh_basis() {

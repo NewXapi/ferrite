@@ -1,69 +1,85 @@
 //! # ui-components — 全栈通用的 Web 组件库
 //!
-//! 整合原 admin-ui 与 tavern-ui，按文件清晰拆分：
-//! - auth_modal — 通用认证弹窗与用户状态微标 (AuthModal, UserBadge)
+//! 按组件类型聚合：一个目录一个类型族（目录内按组件一文件拆分）；
+//! 单一组件直接平铺为 `src/<类型>.rs`，不设单文件目录。
+//! - button/ — 按钮族：Button、IconButton、SubmitButton、ActionButton(Group)、GhostButton、CloseButton
+//! - card/ — 卡片族：shadcn Card 基元 + StatusCard、ChoiceCard、StatCard
+//! - form/ — 表单基元：Field、FormField、CodeField、SliderField、PasswordField
+//! - feedback/ — 反馈：兼容包装 Avatar（36px 默认档）、EmptyState、Loading
+//! - auth/ — 认证：AuthModal、UserBadge
+//! - bubble/ — 对话：MessageBubble、SwipePicker
+//! - admin_card/ — 管理区卡牌族（AdminCard、实体卡、Pager、EditableRow）
+//! - layout/ — 布局原语（AppShell、SectionRail、TopNavBar、StatusBar、AvatarMenu）
+//! - showcase/ — 展示卡牌（PosterCard、RadarFlipCard、StatTabsCard）
+//! - icons/ — 单色 stroke 图标集（lucide 风格，一图标一文件）
+//! - dialog — 确认弹窗 (Dialog)；panel — 选择器面板外壳与模态样式常量 (FieldPanel, MODAL_*)
+//! - nav — 滚动监听导航 (ScrollSpyNav)；segmented — 分段胶囊选择器 (SegmentedCapsule)
+//! - sheet / sidebar / dropdown_menu / toast / rank_board / badge / avatar / input / skeleton / switch — 单文件类型组件
+//! - components/ — rust-ui registry 过渡层（rui_*，待替换后整目录删除）
 //! - session — 会话凭证管理与登录注册客户端
-//! - form — 表单基元 (Field, CodeField, SubmitButton, SliderField)
-//! - feedback — 头像、图标按钮、空态、加载指示器 (Avatar, IconButton, EmptyState, Loading)
-//! - bubble — 对话气泡与分支切换器 (MessageBubble, SwipePicker)
-//! - card — 状态与行动决策卡片 (StatusCard, ChoiceCard, ChoiceOption)
-//! - dialog — 确认弹窗 (Dialog)
-//! - scroll_spy — 滚动监听导航 (ScrollSpyNav)
-//! - segmented — 分段胶囊选择器 (SegmentedCapsule)
-//! - panel — 选择器面板外壳与关闭按钮 (FieldPanel, CloseButton)
-//! - action_buttons — 卡片底部操作按钮组 (ActionButtonGroup, ActionSpec, ActionTone)
 //! - i18n — 跨 crate 文案抽象 (Locale, LOCALE, t, t_in, plural)
-//!
-//! 组件族已迁移至 `components/<族>/` 目录；平铺 .rs 文件保留为向后兼容 shim。
+//! - styles / wheel_tab — 样式 token 与滚轮 tab 切换
 
-pub mod action_buttons;
-pub mod auth_modal;
+pub mod admin_card;
+pub mod auth;
+pub mod avatar;
+pub mod badge;
 pub mod bubble;
+pub mod button;
 pub mod card;
 pub mod components;
 pub mod dialog;
+pub mod dropdown_menu;
 pub mod feedback;
 pub mod form;
 pub mod i18n;
 pub mod icons;
+pub mod input;
+pub mod layout;
+pub mod nav;
 pub mod panel;
-pub mod scroll_spy;
+pub mod rank_board;
 pub mod segmented;
+pub mod select;
 pub mod session;
+pub mod sheet;
+pub mod showcase;
+pub mod sidebar;
+pub mod skeleton;
 pub mod styles;
+pub mod switch;
+pub mod toast;
 pub mod wheel_tab;
 
-pub use action_buttons::{ActionButton, ActionButtonGroup, ActionSpec, ActionTone};
-pub use auth_modal::{AuthModal, UserBadge};
-pub use bubble::{MessageBubble, SwipePicker};
-pub use card::{ChoiceCard, ChoiceOption, StatusCard};
-pub use components::admin_card::{
+pub use admin_card::{
     AdminCard, AliasCard, AliasEditField, ChannelCard, ChannelEditField, DotTabBar, UserCard,
 };
-pub use components::admin_card::{
-    AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, GhostButton,
-    PlaceholderBlock, SectionHeader,
+pub use admin_card::{
+    AdminSection, CARD_SHELL_CLASS, CardGrid, CardShell, DangerBlock, PlaceholderBlock,
+    SectionHeader,
 };
-pub use components::admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
-pub use components::admin_card::{DangerActionRow, EditableRow};
-pub use components::admin_card::{PriceMode, PriceModeToggle};
-pub use components::layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
-pub use components::showcase::{PosterCard, RadarFlipCard, StatTabsCard};
-pub use components::stat_card::{StatCard, StatSize};
+pub use admin_card::{CARD_PAGE_SIZE, Pager, page_count, page_slice};
+pub use admin_card::{DangerActionRow, EditableRow};
+pub use admin_card::{PriceMode, PriceModeToggle};
+pub use auth::{AuthModal, UserBadge};
+pub use bubble::{MessageBubble, SwipePicker};
+pub use button::{ActionButton, ActionButtonGroup, ActionSpec, ActionTone};
+pub use button::{Button, CloseButton, GhostButton, IconButton, SubmitButton};
+pub use card::{ChoiceCard, ChoiceOption, StatCard, StatSize, StatusCard};
 pub use dialog::Dialog;
-pub use feedback::{Avatar, EmptyState, IconButton, Loading};
-pub use form::{CodeField, Field, FormField, PasswordField, SliderField, SubmitButton};
+pub use feedback::{Avatar, EmptyState, Loading};
+pub use form::{CodeField, Field, FormField, PasswordField, SliderField};
 pub use i18n::{LOCALE, Locale, plural, t, t_in};
 pub use icons::{IconChartBar, IconLogOut, IconUser};
-pub use panel::{
-    CLOSE_BTN, CloseButton, FIELD_PANEL, FieldPanel, MODAL_BACKDROP, MODAL_CARD, MODAL_HEADER,
-};
-pub use scroll_spy::ScrollSpyNav;
+pub use layout::{AppShell, SectionRail, StatusBar, StatusItem, TopNavBar};
+pub use nav::ScrollSpyNav;
+pub use panel::{CLOSE_BTN, FIELD_PANEL, FieldPanel, MODAL_BACKDROP, MODAL_CARD, MODAL_HEADER};
 pub use segmented::SegmentedCapsule;
 pub use session::{
     api_login, api_register, clear_cached_session, copy_text_to_clipboard, get_cached_token,
     get_cached_user, get_storage_item, refresh_access_token, remove_storage_item,
     set_cached_session, set_storage_item, set_storage_scoped, token_is_persistent,
 };
+pub use showcase::{PosterCard, RadarFlipCard, StatTabsCard};
 pub use styles::*;
 pub use wheel_tab::{cycle_index, on_tab_wheel};

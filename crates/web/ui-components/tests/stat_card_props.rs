@@ -10,7 +10,7 @@
 //! 缺省档（`StatSize::default()`）= Sm：调用点省略 `size` 时渲染结果必须与
 //! 原先 groups/users/keys 三处逐字一致——这是迁移「不改调用点也行」的前提。
 
-use ui_components::components::stat_card::{StatSize, size_parts};
+use ui_components::card::{StatSize, size_parts};
 
 #[test]
 fn stat_size_parts_pin_original_classes() {

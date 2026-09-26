@@ -7,8 +7,8 @@
 //! token）。改动的唯一合法理由是「同步 shadcn 上游新版本」，此时期望值应随
 //! 上游 diff 一起更新，并在 PR 里贴出上游对照。
 
-use ui_components::components::select::state_parts;
-use ui_components::components::toast::{
+use ui_components::select::state_parts;
+use ui_components::toast::{
     TOAST_TTL_SECS, ToastItem, ToastVariant, sweep_toasts, variant_parts as toast_variant_parts,
 };
 

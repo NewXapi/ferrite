@@ -5,7 +5,7 @@
 //! `size-8`；首字符回落决定无图头像的可见文本。改动的唯一合法理由是
 //! 「同步 shadcn 上游新版本」，此时期望值应随上游 diff 一起更新。
 
-use ui_components::components::avatar::{fallback_char, size_parts};
+use ui_components::avatar::{fallback_char, size_parts};
 
 #[test]
 fn avatar_size_parts_defaults_and_passthrough() {

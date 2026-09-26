@@ -2,14 +2,14 @@
 //! showcase 卡牌组件的 props.
 //!
 //! 雷达几何 (RadarGeo)、角标三档样式 (badge_style)、倾斜 hover (tilt_from)、立绘
-//! 占位 (art_img) 与关键数据行渲染均已抽入 `ui::components::showcase`, 本文件不再
+//! 占位 (art_img) 与关键数据行渲染均已抽入 `ui::showcase`, 本文件不再
 //! 持有任何几何与样式; 两个组件的对外签名保持不变 (调用方 `leaderboard::mod` 零改动)。
 //! 卡内交互 (翻牌 / 鼠标倾斜) 与统一 hover 边框变亮也随组件下沉, 不在本层重复。
 
 use dioxus::prelude::*;
 
-use ui::components::showcase::{PosterCard, RadarFlipCard};
-use ui::components::showcase::{poster_card::KeyStatLine, radar_flip_card::DimRow};
+use ui::showcase::{PosterCard, RadarFlipCard};
+use ui::showcase::{poster_card::KeyStatLine, radar_flip_card::DimRow};
 
 use super::data::{DIMS, ModelStat, avg_norms, composite, dim_rank, dim_raw, key_stats, norms};
 

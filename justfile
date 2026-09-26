@@ -110,6 +110,10 @@ dev-web port="8090" mode="":
     # 锚定 justfile 所在目录（= 仓库根），使配方可从任意 cwd 调用
     # ponytail: just 无 justfile_directory 变量（1.58 实测），用内置 justfile() + shell dirname
     cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
+    # ponytail: dx 不会再生 tailwind.out.css（Dioxus.toml ignore 掉该产物后,
+    # 实测 2026-09-26 多次 dx rebuild 后 CSS 仍是旧的、新 class 全丢）;
+    # 显式跑一次 ~200ms, 否则改了 rui_* 样式页面纹丝不动。
+    cpulimit -l 65 -i -- bun run css
     if [ "{{mode}}" = "debug" ]; then
       dx serve --platform web --port {{port}} --watch false --hot-reload false --features debug-auto-login
     else
@@ -125,6 +129,8 @@ dev-web-rebuild port="8090" mode="":
     #!/usr/bin/env bash
     set -e
     cd "$(dirname "{{ justfile() }}" )/apps/admin-web"
+    # ponytail: 同 dev-web —— dx 不再生 CSS, 手动跑一次 tailwind CLI
+    cpulimit -l 65 -i -- bun run css
     echo "== restart dx (port {{port}}, mode {{mode}}; dx 启动时自会重编 wasm) =="
     pid="$(ss -ltnp 2>/dev/null | grep ":{{port}} " | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
     if [ -n "$pid" ]; then kill "$pid"; sleep 1; fi

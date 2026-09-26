@@ -19,7 +19,7 @@ use page_users::UsersPanel;
 
 use client::TokenFuture;
 use serde::Deserialize;
-use ui::components::layout::{AppShell, SectionRail, StatusBar, TopNavBar};
+use ui::layout::{AppShell, SectionRail, StatusBar, TopNavBar};
 use ui::on_tab_wheel;
 
 /// 401 静默刷新接线 (应用启动时由 main 调用一次):
@@ -310,20 +310,9 @@ pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -
 }
 
 #[component]
-pub fn ConsolePanel(header: Element, children: Element) -> Element {
+pub fn ConsolePanel(children: Element) -> Element {
     rsx! {
-        section { class: "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60",
-            div { class: "flex h-9 shrink-0 items-center justify-between border-b border-zinc-800 px-4",
-                {header}
-                div { class: "flex items-center gap-1.5",
-                    for _ in 0..3 {
-                        button {
-                            class: "h-3.5 w-3.5 rounded-full border border-zinc-700 bg-zinc-800 transition-colors hover:bg-zinc-700",
-                            "aria-label": "window control",
-                        }
-                    }
-                }
-            }
+        section { class: "flex min-h-0 flex-1 flex-col",
             div { id: "panel-scroll", class: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6",
                 {children}
             }
@@ -484,10 +473,12 @@ pub fn HomePage() -> Element {
                         is_light: is_light,
                         on_toggle_theme: move |_| theme.set(if is_light { Theme::Dark } else { Theme::Light }),
                         on_logout: move |_| do_logout(),
+                        menu_tabs: labels.clone(),
+                        active_tab: active_tab,
+                        on_tab_select: move |i| dash_tab.set(i as u8),
                     }
                 },
                 ConsolePanel {
-                    header: rsx! { span { class: "text-xs font-medium text-zinc-500", "Ferrite · admin" } },
                     match (section(), active_tab) {
                         (Section::Dashboard, 0) => rsx! { OverviewPanel {} },
                         (Section::Dashboard, 1) => rsx! { ModelsPanel {} },

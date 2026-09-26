@@ -7,11 +7,11 @@
 //! 「同步 shadcn 上游新版本」，此时本测试的期望值应随上游 diff 一起更新，
 //! 并在 PR 里贴出上游对照。
 
-use ui_components::components::dropdown_menu::{
+use ui_components::dropdown_menu::{
     CONTENT_CLASS, ITEM_CLASS, LABEL_CLASS, SEPARATOR_CLASS, content_parts,
 };
-use ui_components::components::skeleton::SKELETON_CLASS;
-use ui_components::components::switch::{THUMB_CLASS, TRACK_CLASS, state_parts};
+use ui_components::skeleton::SKELETON_CLASS;
+use ui_components::switch::{THUMB_CLASS, TRACK_CLASS, state_parts};
 
 #[test]
 fn switch_state_parts_match_shadcn() {

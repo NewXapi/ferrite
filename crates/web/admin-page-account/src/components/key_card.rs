@@ -5,7 +5,7 @@
 
 use contract::api::token::TokenDto;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonSize, ButtonVariant};
+use ui::button::{Button, ButtonSize, ButtonVariant};
 
 use crate::usage_support::{fmt_quota, used_pct};
 
@@ -23,7 +23,7 @@ use crate::usage_support::{fmt_quota, used_pct};
 /// 状态 badge 绿/黄对应启用/停用；进度条颜色分三档：≥90% 红、≥70% 黄、<70% 绿；
 /// 底部分隔线 border-t-zinc-800，三个按钮等宽 flex-1，Ghost variant，删除按钮红色文案。
 ///
-/// 【子组件组成】ui::components::button::Button × 3 (编辑/切换/删除)
+/// 【子组件组成】ui::button::Button × 3 (编辑/切换/删除)
 ///
 /// 【数据流】
 /// - 对内（入）：entry (TokenDto) 含全部展示字段；on_edit/on_toggle/on_delete (EventHandler<TokenDto>) 由父页面传入。

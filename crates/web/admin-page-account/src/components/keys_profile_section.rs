@@ -30,7 +30,7 @@ pub fn KeysProfileSection(user: Option<UserDto>, self_err: String, pending: Stri
             id: "keys-sec-profile",
             class: "scroll-mt-8 space-y-3",
             h2 { class: "text-lg font-medium text-zinc-100", "{SEC_PROFILE}" }
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6",
+            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
                 div { class: "flex items-start justify-between gap-4",
                     div { class: "min-w-0",
                         if let Some(user) = user {

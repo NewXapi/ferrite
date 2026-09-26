@@ -3,7 +3,7 @@
 
 use contract::api::token::CreateTokenResult;
 use dioxus::prelude::*;
-use ui::components::button::{Button, ButtonVariant};
+use ui::button::{Button, ButtonVariant};
 
 /// 【是什么】新建密钥成功后的明文展示弹窗，只出现一次。
 ///
@@ -15,7 +15,7 @@ use ui::components::button::{Button, ButtonVariant};
 ///
 /// 【样式】固定最大宽度 max-w-md，圆角边框、成功主题色 (border-emerald-500/40 bg-zinc-900)，标题与提示使用 emerald-400 绿色。输入框 mono 字体高亮 emerald-300。
 ///
-/// 【子组件组成】ui::components::button::Button × 1 (完成)；无其他自定义组件。
+/// 【子组件组成】ui::button::Button × 1 (完成)；无其他自定义组件。
 ///
 /// 【数据流】
 /// - 对内（入）：result (CreateTokenResult) 含明文 key 与元数据 (name 等)；on_close EventHandler 由页面传入。

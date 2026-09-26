@@ -6,8 +6,8 @@ use super::shared::{
     CARD_CONTEXT, CARD_DISABLED, CARD_ENABLED, CARD_HEADLINE, CARD_STATUS, CARD_TYPE, DASH,
 };
 use crate::api::ModelCardView;
-use ui::components::showcase::StatTabsCard;
-use ui::components::showcase::stat_tabs_card::{HeadlineStat, MiniStatItem, PriceTriple};
+use ui::showcase::StatTabsCard;
+use ui::showcase::stat_tabs_card::{HeadlineStat, MiniStatItem, PriceTriple};
 
 /// 模型展示卡: 把 [`ModelCardView`] 字段映射为 [`StatTabsCard`] props。
 ///
