@@ -18,7 +18,7 @@ use super::Chip;
 ///
 /// 【交互逻辑】点 chip → `on_change(value)`(角色单选替换);无其他交互。
 ///
-/// 【样式】`rounded-xl border-zinc-700 bg-zinc-950` 面板 + 反色选中胶囊;
+/// 【样式】`rounded-xl border-border bg-background` 面板 + 反色选中胶囊;
 /// `role="group"` + `aria-label` + 每颗 chip `aria-pressed`。
 ///
 /// 【子组件组成】共享 `Chip`(每角色一颗)。

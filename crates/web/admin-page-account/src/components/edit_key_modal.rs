@@ -145,7 +145,7 @@ pub fn EditKeyModal(
                             "无限额度"
                         }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 font-mono text-sm focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                            class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 font-mono text-sm focus:border-border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
                             r#type: "text",
                             placeholder: "额度单位, 500,000 ≈ $1",
                             value: "{quota}",
@@ -157,7 +157,7 @@ pub fn EditKeyModal(
                     div {
                         label { class: "mb-1.5 block {ui::TYPE_DESC}", "过期时间" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 {ui::TYPE_BODY} focus:border-zinc-500 focus:outline-none",
+                            class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                             r#type: "date",
                             value: "{expiry}",
                             oninput: move |e| expiry.set(e.value()),
@@ -173,12 +173,12 @@ pub fn EditKeyModal(
 
                 div { class: "mt-6 flex gap-3",
                     button {
-                        class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
+                        class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
                     button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                        class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                         disabled: busy(),
                         onclick: submit,
                         "保存"

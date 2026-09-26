@@ -13,7 +13,7 @@ use ui::button::{Button, ButtonVariant};
 /// - 点击「完成」/遮罩：调用 on_close，关闭弹窗。
 /// - 点击「复制」：通过 Clipboard API fire-and-forget 写入剪贴板，成功后短暂切换按钮文案为「已复制」并变为绿色，1.5 秒后自动恢复。
 ///
-/// 【样式】固定最大宽度 max-w-md，圆角边框、成功主题色 (border-emerald-500/40 bg-zinc-900)，标题与提示使用 emerald-400 绿色。输入框 mono 字体高亮 emerald-300。
+/// 【样式】固定最大宽度 max-w-md，圆角边框、成功主题色 (border-emerald-500/40 bg-card)，标题与提示使用 emerald-400 绿色。输入框 mono 字体高亮 emerald-300。
 ///
 /// 【子组件组成】ui::button::Button × 1 (完成)；无其他自定义组件。
 ///
@@ -27,7 +27,7 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
         div {
             class: "{ui::MODAL_BACKDROP}",
             div {
-                class: "w-full max-w-md rounded-2xl border border-emerald-500/40 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-emerald-500/40 bg-card p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-4 flex items-center justify-between",
@@ -43,16 +43,16 @@ pub fn CreatedKeyView(result: CreateTokenResult, on_close: EventHandler<()>) -> 
                 p { class: "mb-2 {ui::TYPE_DESC} {ui::C_WARNING}", "明文密钥只显示这一次,关闭后无法再查看" }
                 div { class: "flex items-center gap-2",
                     input {
-                        class: "min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-sm text-emerald-300 focus:outline-none",
+                        class: "min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-3 font-mono text-sm text-success-foreground focus:outline-none",
                         r#type: "text",
                         r#readonly: true,
                         value: "{result.plaintext}"
                     }
                     button {
                         class: if copied() {
-                            "shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-xs font-medium text-emerald-400"
+                            "shrink-0 rounded-xl border border-emerald-500/40 bg-success px-3 py-3 text-xs font-medium text-success-foreground"
                         } else {
-                            "shrink-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+                            "shrink-0 rounded-xl border border-border bg-background px-3 py-3 text-xs font-medium text-foreground transition-colors hover:bg-secondary"
                         },
                         "aria-label": "复制明文密钥",
                         onclick: move |_| {

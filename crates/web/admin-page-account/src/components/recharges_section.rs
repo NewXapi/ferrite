@@ -16,7 +16,7 @@ use crate::components::ErrCard;
 ///
 /// 【交互逻辑】纯展示，无交互。
 ///
-/// 【样式】卡片 rounded-xl p-6 + hover:border-zinc-600；行 divide-y 分隔 py-4；金额 emerald-400 tabular-nums 右对齐；状态 10px 灰字。
+/// 【样式】卡片 rounded-xl p-6 + hover:border-border；行 divide-y 分隔 py-4；金额 emerald-400 tabular-nums 右对齐；状态 10px 灰字。
 ///
 /// 【子组件组成】ErrCard × 0 或 1
 ///
@@ -29,7 +29,7 @@ pub fn RechargesSection(
 ) -> Element {
     rsx! {
         // 最近充值记录 — GET /api/user/topup/orders (真实端点)
-        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+        section { class: "rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
             div { class: "mb-5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between",
                 h3 { class: "{ui::TYPE_CARD_TITLE}", "最近充值记录" }
                 span { class: "{ui::TYPE_DESC}", "订单倒序,最近在前" }
@@ -38,12 +38,12 @@ pub fn RechargesSection(
                 ErrCard { testid: "recharge-error", what: "充值记录", msg: recharges_err() }
             } else if !recharges_loaded() {
                 div { class: "space-y-3", "data-testid": "recharge-skeleton",
-                    div { class: "h-12 w-full animate-pulse rounded bg-zinc-800" }
-                    div { class: "h-12 w-full animate-pulse rounded bg-zinc-800/70" }
+                    div { class: "h-12 w-full animate-pulse rounded bg-secondary" }
+                    div { class: "h-12 w-full animate-pulse rounded bg-secondary/70" }
                 }
             } else if recharges().is_none_or(|r| r.is_empty()) {
                 div {
-                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 py-8 text-center",
+                    class: "rounded-2xl border border-dashed border-border bg-background/40 py-8 text-center",
                     "data-testid": "recharge-empty",
                     p { class: "{ui::TYPE_BODY}", "暂无充值记录 (开单后待管理员确认入账)" }
                 }

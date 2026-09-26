@@ -12,15 +12,14 @@ pub const MODAL_BACKDROP: &str =
 
 /// 模态内容卡：居中圆角卡，最大宽度 `max-w-md`。
 pub const MODAL_CARD: &str =
-    "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl";
+    "w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl";
 
 /// 模态标题行：左标题 + 右关闭按钮。
 pub const MODAL_HEADER: &str = "mb-5 flex items-center justify-between";
 /// 关闭按钮 class（与 `CloseButton` 组件同款）。页面若自建按钮结构，复用此常量。
-pub const CLOSE_BTN: &str =
-    "rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200";
+pub const CLOSE_BTN: &str = "rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground";
 pub const FIELD_PANEL: &str =
-    "rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 focus-within:border-zinc-500";
+    "rounded-xl border border-border bg-background px-3 py-2.5 focus-within:border-border";
 
 /// 选择器面板外壳:容器 div(`FIELD_PANEL`)+ testid / role / aria-label,
 /// 内容槽 `children`。语义(选中集合怎么变)归调用侧,本组件只管外观与可及性。

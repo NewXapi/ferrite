@@ -23,8 +23,8 @@ pub enum ChipSize {
 /// 【交互逻辑】点击 → `on_press(())`。
 ///
 /// 【样式】`rounded-full border {size} text-xs font-medium transition-colors`;
-/// 选中 `border-zinc-100 bg-zinc-100 text-zinc-900`,未选
-/// `border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500`;
+/// 选中 `border-zinc-100 bg-primary text-primary-foreground`,未选
+/// `border-border bg-card text-foreground hover:border-border`;
 /// `aria-pressed` 标注选中。
 ///
 /// 【子组件组成】无。
@@ -45,9 +45,9 @@ pub fn Chip(
         ChipSize::Md => "px-3 py-1",
     };
     let tone = if selected {
-        "border-zinc-100 bg-zinc-100 text-zinc-900"
+        "border-zinc-100 bg-primary text-primary-foreground"
     } else {
-        "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+        "border-border bg-card text-foreground hover:border-border"
     };
 
     rsx! {

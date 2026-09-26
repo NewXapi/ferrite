@@ -11,7 +11,7 @@ use crate::usage_support::{fmt_num, fmt_quota};
 ///
 /// 【交互逻辑】整卡是 button，点击触发 on_open 并回传本条 log。
 ///
-/// 【样式】整卡 w-full rounded-2xl 边框卡片 p-4 text-left + hover:border-zinc-500；模型名 font-mono truncate；消耗额 emerald-400 tabular-nums；明细 12px 灰字。
+/// 【样式】整卡 w-full rounded-2xl 边框卡片 p-4 text-left + hover:border-border；模型名 font-mono truncate；消耗额 emerald-400 tabular-nums；明细 12px 灰字。
 ///
 /// 【子组件组成】无 (纯 rsx，色值与文案在组件内派生)
 ///
@@ -20,7 +20,7 @@ use crate::usage_support::{fmt_num, fmt_quota};
 pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element {
     let time_str = crate::usage_support::fmt_time(&log.created_at);
     let model_color = match log.model_name.as_str() {
-        "gpt-4o" | "gpt-4o-mini" => "bg-emerald-400",
+        "gpt-4o" | "gpt-4o-mini" => "bg-success",
         "claude-3.5-sonnet" | "claude-3-haiku" => "bg-purple-400",
         "deepseek-r1" => "bg-blue-400",
         "qwen2.5-72b" => "bg-orange-400",
@@ -40,13 +40,13 @@ pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element 
 
     rsx! {
         button {
-            class: "w-full cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-left transition-colors hover:border-zinc-500 hover:bg-zinc-900",
+            class: "w-full cursor-pointer rounded-2xl border border-border bg-card/60 p-4 text-left transition-colors hover:border-border hover:bg-card",
             onclick: move |_| on_open.call(log.clone()),
 
             // 头部:模型 + 消耗
             div { class: "flex items-center gap-2",
                 span { class: "h-2.5 w-2.5 shrink-0 rounded-full {model_color}" }
-                span { class: "truncate font-mono text-sm text-zinc-200", "{log.model_name}" }
+                span { class: "truncate font-mono text-sm text-foreground", "{log.model_name}" }
             }
             div { class: "mt-2 flex items-baseline justify-between gap-2",
                 span { class: "font-mono {ui::TYPE_DESC}", "{time_str}" }
@@ -57,7 +57,7 @@ pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element 
             div { class: "mt-3 space-y-1.5 {ui::TYPE_DESC}",
                 div { class: "flex justify-between gap-2",
                     span { class: "shrink-0 {ui::C_MUTED}", "Tokens" }
-                    span { class: "whitespace-nowrap font-medium tabular-nums text-zinc-200",
+                    span { class: "whitespace-nowrap font-medium tabular-nums text-foreground",
                         "{tokens_pair}"
                     }
                 }

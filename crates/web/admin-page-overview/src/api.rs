@@ -478,7 +478,7 @@ impl Growth {
     /// 文本色 class：升/新绿（emerald）、降红（rose），zinc 暗色卡上可读的双档。
     pub fn text_class(&self) -> &'static str {
         match self {
-            Growth::Up(_) | Growth::New => "text-emerald-400",
+            Growth::Up(_) | Growth::New => "text-success-foreground",
             Growth::Down(_) => "text-rose-400",
         }
     }

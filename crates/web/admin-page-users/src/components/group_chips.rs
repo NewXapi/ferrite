@@ -69,7 +69,7 @@ pub fn GroupChip(
 /// 【交互逻辑】点 chip → 由 `GroupChip` 推导 next → 页面 signal 更新;
 /// 列表为空时渲染空态文案。
 ///
-/// 【样式】`rounded-xl border-zinc-700 bg-zinc-950` 面板 + 选中反色胶囊;
+/// 【样式】`rounded-xl border-border bg-background` 面板 + 选中反色胶囊;
 /// `role="group"` + `aria-label` + 每颗 chip `aria-pressed` + testid 取分组名。
 ///
 /// 【子组件组成】`GroupChip`(每分组一颗)。

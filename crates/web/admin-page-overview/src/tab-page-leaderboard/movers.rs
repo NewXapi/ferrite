@@ -145,7 +145,7 @@ fn MoveList(
     let max_tokens = moves.iter().map(|m| tokens_of(&m.name)).max().unwrap_or(0);
 
     rsx! {
-        div { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
+        div { class: "space-y-3 rounded-xl border border-border bg-card p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "{testid}",
             div {
                 h3 { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
@@ -159,9 +159,9 @@ fn MoveList(
                         {
                             let (delta_text, delta_class) = match m.delta {
                                 // 持平(Moved(0))不会进本卡;防御按上升色渲染
-                                RankDelta::Moved(d) if d >= 0 => (format!("↑{d}"), "text-emerald-400"),
+                                RankDelta::Moved(d) if d >= 0 => (format!("↑{d}"), "text-success-foreground"),
                                 RankDelta::Moved(d) => (format!("↓{}", -d), "text-rose-400"),
-                                RankDelta::New => ("↑new".to_string(), "text-emerald-400"),
+                                RankDelta::New => ("↑new".to_string(), "text-success-foreground"),
                             };
                             let tokens = tokens_of(&m.name);
                             let bar_pct = if max_tokens > 0 {
@@ -174,14 +174,14 @@ fn MoveList(
                                     key: "{m.name}",
                                     class: "flex items-center gap-2.5",
                                     "data-testid": "{row_prefix}-{slug(&m.name)}",
-                                    span { class: "w-7 shrink-0 text-right font-mono text-[10px] text-zinc-500",
+                                    span { class: "w-7 shrink-0 text-right font-mono text-[10px] text-muted-foreground",
                                         "#{m.cur_rank}"
                                     }
                                     div { class: "min-w-0 flex-1",
                                         div { class: "flex items-center justify-between gap-3",
                                             span { class: "truncate {ui::TYPE_DESC}", "{m.name}" }
                                             div { class: "flex shrink-0 items-center gap-2",
-                                                span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100",
+                                                span { class: "font-mono text-xs font-semibold tabular-nums text-foreground",
                                                     "{fmt_raw(tokens)}"
                                                 }
                                                 span { class: "shrink-0 font-mono text-[11px] font-medium tabular-nums {delta_class}",
@@ -190,7 +190,7 @@ fn MoveList(
                                             }
                                         }
                                         if max_tokens > 0 {
-                                            div { class: "mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                                            div { class: "mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary",
                                                 div {
                                                     class: "h-full rounded-full transition-all duration-300",
                                                     style: "width: {bar_pct:.1}%; background: {bar_color}",
@@ -218,14 +218,14 @@ pub fn MoversCards(state: MoversState) -> Element {
                 for t in ["leaderboard-movers-loading", "leaderboard-droppers-loading"] {
                     div {
                         key: "{t}",
-                        class: "h-40 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60 transition-[border-color] duration-150 hover:border-secondary-hover",
+                        class: "h-40 animate-pulse rounded-xl border border-border bg-card/60 transition-[border-color] duration-150 hover:border-secondary-hover",
                         "data-testid": "{t}",
                     }
                 }
             }
         },
         MoversState::Failed(e) => rsx! {
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 {ui::TYPE_DESC} transition-[border-color] duration-150 hover:border-secondary-hover",
+            div { class: "rounded-xl border border-border bg-card px-4 py-3 {ui::TYPE_DESC} transition-[border-color] duration-150 hover:border-secondary-hover",
                 "data-testid": "leaderboard-movers-error",
                 "{MOVERS_ERR_PREFIX}{e}"
             }

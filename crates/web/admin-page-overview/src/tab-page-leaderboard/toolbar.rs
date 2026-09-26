@@ -4,7 +4,7 @@
 //! - 负责什么:渲染标题、口径副标题与档位切换器;不取数、不判空。
 //! - 交互逻辑:`timeframe` 由页面持有并以 Signal 双向绑定 —— 切档即写回,页面
 //!   `use_effect` 依赖它重拉榜单与升降速;组件内部零 `use_signal`。
-//! - 样式:`flex-wrap items-center justify-between` + 底边 `border-b border-zinc-800/80 pb-4`;
+//! - 样式:`flex-wrap items-center justify-between` + 底边 `border-b border-border/80 pb-4`;
 //!   切换器复用跨 tab 的 [`TimeframeTabs`](crate::shared::TimeframeTabs)。
 //! - 数据流通:入参 `model_count` 为窗口内有调用的模型数(页面从 rows 派生)。
 
@@ -24,7 +24,7 @@ pub fn UsageToolbar(
     model_count: usize,
 ) -> Element {
     rsx! {
-        div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
+        div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4",
             div {
                 h2 { class: "{ui::TYPE_TITLE} tracking-tight md:text-xl", "{USAGE_TITLE}" }
                 p { class: "mt-1 {ui::TYPE_DESC}", "{USAGE_SUBTITLE_HEAD}{model_count}{USAGE_SUBTITLE_TAIL}" }

@@ -13,11 +13,11 @@
 // ---- 语义色（非文案，与文案同文件便于表头/行共用） ----
 
 /// cooling=红系。
-pub const TONE_COOLING: &str = "border-red-500/30 bg-red-500/15 text-red-300";
+pub const TONE_COOLING: &str = "border-destructive bg-destructive text-destructive";
 /// slow_start=黄系。
-pub const TONE_SLOW_START: &str = "border-amber-500/30 bg-amber-500/15 text-amber-300";
+pub const TONE_SLOW_START: &str = "border-amber-500/30 bg-warning text-warning-foreground";
 /// ok=绿系。
-pub const TONE_OK: &str = "border-emerald-500/30 bg-emerald-500/15 text-emerald-400";
+pub const TONE_OK: &str = "border-emerald-500/30 bg-success text-success-foreground";
 
 // ============ 用户可见文案常量（i18n 第 1 层） ============
 

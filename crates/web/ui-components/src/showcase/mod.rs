@@ -33,7 +33,7 @@ pub use stat_tabs_card::StatTabsCard;
 
 /// 三种展示卡统一的外层 hover 边框变亮类(维护者点名): 边框色 150ms 过渡到 white/30。
 ///
-/// 仅对本身带 border 的卡生效(RadarFlipCard 外层 border-zinc-800、StatTabsCard 外层
+/// 仅对本身带 border 的卡生效(RadarFlipCard 外层 border-border、StatTabsCard 外层
 /// border-white/10); PosterCard 外层容器无 border, 其 hover 边框变亮需由宿主在
 /// entry.css 的 `.poster-flip:hover` 语境追加规则, 不经过本常量。
 pub const HOVER_BORDER_BRIGHT: &str =
@@ -55,7 +55,7 @@ fn art_img(art: Option<Asset>, alt: &str, extra_style: &str) -> Element {
             }
         },
         None => rsx! {
-            span { class: "absolute inset-0 flex items-center justify-center text-9xl font-bold text-zinc-600/40",
+            span { class: "absolute inset-0 flex items-center justify-center text-9xl font-bold text-muted-foreground/40",
                 "{alt.chars().next().unwrap_or('?')}"
             }
         },

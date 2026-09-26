@@ -15,7 +15,7 @@ fn SubmitStateBanner(error: Signal<Option<String>>) -> Element {
     match error.read().as_deref() {
         Some(e) if !e.is_empty() => rsx! {
             div {
-                class: "rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 {ui::TYPE_DESC} {ui::C_DANGER}",
+                class: "rounded-lg border border-destructive bg-destructive px-3 py-2 {ui::TYPE_DESC} {ui::C_DANGER}",
                 "{e}"
             }
         },
@@ -36,7 +36,7 @@ fn RememberMe(remember: Signal<bool>) -> Element {
     let box_class = if remember() {
         "bg-indigo-400 border-indigo-400"
     } else {
-        "bg-zinc-800/60 border-zinc-500 group-hover:border-zinc-400"
+        "bg-secondary/60 border-border group-hover:border-zinc-400"
     };
 
     rsx! {
@@ -54,7 +54,7 @@ fn RememberMe(remember: Signal<bool>) -> Element {
                     span { class: "{ui::TYPE_LABEL} leading-none", "✓" }
                 }
             }
-            span { class: "{ui::C_MUTED} group-hover:text-zinc-300 transition-colors", "Remember me" }
+            span { class: "{ui::C_MUTED} group-hover:text-foreground transition-colors", "Remember me" }
         }
     }
 }
@@ -95,7 +95,7 @@ pub fn SignInForm(submit: EventHandler<SignInPayload>, remember: Signal<bool>) -
                 class: "flex items-center justify-between {ui::TYPE_BODY} pt-1",
                 RememberMe { remember }
                 span {
-                    class: "cursor-pointer {ui::C_MUTED} hover:text-zinc-200 transition-colors hover:underline underline-offset-2",
+                    class: "cursor-pointer {ui::C_MUTED} hover:text-foreground transition-colors hover:underline underline-offset-2",
                     "Forgot password?"
                 }
             }

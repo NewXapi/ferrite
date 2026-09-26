@@ -92,10 +92,10 @@ pub fn variant_parts(variant: ButtonVariant) -> (&'static str, &'static str) {
         ),
         ButtonVariant::Destructive => (
             "destructive",
-            "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+            "bg-destructive text-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         ),
         ButtonVariant::Outline => ("outline", "border bg-transparent hover:bg-accent"),
-        ButtonVariant::Ghost => ("ghost", "hover:bg-accent active:bg-white/15"),
+        ButtonVariant::Ghost => ("ghost", "hover:bg-accent active:bg-primary/15"),
         ButtonVariant::Link => ("link", "text-primary underline-offset-4 hover:underline"),
     }
 }

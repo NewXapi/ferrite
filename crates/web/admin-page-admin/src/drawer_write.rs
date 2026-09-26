@@ -256,11 +256,11 @@ pub fn DrawerNoticeBar(notice: Signal<DrawerNotice>, on_clear: EventHandler<()>)
             rsx! {
                 div {
                     role: "alert",
-                    class: "mx-3 my-2 rounded-xl border-red-500/30 bg-red-950/30 px-3 py-2",
+                    class: "mx-3 my-2 rounded-xl border-destructive bg-destructive px-3 py-2",
                     "data-testid": "ent-write-error",
                     p { class: "{ui::TYPE_LABEL} {ui::C_DANGER}", "{m}" }
                     button {
-                        class: "ml-2 text-[11px] {ui::C_DANGER} hover:text-red-200",
+                        class: "ml-2 text-[11px] {ui::C_DANGER} hover:text-destructive",
                         onclick: move |_| on_clear.call(()),
                         "✕"
                     }

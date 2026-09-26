@@ -57,7 +57,7 @@ pub fn ModelsPanel() -> Element {
                 span { class: "{ui::TYPE_DESC}", "{MODELS_COUNT_HEAD}{total}{MODELS_COUNT_TAIL}" }
             }
             if let Some(e) = err {
-                div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                div { class: "rounded-2xl border border-destructive bg-destructive px-4 py-6 text-center",
                     p { class: "text-sm {ui::C_DANGER}", "{MODELS_ERR}" }
                     p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {

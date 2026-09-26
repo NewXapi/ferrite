@@ -76,26 +76,26 @@ pub fn AuthModal(
                 onclick: move |e| e.stop_propagation(),
 
                 // 顶部标题与关闭
-                div { class: "flex items-center justify-between border-b border-zinc-800/80 pb-3",
+                div { class: "flex items-center justify-between border-b border-border/80 pb-3",
                     div { class: "flex items-center gap-2",
                         span { class: "font-serif {crate::TYPE_BODY}",
                             if is_register() { "加入 Tavern · 账号注册" } else { "登录 Tavern 平台" }
                         }
                     }
                     button {
-                        class: "{crate::TYPE_BODY} hover:text-white transition-colors",
+                        class: "{crate::TYPE_BODY} hover:text-foreground transition-colors",
                         onclick: move |_| on_close.call(()),
                         "关闭"
                     }
                 }
 
                 // 登录 / 注册 Tab 切换
-                div { class: "grid grid-cols-2 gap-1 rounded-xl bg-zinc-950 p-1 border border-zinc-800",
+                div { class: "grid grid-cols-2 gap-1 rounded-xl bg-background p-1 border border-border",
                     button {
                         class: if !is_register() {
-                            "rounded-lg bg-zinc-800 py-1.5 font-bold text-white shadow-sm transition-all"
+                            "rounded-lg bg-secondary py-1.5 font-bold text-foreground shadow-sm transition-all"
                         } else {
-                            "rounded-lg py-1.5 font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+                            "rounded-lg py-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors"
                         },
                         onclick: move |_| {
                             is_register.set(false);
@@ -105,9 +105,9 @@ pub fn AuthModal(
                     }
                     button {
                         class: if is_register() {
-                            "rounded-lg bg-zinc-800 py-1.5 font-bold text-white shadow-sm transition-all"
+                            "rounded-lg bg-secondary py-1.5 font-bold text-foreground shadow-sm transition-all"
                         } else {
-                            "rounded-lg py-1.5 font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+                            "rounded-lg py-1.5 font-medium text-muted-foreground hover:text-foreground transition-colors"
                         },
                         onclick: move |_| {
                             is_register.set(true);
@@ -127,9 +127,9 @@ pub fn AuthModal(
                 // 表单字段
                 div { class: "space-y-3.5",
                     div { class: "flex flex-col gap-1.5",
-                        span { class: "font-medium text-zinc-400", "用户名" }
+                        span { class: "font-medium text-muted-foreground", "用户名" }
                         input {
-                            class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-purple-500 transition-colors",
+                            class: "w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-foreground outline-none focus:border-purple-500 transition-colors",
                             placeholder: "输入您的登录用户名",
                             value: "{username()}",
                             oninput: move |e| username.set(e.value()),
@@ -137,10 +137,10 @@ pub fn AuthModal(
                     }
 
                     div { class: "flex flex-col gap-1.5",
-                        span { class: "font-medium text-zinc-400", "密码" }
+                        span { class: "font-medium text-muted-foreground", "密码" }
                         input {
                             r#type: "password",
-                            class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-purple-500 transition-colors",
+                            class: "w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-foreground outline-none focus:border-purple-500 transition-colors",
                             placeholder: "输入密码",
                             value: "{password()}",
                             oninput: move |e| password.set(e.value()),
@@ -149,9 +149,9 @@ pub fn AuthModal(
 
                     if is_register() {
                         div { class: "flex flex-col gap-1.5",
-                            span { class: "font-medium text-zinc-400", "电子邮箱 (可选)" }
+                            span { class: "font-medium text-muted-foreground", "电子邮箱 (可选)" }
                             input {
-                                class: "w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-zinc-100 outline-none focus:border-purple-500 transition-colors",
+                                class: "w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-foreground outline-none focus:border-purple-500 transition-colors",
                                 placeholder: "user@example.com",
                                 value: "{email()}",
                                 oninput: move |e| email.set(e.value()),

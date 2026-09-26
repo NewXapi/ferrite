@@ -40,9 +40,9 @@ use ui::SegmentedCapsule;
 ///
 /// 【交互逻辑】纯展示,无交互:无 `EventHandler`,无网络请求,无内部状态。
 ///
-/// 【样式】外壳 `rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3`,
-/// 悬停 `hover:border-zinc-600` 且 `transition-colors`;数值行
-/// `text-xl font-semibold tracking-tight text-white`;标签行 `mt-0.5 text-xs text-zinc-500`。
+/// 【样式】外壳 `rounded-xl border border-border bg-card/60 px-4 py-3`,
+/// 悬停 `hover:border-border` 且 `transition-colors`;数值行
+/// `text-xl font-semibold tracking-tight text-foreground`;标签行 `mt-0.5 text-xs text-muted-foreground`。
 ///
 /// 【子组件组成】无(两个原生 `p`)。
 ///
@@ -53,7 +53,7 @@ use ui::SegmentedCapsule;
 #[component]
 pub fn StatCard(value: String, label: &'static str) -> Element {
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 transition-colors hover:border-zinc-600",
+        div { class: "rounded-xl border border-border bg-card/60 px-4 py-3 transition-colors hover:border-border",
             p { class: "{ui::TYPE_VALUE} tracking-tight", "{value}" }
             p { class: "mt-0.5 {ui::TYPE_DESC}", "{label}" }
         }
@@ -110,13 +110,13 @@ pub fn Badge(text: String, tone: &'static str) -> Element {
 /// 数据交互:本组件自身**不发任何网络请求**;滑条拖动全程只改本地 signal。
 ///
 /// 【样式】外壳用共用样式壳 `ui::CardShell`(`CARD_SHELL_CLASS`:
-/// `group flex flex-col justify-between rounded-xl border border-zinc-800
-/// bg-zinc-900/60 p-4`,悬停 `hover:border-zinc-600 hover:bg-zinc-900/80` 且
+/// `group flex flex-col justify-between rounded-xl border border-border
+/// bg-card/60 p-4`,悬停 `hover:border-border hover:bg-card/80` 且
 /// `transition-all duration-200`),根节点 `role="region"` +
 /// `aria-label="{group.name}"` + `data-testid="group-card"`;默认标签为蓝底
 /// `bg-blue-950/60 border-blue-800/60 text-blue-300`;滑条轨道 `h-4 w-full`,
-/// 灰底 `h-1.5 ... bg-zinc-800` 上叠彩色进度条,调整态才渲染 thumb
-/// (`h-3.5 w-3.5 rounded-full border-2 border-zinc-100 bg-zinc-900 shadow`,
+/// 灰底 `h-1.5 ... bg-secondary` 上叠彩色进度条,调整态才渲染 thumb
+/// (`h-3.5 w-3.5 rounded-full border-2 border-zinc-100 bg-card shadow`,
 /// `data-testid="ratio-thumb"`)。
 ///
 /// 【子组件组成】`Badge`(倍率 / 内置 / 状态三枚)、`ui::ActionButtonGroup`(底部按钮组)。
@@ -162,22 +162,22 @@ pub fn GroupCard(
     let (mult_badge_text, mult_badge_tone, bar_tone) = if (m - 1.0).abs() < 0.001 {
         (
             format!("{LBL_MULT_BASELINE_PREFIX}{m:.2}×"),
-            "border-zinc-700 bg-zinc-800/80 text-zinc-300",
+            "border-border bg-secondary/80 text-foreground",
             "bg-zinc-200",
         )
     } else if m < 1.0 {
         let discount = ((1.0 - m) * 100.0).round() as i64;
         (
             format!("{LBL_MULT_DISCOUNT_PREFIX}{m:.2}× (-{discount}%)"),
-            "border-emerald-500/30 bg-emerald-500/20 text-emerald-400",
-            "bg-emerald-500",
+            "border-emerald-500/30 bg-success text-success-foreground",
+            "bg-success",
         )
     } else {
         let markup = ((m - 1.0) * 100.0).round() as i64;
         (
             format!("{LBL_MULT_MARKUP_PREFIX}{m:.2}× (+{markup}%)"),
-            "border-amber-500/30 bg-amber-500/20 text-amber-400",
-            "bg-amber-500",
+            "border-amber-500/30 bg-warning text-warning-foreground",
+            "bg-warning",
         )
     };
 
@@ -187,9 +187,9 @@ pub fn GroupCard(
         OPT_DISABLED
     };
     let status_tone = if group.status == 1 {
-        "border-emerald-500/30 bg-emerald-500/20 text-emerald-400"
+        "border-emerald-500/30 bg-success text-success-foreground"
     } else {
-        "border-zinc-700 bg-zinc-800/80 text-zinc-400"
+        "border-border bg-secondary/80 text-muted-foreground"
     };
 
     let example_cost = (100.0 * m).round() as i64;
@@ -227,7 +227,7 @@ pub fn GroupCard(
                 div { class: "space-y-1.5",
                     div { class: "flex justify-between gap-2 {ui::TYPE_LABEL}",
                         span { class: "{ui::C_MUTED}", "{LBL_RATIO}" }
-                        span { class: "whitespace-nowrap font-medium text-zinc-200", "×{display_ratio:.2}" }
+                        span { class: "whitespace-nowrap font-medium text-foreground", "×{display_ratio:.2}" }
                     }
                     div {
                         class: "relative h-4 w-full touch-none select-none",
@@ -281,14 +281,14 @@ pub fn GroupCard(
                             local_ratio.set(next.max(0.05));
                         },
                         // track 灰底 + 左色块
-                        div { class: "absolute left-0 top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-zinc-800" }
+                        div { class: "absolute left-0 top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-secondary" }
                         div { class: "absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full {bar_tone} transition-colors duration-200",
                             style: "width: {live_pct}%;"
                         }
                         // thumb 只在调整态渲染
                         if show_thumb {
                             div {
-                                class: "absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-zinc-100 bg-zinc-900 shadow",
+                                class: "absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-zinc-100 bg-card shadow",
                                 "data-testid": "ratio-thumb",
                                 style: "left: {live_pct}%;"
                             }
@@ -301,11 +301,11 @@ pub fn GroupCard(
                 div { class: "space-y-1.5 {ui::TYPE_DESC} pt-1",
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 {ui::C_MUTED}", "{LBL_EXAMPLE_COST}" }
-                        span { class: "font-medium text-zinc-200 font-mono", "{example_cost} 点" }
+                        span { class: "font-medium text-foreground font-mono", "{example_cost} 点" }
                     }
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 {ui::C_MUTED}", "{LBL_SCOPE}" }
-                        span { class: "font-medium text-zinc-200", "{LBL_SCOPE_VALUE}" }
+                        span { class: "font-medium text-foreground", "{LBL_SCOPE_VALUE}" }
                     }
                 }
             }
@@ -387,9 +387,9 @@ pub fn GroupCard(
 /// 数据交互:本组件自身不发网络请求。
 ///
 /// 【样式】遮罩 `fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4
-/// backdrop-blur-sm`;弹窗体 `w-full max-w-md rounded-2xl border border-zinc-800
-/// bg-zinc-900 p-5 shadow-xl`;标题 `text-base font-semibold text-zinc-100`;
-/// 关闭按钮 `rounded-lg p-1.5 text-zinc-500`,悬停 `hover:bg-zinc-800 hover:text-zinc-200`,
+/// backdrop-blur-sm`;弹窗体 `w-full max-w-md rounded-2xl border border-border
+/// bg-card p-5 shadow-xl`;标题 `text-base font-semibold text-foreground`;
+/// 关闭按钮 `rounded-lg p-1.5 text-muted-foreground`,悬停 `hover:bg-secondary hover:text-foreground`,
 /// 内嵌一个 `h-5 w-5` 的 stroke 风格 × 图标(`aria-label` 取 `LBL_CLOSE`)。
 ///
 /// 【子组件组成】无(原生 `div` / `h3` / `button` / `svg`);`children` 为调用方 slot。
@@ -405,13 +405,13 @@ pub(crate) fn Modal(title: String, on_close: EventHandler<()>, children: Element
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
             onclick: move |_| on_close.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-5 flex items-center justify-between",
                     h3 { class: "{ui::TYPE_TITLE}", "{title}" }
                     button {
-                        class: "rounded-lg p-1.5 {ui::C_MUTED} transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                        class: "rounded-lg p-1.5 {ui::C_MUTED} transition-colors hover:bg-secondary hover:text-foreground",
                         onclick: move |_| on_close.call(()),
                         "aria-label": LBL_CLOSE,
                         svg {
@@ -430,7 +430,7 @@ pub(crate) fn Modal(title: String, on_close: EventHandler<()>, children: Element
     }
 }
 
-const MODAL_INPUT: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none";
+const MODAL_INPUT: &str = "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground focus:border-border focus:outline-none";
 
 /// 新建 / 编辑分组弹窗(双页签表单)。
 ///
@@ -453,12 +453,12 @@ const MODAL_INPUT: &str = "w-full rounded-xl border border-zinc-700 bg-zinc-950 
 /// 数据交互:这是本 tab **唯一自带网络请求**的组件(见模块头)。
 ///
 /// 【样式】经 `Modal` 外壳(`max-w-md`);输入框统一 `MODAL_INPUT`
-/// (`w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5`,
-/// 聚焦 `focus:border-zinc-500`);倍率输入额外加 `font-mono`;预设/别名 chip 选中态
-/// `border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold`;计费预览块
-/// `rounded-xl border border-zinc-800 bg-zinc-950`,数值按倍率着色(低于 1
-/// 为 `text-emerald-400`,高于 1 为 `text-amber-400`);底部两按钮
-/// `flex-1 rounded-xl`,提交为白底 `bg-white text-zinc-900`,禁用时 `disabled:opacity-40`。
+/// (`w-full rounded-xl border border-border bg-background px-4 py-2.5`,
+/// 聚焦 `focus:border-border`);倍率输入额外加 `font-mono`;预设/别名 chip 选中态
+/// `border-zinc-100 bg-primary text-primary-foreground font-semibold`;计费预览块
+/// `rounded-xl border border-border bg-background`,数值按倍率着色(低于 1
+/// 为 `text-success-foreground`,高于 1 为 `text-warning-foreground`);底部两按钮
+/// `flex-1 rounded-xl`,提交为白底 `bg-primary text-primary-foreground`,禁用时 `disabled:opacity-40`。
 ///
 /// 【子组件组成】`Modal`(外壳)、`SegmentedCapsule`(双页签胶囊)。
 ///
@@ -621,9 +621,9 @@ pub fn GroupFormModal(
                                     {
                                         let is_active = (parsed_ratio - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
                                         let btn_tone = if is_active {
-                                            "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                            "border-zinc-100 bg-primary text-primary-foreground font-semibold"
                                         } else {
-                                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                            "border-border bg-card text-foreground hover:border-border"
                                         };
                                         rsx! {
                                             button {
@@ -638,10 +638,10 @@ pub fn GroupFormModal(
                         }
 
                         // 计费预览: 仅保留「该分组实际扣费」(「标准消耗」行已删)
-                        div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 {ui::TYPE_DESC} space-y-1.5",
+                        div { class: "rounded-xl border border-border bg-background px-4 py-3 {ui::TYPE_DESC} space-y-1.5",
                             div { class: "flex justify-between font-medium",
-                                span { class: "text-zinc-300", "{LBL_ACTUAL_COST}" }
-                                span { class: if parsed_ratio < 1.0 { "text-emerald-400" } else if parsed_ratio > 1.0 { "text-amber-400" } else { "text-zinc-200" },
+                                span { class: "text-foreground", "{LBL_ACTUAL_COST}" }
+                                span { class: if parsed_ratio < 1.0 { "text-success-foreground" } else if parsed_ratio > 1.0 { "text-warning-foreground" } else { "text-foreground" },
                                     "{(100.0 * parsed_ratio).round() as i64} 点额度"
                                 }
                             }
@@ -671,9 +671,9 @@ pub fn GroupFormModal(
                                     {
                                         let picked = parse_whitelist_raw(&f_alias.peek()).iter().any(|a| a == &opt);
                                         let cls = if picked {
-                                            "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                            "border-zinc-100 bg-primary text-primary-foreground font-semibold"
                                         } else {
-                                            "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                            "border-border bg-card text-foreground hover:border-border"
                                         };
                                         rsx! {
                                             button {
@@ -701,13 +701,13 @@ pub fn GroupFormModal(
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     "data-testid": "group-cancel",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     "data-testid": "group-submit",
                     disabled: submitting(),
                     onclick: do_submit,

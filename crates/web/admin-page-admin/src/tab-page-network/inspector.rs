@@ -52,10 +52,10 @@ use crate::state::EntityStore;
 /// 数据交互:删除路径发真实 DELETE 请求;其余为本地状态。
 ///
 /// 【样式】抽屉 `absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l
-/// border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]`(窄屏满宽、sm
-/// 起 320px);类型色点行 `border-b border-zinc-800 px-3 py-1.5`;主体
+/// border-border bg-card/97 backdrop-blur sm:w-[320px]`(窄屏满宽、sm
+/// 起 320px);类型色点行 `border-b border-border px-3 py-1.5`;主体
 /// `min-h-0 flex-1 space-y-3 overflow-y-auto scroll-subtle p-3`;底部操作条
-/// `flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2`。
+/// `flex shrink-0 items-center gap-2 border-t border-border px-3 py-2`。
 ///
 /// 【子组件组成】`DrawerHeader`(页签 + 标题)、`DrawerNoticeBar`(写通知条)、
 /// `GroupInspect` / `AliasInspect` / `DispatchInspect`(三种检视体)、
@@ -144,7 +144,7 @@ pub fn NodeInspector(
     };
 
     rsx! {
-        aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-800 bg-zinc-900/97 backdrop-blur sm:w-[320px]",
+        aside { class: "absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-border bg-card/97 backdrop-blur sm:w-[320px]",
             // 节点检视也有页签 —— 方便切到设置/导入
             DrawerHeader {
                 tab: DrawerTab::Node,
@@ -154,7 +154,7 @@ pub fn NodeInspector(
                 on_close: on_close,
             }
             // 类型色点行：补上视觉线索，不占正式空间
-            div { class: "shrink-0 border-b border-zinc-800 px-3 py-1.5",
+            div { class: "shrink-0 border-b border-border px-3 py-1.5",
                 span { class: "h-2 w-2 rounded-full", style: "background: {accent}" }
             }
             // 删除写操作的结果反馈（成功/失败/进行中），紧跟头部不遮字段
@@ -169,9 +169,9 @@ pub fn NodeInspector(
                 }
             }
             // 底部操作条
-            div { class: "flex shrink-0 items-center gap-2 border-t border-zinc-800 px-3 py-2",
+            div { class: "flex shrink-0 items-center gap-2 border-t border-border px-3 py-2",
                 button {
-                    class: "rounded-md border border-zinc-800 px-2.5 py-1 {ui::TYPE_DESC} hover:border-red-700 hover:text-red-400",
+                    class: "rounded-md border border-border px-2.5 py-1 {ui::TYPE_DESC} hover:border-destructive hover:text-destructive",
                     disabled: !can_delete,
                     title: if can_delete { del_label } else { MSG_DELETE_DISABLED_TITLE },
                     onclick: move |_| confirming.set(true),
@@ -179,7 +179,7 @@ pub fn NodeInspector(
                 }
                 span { class: "flex-1" }
                 button {
-                    class: "rounded-md border border-zinc-100 bg-zinc-100 px-2.5 py-1 {ui::TYPE_DESC} hover:bg-zinc-300",
+                    class: "rounded-md border border-zinc-100 bg-primary px-2.5 py-1 {ui::TYPE_DESC} hover:bg-zinc-300",
                     disabled: !can_delete,
                     title: if can_delete { MSG_SAVE_TITLE } else { MSG_SAVE_DISABLED_TITLE },
                     {BTN_SAVE}
@@ -214,8 +214,8 @@ pub fn NodeInspector(
 /// 数据交互:保存路径发真实 PUT 请求;列表中若 `index` 越界直接返回「不存在」。
 ///
 /// 【样式】顶部 `DrawerNoticeBar`;字段用 `BoundField`(标签
-/// `text-[11px] text-zinc-500` + 圆角描边输入框);保存按钮 `w-full rounded-md
-/// border border-zinc-100 bg-zinc-100 ... hover:bg-zinc-300`;别名列表用
+/// `text-[11px] text-muted-foreground` + 圆角描边输入框);保存按钮 `w-full rounded-md
+/// border border-zinc-100 bg-primary ... hover:bg-zinc-300`;别名列表用
 /// `InspectList`(圆角 pill chips)。
 ///
 /// 【子组件组成】`DrawerNoticeBar`、`BoundField`、`InspectList`。
@@ -289,7 +289,7 @@ pub fn GroupInspect(index: usize) -> Element {
                 on_change: move |v: String| display_sig.set(v),
             }
             button {
-                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
+                class: "w-full rounded-md border border-zinc-100 bg-primary px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                 onclick: save_display,
                 {BTN_SAVE_DISPLAY}
             }
@@ -311,8 +311,8 @@ pub fn GroupInspect(index: usize) -> Element {
 /// 列表项上的「✕」按钮当前未挂 onclick;无网络调用。
 ///
 /// 【样式】两个字段用 `BoundField`(锁读标签 + 输入框);两张 `InspectList`
-/// (标题 `text-[11px] text-zinc-500` + 圆角 pill chips,空态
-/// `text-[11px] text-zinc-600`)。
+/// (标题 `text-[11px] text-muted-foreground` + 圆角 pill chips,空态
+/// `text-[11px] text-muted-foreground`)。
 ///
 /// 【子组件组成】`BoundField`、`InspectList`。
 ///
@@ -381,10 +381,10 @@ pub fn AliasInspect(index: usize) -> Element {
 ///   输入、`bump_topo_refresh()` 并同步本地 store 行,失败 → `notice = Err`。
 /// 数据交互:保存发真实 PUT 请求。
 ///
-/// 【样式】模型名只读框 `rounded-md border border-zinc-800 bg-zinc-950
-/// font-mono text-sm`;渠道编辑区 `rounded-lg border border-zinc-800
-/// bg-zinc-950 p-3` + `space-y-2`;保存按钮 `w-full rounded-md border
-/// border-zinc-100 bg-zinc-100 ... hover:bg-zinc-300`。
+/// 【样式】模型名只读框 `rounded-md border border-border bg-background
+/// font-mono text-sm`;渠道编辑区 `rounded-lg border border-border
+/// bg-background p-3` + `space-y-2`;保存按钮 `w-full rounded-md border
+/// border-zinc-100 bg-primary ... hover:bg-zinc-300`。
 ///
 /// 【子组件组成】`DrawerNoticeBar`、`BoundField`(渠道名/URL)、`BoundArea`
 /// (多行 Key)、`InspectList`(被路由列表)。
@@ -475,10 +475,10 @@ pub fn DispatchInspect(index: usize) -> Element {
         DrawerNoticeBar { notice: ch_notice, on_clear: move |_| ch_notice.set(DrawerNotice::Idle) }
         div { class: "space-y-1",
             span { class: "{ui::TYPE_LABEL}", {MSG_MODEL_NAME_READONLY} }
-            div { class: "rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono {ui::TYPE_BODY}", "{model_name}" }
+            div { class: "rounded-md border border-border bg-background px-3 py-1.5 font-mono {ui::TYPE_BODY}", "{model_name}" }
         }
         if row.is_some() {
-            div { class: "space-y-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3",
+            div { class: "space-y-2 rounded-lg border border-border bg-background p-3",
                 span { class: "{ui::TYPE_LABEL} uppercase tracking-wider", {MSG_OWNER_CHANNEL} }
                 BoundField {
                     label: MSG_CHANNEL_NAME,
@@ -499,7 +499,7 @@ pub fn DispatchInspect(index: usize) -> Element {
                     on_change: move |v: String| ch_keys.set(v),
                 }
                 button {
-                    class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
+                    class: "w-full rounded-md border border-zinc-100 bg-primary px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
                     onclick: save_channel,
                     {BTN_SAVE_CHANNEL}
                 }
@@ -519,9 +519,9 @@ pub fn DispatchInspect(index: usize) -> Element {
 /// 【交互逻辑】用户输入 → `on_change.call(e.value())` 把当前串抛给调用方 →
 /// 调用方写回对应 signal,值再回流进 `value`。不发网络。
 ///
-/// 【样式】标签 `text-[11px] text-zinc-500`;textarea `min-h-[72px] w-full
-/// resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5
-/// font-mono text-xs ... focus:border-zinc-500`。
+/// 【样式】标签 `text-[11px] text-muted-foreground`;textarea `min-h-[72px] w-full
+/// resize-y rounded-md border border-border bg-background px-3 py-1.5
+/// font-mono text-xs ... focus:border-border`。
 ///
 /// 【子组件组成】无:原生 `label` / `span` / `textarea`。
 ///
@@ -539,7 +539,7 @@ pub fn BoundArea(
         label { class: "block space-y-1",
             span { class: "{ui::TYPE_LABEL}", "{label}" }
             textarea {
-                class: "min-h-[72px] w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "min-h-[72px] w-full resize-y rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |e| on_change.call(e.value()),
@@ -557,8 +557,8 @@ pub fn BoundArea(
 /// 【交互逻辑】用户输入 → `on_change.call(e.value())` 把当前串抛给调用方 →
 /// 调用方写回 signal,值再回流进 `value`。不发网络。
 ///
-/// 【样式】标签 `text-[11px] text-zinc-500`;input `w-full rounded-md border
-/// border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm ... focus:border-zinc-500`。
+/// 【样式】标签 `text-[11px] text-muted-foreground`;input `w-full rounded-md border
+/// border-border bg-background px-3 py-1.5 text-sm ... focus:border-border`。
 ///
 /// 【子组件组成】无:原生 `label` / `span` / `input`。
 ///
@@ -576,7 +576,7 @@ fn BoundField(
         label { class: "block space-y-1",
             span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |e| on_change.call(e.value()),
@@ -594,7 +594,7 @@ fn BoundField(
 /// 【交互逻辑】纯展示,无交互。
 ///
 /// 【样式】行 `flex items-baseline gap-2`;标签 `w-8 shrink-0 text-[11px]
-/// text-zinc-600`;值 `truncate font-mono text-[11px] text-zinc-400`。
+/// text-muted-foreground`;值 `truncate font-mono text-[11px] text-muted-foreground`。
 ///
 /// 【子组件组成】无:原生 `div` / `span`。
 ///
@@ -606,7 +606,7 @@ fn CredRow(label: &'static str, value: &'static str) -> Element {
     rsx! {
         div { class: "flex items-baseline gap-2",
             span { class: "w-8 shrink-0 {ui::TYPE_LABEL}", "{label}" }
-            span { class: "truncate font-mono text-[11px] text-zinc-400", "{value}" }
+            span { class: "truncate font-mono text-[11px] text-muted-foreground", "{value}" }
         }
     }
 }
@@ -621,9 +621,9 @@ fn CredRow(label: &'static str, value: &'static str) -> Element {
 /// 【交互逻辑】用户输入 → `value.set(e.value())` 直接写 signal;展示读
 /// `value.read()`。不发网络。
 ///
-/// 【样式】与 `BoundField` 同款:标签 `text-[11px] text-zinc-500`,input
-/// `w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5
-/// text-sm ... focus:border-zinc-500`。
+/// 【样式】与 `BoundField` 同款:标签 `text-[11px] text-muted-foreground`,input
+/// `w-full rounded-md border border-border bg-background px-3 py-1.5
+/// text-sm ... focus:border-border`。
 ///
 /// 【子组件组成】无:原生 `label` / `span` / `input`。
 ///
@@ -636,7 +636,7 @@ fn InspectField(label: &'static str, value: Signal<String>, placeholder: &'stati
         label { class: "block space-y-1",
             span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                 value: "{value.read()}",
                 placeholder: "{placeholder}",
                 oninput: move |e| value.set(e.value()),
@@ -654,10 +654,10 @@ fn InspectField(label: &'static str, value: Signal<String>, placeholder: &'stati
 ///
 /// 【交互逻辑】纯展示,无交互 —— chip 上的「✕」按钮当前无 onclick 处理。
 ///
-/// 【样式】块 `space-y-1.5`;标题 `text-[11px] text-zinc-500`;空态
-/// `text-[11px] text-zinc-600`;chips 容器 `flex flex-wrap gap-1.5`;
+/// 【样式】块 `space-y-1.5`;标题 `text-[11px] text-muted-foreground`;空态
+/// `text-[11px] text-muted-foreground`;chips 容器 `flex flex-wrap gap-1.5`;
 /// 单个 chip `inline-flex items-center gap-1 rounded-full border
-/// border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300`。
+/// border-border bg-card px-2 py-0.5 text-[11px] text-foreground`。
 ///
 /// 【子组件组成】无:原生 `div` / `span` / `p` / `button`。
 ///
@@ -675,9 +675,9 @@ fn InspectList(title: &'static str, items: Vec<String>, empty: &'static str) -> 
             } else {
                 div { class: "flex flex-wrap gap-1.5",
                     for it in items.iter() {
-                        span { class: "inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 {ui::TYPE_LABEL}",
+                        span { class: "inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 {ui::TYPE_LABEL}",
                             "{it}"
-                            button { class: "text-zinc-600 hover:text-red-400", "✕" }
+                            button { class: "text-muted-foreground hover:text-destructive", "✕" }
                         }
                     }
                 }

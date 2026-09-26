@@ -55,11 +55,11 @@ pub fn InviteSection(
             h2 { class: "{ui::TYPE_TITLE}", "邀请" }
 
             // 邀请链接 — origin + 钱包 user_key 现拼;钱包未加载时占位
-            section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+            section { class: "rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
                 h3 { class: "mb-4 {ui::TYPE_CARD_TITLE}", "邀请好友得奖励" }
                 div { class: "flex flex-col gap-3 sm:flex-row",
                     div {
-                        class: "flex-1 break-all rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-4 font-mono text-sm text-zinc-400",
+                        class: "flex-1 break-all rounded-2xl border border-border bg-background px-5 py-4 font-mono text-sm text-muted-foreground",
                         "data-testid": "invite-link",
                         if invite_link.is_empty() {
                             "钱包加载后生成邀请链接"
@@ -68,7 +68,7 @@ pub fn InviteSection(
                         }
                     }
                     button {
-                        class: "w-full shrink-0 rounded-2xl bg-white px-8 py-4 font-medium text-zinc-900 transition-colors hover:bg-amber-200 active:bg-amber-300 sm:w-auto",
+                        class: "w-full shrink-0 rounded-2xl bg-primary px-8 py-4 font-medium text-primary-foreground transition-colors hover:bg-warning active:bg-warning sm:w-auto",
                         onclick: copy_link,
                         disabled: invite_link.is_empty(),
                         "data-testid": "invite-copy",
@@ -88,14 +88,14 @@ pub fn InviteSection(
                 } else if !overview_loaded() {
                     for _ in 0..2 {
                         div {
-                            class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6",
+                            class: "rounded-xl border border-border bg-card p-6",
                             "data-testid": "affiliate-skeleton",
-                            div { class: "h-8 w-20 animate-pulse rounded bg-zinc-800" }
-                            div { class: "mt-3 h-4 w-28 animate-pulse rounded bg-zinc-800/70" }
+                            div { class: "h-8 w-20 animate-pulse rounded bg-secondary" }
+                            div { class: "mt-3 h-4 w-28 animate-pulse rounded bg-secondary/70" }
                         }
                     }
                 } else if let Some(ov) = overview() {
-                    div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+                    div { class: "rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
                         p {
                             class: "text-4xl font-semibold tracking-tight {ui::C_WARNING} tabular-nums",
                             "data-testid": "affiliate-invite-count",
@@ -104,7 +104,7 @@ pub fn InviteSection(
                         p { class: "mt-3 {ui::TYPE_CARD_TITLE}", "已邀人数" }
                         p { class: "mt-6 {ui::TYPE_DESC} leading-snug", "通过邀请完成注册的用户数" }
                     }
-                    div { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+                    div { class: "rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
                         p {
                             class: "text-4xl font-semibold tracking-tight {ui::C_WARNING} tabular-nums",
                             "data-testid": "affiliate-total-reward",

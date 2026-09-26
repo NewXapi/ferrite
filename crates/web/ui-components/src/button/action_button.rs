@@ -44,22 +44,22 @@ pub struct ActionSpec {
 fn class_for(tone: &ActionTone) -> &'static str {
     match tone {
         ActionTone::Neutral => {
-            "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+            "flex-1 rounded-lg border border-border/80 bg-secondary/60 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary hover:text-foreground"
         }
         ActionTone::Success => {
-            "flex-1 rounded-lg border border-emerald-700/50 bg-emerald-900/30 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-800/50 hover:text-emerald-300"
+            "flex-1 rounded-lg border border-emerald-700/50 bg-success py-1.5 text-xs font-medium text-success-foreground transition-colors hover:bg-success hover:text-success-foreground"
         }
         ActionTone::SuccessSoft => {
-            "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-zinc-700 hover:text-emerald-300"
+            "flex-1 rounded-lg border border-border/80 bg-secondary/60 py-1.5 text-xs font-medium text-success-foreground transition-colors hover:bg-secondary hover:text-success-foreground"
         }
         ActionTone::Warning => {
-            "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-zinc-700 hover:text-amber-300"
+            "flex-1 rounded-lg border border-border/80 bg-secondary/60 py-1.5 text-xs font-medium text-warning-foreground transition-colors hover:bg-secondary hover:text-warning-foreground"
         }
         ActionTone::Danger => {
-            "flex-1 rounded-lg border border-zinc-700/80 bg-zinc-800/60 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-zinc-700 hover:text-red-300"
+            "flex-1 rounded-lg border border-border/80 bg-secondary/60 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-secondary hover:text-destructive"
         }
         ActionTone::Disabled => {
-            "flex-1 rounded-lg border border-zinc-800 py-1 text-[11px] text-zinc-600 cursor-not-allowed"
+            "flex-1 rounded-lg border border-border py-1 text-[11px] text-muted-foreground cursor-not-allowed"
         }
     }
 }
@@ -127,7 +127,7 @@ pub fn ActionButtonGroup(
         .map(|(i, _)| EventHandler::new(move |_| on_press.call(i)))
         .collect();
     rsx! {
-        div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
+        div { class: "mt-4 flex gap-1.5 border-t border-border pt-3",
             "data-testid": "{testid_prefix}",
             for (i, spec) in specs.iter().enumerate() {
                 ActionButton {

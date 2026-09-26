@@ -19,7 +19,7 @@ use crate::usage_support::{fmt_quota, used_pct};
 /// - 点击「删除」：调用 on_delete(entry)，由父页面打开 DeleteKeyModal。
 /// 所有回调均为 fire-and-forget，本组件不关心后续结果。
 ///
-/// 【样式】圆角卡片 (rounded-xl border-zinc-800 bg-zinc-900/60 p-4)，hover 时边框变亮、背景加深；
+/// 【样式】圆角卡片 (rounded-xl border-border bg-card/60 p-4)，hover 时边框变亮、背景加深；
 /// 状态 badge 绿/黄对应启用/停用；进度条颜色分三档：≥90% 红、≥70% 黄、<70% 绿；
 /// 底部分隔线 border-t-zinc-800，三个按钮等宽 flex-1，Ghost variant，删除按钮红色文案。
 ///
@@ -37,9 +37,9 @@ pub fn KeyCard(
 ) -> Element {
     let enabled = entry.status == 1;
     let status_color = if enabled {
-        "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+        "bg-success text-success-foreground border-emerald-500/30"
     } else {
-        "bg-amber-500/20 text-amber-400 border-amber-500/30"
+        "bg-warning text-warning-foreground border-amber-500/30"
     };
     // 每个 handler 闭包各持一份 clone, 避免 3 个 move 闭包连环占用 entry
     let e_edit = entry.clone();
@@ -59,21 +59,21 @@ pub fn KeyCard(
     // 配色随用量升高转告警, 样式抄 admin-page-users panel.rs 的 bar_tone 风格
     let pct = used_pct(entry.quota, entry.used_quota);
     let bar_tone = if pct >= 90 {
-        "bg-red-500"
+        "bg-destructive"
     } else if pct >= 70 {
-        "bg-amber-500"
+        "bg-warning"
     } else {
-        "bg-emerald-500"
+        "bg-success"
     };
     rsx! {
         div {
-            class: "group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-200 hover:border-zinc-600 hover:bg-zinc-900/80",
+            class: "group rounded-xl border border-border bg-card/60 p-4 transition-all duration-200 hover:border-border hover:bg-card/80",
             div { class: "mb-3 flex items-start justify-between gap-2",
                 div { class: "min-w-0",
                     h3 { class: "truncate {ui::TYPE_CARD_TITLE}", "{entry.name}" }
                     // 掩码预览仅作展示 (完整明文不可再获取), 不提供复制 ——
                     // 复制到的是 `sk-ab****ef` 这类废串, 粘贴必失败。
-                    p { class: "min-w-0 truncate font-mono text-[11px] text-zinc-500", "{entry.key_preview}" }
+                    p { class: "min-w-0 truncate font-mono text-[11px] text-muted-foreground", "{entry.key_preview}" }
                 }
                 span {
                     class: "shrink-0 rounded-full border px-2.5 py-0.5 {ui::TYPE_DESC} {status_color}",
@@ -86,30 +86,30 @@ pub fn KeyCard(
                     span { class: "shrink-0 whitespace-nowrap {ui::C_MUTED}", "已用额度" }
                     if unlimited {
                         span {
-                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-sky-500/20 px-2 py-0.5 {ui::TYPE_LABEL} {ui::C_INFO}",
+                            class: "whitespace-nowrap rounded-full border border-sky-500/30 bg-info px-2 py-0.5 {ui::TYPE_LABEL} {ui::C_INFO}",
                             "无限"
                         }
                     } else {
-                        span { class: "whitespace-nowrap font-medium text-zinc-200",
+                        span { class: "whitespace-nowrap font-medium text-foreground",
                             "{fmt_quota(entry.used_quota)} / {fmt_quota(entry.quota)}"
                         }
                     }
                 }
                 // 用量进度条: 无限额度不渲染 (无分母, 百分比无意义)
                 if !unlimited {
-                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                    div { class: "h-1.5 w-full overflow-hidden rounded-full bg-secondary",
                         div { class: "h-full rounded-full {bar_tone}", style: "width: {pct}%" }
                     }
                 }
                 if !created.is_empty() {
                     div { class: "flex justify-between gap-2",
                         span { class: "shrink-0 whitespace-nowrap {ui::C_MUTED}", "创建时间" }
-                        span { class: "whitespace-nowrap font-mono text-zinc-400", "{created}" }
+                        span { class: "whitespace-nowrap font-mono text-muted-foreground", "{created}" }
                     }
                 }
             }
 
-            div { class: "mt-4 flex items-center gap-2 border-t border-zinc-800 pt-3",
+            div { class: "mt-4 flex items-center gap-2 border-t border-border pt-3",
                 Button {
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Xs,

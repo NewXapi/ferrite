@@ -31,7 +31,7 @@ pub fn CodeField(
                 }
                 button {
                     "data-testid": "{name}-send",
-                    class: "shrink-0 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5 {crate::TYPE_DESC} transition-all hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 active:scale-95",
+                    class: "shrink-0 rounded-lg border border-border bg-secondary/50 px-4 py-2.5 {crate::TYPE_DESC} transition-all hover:border-border hover:bg-secondary hover:text-foreground active:scale-95",
                     r#type: "button",
                     onclick: move |_| on_send.call(()),
                     "Send code"

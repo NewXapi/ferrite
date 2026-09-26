@@ -31,11 +31,11 @@ use super::shared::{
 ///
 /// 【样式】外壳 `section#reds-sec-list` 为 `scroll-mt-8 space-y-4`,并带
 /// `data-testid="redemptions-list"`、`role="list"`、`aria-label=LBL_LIST_ARIA`;
-/// 标题行左侧 `text-lg font-medium text-zinc-100`,右侧计数胶囊 `rounded-full
-/// bg-zinc-800`(加载时 `OPT_BADGE_LOADING`,否则 `N 张`);错误态红底
-/// `rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6` 且 `role="alert"`;
-/// 加载/空态为虚线描边 `rounded-2xl border border-dashed border-zinc-700
-/// bg-zinc-900/50 py-16`;网格为 `grid grid-cols-1 gap-3 md:grid-cols-3
+/// 标题行左侧 `text-lg font-medium text-foreground`,右侧计数胶囊 `rounded-full
+/// bg-secondary`(加载时 `OPT_BADGE_LOADING`,否则 `N 张`);错误态红底
+/// `rounded-2xl border border-destructive bg-destructive px-4 py-6` 且 `role="alert"`;
+/// 加载/空态为虚线描边 `rounded-2xl border border-dashed border-border
+/// bg-card/50 py-16`;网格为 `grid grid-cols-1 gap-3 md:grid-cols-3
 /// lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///
 /// 【子组件组成】`card::RedemptionCard`(可操作兑换码卡,外壳用共用样式壳);
@@ -97,24 +97,24 @@ pub fn RedemptionsListSection(
                     "data-testid": "redemptions-error",
                     role: "alert",
                     "aria-label": LBL_ERROR_ARIA,
-                    class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
+                    class: "rounded-2xl border border-destructive bg-destructive px-4 py-6 text-center",
                     p { class: "text-sm {ui::C_DANGER}", "{MSG_LOAD_FAILED}" }
                     p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
                         "data-testid": "retry-redemptions",
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:bg-secondary",
                         onclick: on_retry,
                         "{BTN_RETRY}"
                     }
                 }
             } else if loading {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
                     p { class: "{ui::C_MUTED}", "{MSG_LOADING_LIST}" }
                 }
             } else if filtered_rows.is_empty() {
                 div {
                     "data-testid": "redemptions-empty",
-                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                    class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
                     p { class: "{ui::C_MUTED}", "{MSG_EMPTY}" }
                 }
             } else {

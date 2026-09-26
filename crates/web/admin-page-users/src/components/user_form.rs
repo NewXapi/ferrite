@@ -243,13 +243,13 @@ pub fn UserForm(
 
             // —— Tab 3:绑定(只读) ——
             if tab() == FormTab::Binding {
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 {ui::TYPE_DESC}",
+                div { class: "rounded-xl border border-border bg-background px-4 py-3 {ui::TYPE_DESC}",
                     p { class: "mb-2 {ui::TYPE_LABEL}", "{MSG_BINDING_READONLY}" }
                     div { class: "space-y-1.5",
                         for (label, value) in [("GitHub", "-"), ("Discord", "-"), ("OIDC", "-"), ("WeChat", "-"), ("Telegram", "-"), (LBL_EMAIL, email_bound)] {
                             div { class: "flex justify-between gap-2",
                                 span { class: "{ui::C_MUTED}", "{label}" }
-                                span { class: "font-medium text-zinc-200", "{value}" }
+                                span { class: "font-medium text-foreground", "{value}" }
                             }
                         }
                     }
@@ -258,13 +258,13 @@ pub fn UserForm(
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     onclick: move |_| on_cancel.call(()),
                     {BTN_CANCEL}
                 }
                 if tab() != FormTab::Binding {
                     button {
-                        class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
+                        class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
                         // 每个 tab 只回写自己负责的字段(角色 / 分组)。
                         onclick: move |_| do_submit(),
                         "{submit_label}"

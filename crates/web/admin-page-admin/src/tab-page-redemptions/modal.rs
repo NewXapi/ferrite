@@ -36,11 +36,11 @@ use crate::tab_page_groups::Modal;
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】经 `Modal` 外壳(标题 `TTL_GENERATE`);内容区 `space-y-4 max-h-[70vh]
-/// overflow-y-auto pr-1`;两个输入框同用 `w-full rounded-xl border border-zinc-700
-/// bg-zinc-950 px-4 py-2.5 font-mono`(数量框带 `min: "1"` `max: "100"`);预设 chip
-/// 选中态 `border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold`;测算卡片
-/// `rounded-xl border border-zinc-800 bg-zinc-950`,发行总额用 `text-emerald-400 font-mono`;
-/// 提示行 `text-[11px] text-zinc-600`;底部取消为描边按钮、提交为白底 `bg-white text-zinc-900`。
+/// overflow-y-auto pr-1`;两个输入框同用 `w-full rounded-xl border border-border
+/// bg-background px-4 py-2.5 font-mono`(数量框带 `min: "1"` `max: "100"`);预设 chip
+/// 选中态 `border-zinc-100 bg-primary text-primary-foreground font-semibold`;测算卡片
+/// `rounded-xl border border-border bg-background`,发行总额用 `text-success-foreground font-mono`;
+/// 提示行 `text-[11px] text-muted-foreground`;底部取消为描边按钮、提交为白底 `bg-primary text-primary-foreground`。
 ///
 /// 【子组件组成】`Modal`(外壳);其余为原生 `div` / `input` / `button`。
 ///
@@ -78,7 +78,7 @@ pub fn RedemptionGenerateModal(
                         label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_COUNT}" }
                     input {
                         "data-testid": "redemption-count",
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground font-mono focus:border-border focus:outline-none",
                         r#type: "number",
                         min: "1",
                         max: "100",
@@ -90,7 +90,7 @@ pub fn RedemptionGenerateModal(
                         label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_QUOTA}" }
                     input {
                         "data-testid": "redemption-quota",
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground font-mono focus:border-border focus:outline-none",
                         placeholder: "50",
                         value: "{quota}",
                         oninput: move |e| quota.set(e.value()),
@@ -106,9 +106,9 @@ pub fn RedemptionGenerateModal(
                             {
                                 let is_active = (parsed_quota - val.parse::<f64>().unwrap_or(0.0)).abs() < 0.001;
                                 let btn_tone = if is_active {
-                                    "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                    "border-zinc-100 bg-primary text-primary-foreground font-semibold"
                                 } else {
-                                    "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                    "border-border bg-card text-foreground hover:border-border"
                                 };
                                 rsx! {
                                     button {
@@ -123,13 +123,13 @@ pub fn RedemptionGenerateModal(
                 }
 
                 // 测算卡片
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 {ui::TYPE_DESC} space-y-1.5",
+                div { class: "rounded-xl border border-border bg-background px-4 py-3 {ui::TYPE_DESC} space-y-1.5",
                     div { class: "flex justify-between {ui::C_MUTED}",
                         span { "{LBL_BATCH}" }
                         span { "{parsed_count} 张卡密" }
                     }
                     div { class: "flex justify-between font-medium",
-                        span { class: "text-zinc-300", "{LBL_TOTAL_VALUE}" }
+                        span { class: "text-foreground", "{LBL_TOTAL_VALUE}" }
                         span { class: "{ui::C_SUCCESS} font-mono text-sm",
                             "¥ {total_value:.2}"
                         }
@@ -144,13 +144,13 @@ pub fn RedemptionGenerateModal(
             div { class: "mt-6 flex gap-3",
                 button {
                     "data-testid": "cancel-generate",
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
                     "data-testid": "submit-generate",
-                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
+                    class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_submit.call(()),
                     "{BTN_SUBMIT_GENERATE}"
                 }
@@ -172,9 +172,9 @@ pub fn RedemptionGenerateModal(
 /// 数据交互:纯展示 + 单关闭回调,本组件自身**不发任何网络请求**。
 ///
 /// 【样式】经 `Modal` 外壳(标题 `生成成功 · {N} 张明文卡密(仅此一次)`);警示语
-/// `text-xs text-amber-400`;码块为 `max-h-72 overflow-y-auto rounded-xl border
-/// border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 select-all`
-/// (方便整块选中复制);底部单按钮 `flex-1 rounded-xl bg-white text-zinc-900`。
+/// `text-xs text-warning-foreground`;码块为 `max-h-72 overflow-y-auto rounded-xl border
+/// border-border bg-background p-3 font-mono text-xs text-foreground select-all`
+/// (方便整块选中复制);底部单按钮 `flex-1 rounded-xl bg-primary text-primary-foreground`。
 ///
 /// 【子组件组成】`Modal`(外壳);其余为原生 `div` / `p` / `pre` / `button`。
 ///
@@ -193,14 +193,14 @@ pub fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> El
                 }
                 pre {
                     "data-testid": "generated-codes",
-                    class: "max-h-72 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 select-all",
+                    class: "max-h-72 overflow-y-auto rounded-xl border border-border bg-background p-3 font-mono text-xs text-foreground select-all",
                     "{joined}"
                 }
             }
             div { class: "mt-6 flex",
                 button {
                     "data-testid": "close-codes",
-                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
+                    class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200",
                     onclick: move |_| on_close.call(()),
                     "{BTN_CLOSE_SAVED}"
                 }

@@ -164,10 +164,10 @@ pub const MSG_CONFIRM_DELETE_SUFFIX: &str = "」？该操作直接生效于后�
 /// 【交互逻辑】点头部按钮 → `on_toggle(MouseEvent)` 抛回调用方(页面持 `open` 数组),
 /// 组件自身不持展开态、不发网络。
 ///
-/// 【样式】外壳 `shrink-0 overflow-hidden rounded-xl border border-zinc-800
-/// bg-zinc-900/60`;头部 `flex w-full items-center gap-2 px-4 py-2.5 text-left
-/// hover:bg-zinc-900`;计数胶囊 `rounded-full border border-zinc-700 px-1.5
-/// text-[11px] text-zinc-400`;内容区 `space-y-3 border-t border-zinc-800 p-4`。
+/// 【样式】外壳 `shrink-0 overflow-hidden rounded-xl border border-border
+/// bg-card/60`;头部 `flex w-full items-center gap-2 px-4 py-2.5 text-left
+/// hover:bg-card`;计数胶囊 `rounded-full border border-border px-1.5
+/// text-[11px] text-muted-foreground`;内容区 `space-y-3 border-t border-border p-4`。
 ///
 /// 【子组件组成】无独立子组件,只有内联 `section` / `button` / `span` / `div`。
 ///
@@ -188,16 +188,16 @@ pub fn CardPanel(
 ) -> Element {
     let id = format!("ent-card-{section_index}");
     rsx! {
-        section { id: "{id}", class: "shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60",
+        section { id: "{id}", class: "shrink-0 overflow-hidden rounded-xl border border-border bg-card/60",
             button {
-                class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900",
+                class: "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-card",
                 onclick: move |e| on_toggle.call(e),
                 span { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
-                span { class: "rounded-full border border-zinc-700 px-1.5 {ui::TYPE_LABEL}", "{count}" }
+                span { class: "rounded-full border border-border px-1.5 {ui::TYPE_LABEL}", "{count}" }
                 span { class: "truncate {ui::TYPE_LABEL}", "{hint}" }
             }
             if open {
-                div { class: "space-y-3 border-t border-zinc-800 p-4", {children} }
+                div { class: "space-y-3 border-t border-border p-4", {children} }
             }
         }
     }
@@ -211,7 +211,7 @@ pub fn CardPanel(
 ///
 /// 【交互逻辑】纯展示，无交互。
 ///
-/// 【样式】`div.min-h-[104px] rounded-lg border border-zinc-800 bg-zinc-950 p-3`。
+/// 【样式】`div.min-h-[104px] rounded-lg border border-border bg-background p-3`。
 ///
 /// 【子组件组成】无独立子组件,只渲染 `children`。
 ///
@@ -221,7 +221,7 @@ pub fn CardPanel(
 #[component]
 pub fn NodeArea(children: Element) -> Element {
     rsx! {
-        div { class: "min-h-[104px] rounded-lg border border-zinc-800 bg-zinc-950 p-3", {children} }
+        div { class: "min-h-[104px] rounded-lg border border-border bg-background p-3", {children} }
     }
 }
 
@@ -234,7 +234,7 @@ pub fn NodeArea(children: Element) -> Element {
 /// 【交互逻辑】纯展示，无交互。
 ///
 /// 【样式】外层 `flex h-full min-h-[72px] items-center justify-center`,
-/// 文案 `text-[11px] text-zinc-600`。
+/// 文案 `text-[11px] text-muted-foreground`。
 ///
 /// 【子组件组成】无独立子组件,只有内联 `div` / `span`。
 ///
@@ -263,10 +263,10 @@ pub fn EmptyHint(text: &'static str) -> Element {
 /// 组件自身无状态、不发网络。
 ///
 /// 【样式】胶囊 `inline-flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5
-/// transition-colors`;选中 `border-zinc-100 bg-zinc-100 text-zinc-900`,
-/// 未选中 `border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500`;
-/// 副标题随选中态在 `text-zinc-600` / `text-zinc-500` 间切换;✕ 按钮 `opacity-50
-/// hover:text-red-400 hover:opacity-100`。
+/// transition-colors`;选中 `border-zinc-100 bg-primary text-primary-foreground`,
+/// 未选中 `border-border bg-card text-foreground hover:border-border`;
+/// 副标题随选中态在 `text-muted-foreground` / `text-muted-foreground` 间切换;✕ 按钮 `opacity-50
+/// hover:text-destructive hover:opacity-100`。
 ///
 /// 【子组件组成】无独立子组件,只有内联 `span` 与两个 `button`。
 ///
@@ -283,14 +283,14 @@ pub fn EntityChip(
     on_remove: EventHandler<MouseEvent>,
 ) -> Element {
     let tone = if active {
-        "border-zinc-100 bg-zinc-100 text-zinc-900"
+        "border-zinc-100 bg-primary text-primary-foreground"
     } else {
-        "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500"
+        "border-border bg-card text-foreground hover:border-border"
     };
     let sub_tone = if active {
-        "text-zinc-600"
+        "text-muted-foreground"
     } else {
-        "text-zinc-500"
+        "text-muted-foreground"
     };
     rsx! {
         span { class: "inline-flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5 transition-colors {tone}",
@@ -303,7 +303,7 @@ pub fn EntityChip(
                 }
             }
             button {
-                class: "px-1 {ui::TYPE_LABEL} opacity-50 hover:text-red-400 hover:opacity-100",
+                class: "px-1 {ui::TYPE_LABEL} opacity-50 hover:text-destructive hover:opacity-100",
                 onclick: move |e| on_remove.call(e),
                 "✕"
             }
@@ -322,9 +322,9 @@ pub fn EntityChip(
 /// 页面 / store),无网络、无外部回调。
 ///
 /// 【样式】`label.block space-y-1`(`grow` 时追加 `min-w-[140px] flex-1`);
-/// 标签 `text-[11px] text-zinc-500`;输入框 `w-full rounded-md border border-zinc-800
-/// bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors
-/// placeholder:text-zinc-600 focus:border-zinc-500`。
+/// 标签 `text-[11px] text-muted-foreground`;输入框 `w-full rounded-md border border-border
+/// bg-background px-3 py-1.5 text-sm text-foreground outline-none transition-colors
+/// placeholder:text-muted-foreground focus:border-border`。
 ///
 /// 【子组件组成】无独立子组件,只有内联 `label` / `span` / `input`。
 ///
@@ -344,7 +344,7 @@ pub fn InputCell(
         label { class: "block space-y-1 {width}",
             span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                 value: "{value.read()}",
                 placeholder: "{placeholder}",
                 oninput: move |e| value.set(e.value()),
@@ -363,9 +363,9 @@ pub fn InputCell(
 /// 【交互逻辑】切换选项 → `oninput.call(e.value())` 把新值抛回调用方
 /// (调用方据此写状态),无网络。
 ///
-/// 【样式】`label.block space-y-1`;标签 `text-[11px] text-zinc-500`;
-/// `select` 为 `w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5
-/// text-sm text-zinc-200 outline-none transition-colors focus:border-zinc-500`。
+/// 【样式】`label.block space-y-1`;标签 `text-[11px] text-muted-foreground`;
+/// `select` 为 `w-full rounded-md border border-border bg-background px-3 py-1.5
+/// text-sm text-foreground outline-none transition-colors focus:border-border`。
 ///
 /// 【子组件组成】无独立子组件,只有内联 `label` / `span` / `select` / `option`。
 ///
@@ -383,7 +383,7 @@ pub fn SelectCell(
         label { class: "block space-y-1",
             span { class: "{ui::TYPE_LABEL}", "{label}" }
             select {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors focus:border-zinc-500",
+                class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors focus:border-border",
                 value: "{value}",
                 oninput: move |e| oninput.call(e.value()),
                 for opt in options {
@@ -403,8 +403,8 @@ pub fn SelectCell(
 /// 【交互逻辑】在输入框输入 → `oninput.call(e.value())` 抛回调用方,无网络。
 ///
 /// 【样式】与 `InputCell` 完全一致:`label.block space-y-1` + 标签 `text-[11px]
-/// text-zinc-500` + 输入框 `w-full rounded-md border border-zinc-800 bg-zinc-950
-/// px-3 py-1.5 text-sm ... focus:border-zinc-500`。
+/// text-muted-foreground` + 输入框 `w-full rounded-md border border-border bg-background
+/// px-3 py-1.5 text-sm ... focus:border-border`。
 ///
 /// 【子组件组成】无独立子组件,只有内联 `label` / `span` / `input`。
 ///
@@ -422,7 +422,7 @@ pub fn TextCell(
         label { class: "block space-y-1",
             span { class: "{ui::TYPE_LABEL}", "{label}" }
             input {
-                class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                class: "w-full rounded-md border border-border bg-background px-3 py-1.5 {ui::TYPE_BODY} outline-none transition-colors placeholder:text-muted-foreground focus:border-border",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |e| oninput.call(e.value()),

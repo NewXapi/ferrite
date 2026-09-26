@@ -34,7 +34,7 @@ use super::shared::{
 ///   「保存中…」。
 ///
 /// 【样式】遮罩 `fixed inset-0 z-50 ... bg-black/70 backdrop-blur-sm`;
-/// 弹窗体 `w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900
+/// 弹窗体 `w-full max-w-2xl rounded-2xl border border-border bg-card
 /// p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto`。
 ///
 /// 【数据流】
@@ -80,7 +80,7 @@ pub fn SubscriptionFormModal(
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm",
             onclick: move |_| show_modal.set(false),
             div {
-                class: "w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto scroll-subtle",
+                class: "w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto scroll-subtle",
                 onclick: move |e| e.stop_propagation(),
 
                 // 弹窗头部
@@ -98,7 +98,7 @@ pub fn SubscriptionFormModal(
                         }
                     }
                     button {
-                        class: "rounded-lg p-1.5 {ui::C_MUTED} hover:bg-zinc-800 hover:text-white transition-colors",
+                        class: "rounded-lg p-1.5 {ui::C_MUTED} hover:bg-secondary hover:text-foreground transition-colors",
                         onclick: move |_| show_modal.set(false),
                         "✕"
                     }
@@ -106,21 +106,21 @@ pub fn SubscriptionFormModal(
 
                 // 写请求失败提示(名称必填 / 后端 400 校验失败)
                 if let Some(e) = action_err() {
-                    div { class: "rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm {ui::C_DANGER}",
+                    div { class: "rounded-lg border border-destructive bg-destructive p-3 text-sm {ui::C_DANGER}",
                         "data-testid": "subscriptions-form-error",
                         "{e}"
                     }
                 }
 
                 // 弹窗内部 Tab 切换条(两个 Tab:字段即后端入参,见组件文档)
-                div { class: "flex items-center gap-2 border-b border-zinc-800 pb-2 {ui::TYPE_DESC}",
+                div { class: "flex items-center gap-2 border-b border-border pb-2 {ui::TYPE_DESC}",
                     button {
-                        class: if modal_tab() == 0 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
+                        class: if modal_tab() == 0 { "rounded-lg bg-secondary px-3 py-1.5 font-semibold text-foreground" } else { "rounded-lg px-3 py-1.5 text-muted-foreground hover:text-foreground" },
                         onclick: move |_| modal_tab.set(0),
                         "{TAB_BASIC}"
                     }
                     button {
-                        class: if modal_tab() == 1 { "rounded-lg bg-zinc-800 px-3 py-1.5 font-semibold text-zinc-100" } else { "rounded-lg px-3 py-1.5 text-zinc-400 hover:text-zinc-200" },
+                        class: if modal_tab() == 1 { "rounded-lg bg-secondary px-3 py-1.5 font-semibold text-foreground" } else { "rounded-lg px-3 py-1.5 text-muted-foreground hover:text-foreground" },
                         onclick: move |_| modal_tab.set(1),
                         "{TAB_RULES}"
                     }
@@ -132,7 +132,7 @@ pub fn SubscriptionFormModal(
                         label { class: "block space-y-1",
                             span { class: "{ui::TYPE_DESC}", "{FIELD_PLAN_TITLE}" }
                             input {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                 "data-testid": "subscriptions-form-title",
                                 value: "{f_title()}",
                                 placeholder: MSG_PH_PLAN_TITLE,
@@ -146,7 +146,7 @@ pub fn SubscriptionFormModal(
                                 input {
                                     r#type: "number",
                                     step: "0.01",
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                    class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                     "data-testid": "subscriptions-form-price",
                                     value: "{f_price()}",
                                     oninput: move |e| f_price.set(e.value()),
@@ -156,7 +156,7 @@ pub fn SubscriptionFormModal(
                             label { class: "block space-y-1",
                                 span { class: "{ui::TYPE_DESC}", "计价币种" }
                                 select {
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                    class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                     "data-testid": "subscriptions-form-currency",
                                     value: "{f_currency()}",
                                     onchange: move |e| f_currency.set(e.value()),
@@ -170,7 +170,7 @@ pub fn SubscriptionFormModal(
                                 input {
                                     r#type: "number",
                                     step: "0.01",
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                    class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                     "data-testid": "subscriptions-form-quota",
                                     value: "{f_quota()}",
                                     oninput: move |e| f_quota.set(e.value()),
@@ -184,7 +184,7 @@ pub fn SubscriptionFormModal(
                 // ---- Tab 1: 规则与周期 ----
                 if modal_tab() == 1 {
                     div { class: "space-y-4 pt-1",
-                        div { class: "flex items-center justify-between py-2 border-b border-zinc-800/80",
+                        div { class: "flex items-center justify-between py-2 border-b border-border/80",
                             span { class: "{ui::TYPE_CARD_TITLE}", "{FIELD_ENABLED}" }
                             ToggleSwitch { on: f_enabled(), on_toggle: move |_| f_enabled.set(!f_enabled()) }
                         }
@@ -193,7 +193,7 @@ pub fn SubscriptionFormModal(
                                 span { class: "{ui::TYPE_DESC}", "{FIELD_DURATION}" }
                                 input {
                                     r#type: "number",
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                    class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                     "data-testid": "subscriptions-form-duration",
                                     value: "{f_duration()}",
                                     oninput: move |e| f_duration.set(e.value()),
@@ -204,7 +204,7 @@ pub fn SubscriptionFormModal(
                                 span { class: "{ui::TYPE_DESC}", "{FIELD_LIMIT}" }
                                 input {
                                     r#type: "number",
-                                    class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                    class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                     "data-testid": "subscriptions-form-limit",
                                     value: "{f_limit()}",
                                     oninput: move |e| f_limit.set(e.value()),
@@ -215,7 +215,7 @@ pub fn SubscriptionFormModal(
                         label { class: "block space-y-1",
                             span { class: "{ui::TYPE_DESC}", "{FIELD_GROUP}" }
                             select {
-                                class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_BODY} focus:border-zinc-500 outline-none",
+                                class: "w-full rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_BODY} focus:border-border outline-none",
                                 "data-testid": "subscriptions-form-group",
                                 value: "{f_group()}",
                                 onchange: move |e| f_group.set(e.value()),
@@ -230,14 +230,14 @@ pub fn SubscriptionFormModal(
                 }
 
                 // 弹窗底部操作按钮
-                div { class: "flex items-center justify-end gap-3 pt-3 border-t border-zinc-800",
+                div { class: "flex items-center justify-end gap-3 pt-3 border-t border-border",
                     button {
-                        class: "rounded-xl border border-zinc-700 px-4 py-2 {ui::TYPE_DESC} hover:bg-zinc-800 hover:text-white transition-colors",
+                        class: "rounded-xl border border-border px-4 py-2 {ui::TYPE_DESC} hover:bg-secondary hover:text-foreground transition-colors",
                         onclick: move |_| show_modal.set(false),
                         "{BTN_CLOSE}"
                     }
                     button {
-                        class: "rounded-xl bg-amber-400 px-5 py-2 {ui::TYPE_DESC} hover:bg-amber-300 transition-colors shadow-lg shadow-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed",
+                        class: "rounded-xl bg-warning px-5 py-2 {ui::TYPE_DESC} hover:bg-warning transition-colors shadow-lg shadow-amber-500/10 disabled:opacity-50 disabled:cursor-not-allowed",
                         "data-testid": "subscriptions-form-submit",
                         disabled: saving(),
                         onclick: move |_| on_commit.call(()),

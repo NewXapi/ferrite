@@ -236,10 +236,10 @@ pub fn AuthPage() -> Element {
 
                     // Footer — placed clearly BELOW the form, inside the card, separated by a hairline.
                     p {
-                        class: "mt-6 border-t border-zinc-800 pt-4 text-center {ui::TYPE_DESC}",
+                        class: "mt-6 border-t border-border pt-4 text-center {ui::TYPE_DESC}",
                         "By continuing, you agree to our "
                         span {
-                            class: "cursor-pointer {ui::C_MUTED} underline underline-offset-2 transition-colors hover:text-zinc-200",
+                            class: "cursor-pointer {ui::C_MUTED} underline underline-offset-2 transition-colors hover:text-foreground",
                             "Terms of Service"
                         }
                     }

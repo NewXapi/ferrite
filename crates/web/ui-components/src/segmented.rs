@@ -26,7 +26,7 @@ pub fn SegmentedCapsule(
     let n = items.len();
     rsx! {
         div {
-            class: "flex w-full flex-wrap overflow-hidden rounded-full border border-zinc-700 bg-zinc-950 {crate::TYPE_DESC} sm:w-fit",
+            class: "flex w-full flex-wrap overflow-hidden rounded-full border border-border bg-background {crate::TYPE_DESC} sm:w-fit",
             onwheel: move |e: WheelEvent| on_tab_wheel(e, n, active, |i| on_select.call(i)),
             for (i, item) in items.iter().enumerate() {
                 button {
@@ -35,9 +35,9 @@ pub fn SegmentedCapsule(
                     role: "tab",
                     aria_selected: "{i == active}",
                     class: if i == active {
-                        "min-w-[30%] flex-1 truncate border-r border-zinc-800 bg-zinc-100 px-3 py-1.5 text-center text-xs font-medium text-zinc-900 last:border-r-0 sm:min-w-0 sm:flex-none"
+                        "min-w-[30%] flex-1 truncate border-r border-border bg-primary px-3 py-1.5 text-center text-xs font-medium text-primary-foreground last:border-r-0 sm:min-w-0 sm:flex-none"
                     } else {
-                        "min-w-[30%] flex-1 truncate border-r border-zinc-800 px-3 py-1.5 text-center text-xs text-zinc-400 transition-colors last:border-r-0 hover:bg-zinc-800 hover:text-zinc-200 sm:min-w-0 sm:flex-none"
+                        "min-w-[30%] flex-1 truncate border-r border-border px-3 py-1.5 text-center text-xs text-muted-foreground transition-colors last:border-r-0 hover:bg-secondary hover:text-foreground sm:min-w-0 sm:flex-none"
                     },
                     onclick: move |_| on_select.call(i),
                     "{item}"

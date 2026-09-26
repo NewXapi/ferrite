@@ -15,7 +15,7 @@ use crate::api;
 /// - 点击「确认删除」：提交 DELETE 请求，成功则 on_confirmed.call(())
 ///   - 失败则更新 err Signal 显示错误信息，并重置 busy 状态。
 ///
-/// 【样式】固定最大宽度 max-w-md，圆角边框、危险主题色 (border-red-500/40 bg-zinc-900)，
+/// 【样式】固定最大宽度 max-w-md，圆角边框、危险主题色 (border-destructive bg-card)，
 /// 按钮区等宽排列，删除按钮使用 Destructive variant。
 ///
 /// 【子组件组成】ui::button::Button × 2 (取消/确认删除)
@@ -55,7 +55,7 @@ pub fn DeleteKeyModal(
             class: "{ui::MODAL_BACKDROP}",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-red-500/40 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-destructive bg-card p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
                 h3 { class: "{ui::TYPE_TITLE}", "删除密钥" }

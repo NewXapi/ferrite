@@ -37,9 +37,9 @@ use super::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】外壳 `section#channels-sec-list` 为 `scroll-mt-8 space-y-4`;标题
-/// `text-lg font-medium text-zinc-100` + 右侧 `rounded-full bg-zinc-800` 计数胶囊;
-/// 错误态红底 `border-red-800/60 bg-red-950/40`,加载/空态为虚线描边
-/// `border-dashed border-zinc-700 bg-zinc-900/50 py-16`;网格
+/// `text-lg font-medium text-foreground` + 右侧 `rounded-full bg-secondary` 计数胶囊;
+/// 错误态红底 `border-destructive bg-destructive`,加载/空态为虚线描边
+/// `border-dashed border-border bg-card/50 py-16`;网格
 /// `grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///
 /// 【子组件组成】`ui::ChannelCard`(唯一卡片,含行内 Popover 编辑 / 启停 / 删除确认)。
@@ -93,21 +93,21 @@ pub fn ChannelsListSection(
             }
 
             if let Some(e) = err {
-                div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 py-10 text-center",
+                div { class: "rounded-2xl border border-destructive bg-destructive py-10 text-center",
                     p { class: "text-sm {ui::C_DANGER}", "{MSG_LOAD_FAILED}" }
                     p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                     button {
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:bg-secondary",
                         onclick: on_retry,
                         "{BTN_RETRY}"
                     }
                 }
             } else if loading {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
                     p { class: "{ui::C_MUTED}", "{MSG_LOADING_LIST}" }
                 }
             } else if filtered.is_empty() {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
                     p { class: "{ui::C_MUTED}", "{MSG_EMPTY}" }
                 }
             } else {

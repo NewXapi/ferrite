@@ -74,10 +74,10 @@ fn state_tone(state: HealthItemState) -> &'static str {
 /// 【交互逻辑】纯展示，无交互(无 onclick、不改状态、不发网络)。
 ///
 /// 【样式】行容器 `flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 first:pt-1
-/// last:pb-1`;渠道名 `min-w-0 truncate text-sm font-medium text-zinc-100`(悬停 title
-/// 显示 unit_key);模型徽标 `rounded-full border border-zinc-700 bg-zinc-800/80 px-2
-/// py-0.5 text-[11px] text-zinc-300`;三态徽标额外叠 `font-medium {tone}`;倒计时
-/// `font-mono text-xs text-red-300`;outcome 小字 `text-[11px] text-zinc-500`。
+/// last:pb-1`;渠道名 `min-w-0 truncate text-sm font-medium text-foreground`(悬停 title
+/// 显示 unit_key);模型徽标 `rounded-full border border-border bg-secondary/80 px-2
+/// py-0.5 text-[11px] text-foreground`;三态徽标额外叠 `font-medium {tone}`;倒计时
+/// `font-mono text-xs text-destructive`;outcome 小字 `text-[11px] text-muted-foreground`。
 ///
 /// 【子组件组成】无子组件,只有内联 `div` / `span`。
 ///
@@ -102,14 +102,14 @@ pub fn GatewayHealthRow(item: GatewayHealthItem) -> Element {
             span { class: "min-w-0 truncate {ui::TYPE_CARD_TITLE}",
                 title: "{item.unit_key}", "{name}" }
             // 模型 Badge
-            span { class: "rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 {ui::TYPE_LABEL}",
+            span { class: "rounded-full border border-border bg-secondary/80 px-2 py-0.5 {ui::TYPE_LABEL}",
                 "{model}" }
             // 三态 Badge (cooling=红 / slow_start=黄 / ok=绿)
             span { class: "rounded-full border px-2 py-0.5 {ui::TYPE_LABEL} {tone}",
                 "{state_text}" }
             // 冷却中才显示倒计时秒
             if let Some(sec) = remaining {
-                span { class: "font-mono text-xs text-red-300",
+                span { class: "font-mono text-xs text-destructive",
                     "{LBL_REMAINING_PREFIX}{sec}s" }
             }
             // lastCoolingOutcome (有则小字)

@@ -38,11 +38,11 @@ use super::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】外壳 `section#groups-sec-filter` 为 `scroll-mt-8 flex flex-col gap-4
-/// rounded-xl border border-zinc-800 bg-zinc-900 p-5`(单张带边框深色卡);搜索框为
-/// `w-full rounded-xl border border-zinc-700/80 bg-zinc-950`,聚焦时 `focus:border-zinc-500`;
-/// 「新建分组」按钮为白底 `bg-white text-zinc-900` 主按钮;chip 选中态
-/// `border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold`,未选中态
-/// `border-zinc-700 bg-zinc-900`;批量动作条 `border-zinc-700/80 bg-zinc-950` 仅在
+/// rounded-xl border border-border bg-card p-5`(单张带边框深色卡);搜索框为
+/// `w-full rounded-xl border border-border/80 bg-background`,聚焦时 `focus:border-border`;
+/// 「新建分组」按钮为白底 `bg-primary text-primary-foreground` 主按钮;chip 选中态
+/// `border-zinc-100 bg-primary text-primary-foreground font-semibold`,未选中态
+/// `border-border bg-card`;批量动作条 `border-border/80 bg-background` 仅在
 /// 有选中时渲染(启用按钮为 emerald 绿色系)。
 ///
 /// 【子组件组成】`SegmentedCapsule`(状态分级胶囊);其余为原生 `section` / `input` /
@@ -73,7 +73,7 @@ pub fn GroupsToolbar(
     rsx! {
         section {
             id: "groups-sec-filter",
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5",
             div { class: "flex items-center justify-between gap-3",
                 div { class: "flex items-center gap-2",
                     h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_FILTER}" }
@@ -81,13 +81,13 @@ pub fn GroupsToolbar(
                 }
                 div { class: "flex items-center gap-2",
                     button {
-                        class: "rounded-xl border border-zinc-700 bg-zinc-950 px-3.5 py-2 {ui::TYPE_DESC} transition-colors hover:border-zinc-500 hover:text-white",
+                        class: "rounded-xl border border-border bg-background px-3.5 py-2 {ui::TYPE_DESC} transition-colors hover:border-border hover:text-foreground",
                         "data-testid": "refresh-groups",
                         onclick: move |_| on_refresh.call(()),
                         "{BTN_REFRESH}"
                     }
                     button {
-                        class: "shrink-0 rounded-xl bg-white px-4 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                        class: "shrink-0 rounded-xl bg-primary px-4 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                         "data-testid": "new-group",
                         onclick: move |_| on_new.call(()),
                         "{BTN_NEW_GROUP}"
@@ -96,7 +96,7 @@ pub fn GroupsToolbar(
             }
 
             input {
-                class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 {ui::TYPE_BODY} placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
+                class: "w-full rounded-xl border border-border/80 bg-background px-4 py-2.5 {ui::TYPE_BODY} placeholder:text-muted-foreground outline-none transition focus:border-border",
                 r#type: "text",
                 "data-testid": "group-search",
                 placeholder: MSG_SEARCH_PLACEHOLDER,
@@ -125,9 +125,9 @@ pub fn GroupsToolbar(
                             let gn = g.name.clone();
                             let picked = selected.peek().contains(&key);
                             let cls = if picked {
-                                "border-zinc-100 bg-zinc-100 text-zinc-900 font-semibold"
+                                "border-zinc-100 bg-primary text-primary-foreground font-semibold"
                             } else {
-                                "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                                "border-border bg-card text-foreground hover:border-border"
                             };
                             rsx! {
                                 button {
@@ -150,23 +150,23 @@ pub fn GroupsToolbar(
                 }
                 // 批量动作条: 勾选后出现
                 if !selected().is_empty() {
-                    div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-2.5",
+                    div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-border/80 bg-background px-3 py-2.5",
                         "data-testid": "bulk-bar",
                         span { class: "{ui::TYPE_DESC}", "{MSG_BULK_SELECTED_PREFIX}{selected().len()}{MSG_BULK_SELECTED_SUFFIX}" }
                         button {
-                            class: "rounded-lg border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-1 {ui::TYPE_DESC} {ui::C_SUCCESS} transition-colors hover:bg-emerald-800/50",
+                            class: "rounded-lg border border-emerald-700/50 bg-success px-2.5 py-1 {ui::TYPE_DESC} {ui::C_SUCCESS} transition-colors hover:bg-success",
                             "data-testid": "bulk-enable",
                             onclick: move |_| on_bulk_enable.call(()),
                             "{BTN_BULK_ENABLE}"
                         }
                         button {
-                            class: "rounded-lg border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1 {ui::TYPE_DESC} transition-colors hover:bg-zinc-700",
+                            class: "rounded-lg border border-border/80 bg-secondary/60 px-2.5 py-1 {ui::TYPE_DESC} transition-colors hover:bg-secondary",
                             "data-testid": "bulk-disable",
                             onclick: move |_| on_bulk_disable.call(()),
                             "{BTN_BULK_DISABLE}"
                         }
                         button {
-                            class: "rounded-lg border border-zinc-700/80 px-2.5 py-1 {ui::TYPE_DESC} transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                            class: "rounded-lg border border-border/80 px-2.5 py-1 {ui::TYPE_DESC} transition-colors hover:bg-secondary hover:text-foreground",
                             "data-testid": "bulk-clear",
                             onclick: move |_| on_bulk_clear.call(()),
                             "{BTN_BULK_CLEAR}"

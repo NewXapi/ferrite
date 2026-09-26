@@ -59,6 +59,8 @@
   --border: rgb(255 255 255 / 12%);
   --input: rgb(255 255 255 / 12%);
   --ring: rgb(249 250 251);
+  --info: rgb(31 32 45);
+  --info-foreground: rgb(96 165 250);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -101,6 +103,8 @@
   --border: rgb(255 255 255 / 12%);
   --input: rgb(255 255 255 / 12%);
   --ring: rgb(249 250 251);
+  --info: rgb(31 32 45);
+  --info-foreground: rgb(96 165 250);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -141,6 +145,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -166,4 +172,21 @@
     border-color: var(--border);
     outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 文字角色（type scale）：size + weight + color 合一。全引用 :root 变量，
+ * 调字号/换肤只改这里的 --role-*-size 或 :root 颜色变量，rsx! 写
+ * `class: "role-title"`。开发期仍可临时用裸 Tailwind utility，gate 会
+ * 逼重复/语义样式回这里。 */
+/* ------------------------------------------------------------------ */
+@layer components {
+  .role-title   { font-size: var(--role-title-size, 1.125rem);   font-weight: 700; color: var(--foreground); }
+  .role-card    { font-size: var(--role-card-size, 0.875rem);    font-weight: 500; color: var(--foreground); }
+  .role-body    { font-size: var(--role-body-size, 0.875rem);             color: var(--foreground); }
+  .role-desc    { font-size: var(--role-desc-size, 0.75rem);              color: var(--muted-foreground); }
+  .role-caption { font-size: var(--role-caption-size, 0.75rem);           color: var(--muted-foreground); }
+  .role-label   { font-size: var(--role-label-size, 0.6875rem); font-weight: 500; color: var(--muted-foreground); }
+  .role-value   { font-size: var(--role-value-size, 1.5rem);    font-weight: 600; color: var(--foreground); }
+  .role-button  { font-size: var(--role-button-size, 0.875rem); font-weight: 500; }
 }

@@ -125,7 +125,7 @@ pub fn PosterCard(
                 div { class: "poster-flip-inner", style: "transform: rotateY({deg}deg)",
                     // 正面
                     div {
-                        class: "card-frame poster-flip-face overflow-hidden rounded-xl border border-white/15 bg-zinc-950 shadow-xl shadow-black/60",
+                        class: "card-frame poster-flip-face overflow-hidden rounded-xl border border-white/15 bg-background shadow-xl shadow-black/60",
                         style: if is_flipped { "visibility: hidden; opacity: 0; pointer-events: none;" } else { "visibility: visible; opacity: 1;" },
                         {art_img(art, &name, "")}
                         div { class: "card-vignette pointer-events-none absolute inset-0" }
@@ -144,7 +144,7 @@ pub fn PosterCard(
                             }
                             div { class: "flex items-center justify-center rounded-full border border-white/20 bg-black/60 px-2 py-0.5",
                                 span {
-                                    class: if rank <= 3 { "text-xs font-extrabold text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" } else { "text-xs font-semibold text-zinc-300" },
+                                    class: if rank <= 3 { "text-xs font-extrabold text-warning-foreground drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" } else { "text-xs font-semibold text-foreground" },
                                     "#{rank}"
                                 }
                             }
@@ -200,7 +200,7 @@ pub fn PosterCard(
                     }
                     // 背面
                     div {
-                        class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border border-white/15 bg-zinc-950 shadow-xl shadow-black/60",
+                        class: "card-frame poster-flip-face poster-flip-back overflow-hidden rounded-xl border border-white/15 bg-background shadow-xl shadow-black/60",
                         style: if !is_flipped { "visibility: hidden; opacity: 0; pointer-events: none;" } else { "visibility: visible; opacity: 1;" },
                         {art_img(art, &name, "filter: brightness(0.28); transform: scale(1.02)")}
                         div { class: "card-vignette pointer-events-none absolute inset-0" }
@@ -211,23 +211,23 @@ pub fn PosterCard(
                             }
                             p { class: "mt-0.5 {crate::TYPE_LABEL} leading-snug", "{desc}" }
                             div { class: "my-2.5 flex items-center gap-3",
-                                div { class: "h-px flex-1 bg-white/12" }
+                                div { class: "h-px flex-1 bg-primary/12" }
                                 div { class: "flex items-baseline gap-1.5",
                                     span { class: "{crate::TYPE_VALUE} tracking-tight row-text", "{score:.1}" }
                                     span { class: "{crate::TYPE_LABEL} uppercase tracking-widest", "Score" }
                                 }
-                                div { class: "h-px flex-1 bg-white/12" }
+                                div { class: "h-px flex-1 bg-primary/12" }
                             }
                             div { class: "flex-1 space-y-1.5",
                                 for i in 0..6 {
                                     div { class: "flex items-center gap-2",
                                         span { class: "w-9 {crate::TYPE_LABEL} leading-none", "{dim_labels[i]}" }
-                                        div { class: "h-1 flex-1 overflow-hidden rounded-full bg-white/15",
-                                            div { class: "h-full rounded-full bg-zinc-100", style: "width: {radar_values[i] * 100.0:.0}%" }
+                                        div { class: "h-1 flex-1 overflow-hidden rounded-full bg-primary/15",
+                                            div { class: "h-full rounded-full bg-primary", style: "width: {radar_values[i] * 100.0:.0}%" }
                                         }
                                         span { class: "w-14 text-right {crate::TYPE_LABEL} leading-none", "{dim_raws[i]}" }
                                         span {
-                                            class: if dim_ranks[i] <= 3 { "w-6 text-right text-[8px] font-bold text-amber-300" } else { "w-6 text-right text-[8px] text-zinc-600" },
+                                            class: if dim_ranks[i] <= 3 { "w-6 text-right text-[8px] font-bold text-warning-foreground" } else { "w-6 text-right text-[8px] text-muted-foreground" },
                                             "#{dim_ranks[i]}"
                                         }
                                     }
@@ -249,9 +249,9 @@ fn KeyStatRows(stats: Vec<KeyStatLine>) -> Element {
         div { class: "pointer-events-auto rounded-lg border border-white/10 bg-black/60 px-2 py-1.5 space-y-0.5",
             for s in stats.iter() {
                 div { class: "row-tip-anchor relative flex items-baseline justify-between gap-2 {crate::TYPE_LABEL}",
-                    span { class: "text-zinc-400 font-medium", "{s.short}" }
-                    span { class: "text-zinc-100 font-mono font-bold row-text text-right", "{s.text}" }
-                    div { class: "pointer-events-none absolute -top-1 left-0 z-20 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-zinc-950/95 px-2 py-1 {crate::TYPE_LABEL} opacity-0 transition-opacity duration-200 row-tip shadow-lg",
+                    span { class: "text-muted-foreground font-medium", "{s.short}" }
+                    span { class: "text-foreground font-mono font-bold row-text text-right", "{s.text}" }
+                    div { class: "pointer-events-none absolute -top-1 left-0 z-20 -translate-y-full whitespace-nowrap rounded border border-white/15 bg-background/95 px-2 py-1 {crate::TYPE_LABEL} opacity-0 transition-opacity duration-200 row-tip shadow-lg",
                         "{s.full}"
                     }
                 }

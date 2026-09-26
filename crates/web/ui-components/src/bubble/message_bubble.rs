@@ -16,9 +16,9 @@ pub fn MessageBubble(
     let align = if mine { "flex-row-reverse" } else { "" };
     let name_align = if mine { "flex-row-reverse" } else { "" };
     let bubble = if mine {
-        "bg-zinc-100 text-zinc-900 cursor-pointer selection:bg-purple-400 selection:text-zinc-950"
+        "bg-primary text-primary-foreground cursor-pointer selection:bg-purple-400 selection:text-primary-foreground"
     } else {
-        "bg-zinc-800/90 text-zinc-100 cursor-pointer selection:bg-purple-900 selection:text-white"
+        "bg-secondary/90 text-foreground cursor-pointer selection:bg-purple-900 selection:text-foreground"
     };
 
     rsx! {
@@ -44,7 +44,7 @@ pub fn MessageBubble(
                     if is_active_menu {
                         if let Some(actions) = actions {
                             div {
-                                class: "absolute -top-10 right-0 z-30 flex items-center gap-1 rounded-xl border border-purple-500/40 bg-zinc-950/95 px-2 py-1 shadow-2xl shadow-black/80 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150",
+                                class: "absolute -top-10 right-0 z-30 flex items-center gap-1 rounded-xl border border-purple-500/40 bg-background/95 px-2 py-1 shadow-2xl shadow-black/80 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150",
                                 onclick: move |e| e.stop_propagation(),
                                 {actions}
                             }

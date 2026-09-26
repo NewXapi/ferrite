@@ -55,9 +55,9 @@ use super::shared::{
 ///
 /// 【样式】外壳复用 `Modal`;内容区 `space-y-4 max-h-[70vh] overflow-y-auto pr-1`,
 /// 类型与分组两栏 `grid grid-cols-2 gap-3`;分组多选 chips:选中为绿调
-/// `border-emerald-500/60 bg-emerald-500/15 text-emerald-300`,未选为描边
-/// `border-zinc-700 bg-zinc-900`;模型候选池 `max-h-40 overflow-y-auto` 描边面板;
-/// 错误块 `rounded-xl border-red-500/30 bg-red-950/30 text-red-400`;底部
+/// `border-emerald-500/60 bg-success text-success-foreground`,未选为描边
+/// `border-border bg-card`;模型候选池 `max-h-40 overflow-y-auto` 描边面板;
+/// 错误块 `rounded-xl border-destructive bg-destructive text-destructive`;底部
 /// `mt-6 flex gap-3`,取消描边、提交白底且 `disabled:opacity-40`。
 ///
 /// 【子组件组成】`Modal`(弹窗外壳);其余均为原生元素(select / input / textarea /
@@ -215,7 +215,7 @@ pub fn ChannelFormModal(
                     div {
                         label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_CHANNEL_TYPE}" }
                         select {
-                            class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 {ui::TYPE_BODY} focus:border-zinc-500 focus:outline-none",
+                            class: "w-full rounded-xl border border-border bg-background px-3 py-2 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                             value: "{ctype}",
                             onchange: move |e| ctype.set(e.value()),
                             for opt in CHANNEL_TYPES {
@@ -225,7 +225,7 @@ pub fn ChannelFormModal(
                     }
                     div {
                         label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_BOUND_GROUPS}" }
-                        div { class: "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1.5",
+                        div { class: "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-xl border border-border bg-background px-2 py-1.5",
                             if group_options.read().is_empty() {
                                 // 候选拉取失败/为空：只读展示当前已绑分组，不阻断保存
                                 span { class: "{ui::TYPE_DESC}",
@@ -242,9 +242,9 @@ pub fn ChannelFormModal(
                                     button {
                                         key: "{gname}",
                                         class: if selected {
-                                            "rounded-full border border-emerald-500/60 bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300"
+                                            "rounded-full border border-emerald-500/60 bg-success px-2.5 py-0.5 text-xs font-medium text-success-foreground"
                                         } else {
-                                            "rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-0.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                                            "rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-muted-foreground hover:border-border hover:text-foreground"
                                         },
                                         onclick: move |_| {
                                             let mut cur = group.read().clone();
@@ -266,7 +266,7 @@ pub fn ChannelFormModal(
                 div {
                     label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_CHANNEL_NAME}" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 {ui::TYPE_BODY} focus:border-zinc-500 focus:outline-none",
+                        class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                         placeholder: "{MSG_PH_CHANNEL_NAME}",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
@@ -276,7 +276,7 @@ pub fn ChannelFormModal(
                 div {
                     label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_BASE_URL}" }
                     input {
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        class: "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground font-mono focus:border-border focus:outline-none",
                         placeholder: "{MSG_PH_BASE_URL}",
                         value: "{url}",
                         oninput: move |e| url.set(e.value()),
@@ -291,14 +291,14 @@ pub fn ChannelFormModal(
                             "{MSG_EXISTING_KEYS_PREFIX}{existing_keys.read().len()}{MSG_EXISTING_KEYS_SUFFIX}"
                         }
                         for mk in existing_keys.read().iter() {
-                            div { class: "rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 font-mono text-xs text-zinc-400", "{mk}" }
+                            div { class: "rounded-md border border-border bg-card/60 px-2.5 py-1 font-mono text-xs text-muted-foreground", "{mk}" }
                         }
                     }
                 }
                 div {
                     label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_API_KEY}" }
                     textarea {
-                        class: "w-full h-20 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none resize-none",
+                        class: "w-full h-20 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground font-mono focus:border-border focus:outline-none resize-none",
                         placeholder: if editing {
                             "{MSG_PH_API_KEY_EDIT}"
                         } else {
@@ -314,9 +314,9 @@ pub fn ChannelFormModal(
                         div { class: "flex items-center gap-2",
                             button {
                                 class: if *fetching_models.read() {
-                                    "rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs text-zinc-500"
+                                    "rounded-lg border border-border bg-secondary/60 px-3 py-1.5 text-xs text-muted-foreground"
                                 } else {
-                                    "rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+                                    "rounded-lg border border-border bg-secondary/60 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-secondary hover:text-foreground"
                                 },
                                 disabled: *fetching_models.read(),
                                 onclick: move |_| {
@@ -360,12 +360,12 @@ pub fn ChannelFormModal(
                                 "{MSG_FETCH_MODELS_HINT}"
                             }
                         }
-                        div { class: "max-h-40 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-2 space-y-1",
+                        div { class: "max-h-40 overflow-y-auto rounded-xl border border-border bg-background p-2 space-y-1",
                             if model_pool.read().is_empty() {
                                 span { class: "{ui::TYPE_LABEL}", "{MSG_NO_MODEL_CANDIDATES}" }
                             } else {
                                 for (idx, (id, checked)) in model_pool.read().iter().enumerate() {
-                                    label { class: "flex items-center gap-2 rounded-md px-1.5 py-0.5 hover:bg-zinc-900",
+                                    label { class: "flex items-center gap-2 rounded-md px-1.5 py-0.5 hover:bg-card",
                                         input {
                                             r#type: "checkbox",
                                             checked: *checked,
@@ -378,7 +378,7 @@ pub fn ChannelFormModal(
                                                 models_touched.set(true);
                                             },
                                         }
-                                        span { class: "font-mono text-xs text-zinc-300", "{id}" }
+                                        span { class: "font-mono text-xs text-foreground", "{id}" }
                                     }
                                 }
                             }
@@ -388,7 +388,7 @@ pub fn ChannelFormModal(
                 div {
                     label { class: "mb-1.5 block {ui::TYPE_DESC}", "{FIELD_REMARK}" }
                     textarea {
-                        class: "w-full h-16 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 {ui::TYPE_BODY} focus:border-zinc-500 focus:outline-none resize-none",
+                        class: "w-full h-16 rounded-xl border border-border bg-background px-4 py-2.5 {ui::TYPE_BODY} focus:border-border focus:outline-none resize-none",
                         placeholder: "{MSG_PH_REMARK}",
                         value: "{remark}",
                         oninput: move |e| remark.set(e.value()),
@@ -401,7 +401,7 @@ pub fn ChannelFormModal(
             if let Some(msg) = submit_err() {
                 div {
                     role: "alert",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
+                    class: "rounded-xl border border-destructive bg-destructive p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
                     "data-testid": "channel-save-error",
                     "{msg}"
                 }
@@ -409,12 +409,12 @@ pub fn ChannelFormModal(
 
             div { class: "mt-6 flex gap-3",
                 button {
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border border-border py-2.5 {ui::TYPE_BODY} transition-colors hover:bg-secondary",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
-                    class: "flex-1 rounded-xl bg-white py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
+                    class: "flex-1 rounded-xl bg-primary py-2.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-200 disabled:opacity-40",
                     disabled: submitting(),
                     onclick: do_submit,
                     "{submit_label}"

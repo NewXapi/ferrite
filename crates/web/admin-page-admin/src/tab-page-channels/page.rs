@@ -58,8 +58,8 @@ use super::toolbar::ChannelsToolbarSection;
 /// - 点卡片「编辑」→ `open_edit` 回填表单并按需拉掩码密钥(`get_channel_api`)。
 /// - 弹窗保存 → 由弹窗自己发创建/更新请求,成功回到 `close_and_reload`(关弹窗 + 重拉)。
 ///
-/// 【样式】顶层 `div.flex flex-col gap-6`;通知条 `rounded-xl border-zinc-700
-/// bg-zinc-900`。页面自身不写卡片/网格样式。
+/// 【样式】顶层 `div.flex flex-col gap-6`;通知条 `rounded-xl border-border
+/// bg-card`。页面自身不写卡片/网格样式。
 ///
 /// 【子组件组成】`ChannelsStatsSection` / `ChannelsToolbarSection` / `ChannelsListSection`,
 /// 条件渲染时挂载 `ChannelFormModal`;`ChannelCard` 由 list 区内部使用。
@@ -356,7 +356,7 @@ pub fn ChannelsPage() -> Element {
         div { class: "flex flex-col gap-6",
             // 通知条(成功/错误/进行中)
             if let Some(msg) = notice() {
-                div { class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 {ui::TYPE_DESC}",
+                div { class: "rounded-xl border border-border bg-card px-4 py-2 {ui::TYPE_DESC}",
                     "{msg}"
                     if busy() { " ···" }
                 }

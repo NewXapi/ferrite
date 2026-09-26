@@ -83,7 +83,7 @@ pub fn TrendPanel(
     let tip = use_signal(|| None::<TrendTip>);
 
     rsx! {
-        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-all duration-300 hover:border-zinc-700",
+        section { class: "rounded-xl border border-border bg-card p-5 transition-all duration-300 hover:border-border",
             div { class: "mb-4 flex flex-wrap items-center justify-between gap-3",
                 div {
                     h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_TREND}" }
@@ -100,16 +100,16 @@ pub fn TrendPanel(
                 }
             }
             if let Some(e) = err {
-                div { class: "rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-8 text-center",
+                div { class: "rounded-xl border border-destructive bg-destructive px-4 py-8 text-center",
                     p { class: "text-sm {ui::C_DANGER}", "{TREND_ERR}" }
                     p { class: "mt-1 text-xs {ui::C_DANGER}", "{e}" }
                 }
             } else if loading {
-                div { class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                div { class: "rounded-xl border border-dashed border-border bg-card/50 py-16 text-center",
                     p { class: "{ui::C_MUTED}", "{TREND_LOADING}" }
                 }
             } else if !has_any || empty_window {
-                div { class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                div { class: "rounded-xl border border-dashed border-border bg-card/50 py-16 text-center",
                     p { class: "{ui::C_MUTED}", "{TREND_EMPTY}" }
                     p { class: "mt-1 {ui::TYPE_DESC}", "{TREND_EMPTY_HINT}" }
                 }

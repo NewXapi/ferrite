@@ -108,7 +108,7 @@ pub fn ErrorsPanel() -> Element {
                                 div { class: "h-2 w-14 shrink-0 overflow-hidden rounded-full bg-muted sm:w-20",
                                     if max_count > 0 {
                                         div {
-                                            class: "h-full rounded-full bg-emerald-400/80",
+                                            class: "h-full rounded-full bg-success",
                                             style: "width: {(r.count as f64 / max_count as f64 * 100.0):.1}%",
                                         }
                                     }

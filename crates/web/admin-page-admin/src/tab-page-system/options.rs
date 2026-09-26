@@ -37,11 +37,11 @@ pub fn option_editable(v: &serde_json::Value) -> bool {
 /// 拉取结果驱动(仅触发一次网络请求 `list_options_api`,不发写请求)。
 ///
 /// 【样式】外壳 `section#system-sec-options` 为 `scroll-mt-8 rounded-xl border
-/// border-zinc-800 bg-zinc-900/60 p-5 space-y-4`;区段头 h2 `text-sm
-/// font-medium text-zinc-200` + 说明 p `text-xs text-zinc-500`;错误态红底
-/// `border-red-500/30 bg-red-950/30`;加载/空态虚线描边 `border-dashed
-/// border-zinc-700`;列表用 `divide-y divide-zinc-800/80` 分行,值列按是否
-/// 可编辑切换 `text-zinc-300` / `text-zinc-500` 两档色。
+/// border-border bg-card/60 p-5 space-y-4`;区段头 h2 `text-sm
+/// font-medium text-foreground` + 说明 p `text-xs text-muted-foreground`;错误态红底
+/// `border-destructive bg-destructive`;加载/空态虚线描边 `border-dashed
+/// border-border`;列表用 `divide-y divide-zinc-800/80` 分行,值列按是否
+/// 可编辑切换 `text-foreground` / `text-muted-foreground` 两档色。
 ///
 /// 【子组件组成】无子组件:全部使用原生 dioxus 元素(`section` / `div` / `h2`
 /// / `p` / `span`),不依赖未导出的 pub(crate) 组件。
@@ -79,7 +79,7 @@ pub fn SystemOptionsPanel() -> Element {
             "data-testid": "system-options-panel",
             role: "region",
             "aria-label": LBL_SITE_OPTIONS,
-            class: "scroll-mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4",
+            class: "scroll-mt-8 rounded-xl border border-border bg-card/60 p-5 space-y-4",
             div {
                 h2 { class: "{ui::TYPE_CARD_TITLE}", {LBL_SITE_OPTIONS} }
                 p { class: "{ui::TYPE_DESC}", {SEC_OPTIONS_NOTE} }
@@ -88,19 +88,19 @@ pub fn SystemOptionsPanel() -> Element {
                 div {
                     role: "alert",
                     "data-testid": "system-options-error",
-                    class: "rounded-xl border border-red-500/30 bg-red-950/30 p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
+                    class: "rounded-xl border border-destructive bg-destructive p-4 {ui::TYPE_BODY} {ui::C_DANGER}",
                     "{e}"
                 }
             } else if loading {
                 div {
                     "data-testid": "system-options-loading",
-                    class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
+                    class: "rounded-xl border border-dashed border-border bg-card/50 py-6 text-center",
                     p { class: "{ui::C_MUTED}", {MSG_OPTIONS_LOADING} }
                 }
             } else if list.is_empty() {
                 div {
                     "data-testid": "system-options-empty",
-                    class: "rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 py-6 text-center",
+                    class: "rounded-xl border border-dashed border-border bg-card/50 py-6 text-center",
                     p { class: "{ui::C_MUTED}", {MSG_OPTIONS_EMPTY} }
                 }
             } else {
@@ -116,7 +116,7 @@ pub fn SystemOptionsPanel() -> Element {
                                     span { class: "shrink-0 {ui::TYPE_DESC}", "{o.key}" }
                                     span {
                                         "data-testid": "system-option-value",
-                                        class: if editable { "break-all text-right text-xs font-mono text-zinc-300" } else { "break-all text-right text-xs font-mono text-zinc-500" },
+                                        class: if editable { "break-all text-right text-xs font-mono text-foreground" } else { "break-all text-right text-xs font-mono text-muted-foreground" },
                                         "{display}"
                                     }
                                 }

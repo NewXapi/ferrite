@@ -163,8 +163,8 @@ pub fn GridShell(children: Element) -> Element {
 ///
 /// 【交互逻辑】纯展示,无交互。
 ///
-/// 【样式】外壳 `space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3`;
-/// 标题 `text-sm font-medium text-zinc-100`,说明 `text-[11px] text-zinc-600`。
+/// 【样式】外壳 `space-y-2 rounded-xl border border-border bg-card/60 p-3`;
+/// 标题 `text-sm font-medium text-foreground`,说明 `text-[11px] text-muted-foreground`。
 ///
 /// 【子组件组成】无:children 直接落在说明行之后。
 ///
@@ -175,7 +175,7 @@ pub fn GridShell(children: Element) -> Element {
 #[component]
 pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Element {
     rsx! {
-        section { class: "space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
+        section { class: "space-y-2 rounded-xl border border-border bg-card/60 p-3",
             p { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
             p { class: "{ui::TYPE_LABEL}", "{hint}" }
             {children}
@@ -192,8 +192,8 @@ pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Elem
 /// 【交互逻辑】点击 → 调 `on_click.call(e)` 把 MouseEvent 抛给调用方 →
 /// 由调用方决定后续(本组件不改任何状态、不发网络)。
 ///
-/// 【样式】`rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs
-/// font-medium text-zinc-900 hover:bg-zinc-300`(浅色实底 + hover 加深)。
+/// 【样式】`rounded-md border border-zinc-100 bg-primary px-3 py-1.5 text-xs
+/// font-medium text-primary-foreground hover:bg-zinc-300`(浅色实底 + hover 加深)。
 ///
 /// 【子组件组成】无:仅一个 `button`。
 ///
@@ -204,7 +204,7 @@ pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Elem
 pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
+            class: "rounded-md border border-zinc-100 bg-primary px-3 py-1.5 {ui::TYPE_DESC} hover:bg-zinc-300",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -221,8 +221,8 @@ pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -
 /// 【交互逻辑】点击 → 调 `on_click.call(e)` 把 MouseEvent 抛给调用方 →
 /// 本组件不改任何状态、不发网络。
 ///
-/// 【样式】`rounded-md border border-red-900/60 px-3 py-1.5 text-xs text-red-400
-/// hover:border-red-700`(红边红字,hover 边色加深)。
+/// 【样式】`rounded-md border border-destructive px-3 py-1.5 text-xs text-destructive
+/// hover:border-destructive`(红边红字,hover 边色加深)。
 ///
 /// 【子组件组成】无:仅一个 `button`。
 ///
@@ -233,7 +233,7 @@ pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -
 pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-red-900/60 px-3 py-1.5 {ui::TYPE_DESC} {ui::C_DANGER} hover:border-red-700",
+            class: "rounded-md border border-destructive px-3 py-1.5 {ui::TYPE_DESC} {ui::C_DANGER} hover:border-destructive",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -249,8 +249,8 @@ pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>)
 /// 【交互逻辑】点击 → 调 `on_click.call(e)` 把 MouseEvent 抛给调用方 →
 /// 本组件不改任何状态、不发网络。
 ///
-/// 【样式】`rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500
-/// hover:border-zinc-600 hover:text-zinc-300`(灰边灰字,hover 提亮)。
+/// 【样式】`rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground
+/// hover:border-border hover:text-foreground`(灰边灰字,hover 提亮)。
 ///
 /// 【子组件组成】无:仅一个 `button`。
 ///
@@ -261,7 +261,7 @@ pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>)
 pub(crate) fn GhostBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} hover:border-zinc-600 hover:text-zinc-300",
+            class: "rounded-md border border-border px-3 py-1.5 {ui::TYPE_DESC} hover:border-border hover:text-foreground",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -279,8 +279,8 @@ pub(crate) fn GhostBtn(label: &'static str, on_click: EventHandler<MouseEvent>) 
 /// `f_enabled` 等 signal,值再回流进 `on`;本组件不发网络。
 ///
 /// 【样式】轨道 `relative h-5 w-9 shrink-0 rounded-full transition-colors`,
-/// 按 `on` 切 `bg-zinc-100` / `bg-zinc-700`;圆钮 `absolute top-0.5 left-0.5
-/// h-4 w-4 rounded-full bg-zinc-950 transition-transform`,按 `on` 切
+/// 按 `on` 切 `bg-primary` / `bg-secondary`;圆钮 `absolute top-0.5 left-0.5
+/// h-4 w-4 rounded-full bg-background transition-transform`,按 `on` 切
 /// `translate-x-4` / `translate-x-0`;带 `role="switch"` 与 `aria-checked`。
 ///
 /// 【子组件组成】无:一个受控 `button` + 一个 span 圆钮。
@@ -290,7 +290,7 @@ pub(crate) fn GhostBtn(label: &'static str, on_click: EventHandler<MouseEvent>) 
 /// - 对外(出):`on_toggle`(无参,调用方据此取反并写回 signal)。
 #[component]
 pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
-    let track = if on { "bg-zinc-100" } else { "bg-zinc-700" };
+    let track = if on { "bg-primary" } else { "bg-secondary" };
     let knob = if on { "translate-x-4" } else { "translate-x-0" };
     rsx! {
         button {
@@ -298,7 +298,7 @@ pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
             role: "switch",
             "aria-checked": "{on}",
             onclick: move |_| on_toggle.call(()),
-            span { class: "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-zinc-950 transition-transform {knob}" }
+            span { class: "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-background transition-transform {knob}" }
         }
     }
 }

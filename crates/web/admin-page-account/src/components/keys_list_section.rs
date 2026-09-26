@@ -42,7 +42,7 @@ pub fn KeysListSection(
                 div { class: "flex items-center justify-between gap-3",
                     div { class: "flex items-center gap-2",
                         h2 { class: "{ui::TYPE_TITLE}", "{SEC_KEYS}" }
-                        span { class: "{ui::TYPE_DESC} px-3 py-1 rounded-full bg-zinc-800",
+                        span { class: "{ui::TYPE_DESC} px-3 py-1 rounded-full bg-secondary",
                             if keys_loaded() { "{keys.len()} 个" } else { "…" }
                         }
                     }

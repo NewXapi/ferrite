@@ -23,7 +23,7 @@ use crate::tab_page_groups::StatCard;
 ///
 /// 【样式】外壳 `section#reds-sec-stats` 为 `scroll-mt-8 space-y-3`,并带
 /// `data-testid="redemptions-stats"`、`role="region"`、`aria-label=SEC_STATS`;
-/// 标题 `text-lg font-medium text-zinc-100`;网格 `grid grid-cols-1 gap-3
+/// 标题 `text-lg font-medium text-foreground`;网格 `grid grid-cols-1 gap-3
 /// md:grid-cols-3 lg:grid-cols-5`(手机 1 / 中屏 3 / 大屏 5 列)。
 ///
 /// 【子组件组成】`StatCard`(五张概览卡,来自 `tab-page-groups::modal`)。

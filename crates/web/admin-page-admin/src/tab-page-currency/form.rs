@@ -31,10 +31,10 @@ use super::shared::{
 ///   `upsert_currency_api`;点「取消（转新增）」→ `on_cancel` 抛回页面重置表单。
 /// 本组件自身**不发任何网络请求**。
 ///
-/// 【样式】外壳 `section.space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3`;
+/// 【样式】外壳 `section.space-y-3 rounded-xl border border-border bg-card/60 p-3`;
 /// 录入网格 `grid grid-cols-2 gap-3 md:grid-cols-4`(备注格 `md:col-span-2`);输入框统一
-/// `w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1`;两条警示 `text-xs`
-/// 分别为 `text-red-400` 与 `text-red-400/80`;提交按钮 `bg-sky-700 hover:bg-sky-600`。
+/// `w-full rounded-lg border border-border bg-secondary/60 px-2 py-1`;两条警示 `text-xs`
+/// 分别为 `text-destructive` 与 `text-destructive`;提交按钮 `bg-info hover:bg-info`。
 ///
 /// 【子组件组成】无独立子组件,全部 rsx 在本文件内联(`label` / `input` / `select` /
 /// `option` / `p` / `button`)。
@@ -62,7 +62,7 @@ pub fn CurrencyForm(
     let usd_locked = f_code() == "USD";
 
     rsx! {
-        section { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
+        section { class: "space-y-3 rounded-xl border border-border bg-card/60 p-3",
             role: "region",
             "aria-label": LBL_FORM_REGION,
             "data-testid": "currency-form-section",
@@ -73,7 +73,7 @@ pub fn CurrencyForm(
                 label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_CODE}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                        class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-code-input",
                         value: "{f_code()}",
                         disabled: editing.is_some(),
@@ -83,7 +83,7 @@ pub fn CurrencyForm(
                 label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{LBL_FIELD_NAME}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                        class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-name-input",
                         value: "{f_name()}",
                         oninput: move |e| f_name.set(e.value()),
@@ -92,7 +92,7 @@ pub fn CurrencyForm(
                 label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_SYMBOL}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                        class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-symbol-input",
                         value: "{f_symbol()}",
                         oninput: move |e| f_symbol.set(e.value()),
@@ -101,7 +101,7 @@ pub fn CurrencyForm(
                 label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_KIND}"
                     select {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                        class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-kind-select",
                         value: "{f_kind().as_str()}",
                         onchange: move |e| f_kind.set(Kind::parse(&e.value())),
@@ -114,7 +114,7 @@ pub fn CurrencyForm(
                     if usd_locked {
                         div { class: "space-y-1",
                             input {
-                                class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                                class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                                 "data-testid": "currency-rate-input",
                                 value: "1",
                                 disabled: true,
@@ -123,7 +123,7 @@ pub fn CurrencyForm(
                         }
                     } else {
                         input {
-                            class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                            class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                             "data-testid": "currency-rate-input",
                             value: "{f_rate()}",
                             oninput: move |e| f_rate.set(e.value()),
@@ -133,7 +133,7 @@ pub fn CurrencyForm(
                 label { class: "space-y-1 {ui::TYPE_DESC}",
                     "{FIELD_PRECISION}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                        class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-precision-input",
                         value: "{f_precision()}",
                         oninput: move |e| f_precision.set(e.value()),
@@ -151,7 +151,7 @@ pub fn CurrencyForm(
                 label { class: "space-y-1 {ui::TYPE_DESC} md:col-span-2",
                     "{LBL_FIELD_REMARK}"
                     input {
-                        class: "w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 {ui::TYPE_BODY}",
+                        class: "w-full rounded-lg border border-border bg-secondary/60 px-2 py-1 {ui::TYPE_BODY}",
                         "data-testid": "currency-remark-input",
                         value: "{f_remark()}",
                         oninput: move |e| f_remark.set(e.value()),
@@ -171,14 +171,14 @@ pub fn CurrencyForm(
 
             div { class: "flex space-x-2",
                 button {
-                    class: "rounded-lg bg-sky-700 px-3 py-1.5 {ui::TYPE_BODY} hover:bg-sky-600",
+                    class: "rounded-lg bg-info px-3 py-1.5 {ui::TYPE_BODY} hover:bg-info",
                     "data-testid": "currency-submit",
                     onclick: on_submit,
                     if editing.is_some() { "{BTN_SAVE_CHANGES}" } else { "{BTN_CREATE}" }
                 }
                 if editing.is_some() {
                     button {
-                        class: "rounded-lg border border-zinc-700 px-3 py-1.5 {ui::TYPE_BODY} hover:bg-zinc-800",
+                        class: "rounded-lg border border-border px-3 py-1.5 {ui::TYPE_BODY} hover:bg-secondary",
                         "data-testid": "currency-cancel",
                         onclick: on_cancel,
                         "{BTN_CANCEL}"

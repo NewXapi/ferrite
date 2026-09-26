@@ -35,19 +35,19 @@ pub fn PriceModeToggle(
     // 容器：略提亮 zinc-800/60 底；激活段用深色高对比底 + 白字（不依赖渐变
     // 对比，避免浅色字在亮底上看不清）。
     let container_cls = if compact {
-        "inline-flex items-center rounded-full border border-zinc-700/60 bg-zinc-800/60 p-0.5 text-[11px] shadow-sm"
+        "inline-flex items-center rounded-full border border-border/60 bg-secondary/60 p-0.5 text-[11px] shadow-sm"
     } else {
-        "flex w-full overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-0.5 text-xs shadow-sm"
+        "flex w-full overflow-hidden rounded-lg border border-border/60 bg-secondary/60 p-0.5 text-xs shadow-sm"
     };
     let active_cls = if compact {
-        "rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-950 shadow-sm transition-colors"
+        "rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-primary-foreground shadow-sm transition-colors"
     } else {
-        "flex-1 rounded-md bg-zinc-100 px-3 py-1.5 text-center font-semibold text-zinc-950 shadow-sm transition-colors"
+        "flex-1 rounded-md bg-primary px-3 py-1.5 text-center font-semibold text-primary-foreground shadow-sm transition-colors"
     };
     let idle_cls = if compact {
-        "rounded-full px-2.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:text-zinc-200"
+        "rounded-full px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
     } else {
-        "flex-1 rounded-md px-3 py-1.5 text-center text-zinc-400 transition-colors hover:text-zinc-200"
+        "flex-1 rounded-md px-3 py-1.5 text-center text-muted-foreground transition-colors hover:text-foreground"
     };
     rsx! {
         div {

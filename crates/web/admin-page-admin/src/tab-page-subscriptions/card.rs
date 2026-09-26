@@ -39,7 +39,7 @@ use crate::state::PlanRow;
 /// 头部 `flex flex-wrap items-start justify-between gap-2.5`;状态徽标按 `enabled`
 /// 切绿/灰两套圆角 pill;
 /// 指标条 `grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3
-/// border-t border-zinc-800/70`(手机 2 / sm 3 / md 5 列)。
+/// border-t border-border/70`(手机 2 / sm 3 / md 5 列)。
 ///
 /// 【子组件组成】`ToggleSwitch`(启停开关,来自 `shared.rs`);其余为原生元素。
 ///
@@ -97,17 +97,17 @@ pub fn PlanCard(
             // 卡片头部行: 标识 + 标题 + 状态/分组徽标 + 操作按钮
             div { class: "flex flex-wrap items-start justify-between gap-2.5",
                 div { class: "flex items-center gap-2.5 min-w-0 flex-1",
-                    span { class: "shrink-0 rounded-md border border-zinc-700/80 bg-zinc-800 px-2 py-0.5 text-xs font-mono font-bold text-zinc-300",
+                    span { class: "shrink-0 rounded-md border border-border/80 bg-secondary px-2 py-0.5 text-xs font-mono font-bold text-foreground",
                         title: "{row_key}",
                         "{badge_txt}"
                     }
                     h3 { class: "truncate {ui::TYPE_TITLE}", "{title_txt}" }
                     span {
-                        class: if cur_enabled { "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400" } else { "rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500" },
+                        class: if cur_enabled { "rounded-full border border-emerald-500/30 bg-success px-2.5 py-0.5 text-[11px] font-medium text-success-foreground" } else { "rounded-full border border-border bg-secondary/80 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground" },
                         if cur_enabled { "{LBL_ENABLED}" } else { "{LBL_DISABLED}" }
                     }
                     if !plan.group.is_empty() && plan.group != "不升级" {
-                        span { class: "rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium {ui::C_INFO} uppercase",
+                        span { class: "rounded-full border border-sky-500/30 bg-info px-2.5 py-0.5 text-[11px] font-medium {ui::C_INFO} uppercase",
                             "{LBL_GROUP_PREFIX}{plan.group}"
                         }
                     }
@@ -118,13 +118,13 @@ pub fn PlanCard(
                         on_toggle: move |_| on_toggle.call(index),
                     }
                     button {
-                        class: "rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 {ui::TYPE_DESC} transition-colors hover:bg-zinc-700 hover:text-white",
+                        class: "rounded-lg border border-border bg-secondary px-2.5 py-1 {ui::TYPE_DESC} transition-colors hover:bg-secondary hover:text-foreground",
                         "data-testid": edit_id,
                         onclick: move |_| on_edit.call(index),
                         "{BTN_EDIT}"
                     }
                     button {
-                        class: "rounded-lg border border-red-900/50 bg-red-950/20 px-2 py-1 {ui::TYPE_DESC} {ui::C_DANGER} transition-colors hover:bg-red-900/30 hover:text-red-300",
+                        class: "rounded-lg border border-destructive bg-destructive px-2 py-1 {ui::TYPE_DESC} {ui::C_DANGER} transition-colors hover:bg-destructive hover:text-destructive",
                         "data-testid": del_id,
                         onclick: move |_| on_delete.call(index),
                         "{BTN_DELETE}"
@@ -133,22 +133,22 @@ pub fn PlanCard(
             }
 
             // 关键指标条 — 只展示后端实际返回的字段
-            div { class: "mt-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3 border-t border-zinc-800/70 {ui::TYPE_DESC}",
+            div { class: "mt-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-3 border-t border-border/70 {ui::TYPE_DESC}",
                 div {
                     span { class: "{ui::TYPE_LABEL} block", "{LBL_PRICE}" }
                     span { class: "font-mono font-bold text-sm {ui::C_SUCCESS}", "{price_str}" }
                 }
                 div {
                     span { class: "{ui::TYPE_LABEL} block", "{LBL_PERIOD}" }
-                    span { class: "font-medium text-zinc-200", "{period_str}" }
+                    span { class: "font-medium text-foreground", "{period_str}" }
                 }
                 div {
                     span { class: "{ui::TYPE_LABEL} block", "{LBL_QUOTA}" }
-                    span { class: "font-mono font-semibold text-amber-300", "{quota_str}" }
+                    span { class: "font-mono font-semibold text-warning-foreground", "{quota_str}" }
                 }
                 div {
                     span { class: "{ui::TYPE_LABEL} block", "升级分组" }
-                    span { class: "text-zinc-300 font-medium", "{group_txt}" }
+                    span { class: "text-foreground font-medium", "{group_txt}" }
                 }
                 div {
                     span { class: "{ui::TYPE_LABEL} block", "限购" }

@@ -19,17 +19,17 @@ pub fn Dialog(
                 onclick: move |_| on_cancel.call(()),
                 "aria-hidden": "true",
             }
-            div { class: "relative flex w-80 flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl shadow-black/50",
+            div { class: "relative flex w-80 flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-2xl shadow-black/50",
                 span { class: "{crate::TYPE_CARD_TITLE}", "{title}" }
                 div { class: "{crate::TYPE_DESC} leading-5", {children} }
                 div { class: "flex items-center justify-end gap-2",
                     button {
-                        class: "rounded-full px-3 py-1.5 {crate::TYPE_BODY} transition-colors hover:bg-zinc-800 hover:text-zinc-100",
+                        class: "rounded-full px-3 py-1.5 {crate::TYPE_BODY} transition-colors hover:bg-secondary hover:text-foreground",
                         onclick: move |_| on_cancel.call(()),
                         "取消"
                     }
                     button {
-                        class: "rounded-full bg-zinc-100 px-3 py-1.5 {crate::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-300",
+                        class: "rounded-full bg-primary px-3 py-1.5 {crate::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-300",
                         onclick: move |_| on_confirm.call(()),
                         "确认"
                     }

@@ -78,7 +78,7 @@ pub fn StatusBar(
                     "data-testid": "status-cpu",
                     "12%"
                 }
-                span { class: "text-zinc-600", "·" }
+                span { class: "text-muted-foreground", "·" }
                 span {
                     class: "{crate::C_MUTED}",
                     title: "内存",
@@ -86,7 +86,7 @@ pub fn StatusBar(
                     "34%"
                 }
                 button {
-                    class: "shrink-0 rounded px-1 {crate::TYPE_LABEL} transition-colors hover:text-zinc-300",
+                    class: "shrink-0 rounded px-1 {crate::TYPE_LABEL} transition-colors hover:text-foreground",
                     aria_label: "切换主题",
                     onclick: move |_| on_toggle_theme.call(()),
                     if is_light { "Dark" } else { "Light" }

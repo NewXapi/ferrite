@@ -120,13 +120,13 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
         (
             RUNWAY_NO_USAGE.to_string(),
             "text-muted-foreground".to_string(),
-            "bg-zinc-500",
+            "bg-accent",
         )
     } else if remaining <= 0 {
         (
             RUNWAY_EXHAUSTED.to_string(),
-            "text-red-400".to_string(),
-            "bg-red-500",
+            "text-destructive".to_string(),
+            "bg-destructive",
         )
     } else {
         let days = remaining as f64 / today as f64;
@@ -146,8 +146,8 @@ pub fn QuotaRemainingCard(remaining: i64, today: i64) -> Element {
         } else {
             (
                 format!("{RUNWAY_AVAILABLE}{days_text}"),
-                "text-emerald-400".to_string(),
-                "bg-emerald-400",
+                "text-success-foreground".to_string(),
+                "bg-success",
             )
         }
     };

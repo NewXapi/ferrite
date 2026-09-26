@@ -14,14 +14,14 @@ pub fn SwipePicker(
     rsx! {
         div { class: "inline-flex items-center gap-1 {crate::TYPE_DESC} px-1",
             button {
-                class: "flex h-5 w-5 items-center justify-center rounded hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-30",
+                class: "flex h-5 w-5 items-center justify-center rounded hover:bg-secondary hover:text-foreground disabled:opacity-30",
                 disabled: index == 0,
                 onclick: move |_| on_prev.call(()),
                 "‹"
             }
             span { class: "tabular-nums {crate::TYPE_LABEL}", "{index + 1}/{total}" }
             button {
-                class: "flex h-5 w-5 items-center justify-center rounded hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-30",
+                class: "flex h-5 w-5 items-center justify-center rounded hover:bg-secondary hover:text-foreground disabled:opacity-30",
                 disabled: index + 1 >= total,
                 onclick: move |_| on_next.call(()),
                 "›"

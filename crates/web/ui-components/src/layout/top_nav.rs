@@ -11,15 +11,15 @@ use crate::on_tab_wheel;
 /// 单个 tab 态 class（激活=白字+底线下划线，默认=灰字 hover 提亮）。h-6 比 h-7 矮一档。
 fn tab_class(active: bool) -> &'static str {
     if active {
-        "relative flex h-6 shrink-0 items-center px-2 text-sm font-medium text-zinc-100"
+        "relative flex h-6 shrink-0 items-center px-2 text-sm font-medium text-foreground"
     } else {
-        "relative flex h-6 shrink-0 items-center px-2 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-300"
+        "relative flex h-6 shrink-0 items-center px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
     }
 }
 
 /// 激活项底部下划线（对齐原 TabItem：inset-x-2 高 0.5 白条）。
 const UNDERLINE_CLASS: &str =
-    "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-zinc-100";
+    "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary";
 
 /// 顶部 page-tab 行（左上角，无边框容器）。
 ///

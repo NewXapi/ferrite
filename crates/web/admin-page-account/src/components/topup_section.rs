@@ -31,7 +31,7 @@ fn load_wallet(
 ///
 /// 【交互逻辑】提交前置校验 (防重入、金额须正整数、币种非空、兑换码非空)，失败只写红字错误不发请求；钱包未加载时开单按钮禁用。
 ///
-/// 【样式】两块 rounded-xl 边框卡片 p-6 + hover:border-zinc-600；控件 rounded-2xl 边框 + focus:border-zinc-500；开单按钮 zinc 底、兑换按钮白底黑字；成功绿字 emerald-400、失败红字 red-400，均带 data-testid。
+/// 【样式】两块 rounded-xl 边框卡片 p-6 + hover:border-border；控件 rounded-2xl 边框 + focus:border-border；开单按钮 zinc 底、兑换按钮白底黑字；成功绿字 emerald-400、失败红字 red-400，均带 data-testid。
 ///
 /// 【子组件组成】无 (两表单在本组件内联成 rsx，交互闭包 open_order / redeem 与共享钱包状态同处一文件)
 ///
@@ -176,7 +176,7 @@ pub fn TopupSection(
 
     rsx! {
         // 充值开单 — provider 可选:epay 在线支付(跳转支付页) / manual 人工确认
-        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+        section { class: "rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
             div { role: "group", "aria-label": "充值开单",
                 p { class: "mb-1 {ui::TYPE_CARD_TITLE}", "充值开单" }
                 p { class: "mb-4 {ui::TYPE_DESC}",
@@ -184,7 +184,7 @@ pub fn TopupSection(
                 }
                 div { class: "flex flex-col gap-3 sm:flex-row",
                     select {
-                        class: "rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 {ui::TYPE_BODY} focus:border-zinc-500 focus:outline-none",
+                        class: "rounded-2xl border border-border bg-background px-4 py-3.5 {ui::TYPE_BODY} focus:border-border focus:outline-none",
                         "data-testid": "topup-provider",
                         "aria-label": "支付方式",
                         value: "{order_provider()}",
@@ -193,7 +193,7 @@ pub fn TopupSection(
                         option { value: "epay", "在线支付 (易支付)" }
                     }
                     select {
-                        class: "rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 {ui::TYPE_BODY} focus:border-zinc-500 focus:outline-none disabled:opacity-50",
+                        class: "rounded-2xl border border-border bg-background px-4 py-3.5 {ui::TYPE_BODY} focus:border-border focus:outline-none disabled:opacity-50",
                         "data-testid": "topup-currency",
                         "aria-label": "充值币种",
                         value: "{order_currency_active}",
@@ -209,7 +209,7 @@ pub fn TopupSection(
                     }
                     input {
                         r#type: "number",
-                        class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 {ui::TYPE_BODY} placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
+                        class: "flex-1 rounded-2xl border border-border bg-background px-5 py-3.5 {ui::TYPE_BODY} placeholder:text-muted-foreground focus:border-border outline-none",
                         placeholder:
                             if order_provider() == "epay" {
                                 "充值金额 (人民币元,正整数)"
@@ -222,7 +222,7 @@ pub fn TopupSection(
                         oninput: move |e| order_amount.set(e.value()),
                     }
                     button {
-                        class: "w-full shrink-0 rounded-2xl border border-zinc-600 bg-zinc-800 px-8 py-3.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto",
+                        class: "w-full shrink-0 rounded-2xl border border-border bg-secondary px-8 py-3.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto",
                         onclick: open_order,
                         disabled: order_busy() || wallet().is_none(),
                         "data-testid": "topup-order-submit",
@@ -241,7 +241,7 @@ pub fn TopupSection(
                 a {
                     href: "{url}",
                     target: "_blank",
-                    class: "mt-3 inline-flex items-center gap-1 rounded-2xl border border-emerald-700 {ui::S_SUCCESS} px-6 py-3 text-sm font-semibold {ui::C_SUCCESS} transition-colors hover:bg-emerald-900",
+                    class: "mt-3 inline-flex items-center gap-1 rounded-2xl border border-emerald-700 {ui::S_SUCCESS} px-6 py-3 text-sm font-semibold {ui::C_SUCCESS} transition-colors hover:bg-success",
                     "data-testid": "topup-pay-button",
                     "去支付 →"
                 }
@@ -255,19 +255,19 @@ pub fn TopupSection(
         }
 
         // 兑换码充值
-        section { class: "rounded-xl border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-600",
+        section { class: "rounded-xl border border-border bg-card p-6 transition-colors hover:border-border",
             div { role: "group", "aria-label": "兑换码充值",
                 p { class: "mb-4 {ui::TYPE_CARD_TITLE}", "兑换码充值" }
                 div { class: "flex flex-col gap-3 sm:flex-row",
                     input {
-                        class: "flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3.5 {ui::TYPE_BODY} placeholder:text-zinc-500 focus:border-zinc-500 outline-none",
+                        class: "flex-1 rounded-2xl border border-border bg-background px-5 py-3.5 {ui::TYPE_BODY} placeholder:text-muted-foreground focus:border-border outline-none",
                         placeholder: "请输入兑换码",
                         value: redeem_code(),
                         "data-testid": "topup-code",
                         oninput: move |e| redeem_code.set(e.value()),
                     }
                     button {
-                        class: "w-full shrink-0 rounded-2xl bg-white px-10 py-3.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-zinc-100 sm:w-auto",
+                        class: "w-full shrink-0 rounded-2xl bg-primary px-10 py-3.5 {ui::TYPE_CARD_TITLE} transition-colors hover:bg-primary sm:w-auto",
                         onclick: redeem,
                         disabled: topup_busy(),
                         "data-testid": "topup-submit",

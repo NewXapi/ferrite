@@ -13,7 +13,7 @@ use crate::api;
 ///
 /// 【交互逻辑】保存显示名前先 trim 并拒绝空值；改密两框都空则不发请求，只填一框则提示须成对提供；两个动作共用 saving 信号串行防重入，成功后清空密码框。
 ///
-/// 【样式】卡片 rounded-xl bg-zinc-900/60 p-6 + hover:border-zinc-600；输入 rounded-xl 边框 + focus:border-zinc-500，密码框等宽字体；按钮 Primary 置于输入右侧 (items-end 对齐)。
+/// 【样式】卡片 rounded-xl bg-card/60 p-6 + hover:border-border；输入 rounded-xl 边框 + focus:border-border，密码框等宽字体；按钮 Primary 置于输入右侧 (items-end 对齐)。
 ///
 /// 【子组件组成】ui::button::Button (保存显示名 / 修改密码) × 2
 ///
@@ -41,7 +41,7 @@ pub fn AccountSection() -> Element {
     });
 
     rsx! {
-        div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
+        div { class: "rounded-xl border border-border bg-card/60 p-6 transition-colors hover:border-border",
             role: "group",
             "aria-label": "资料与密码",
             "data-testid": "settings-account-card",

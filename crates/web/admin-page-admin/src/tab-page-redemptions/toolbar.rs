@@ -30,10 +30,10 @@ use super::shared::{
 /// 数据交互:本组件自身**不发任何网络请求**。
 ///
 /// 【样式】外壳 `section#reds-sec-filter` 为 `scroll-mt-8 flex flex-col gap-4
-/// rounded-xl border border-zinc-800 bg-zinc-900 p-5`,带 `data-testid="redemptions-filter"`、
-/// `role="search"`、`aria-label=LBL_FILTER_ARIA`;标题 `text-sm font-medium text-zinc-300`
-/// 旁挂 `text-xs text-zinc-500` 说明;「生成兑换码」为白底 `bg-white text-zinc-900` 主按钮;
-/// 搜索框 `w-full rounded-xl border border-zinc-700/80 bg-zinc-950`,聚焦 `focus:border-zinc-500`。
+/// rounded-xl border border-border bg-card p-5`,带 `data-testid="redemptions-filter"`、
+/// `role="search"`、`aria-label=LBL_FILTER_ARIA`;标题 `text-sm font-medium text-foreground`
+/// 旁挂 `text-xs text-muted-foreground` 说明;「生成兑换码」为白底 `bg-primary text-primary-foreground` 主按钮;
+/// 搜索框 `w-full rounded-xl border border-border/80 bg-background`,聚焦 `focus:border-border`。
 ///
 /// 【子组件组成】`SegmentedCapsule`(状态分级胶囊);其余为原生 `section` / `input` / `button`。
 ///
@@ -62,7 +62,7 @@ pub fn RedemptionsToolbarSection(
             "data-testid": "redemptions-filter",
             role: "search",
             "aria-label": LBL_FILTER_ARIA,
-            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5",
+            class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5",
             div { class: "flex items-center justify-between gap-3",
                 div { class: "flex items-center gap-2",
                     h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_FILTER}" }
@@ -70,7 +70,7 @@ pub fn RedemptionsToolbarSection(
                 }
                 button {
                     "data-testid": "generate-redemptions",
-                    class: "shrink-0 rounded-xl bg-white px-4 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-200 active:bg-zinc-300",
+                    class: "shrink-0 rounded-xl bg-primary px-4 py-2 {ui::TYPE_DESC} transition-colors hover:bg-zinc-200 active:bg-zinc-300",
                     onclick: on_generate,
                     "{BTN_GENERATE}"
                 }
@@ -78,7 +78,7 @@ pub fn RedemptionsToolbarSection(
 
             input {
                 "data-testid": "redemptions-search",
-                class: "w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-2.5 {ui::TYPE_BODY} placeholder:text-zinc-500 outline-none transition focus:border-zinc-500",
+                class: "w-full rounded-xl border border-border/80 bg-background px-4 py-2.5 {ui::TYPE_BODY} placeholder:text-muted-foreground outline-none transition focus:border-border",
                 r#type: "text",
                 placeholder: MSG_SEARCH_PLACEHOLDER,
                 value: "{search}",

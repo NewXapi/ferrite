@@ -29,7 +29,7 @@ pub fn PasswordField(
                     },
                 }
                 button {
-                    class: "{crate::TYPE_BODY} hover:text-zinc-300 transition-colors",
+                    class: "{crate::TYPE_BODY} hover:text-foreground transition-colors",
                     r#type: "button",
                     tabindex: "-1",
                     style: "position:absolute; right:12px; top:50%; transform:translateY(-50%);",

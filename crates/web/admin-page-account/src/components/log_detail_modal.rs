@@ -44,13 +44,13 @@ pub fn LogDetailModal(log: UsageLogDto, on_close: EventHandler<()>) -> Element {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm",
             onclick: move |_| on_close.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
                 div { class: "mb-4 flex items-center justify-between",
                     h3 { class: "{ui::TYPE_TITLE}", "日志详情" }
                     button {
-                        class: "rounded-lg p-1.5 {ui::C_MUTED} transition-colors hover:bg-zinc-800 hover:text-zinc-200",
+                        class: "rounded-lg p-1.5 {ui::C_MUTED} transition-colors hover:bg-secondary hover:text-foreground",
                         onclick: move |_| on_close.call(()),
                         "aria-label": "关闭",
                         "✕"
@@ -81,7 +81,7 @@ fn DetailRow(label: &'static str, value: String) -> Element {
     rsx! {
         div { class: "flex justify-between gap-2",
             span { class: "shrink-0 {ui::C_MUTED}", "{label}" }
-            span { class: "min-w-0 break-all text-right font-mono text-zinc-200", "{value}" }
+            span { class: "min-w-0 break-all text-right font-mono text-foreground", "{value}" }
         }
     }
 }

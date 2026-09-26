@@ -46,18 +46,18 @@ pub fn TrendTipCard(tip: TrendTip) -> Element {
     match tip {
         TrendTip::Column(x, y, label, rows, total) => rsx! {
             TrendTooltipContainer { x, y, label,
-                div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800/80 pb-2 {ui::TYPE_DESC}",
+                div { class: "mb-2.5 flex items-center justify-between border-b border-border/80 pb-2 {ui::TYPE_DESC}",
                     span { "{TREND_TIP_TOTAL}" }
-                    span { class: "font-mono font-semibold text-zinc-100", "{fmt_raw(total as i64)}" }
+                    span { class: "font-mono font-semibold text-foreground", "{fmt_raw(total as i64)}" }
                 }
                 div { class: "flex flex-col gap-1.5",
                     for (name, color, v) in rows.iter() {
                         div { class: "flex items-center justify-between gap-4 {ui::TYPE_DESC}",
                             div { class: "flex items-center min-w-0",
                                 span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                span { class: "truncate text-zinc-300 ml-2", "{name}" }
+                                span { class: "truncate text-foreground ml-2", "{name}" }
                             }
-                            span { class: "shrink-0 font-mono font-medium text-zinc-100", "{fmt_raw(*v as i64)}" }
+                            span { class: "shrink-0 font-mono font-medium text-foreground", "{fmt_raw(*v as i64)}" }
                         }
                     }
                 }
@@ -68,9 +68,9 @@ pub fn TrendTipCard(tip: TrendTip) -> Element {
                 div { class: "flex items-center justify-between gap-4 {ui::TYPE_DESC}",
                     div { class: "flex items-center min-w-0",
                         span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
-                        span { class: "font-medium text-zinc-200 ml-2", "{name}" }
+                        span { class: "font-medium text-foreground ml-2", "{name}" }
                     }
-                    span { class: "shrink-0 font-mono font-bold text-zinc-100", "{fmt_raw(v as i64)}" }
+                    span { class: "shrink-0 font-mono font-bold text-foreground", "{fmt_raw(v as i64)}" }
                 }
             }
         },

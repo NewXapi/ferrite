@@ -22,7 +22,7 @@ use crate::card::{Card, CardDescription, CardHeader, CardTitle};
 /// 单个条目的行内元信息（环比标签等）。
 ///
 /// `label` 为已格式化文本（如 `↑12%` / `↑new`），`class` 为其语义色
-/// （如 `text-emerald-400`）；由调用方决定配色，组件不解读含义。
+/// （如 `text-success-foreground`）；由调用方决定配色，组件不解读含义。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RankRowMeta {
     /// 已格式化的标签文本（箭头已编入文本，保证 tabular 对齐）。
@@ -83,14 +83,14 @@ pub fn RankBoard(
                         div {
                             key: "{r.key}",
                             class: "flex items-center gap-3",
-                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-800/80 {crate::TYPE_LABEL} shadow-sm",
+                            span { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 {crate::TYPE_LABEL} shadow-sm",
                                 "{r.rank}"
                             }
                             div { class: "min-w-0 flex-1",
                                 div { class: "flex items-center justify-between gap-3",
                                     span { class: "truncate {crate::TYPE_DESC}", "{r.name}" }
                                     div { class: "flex shrink-0 flex-col items-end gap-1",
-                                        span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100",
+                                        span { class: "font-mono text-xs font-semibold tabular-nums text-foreground",
                                             "{r.value}"
                                         }
                                         div { class: "flex items-center gap-1.5 {crate::TYPE_LABEL} leading-none",
@@ -103,7 +103,7 @@ pub fn RankBoard(
                                         }
                                     }
                                 }
-                                div { class: "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                                div { class: "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary",
                                     div {
                                         class: "h-full rounded-full transition-all duration-300",
                                         // bar_pct 钳到 0..=100;bar_color 只接受调用方静态
@@ -116,7 +116,7 @@ pub fn RankBoard(
                     }
                 }
                 if let Some(note) = footnote {
-                    p { class: "border-t border-zinc-800/60 pt-2.5 {crate::TYPE_LABEL}", "{note}" }
+                    p { class: "border-t border-border/60 pt-2.5 {crate::TYPE_LABEL}", "{note}" }
                 }
             }
         }

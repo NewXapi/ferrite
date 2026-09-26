@@ -206,7 +206,7 @@ pub fn UsageLogsPanel() -> Element {
             }
 
             // 过滤器
-            section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-600",
+            section { id: "usage-sec-filter", class: "scroll-mt-8 flex flex-col gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-border",
                 div { class: "flex items-center justify-between",
                     h2 { class: "{ui::TYPE_CARD_TITLE}", "{SEC_LOGS}" }
                     span { class: "{ui::TYPE_DESC}", "共 {total_len} 条" }
@@ -235,7 +235,7 @@ pub fn UsageLogsPanel() -> Element {
                 } else if !loaded() {
                     p { class: "{ui::TYPE_BODY}", "加载中…" }
                 } else if shown_len == 0 {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
+                    div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-16 text-center",
                         p { class: "{ui::C_MUTED}", "没有找到匹配的日志记录" }
                     }
                 } else {
