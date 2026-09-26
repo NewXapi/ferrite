@@ -34,7 +34,7 @@ use crate::drawer_write::{DrawerNotice, DrawerNoticeBar, create_channel_import};
 #[component]
 pub fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element {
     rsx! {
-        div { class: "shrink-0 border-b border-zinc-800",
+        div { class: "shrink-0 border-b {ui::T_border_zinc_800}",
             div { class: "flex",
                 for (t, label) in [(DrawerTab::Node, LBL_NODES), (DrawerTab::Settings, BTN_SETTINGS), (DrawerTab::Import, BTN_IMPORT)] {
                     {
@@ -46,7 +46,7 @@ pub fn DrawerTabs(active: DrawerTab, on_tab: EventHandler<DrawerTab>) -> Element
                         };
                         rsx! {
                             button {
-                                class: "flex-1 py-1.5 text-xs font-medium transition-colors {tone}",
+                                class: "flex-1 py-1.5 {ui::T_text_xs} {ui::T_font_medium} transition-colors {tone}",
                                 onclick: move |_| on_tab.call(t),
                                 "{label}"
                             }
@@ -92,7 +92,7 @@ pub fn DrawerHeader(
     on_close: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
-        div { class: "shrink-0 border-b border-zinc-800",
+        div { class: "shrink-0 border-b {ui::T_border_zinc_800}",
             // 页签栏放在最顶部（保持不动，下面才是标题）
             div { class: "flex",
                 for (t, label) in [(DrawerTab::Node, LBL_NODES), (DrawerTab::Settings, BTN_SETTINGS), (DrawerTab::Import, BTN_IMPORT)] {
@@ -105,7 +105,7 @@ pub fn DrawerHeader(
                         };
                         rsx! {
                             button {
-                                class: "flex-1 py-1.5 text-xs font-medium transition-colors {tone}",
+                                class: "flex-1 py-1.5 {ui::T_text_xs} {ui::T_font_medium} transition-colors {tone}",
                                 onclick: move |_| on_tab.call(t),
                                 "{label}"
                             }
@@ -113,13 +113,13 @@ pub fn DrawerHeader(
                     }
                 }
             }
-            div { class: "flex items-center gap-2 border-t border-zinc-800 px-3 py-2",
+            div { class: "flex items-center gap-2 border-t {ui::T_border_zinc_800} px-3 py-2",
                 div { class: "min-w-0 flex-1",
                     p { class: "truncate {ui::TYPE_CARD_TITLE}", "{title}" }
-                    p { class: "truncate text-[11px] text-zinc-500", "{subtitle}" }
+                    p { class: "truncate {ui::T_text_11px} {ui::T_text_zinc_500}", "{subtitle}" }
                 }
                 button {
-                    class: "rounded-md px-1.5 text-zinc-500 hover:text-zinc-200",
+                    class: "rounded-md px-1.5 {ui::T_text_zinc_500} hover:{ui::T_text_zinc_200}",
                     title: BTN_CLOSE_TITLE,
                     onclick: move |e| on_close.call(e),
                     "✕"
@@ -213,27 +213,27 @@ pub fn ImportPanel() -> Element {
         div { class: "space-y-3",
             DrawerNoticeBar { notice, on_clear: move |_| notice.set(DrawerNotice::Idle) }
             label { class: "block space-y-1.5",
-                span { class: "text-[11px] text-zinc-500", {LBL_CHANNEL_NAME_OPT} }
+                span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", {LBL_CHANNEL_NAME_OPT} }
                 input {
-                    class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                    class: "w-full rounded-md border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-3 py-1.5 {ui::T_text_sm} {ui::T_text_zinc_200} outline-none transition-colors placeholder:{ui::T_text_zinc_600} focus:{ui::T_border_zinc_500}",
                     value: "{alias.read()}",
                     placeholder: EXAMPLE_CHANNEL,
                     oninput: move |e| alias.set(e.value()),
                 }
             }
             label { class: "block space-y-1.5",
-                span { class: "text-[11px] text-zinc-500", {LBL_BASE_URL} }
+                span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", {LBL_BASE_URL} }
                 input {
-                    class: "w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-500",
+                    class: "w-full rounded-md border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-3 py-1.5 {ui::T_text_sm} {ui::T_text_zinc_200} outline-none transition-colors placeholder:{ui::T_text_zinc_600} focus:{ui::T_border_zinc_500}",
                     value: "{url.read()}",
                     placeholder: "https://…",
                     oninput: move |e| url.set(e.value()),
                 }
             }
             label { class: "block space-y-1.5",
-                span { class: "text-[11px] text-zinc-500", {LBL_API_KEY_MULTI} }
+                span { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", {LBL_API_KEY_MULTI} }
                 textarea {
-                    class: "min-h-[96px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-500",
+                    class: "min-h-[96px] w-full resize-none rounded-md border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-3 py-2 font-mono {ui::T_text_xs} {ui::T_text_zinc_200} outline-none placeholder:{ui::T_text_zinc_600} focus:{ui::T_border_zinc_500}",
                     value: "{key.read()}",
                     placeholder: "sk-…
     sk-…",
@@ -241,7 +241,7 @@ pub fn ImportPanel() -> Element {
                 }
             }
             button {
-                class: "w-full rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors",
+                class: "w-full rounded-md border {ui::T_border_zinc_100} {ui::T_bg_zinc_100} px-3 py-1.5 {ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors",
                 class: if can_import { "hover:bg-zinc-300" } else { "cursor-not-allowed opacity-50" },
                 disabled: !can_import,
                 onclick: import,

@@ -299,11 +299,11 @@ pub fn TabItem(label: String, active: bool, onclick: EventHandler<MouseEvent>) -
     };
     rsx! {
         button {
-            class: "relative flex h-full items-center px-2 text-sm font-medium transition-colors {tone}",
+            class: "relative flex h-full items-center px-2 {ui::T_text_sm} {ui::T_font_medium} transition-colors {tone}",
             onclick: move |event| onclick.call(event),
             "{label}"
             if active {
-                span { class: "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 bg-zinc-100" }
+                span { class: "pointer-events-none absolute inset-x-2 bottom-0 h-0.5 {ui::T_bg_zinc_100}" }
             }
         }
     }
@@ -451,7 +451,7 @@ pub fn HomePage() -> Element {
     let section_idx = SECTIONS.iter().position(|s| *s == section()).unwrap_or(0);
     rsx! {
         div {
-            class: "h-svh overflow-hidden bg-zinc-950 text-zinc-100 transition-all duration-300",
+            class: "h-svh overflow-hidden {ui::T_bg_zinc_950} {ui::T_text_zinc_100} transition-all duration-300",
             class: if is_light { "light" } else { "" },
             AppShell {
                 rail: rsx! {

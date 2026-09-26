@@ -30,24 +30,24 @@ pub fn KeysProfileSection(user: Option<UserDto>, self_err: String, pending: Stri
             id: "keys-sec-profile",
             class: "scroll-mt-8 space-y-3",
             h2 { class: "{ui::TYPE_TITLE}", "{SEC_PROFILE}" }
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 transition-colors hover:border-zinc-600",
+            div { class: "rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-6 transition-colors hover:{ui::T_border_zinc_600}",
                 div { class: "flex items-start justify-between gap-4",
                     div { class: "min-w-0",
                         if let Some(user) = user {
                             div { class: "mb-4 flex items-center gap-2",
                                 span { class: "truncate {ui::TYPE_CARD_TITLE}", "{user.username}" }
-                                span { class: "shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400", "{contract::api::user::role_label(user.role)}" }
+                                span { class: "shrink-0 rounded-full {ui::T_bg_zinc_800} px-2 py-0.5 {ui::T_text_10px} {ui::T_font_medium} {ui::T_text_zinc_400}", "{contract::api::user::role_label(user.role)}" }
                             }
-                            div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 text-sm",
+                            div { class: "flex flex-wrap items-baseline gap-x-14 gap-y-4 {ui::T_text_sm}",
                                 ProfileItem { label: "显示名", value: user.display_name.clone(), copyable: false }
                                 ProfileItem { label: "邮箱", value: if user.email.is_empty() { "—".to_string() } else { user.email.clone() }, copyable: false }
                                 ProfileItem { label: "用户ID", value: short_key(&user.key), copy_value: Some(user.key.clone()), copyable: true }
                                 ProfileItem { label: "注册时间", value: user.created_at.chars().take(10).collect::<String>(), copyable: false }
                             }
                         } else if !self_err.is_empty() {
-                            p { class: "text-sm {ui::STATE_WARNING_TEXT}", "无法加载用户信息 (未登录或请求失败): {self_err}" }
+                            p { class: "{ui::T_text_sm} {ui::STATE_WARNING_TEXT}", "无法加载用户信息 (未登录或请求失败): {self_err}" }
                         } else {
-                            p { class: "text-sm text-zinc-500", "{pending}" }
+                            p { class: "{ui::T_text_sm} {ui::T_text_zinc_500}", "{pending}" }
                         }
                     }
                 }

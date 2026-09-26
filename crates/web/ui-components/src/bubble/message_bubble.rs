@@ -26,13 +26,13 @@ pub fn MessageBubble(
             Avatar { name: name.clone(), src: avatar_src }
             div { class: "flex min-w-0 max-w-[80%] sm:max-w-[75%] flex-col gap-1",
                 div { class: "flex items-baseline gap-2 px-1 {name_align}",
-                    span { class: "text-xs font-medium text-zinc-400", "{name}" }
-                    span { class: "text-[10px] text-zinc-600", "{time}" }
+                    span { class: "{crate::T_text_xs} {crate::T_font_medium} {crate::T_text_zinc_400}", "{name}" }
+                    span { class: "{crate::T_text_10px} {crate::T_text_zinc_600}", "{time}" }
                 }
                 div {
                     class: "relative group",
                     div {
-                        class: "whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 {bubble} transition-all duration-200 hover:ring-1 hover:ring-purple-500/50 active:scale-[0.99]",
+                        class: "whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 {crate::T_text_sm} leading-6 {bubble} transition-all duration-200 hover:ring-1 hover:ring-purple-500/50 active:scale-[0.99]",
                         onclick: move |e| {
                             if let Some(cb) = &on_click {
                                 cb.call(e);

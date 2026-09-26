@@ -191,8 +191,8 @@ pub fn AuthPage() -> Element {
             // Logo
             div {
                 class: "absolute top-6 left-8 flex items-center gap-2",
-                span { class: "text-lg font-semibold tracking-tight text-zinc-100", "Ferrite" }
-                span { class: "text-[10px] font-medium uppercase tracking-widest text-zinc-500", "ADMIN" }
+                span { class: "{ui::T_text_lg} {ui::T_font_semibold} tracking-tight {ui::T_text_zinc_100}", "Ferrite" }
+                span { class: "{ui::T_text_10px} {ui::T_font_medium} uppercase tracking-widest {ui::T_text_zinc_500}", "ADMIN" }
             }
 
             // Card
@@ -225,8 +225,8 @@ pub fn AuthPage() -> Element {
                         }
                     }
 
-                    h1 { class: "text-xl font-semibold text-zinc-100", "{title_text}" }
-                    p { class: "mb-6 text-sm text-zinc-500", "{subtitle_text}" }
+                    h1 { class: "{ui::T_text_xl} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{title_text}" }
+                    p { class: "mb-6 {ui::T_text_sm} {ui::T_text_zinc_500}", "{subtitle_text}" }
 
                     // Form content
                     match active {
@@ -236,10 +236,10 @@ pub fn AuthPage() -> Element {
 
                     // Footer — placed clearly BELOW the form, inside the card, separated by a hairline.
                     p {
-                        class: "mt-6 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-600",
+                        class: "mt-6 border-t {ui::T_border_zinc_800} pt-4 text-center {ui::T_text_xs} {ui::T_text_zinc_600}",
                         "By continuing, you agree to our "
                         span {
-                            class: "cursor-pointer text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200",
+                            class: "cursor-pointer {ui::T_text_zinc_400} underline underline-offset-2 transition-colors hover:{ui::T_text_zinc_200}",
                             "Terms of Service"
                         }
                     }

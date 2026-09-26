@@ -145,11 +145,11 @@ fn MoveList(
     let max_tokens = moves.iter().map(|m| tokens_of(&m.name)).max().unwrap_or(0);
 
     rsx! {
-        div { class: "space-y-3 rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
+        div { class: "space-y-3 rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} p-5 transition-[border-color] duration-150 hover:border-secondary-hover",
             "data-testid": "{testid}",
             div {
-                h3 { class: "text-sm font-semibold text-zinc-100", "{title}" }
-                p { class: "text-[11px] text-zinc-500", "{subtitle}" }
+                h3 { class: "{ui::T_text_sm} {ui::T_font_semibold} {ui::T_text_zinc_100}", "{title}" }
+                p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{subtitle}" }
             }
             if moves.is_empty() {
                 p { class: "py-6 text-center {ui::TYPE_DESC}", "{MOVERS_EMPTY}" }
@@ -174,23 +174,23 @@ fn MoveList(
                                     key: "{m.name}",
                                     class: "flex items-center gap-2.5",
                                     "data-testid": "{row_prefix}-{slug(&m.name)}",
-                                    span { class: "w-7 shrink-0 text-right font-mono text-[10px] text-zinc-500",
+                                    span { class: "w-7 shrink-0 text-right font-mono {ui::T_text_10px} {ui::T_text_zinc_500}",
                                         "#{m.cur_rank}"
                                     }
                                     div { class: "min-w-0 flex-1",
                                         div { class: "flex items-center justify-between gap-3",
-                                            span { class: "truncate text-xs font-medium text-zinc-200", "{m.name}" }
+                                            span { class: "truncate {ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_200}", "{m.name}" }
                                             div { class: "flex shrink-0 items-center gap-2",
-                                                span { class: "font-mono text-xs font-semibold tabular-nums text-zinc-100",
+                                                span { class: "font-mono {ui::T_text_xs} {ui::T_font_semibold} tabular-nums {ui::T_text_zinc_100}",
                                                     "{fmt_raw(tokens)}"
                                                 }
-                                                span { class: "shrink-0 font-mono text-[11px] font-medium tabular-nums {delta_class}",
+                                                span { class: "shrink-0 font-mono {ui::T_text_11px} {ui::T_font_medium} tabular-nums {delta_class}",
                                                     "{delta_text}"
                                                 }
                                             }
                                         }
                                         if max_tokens > 0 {
-                                            div { class: "mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800",
+                                            div { class: "mt-1.5 h-1.5 w-full overflow-hidden rounded-full {ui::T_bg_zinc_800}",
                                                 div {
                                                     class: "h-full rounded-full transition-all duration-300",
                                                     style: "width: {bar_pct:.1}%; background: {bar_color}",
@@ -218,14 +218,14 @@ pub fn MoversCards(state: MoversState) -> Element {
                 for t in ["leaderboard-movers-loading", "leaderboard-droppers-loading"] {
                     div {
                         key: "{t}",
-                        class: "h-40 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60 transition-[border-color] duration-150 hover:border-secondary-hover",
+                        class: "h-40 animate-pulse rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 transition-[border-color] duration-150 hover:border-secondary-hover",
                         "data-testid": "{t}",
                     }
                 }
             }
         },
         MoversState::Failed(e) => rsx! {
-            div { class: "rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-400 transition-[border-color] duration-150 hover:border-secondary-hover",
+            div { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} px-4 py-3 {ui::T_text_xs} {ui::T_text_zinc_400} transition-[border-color] duration-150 hover:border-secondary-hover",
                 "data-testid": "leaderboard-movers-error",
                 "{MOVERS_ERR_PREFIX}{e}"
             }

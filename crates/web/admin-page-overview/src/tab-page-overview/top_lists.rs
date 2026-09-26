@@ -50,22 +50,22 @@ pub fn TopListCard(
             CardHeader {
                 class: "border-b border-border/50 px-4! py-3!",
                 div { class: "flex items-center justify-between gap-3",
-                    h3 { class: "text-sm font-medium text-foreground", "{title}" }
+                    h3 { class: "{ui::T_text_sm} {ui::T_font_medium} text-foreground", "{title}" }
                     div { class: "text-right", "data-testid": "{total_testid}",
-                        p { class: "text-sm font-semibold font-mono tabular-nums text-foreground", "{total_text}" }
-                        p { class: "text-[10px] text-muted-foreground", "{total_label}" }
+                        p { class: "{ui::T_text_sm} {ui::T_font_semibold} font-mono tabular-nums text-foreground", "{total_text}" }
+                        p { class: "{ui::T_text_10px} text-muted-foreground", "{total_label}" }
                     }
                 }
             }
             CardContent {
                 class: "flex-1 space-y-3 p-4! pb-3!",
                 if rows.is_empty() {
-                    p { class: "py-6 text-center text-xs text-muted-foreground", "{TOP_EMPTY}" }
+                    p { class: "py-6 text-center {ui::T_text_xs} text-muted-foreground", "{TOP_EMPTY}" }
                 }
                 for (i, row) in rows.iter().enumerate() {
                     TopRowItem { index: i, name: row.name.clone(), amount: row.amount.clone(), growth: row.growth.clone(), share: row.share.clone() }
                 }
-                p { class: "pt-1 text-[10px] leading-4 text-muted-foreground/60",
+                p { class: "pt-1 {ui::T_text_10px} leading-4 text-muted-foreground/60",
                     "{TOP_FOOTNOTE}"
                 }
             }
@@ -84,14 +84,14 @@ pub fn TopRowItem(
 ) -> Element {
     rsx! {
         div { class: "flex items-center gap-3 rounded-lg -mx-2 px-2 py-1.5 transition-all hover:bg-accent cursor-default",
-            div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{index + 1}" }
+            div { class: "flex h-5 w-5 shrink-0 items-center justify-center rounded bg-secondary/80 {ui::T_text_10px} {ui::T_font_medium} text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground", "{index + 1}" }
             div { class: "flex-1 min-w-0 flex items-center justify-between gap-3",
-                span { class: "truncate text-sm font-medium text-foreground/80 transition-colors hover:text-foreground", "{name}" }
+                span { class: "truncate {ui::T_text_sm} {ui::T_font_medium} text-foreground/80 transition-colors hover:text-foreground", "{name}" }
                 div { class: "flex shrink-0 flex-col items-end gap-0.5",
-                    span { class: "text-xs font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
-                    div { class: "flex items-center gap-1.5 text-[10px] leading-none",
+                    span { class: "{ui::T_text_xs} font-mono text-muted-foreground transition-colors hover:text-foreground/80", "{amount}" }
+                    div { class: "flex items-center gap-1.5 {ui::T_text_10px} leading-none",
                         if let Some(g) = growth {
-                            span { class: "font-medium tabular-nums {g.text_class()}", "{g.label()}" }
+                            span { class: "{ui::T_font_medium} tabular-nums {g.text_class()}", "{g.label()}" }
                         }
                         if let Some(s) = share {
                             span { class: "text-muted-foreground/70 tabular-nums", "{s}" }

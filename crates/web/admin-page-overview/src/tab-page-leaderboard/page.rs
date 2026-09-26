@@ -97,23 +97,23 @@ pub fn LeaderboardPanel() -> Element {
             section { "data-testid": "leaderboard-usage", role: "region", "aria-label": "{USAGE_ARIA_LABEL}",
                 if let Some(e) = error {
                     div { class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                        p { class: "text-sm text-red-300", "{USAGE_ERR}" }
-                        p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                        p { class: "{ui::T_text_sm} {ui::T_text_red_300}", "{USAGE_ERR}" }
+                        p { class: "mt-1 {ui::T_text_xs} text-red-400/70", "{e}" }
                         button {
-                            class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                            class: "mt-3 rounded-xl border {ui::T_border_zinc_700} px-3 py-1.5 {ui::T_text_xs} {ui::T_text_zinc_300} hover:{ui::T_bg_zinc_800}",
                             "data-testid": "retry-leaderboard",
                             onclick: move |_| reload.set(reload() + 1),
                             "{BTN_RETRY}"
                         }
                     }
                 } else if is_loading {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "{USAGE_LOADING}" }
+                    div { class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
+                        p { class: "{ui::T_text_zinc_400}", "{USAGE_LOADING}" }
                     }
                 } else if data.is_empty() {
-                    div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                        p { class: "text-zinc-400", "{USAGE_EMPTY}" }
-                        p { class: "mt-1 text-xs text-zinc-600", "{USAGE_EMPTY_HINT}" }
+                    div { class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
+                        p { class: "{ui::T_text_zinc_400}", "{USAGE_EMPTY}" }
+                        p { class: "mt-1 {ui::T_text_xs} {ui::T_text_zinc_600}", "{USAGE_EMPTY_HINT}" }
                     }
                 } else {
                     // 三卡间距 gap-6(8090 预览反馈④),卡片 p-5 保持

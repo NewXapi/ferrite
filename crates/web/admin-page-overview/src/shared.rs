@@ -46,7 +46,7 @@ pub fn TimeframeTabs(
 ) -> Element {
     let tf = timeframe();
     rsx! {
-        div { class: "flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 p-1",
+        div { class: "flex items-center gap-1.5 rounded-lg border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} p-1",
             // 滚轮竖向滚动 → 循环切换时间窗档位(总览与排行榜共用)
             onwheel: move |e: WheelEvent| {
                 let cur = TIMEFRAMES.iter().position(|t| *t == tf).unwrap_or(0);
@@ -55,7 +55,7 @@ pub fn TimeframeTabs(
             for t in TIMEFRAMES {
                 button {
                     key: "{t}",
-                    class: "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    class: "rounded-md px-2.5 py-1 {ui::T_text_xs} {ui::T_font_medium} transition-colors",
                     class: if tf == t { "bg-zinc-800 text-zinc-100 shadow-sm" } else { "text-zinc-400 hover:text-zinc-200" },
                     onclick: move |_| timeframe.set(t),
                     "data-testid": testid_prefix.map(|prefix| format!("{prefix}-{t}")),

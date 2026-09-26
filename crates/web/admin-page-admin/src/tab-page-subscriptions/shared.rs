@@ -175,9 +175,9 @@ pub fn GridShell(children: Element) -> Element {
 #[component]
 pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Element {
     rsx! {
-        section { class: "space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3",
+        section { class: "space-y-2 rounded-xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-3",
             p { class: "{ui::TYPE_CARD_TITLE}", "{title}" }
-            p { class: "text-[11px] text-zinc-600", "{hint}" }
+            p { class: "{ui::T_text_11px} {ui::T_text_zinc_600}", "{hint}" }
             {children}
         }
     }
@@ -204,7 +204,7 @@ pub fn Panel(title: &'static str, hint: &'static str, children: Element) -> Elem
 pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-zinc-100 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-zinc-300",
+            class: "rounded-md border {ui::T_border_zinc_100} {ui::T_bg_zinc_100} px-3 py-1.5 {ui::T_text_xs} {ui::T_font_medium} {ui::T_text_zinc_900} hover:{ui::T_bg_zinc_300}",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -233,7 +233,7 @@ pub(crate) fn PushBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -
 pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-red-900/60 px-3 py-1.5 text-xs {ui::STATE_DANGER_TEXT} hover:border-red-700",
+            class: "rounded-md border border-red-900/60 px-3 py-1.5 {ui::T_text_xs} {ui::STATE_DANGER_TEXT} hover:{ui::T_border_red_700}",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -261,7 +261,7 @@ pub(crate) fn DangerBtn(label: &'static str, on_click: EventHandler<MouseEvent>)
 pub(crate) fn GhostBtn(label: &'static str, on_click: EventHandler<MouseEvent>) -> Element {
     rsx! {
         button {
-            class: "rounded-md border border-zinc-800 px-3 py-1.5 {ui::TYPE_DESC} hover:border-zinc-600 hover:text-zinc-300",
+            class: "rounded-md border {ui::T_border_zinc_800} px-3 py-1.5 {ui::TYPE_DESC} hover:{ui::T_border_zinc_600} hover:{ui::T_text_zinc_300}",
             onclick: move |e| on_click.call(e),
             "{label}"
         }
@@ -298,7 +298,7 @@ pub(crate) fn ToggleSwitch(on: bool, on_toggle: EventHandler<()>) -> Element {
             role: "switch",
             "aria-checked": "{on}",
             onclick: move |_| on_toggle.call(()),
-            span { class: "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-zinc-950 transition-transform {knob}" }
+            span { class: "absolute top-0.5 left-0.5 h-4 w-4 rounded-full {ui::T_bg_zinc_950} transition-transform {knob}" }
         }
     }
 }

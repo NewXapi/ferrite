@@ -75,10 +75,10 @@ pub fn RedemptionGenerateModal(
             div { class: "space-y-4 max-h-[70vh] overflow-y-auto pr-1",
                 div { class: "grid grid-cols-2 gap-3",
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_COUNT}" }
+                        label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_COUNT}" }
                     input {
                         "data-testid": "redemption-count",
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} font-mono focus:{ui::T_border_zinc_500} focus:outline-none",
                         r#type: "number",
                         min: "1",
                         max: "100",
@@ -87,10 +87,10 @@ pub fn RedemptionGenerateModal(
                     }
                     }
                     div {
-                        label { class: "mb-1.5 block text-xs text-zinc-400", "{FIELD_QUOTA}" }
+                        label { class: "mb-1.5 block {ui::T_text_xs} {ui::T_text_zinc_400}", "{FIELD_QUOTA}" }
                     input {
                         "data-testid": "redemption-quota",
-                        class: "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 font-mono focus:border-zinc-500 focus:outline-none",
+                        class: "w-full rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} px-4 py-2.5 {ui::T_text_sm} {ui::T_text_zinc_100} font-mono focus:{ui::T_border_zinc_500} focus:outline-none",
                         placeholder: "50",
                         value: "{quota}",
                         oninput: move |e| quota.set(e.value()),
@@ -100,7 +100,7 @@ pub fn RedemptionGenerateModal(
 
                 // 快捷面额按钮
                 div { class: "space-y-1.5",
-                    p { class: "text-[11px] text-zinc-500", "{LBL_QUOTA_PRESETS}" }
+                    p { class: "{ui::T_text_11px} {ui::T_text_zinc_500}", "{LBL_QUOTA_PRESETS}" }
                     div { class: "flex flex-wrap gap-1.5",
                         for (lbl, val) in preset_quotas {
                             {
@@ -112,7 +112,7 @@ pub fn RedemptionGenerateModal(
                                 };
                                 rsx! {
                                     button {
-                                        class: "rounded-lg border px-2.5 py-1 text-xs transition-colors {btn_tone}",
+                                        class: "rounded-lg border px-2.5 py-1 {ui::T_text_xs} transition-colors {btn_tone}",
                                         onclick: move |_| quota.set(val.to_string()),
                                         "{lbl}"
                                     }
@@ -123,20 +123,20 @@ pub fn RedemptionGenerateModal(
                 }
 
                 // 测算卡片
-                div { class: "rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs space-y-1.5",
-                    div { class: "flex justify-between text-zinc-400",
+                div { class: "rounded-xl border {ui::T_border_zinc_800} {ui::T_bg_zinc_950} px-4 py-3 {ui::T_text_xs} space-y-1.5",
+                    div { class: "flex justify-between {ui::T_text_zinc_400}",
                         span { "{LBL_BATCH}" }
                         span { "{parsed_count} 张卡密" }
                     }
-                    div { class: "flex justify-between font-medium",
-                        span { class: "text-zinc-300", "{LBL_TOTAL_VALUE}" }
-                        span { class: "{ui::STATE_SUCCESS_TEXT} font-mono text-sm",
+                    div { class: "flex justify-between {ui::T_font_medium}",
+                        span { class: "{ui::T_text_zinc_300}", "{LBL_TOTAL_VALUE}" }
+                        span { class: "{ui::STATE_SUCCESS_TEXT} font-mono {ui::T_text_sm}",
                             "¥ {total_value:.2}"
                         }
                     }
                 }
 
-                p { class: "text-[11px] text-zinc-600",
+                p { class: "{ui::T_text_11px} {ui::T_text_zinc_600}",
                     "{MSG_GENERATE_HINT}"
                 }
             }
@@ -144,13 +144,13 @@ pub fn RedemptionGenerateModal(
             div { class: "mt-6 flex gap-3",
                 button {
                     "data-testid": "cancel-generate",
-                    class: "flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800",
+                    class: "flex-1 rounded-xl border {ui::T_border_zinc_700} py-2.5 {ui::T_text_sm} {ui::T_text_zinc_400} transition-colors hover:{ui::T_bg_zinc_800}",
                     onclick: move |_| on_cancel.call(()),
                     "{BTN_CANCEL}"
                 }
                 button {
                     "data-testid": "submit-generate",
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                    class: "flex-1 rounded-xl {ui::T_bg_white} py-2.5 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors hover:{ui::T_bg_zinc_200}",
                     onclick: move |_| on_submit.call(()),
                     "{BTN_SUBMIT_GENERATE}"
                 }
@@ -188,19 +188,19 @@ pub fn GeneratedCodesModal(codes: Vec<String>, on_close: EventHandler<()>) -> El
     rsx! {
         Modal { title: format!("{TTL_GENERATED_PREFIX}{}{TTL_GENERATED_SUFFIX}", codes.len()), on_close: move |_| on_close.call(()),
             div { class: "space-y-3",
-                p { class: "text-xs {ui::STATE_WARNING_TEXT}",
+                p { class: "{ui::T_text_xs} {ui::STATE_WARNING_TEXT}",
                     "{MSG_CODES_WARNING}"
                 }
                 pre {
                     "data-testid": "generated-codes",
-                    class: "max-h-72 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 select-all",
+                    class: "max-h-72 overflow-y-auto rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_950} p-3 font-mono {ui::T_text_xs} {ui::T_text_zinc_200} select-all",
                     "{joined}"
                 }
             }
             div { class: "mt-6 flex",
                 button {
                     "data-testid": "close-codes",
-                    class: "flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200",
+                    class: "flex-1 rounded-xl {ui::T_bg_white} py-2.5 {ui::T_text_sm} {ui::T_font_medium} {ui::T_text_zinc_900} transition-colors hover:{ui::T_bg_zinc_200}",
                     onclick: move |_| on_close.call(()),
                     "{BTN_CLOSE_SAVED}"
                 }

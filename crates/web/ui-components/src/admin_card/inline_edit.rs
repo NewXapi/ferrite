@@ -170,8 +170,8 @@ pub fn InlineEdit(
                         stash.set(draft());
                         editing.set(true);
                     },
-                    span { class: "text-zinc-400", "{label}" }
-                    span { class: "font-medium text-zinc-200 truncate", "{display}" }
+                    span { class: "{crate::T_text_zinc_400}", "{label}" }
+                    span { class: "{crate::T_font_medium} {crate::T_text_zinc_200} truncate", "{display}" }
                 }
             }
             if editing() {
@@ -185,7 +185,7 @@ pub fn InlineEdit(
                 // 编辑态：标签留在原地（行模式，不浮动）→ 无盒型边框输入框 → 底部横条。
                 div { class: "{edit_class}",
                     if !title_mode {
-                        span { class: "shrink-0 text-zinc-400", "{label}" }
+                        span { class: "shrink-0 {crate::T_text_zinc_400}", "{label}" }
                     }
                     input {
                         class: if title_mode { INLINE_TITLE_INPUT_CLASS } else { INLINE_ROW_INPUT_CLASS },

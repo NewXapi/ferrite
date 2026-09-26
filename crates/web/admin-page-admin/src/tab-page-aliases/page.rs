@@ -366,14 +366,14 @@ pub fn AliasesPage() -> Element {
             if let Some(msg) = notice() {
                 div {
                     role: "status",
-                    class: "rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs text-zinc-300",
+                    class: "rounded-xl border {ui::T_border_zinc_700} {ui::T_bg_zinc_900} px-4 py-2 {ui::T_text_xs} {ui::T_text_zinc_300}",
                     "{msg}"
                     if busy() { " ···" }
                 }
             }
 
             // 数据与写路径说明(后端 models 端点暂无计费字段)
-            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 text-xs text-zinc-400",
+            div { class: "flex flex-wrap items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/60 px-4 py-2.5 {ui::T_text_xs} {ui::T_text_zinc_400}",
                 span { "{SEC_DATA_NOTE}" }
             }
 

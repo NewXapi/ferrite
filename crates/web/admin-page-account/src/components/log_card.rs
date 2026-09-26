@@ -40,30 +40,30 @@ pub fn LogCard(log: UsageLogDto, on_open: EventHandler<UsageLogDto>) -> Element 
 
     rsx! {
         button {
-            class: "w-full cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-left transition-colors hover:border-zinc-500 hover:bg-zinc-900",
+            class: "w-full cursor-pointer rounded-2xl border {ui::T_border_zinc_800} bg-zinc-900/60 p-4 text-left transition-colors hover:{ui::T_border_zinc_500} hover:{ui::T_bg_zinc_900}",
             onclick: move |_| on_open.call(log.clone()),
 
             // 头部:模型 + 消耗
             div { class: "flex items-center gap-2",
                 span { class: "h-2.5 w-2.5 shrink-0 rounded-full {model_color}" }
-                span { class: "truncate font-mono text-sm text-zinc-200", "{log.model_name}" }
+                span { class: "truncate font-mono {ui::T_text_sm} {ui::T_text_zinc_200}", "{log.model_name}" }
             }
             div { class: "mt-2 flex items-baseline justify-between gap-2",
                 span { class: "font-mono {ui::TYPE_DESC}", "{time_str}" }
-                span { class: "shrink-0 font-medium tabular-nums text-sm {ui::STATE_SUCCESS_TEXT}", "{cost_str}" }
+                span { class: "shrink-0 {ui::T_font_medium} tabular-nums {ui::T_text_sm} {ui::STATE_SUCCESS_TEXT}", "{cost_str}" }
             }
 
             // 摘要两行:Tokens、耗时
-            div { class: "mt-3 space-y-1.5 text-xs",
+            div { class: "mt-3 space-y-1.5 {ui::T_text_xs}",
                 div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-500", "Tokens" }
-                    span { class: "whitespace-nowrap font-medium tabular-nums text-zinc-200",
+                    span { class: "shrink-0 {ui::T_text_zinc_500}", "Tokens" }
+                    span { class: "whitespace-nowrap {ui::T_font_medium} tabular-nums {ui::T_text_zinc_200}",
                         "{tokens_pair}"
                     }
                 }
                 div { class: "flex justify-between gap-2",
-                    span { class: "shrink-0 text-zinc-500", "耗时" }
-                    span { class: "whitespace-nowrap tabular-nums text-zinc-400", "{timing_str}" }
+                    span { class: "shrink-0 {ui::T_text_zinc_500}", "耗时" }
+                    span { class: "whitespace-nowrap tabular-nums {ui::T_text_zinc_400}", "{timing_str}" }
                 }
             }
         }

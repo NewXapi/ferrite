@@ -98,24 +98,24 @@ pub fn RedemptionsListSection(
                     role: "alert",
                     "aria-label": LBL_ERROR_ARIA,
                     class: "rounded-2xl border border-red-800/60 bg-red-950/40 px-4 py-6 text-center",
-                    p { class: "text-sm text-red-300", "{MSG_LOAD_FAILED}" }
-                    p { class: "mt-1 text-xs text-red-400/70", "{e}" }
+                    p { class: "{ui::T_text_sm} {ui::T_text_red_300}", "{MSG_LOAD_FAILED}" }
+                    p { class: "mt-1 {ui::T_text_xs} text-red-400/70", "{e}" }
                     button {
                         "data-testid": "retry-redemptions",
-                        class: "mt-3 rounded-xl border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800",
+                        class: "mt-3 rounded-xl border {ui::T_border_zinc_700} px-3 py-1.5 {ui::T_text_xs} {ui::T_text_zinc_300} hover:{ui::T_bg_zinc_800}",
                         onclick: on_retry,
                         "{BTN_RETRY}"
                     }
                 }
             } else if loading {
-                div { class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_LOADING_LIST}" }
+                div { class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
+                    p { class: "{ui::T_text_zinc_400}", "{MSG_LOADING_LIST}" }
                 }
             } else if filtered_rows.is_empty() {
                 div {
                     "data-testid": "redemptions-empty",
-                    class: "rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 py-16 text-center",
-                    p { class: "text-zinc-400", "{MSG_EMPTY}" }
+                    class: "rounded-2xl border border-dashed {ui::T_border_zinc_700} bg-zinc-900/50 py-16 text-center",
+                    p { class: "{ui::T_text_zinc_400}", "{MSG_EMPTY}" }
                 }
             } else {
                 div { class: "grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5",

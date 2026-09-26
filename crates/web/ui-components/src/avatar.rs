@@ -71,7 +71,7 @@ pub fn Avatar(
             } else {
                 span {
                     "data-slot": "avatar-fallback",
-                    class: "flex size-full items-center justify-center rounded-full bg-muted text-sm text-muted-foreground",
+                    class: "flex size-full items-center justify-center rounded-full bg-muted {crate::T_text_sm} text-muted-foreground",
                     "{fallback}"
                 }
             }

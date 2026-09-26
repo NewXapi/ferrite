@@ -30,9 +30,9 @@ pub fn TrendTooltipContainer(x: f64, y: f64, label: String, children: Element) -
     let opacity_class = "opacity-100 scale-100";
     rsx! {
         div {
-            class: "pointer-events-none fixed z-50 rounded-xl border border-border/80 bg-card/95 p-3 text-xs shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",
+            class: "pointer-events-none fixed z-50 rounded-xl border border-border/80 bg-card/95 p-3 {ui::T_text_xs} shadow-2xl backdrop-blur-md transition-all duration-150 ease-out {opacity_class} max-sm:left-3! max-sm:right-3! max-sm:bottom-4! max-sm:top-auto! max-sm:transform-none! max-sm:w-auto!",
             style: "left: {x}px; top: {clamped_y}px; transform: {transform}; max-width: calc(100vw - 24px);",
-            p { class: "mb-1.5 text-xs font-semibold text-muted-foreground", "{label}" }
+            p { class: "mb-1.5 {ui::T_text_xs} {ui::T_font_semibold} text-muted-foreground", "{label}" }
             {children}
         }
     }
@@ -46,18 +46,18 @@ pub fn TrendTipCard(tip: TrendTip) -> Element {
     match tip {
         TrendTip::Column(x, y, label, rows, total) => rsx! {
             TrendTooltipContainer { x, y, label,
-                div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800/80 pb-2 text-xs text-zinc-400",
+                div { class: "mb-2.5 flex items-center justify-between border-b border-zinc-800/80 pb-2 {ui::T_text_xs} {ui::T_text_zinc_400}",
                     span { "{TREND_TIP_TOTAL}" }
-                    span { class: "font-mono font-semibold text-zinc-100", "{fmt_raw(total as i64)}" }
+                    span { class: "font-mono {ui::T_font_semibold} {ui::T_text_zinc_100}", "{fmt_raw(total as i64)}" }
                 }
                 div { class: "flex flex-col gap-1.5",
                     for (name, color, v) in rows.iter() {
-                        div { class: "flex items-center justify-between gap-4 text-xs",
+                        div { class: "flex items-center justify-between gap-4 {ui::T_text_xs}",
                             div { class: "flex items-center min-w-0",
                                 span { class: "h-2 w-2 shrink-0 rounded-[2px]", style: "background: {color}" }
-                                span { class: "truncate text-zinc-300 ml-2", "{name}" }
+                                span { class: "truncate {ui::T_text_zinc_300} ml-2", "{name}" }
                             }
-                            span { class: "shrink-0 font-mono font-medium text-zinc-100", "{fmt_raw(*v as i64)}" }
+                            span { class: "shrink-0 font-mono {ui::T_font_medium} {ui::T_text_zinc_100}", "{fmt_raw(*v as i64)}" }
                         }
                     }
                 }
@@ -65,12 +65,12 @@ pub fn TrendTipCard(tip: TrendTip) -> Element {
         },
         TrendTip::Segment(x, y, label, name, color, v) => rsx! {
             TrendTooltipContainer { x, y, label,
-                div { class: "flex items-center justify-between gap-4 text-xs",
+                div { class: "flex items-center justify-between gap-4 {ui::T_text_xs}",
                     div { class: "flex items-center min-w-0",
                         span { class: "h-2.5 w-2.5 shrink-0 rounded-[2px]", style: "background: {color}" }
-                        span { class: "font-medium text-zinc-200 ml-2", "{name}" }
+                        span { class: "{ui::T_font_medium} {ui::T_text_zinc_200} ml-2", "{name}" }
                     }
-                    span { class: "shrink-0 font-mono font-bold text-zinc-100", "{fmt_raw(v as i64)}" }
+                    span { class: "shrink-0 font-mono {ui::T_font_bold} {ui::T_text_zinc_100}", "{fmt_raw(v as i64)}" }
                 }
             }
         },

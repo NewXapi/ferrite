@@ -22,9 +22,9 @@ pub fn DemoBoard() -> Element {
             class: "flex flex-col gap-6 md:gap-8",
             div { class: "flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4",
                 div {
-                    h2 { class: "text-lg font-bold tracking-tight text-zinc-100 md:text-xl", "{DEMO_TITLE}" }
+                    h2 { class: "{ui::T_text_lg} {ui::T_font_bold} tracking-tight {ui::T_text_zinc_100} md:{ui::T_text_xl}", "{DEMO_TITLE}" }
                 }
-                span { class: "rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400",
+                span { class: "rounded-full border {ui::T_border_zinc_800} {ui::T_bg_zinc_900} px-3 py-1 {ui::T_text_xs} {ui::T_text_zinc_400}",
                     "{DEMO_COUNT_HEAD}{ranked.len()}{DEMO_COUNT_TAIL}"
                 }
             }

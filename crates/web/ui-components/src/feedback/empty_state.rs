@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 #[component]
 pub fn EmptyState(title: String, hint: String) -> Element {
     rsx! {
-        div { class: "flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-800 py-16 text-center",
-            span { class: "text-sm font-medium text-zinc-300", "{title}" }
+        div { class: "flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed {crate::T_border_zinc_800} py-16 text-center",
+            span { class: "{crate::T_text_sm} {crate::T_font_medium} {crate::T_text_zinc_300}", "{title}" }
             span { class: "{crate::TYPE_DESC}", "{hint}" }
         }
     }

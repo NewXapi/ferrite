@@ -30,11 +30,11 @@ pub fn ConfirmRevokeCurrentModal(
             "data-testid": "confirm-revoke-current-modal",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "w-full max-w-md rounded-2xl border border-red-500/40 bg-zinc-900 p-5 shadow-xl",
+                class: "w-full max-w-md rounded-2xl border border-red-500/40 {ui::T_bg_zinc_900} p-5 shadow-xl",
                 onclick: move |e| e.stop_propagation(),
 
-                h3 { class: "text-base font-semibold text-zinc-100", "吊销当前设备" }
-                p { class: "mt-3 text-sm text-zinc-400",
+                h3 { class: "{ui::T_text_base} {ui::T_font_semibold} {ui::T_text_zinc_100}", "吊销当前设备" }
+                p { class: "mt-3 {ui::T_text_sm} {ui::T_text_zinc_400}",
                     "确认吊销当前设备的会话吗？吊销后本设备将立即退出登录, 且无法恢复。"
                 }
 

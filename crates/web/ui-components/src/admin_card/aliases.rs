@@ -159,9 +159,9 @@ pub fn AliasCard(
                     on_commit: commit_name,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "别名" }
-                    span { class: "font-medium text-zinc-200", "{title_alias}" }
+                div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                    span { class: "{crate::T_text_zinc_400}", "别名" }
+                    span { class: "{crate::T_font_medium} {crate::T_text_zinc_200}", "{title_alias}" }
                 }
             }
             if on_edit.is_some() {
@@ -174,18 +174,18 @@ pub fn AliasCard(
                     on_commit: commit_display,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "展示名" }
-                    span { class: "font-medium text-zinc-200", if display.is_empty() { "未填写" } else { "{display}" } }
+                div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                    span { class: "{crate::T_text_zinc_400}", "展示名" }
+                    span { class: "{crate::T_font_medium} {crate::T_text_zinc_200}", if display.is_empty() { "未填写" } else { "{display}" } }
                 }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "序号" }
-                span { class: "font-medium text-zinc-200", "#{index + 1}" }
+            div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                span { class: "{crate::T_text_zinc_400}", "序号" }
+                span { class: "{crate::T_font_medium} {crate::T_text_zinc_200}", "#{index + 1}" }
             }
-            div { class: "flex justify-between gap-2 text-xs",
-                span { class: "text-zinc-400", "标识" }
-                span { class: "font-mono text-zinc-200", "{short_k}" }
+            div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                span { class: "{crate::T_text_zinc_400}", "标识" }
+                span { class: "font-mono {crate::T_text_zinc_200}", "{short_k}" }
             }
             if on_delete.is_some() {
                 DangerActionRow {
@@ -201,7 +201,7 @@ pub fn AliasCard(
     let panel_pricing = rsx! {
         div { class: "space-y-2",
             div { class: "flex items-center justify-between gap-2",
-                p { class: "text-[11px] font-medium text-zinc-400",
+                p { class: "{crate::T_text_11px} {crate::T_font_medium} {crate::T_text_zinc_400}",
                     if price_mode == PriceMode::PerCall { "按次定价" } else { "按量定价" }
                 }
                 if let Some(cb) = on_mode_change {
@@ -217,9 +217,9 @@ pub fn AliasCard(
                     on_commit: commit_input,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "输入" }
-                    span { class: "font-medium text-zinc-200", "{fmt_price(input_per_1k)} / 1k tokens" }
+                div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                    span { class: "{crate::T_text_zinc_400}", "输入" }
+                    span { class: "{crate::T_font_medium} {crate::T_text_zinc_200}", "{fmt_price(input_per_1k)} / 1k tokens" }
                 }
             }
             if on_edit.is_some() {
@@ -231,9 +231,9 @@ pub fn AliasCard(
                     on_commit: commit_output,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "输出" }
-                    span { class: "font-medium text-zinc-200", "{fmt_price(output_per_1k)} / 1k tokens" }
+                div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                    span { class: "{crate::T_text_zinc_400}", "输出" }
+                    span { class: "{crate::T_font_medium} {crate::T_text_zinc_200}", "{fmt_price(output_per_1k)} / 1k tokens" }
                 }
             }
             if on_edit.is_some() {
@@ -245,33 +245,33 @@ pub fn AliasCard(
                     on_commit: commit_mult,
                 }
             } else {
-                div { class: "flex justify-between gap-2 text-xs",
-                    span { class: "text-zinc-400", "倍率" }
-                    span { class: "font-medium text-zinc-200", "×{multiplier}" }
+                div { class: "flex justify-between gap-2 {crate::T_text_xs}",
+                    span { class: "{crate::T_text_zinc_400}", "倍率" }
+                    span { class: "{crate::T_font_medium} {crate::T_text_zinc_200}", "×{multiplier}" }
                 }
             }
         }
     };
     let panel_groups = rsx! {
         div { class: "space-y-1.5",
-            p { class: "text-[11px] text-zinc-400", "可用分组" }
+            p { class: "{crate::T_text_11px} {crate::T_text_zinc_400}", "可用分组" }
             if shown_groups.is_empty() {
-                span { class: "text-[11px] text-zinc-500", "无分组引用" }
+                span { class: "{crate::T_text_11px} {crate::T_text_zinc_500}", "无分组引用" }
             } else {
                 div { class: "flex flex-wrap gap-1.5",
                     for (gname, gratio) in shown_groups {
                         {
                             let tone = ratio_tone(*gratio);
                             rsx! {
-                                span { class: "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] {tone}",
+                                span { class: "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 {crate::T_text_11px} {tone}",
                                     "{gname}"
-                                    span { class: "text-[10px] font-mono opacity-70", "×{gratio:.1}" }
+                                    span { class: "{crate::T_text_10px} font-mono opacity-70", "×{gratio:.1}" }
                                 }
                             }
                         }
                     }
                     if overflow_groups > 0 {
-                        span { class: "rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-400",
+                        span { class: "rounded-full border {crate::T_border_zinc_700} bg-zinc-800/60 px-2 py-0.5 {crate::T_text_11px} {crate::T_text_zinc_400}",
                             "+{overflow_groups}"
                         }
                     }
@@ -283,7 +283,7 @@ pub fn AliasCard(
     // 序号 badge：与旧卡 header 右侧样式逐字一致。
     let index_badge = rsx! {
         span {
-            class: "shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 border border-zinc-700/60",
+            class: "shrink-0 rounded {crate::T_bg_zinc_800} px-1.5 py-0.5 {crate::T_text_10px} font-mono {crate::T_text_zinc_400} border border-zinc-700/60",
             "#{index + 1}"
         }
     };

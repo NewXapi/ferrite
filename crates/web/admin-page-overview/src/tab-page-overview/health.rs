@@ -130,7 +130,7 @@ pub fn ChannelHealth() -> Element {
         Card {
             hoverable: true,
             CardHeader {
-                CardTitle { class: "text-lg text-foreground", "{SEC_HEALTH}" }
+                CardTitle { class: "{ui::T_text_lg} text-foreground", "{SEC_HEALTH}" }
             }
             CardContent {
                 section { "data-testid": "channel-health",
@@ -141,7 +141,7 @@ pub fn ChannelHealth() -> Element {
                     // 执行即重新拉取),时间窗切换亦触发;err 仅留在内存不渲染。
                     if err.is_some() {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
-                            p { class: "text-sm text-zinc-500", "{NEUTRAL_NO_DATA}" }
+                            p { class: "{ui::T_text_sm} {ui::T_text_zinc_500}", "{NEUTRAL_NO_DATA}" }
                         }
                     } else if loading {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
@@ -150,15 +150,15 @@ pub fn ChannelHealth() -> Element {
                     } else if n == 0 {
                         div { class: "rounded-2xl border border-dashed border-border bg-card/50 py-10 text-center",
                             p { class: "text-muted-foreground", "{HEALTH_EMPTY}" }
-                            p { class: "mt-1 text-xs text-muted-foreground/70", "{HEALTH_EMPTY_HINT}" }
+                            p { class: "mt-1 {ui::T_text_xs} text-muted-foreground/70", "{HEALTH_EMPTY_HINT}" }
                         }
                     } else {
                         // 汇总卡
                         div { class: "grid grid-cols-2 gap-3 md:grid-cols-4",
                             for (value, label) in summary {
                                 div { class: "rounded-xl border border-border bg-card px-4 py-3 transition-[border-color] duration-150 hover:border-secondary-hover cursor-default",
-                                    p { class: "text-base font-semibold text-foreground", "{value}" }
-                                    p { class: "mt-0.5 text-xs text-muted-foreground", "{label}" }
+                                    p { class: "{ui::T_text_base} {ui::T_font_semibold} text-foreground", "{value}" }
+                                    p { class: "mt-0.5 {ui::T_text_xs} text-muted-foreground", "{label}" }
                                 }
                             }
                         }
@@ -166,20 +166,20 @@ pub fn ChannelHealth() -> Element {
                         div { class: "rounded-xl border border-border bg-card/60 p-4 space-y-3 transition-[border-color] duration-150 hover:border-secondary-hover",
                             for r in data {
                                 div { class: "flex items-center gap-3",
-                                    span { class: "w-28 shrink-0 truncate text-sm text-foreground", "{r.name}" }
+                                    span { class: "w-28 shrink-0 truncate {ui::T_text_sm} text-foreground", "{r.name}" }
                                     div { class: "h-2 flex-1 overflow-hidden rounded-full bg-muted",
                                         div {
                                             class: "h-full rounded-full transition-all",
                                             style: "width: {(r.availability.unwrap_or(0.0) * 100.0):.1}%; background: {health_color(r.availability)}",
                                         }
                                     }
-                                    span { class: "w-14 shrink-0 text-right text-xs font-mono text-muted-foreground",
+                                    span { class: "w-14 shrink-0 text-right {ui::T_text_xs} font-mono text-muted-foreground",
                                         {r.availability.map(|v| format!("{:.1}%", v * 100.0)).unwrap_or_else(|| DASH.into())}
                                     }
-                                    span { class: "w-24 shrink-0 text-right text-xs font-mono text-muted-foreground/70",
+                                    span { class: "w-24 shrink-0 text-right {ui::T_text_xs} font-mono text-muted-foreground/70",
                                         "{r.ok_count}/{r.total}"
                                     }
-                                    span { class: "w-16 shrink-0 text-right text-xs font-mono text-muted-foreground/70",
+                                    span { class: "w-16 shrink-0 text-right {ui::T_text_xs} font-mono text-muted-foreground/70",
                                         {r.avg_latency_ms.map(|v| format!("{:.0}ms", v)).unwrap_or_else(|| DASH.into())}
                                     }
                                 }

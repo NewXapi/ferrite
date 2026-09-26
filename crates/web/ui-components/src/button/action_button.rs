@@ -127,7 +127,7 @@ pub fn ActionButtonGroup(
         .map(|(i, _)| EventHandler::new(move |_| on_press.call(i)))
         .collect();
     rsx! {
-        div { class: "mt-4 flex gap-1.5 border-t border-zinc-800 pt-3",
+        div { class: "mt-4 flex gap-1.5 border-t {crate::T_border_zinc_800} pt-3",
             "data-testid": "{testid_prefix}",
             for (i, spec) in specs.iter().enumerate() {
                 ActionButton {

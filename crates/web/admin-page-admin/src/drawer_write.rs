@@ -237,7 +237,7 @@ pub fn DrawerNoticeBar(notice: Signal<DrawerNotice>, on_clear: EventHandler<()>)
             div {
                 class: "px-4 py-2",
                 "data-testid": "ent-write-notice",
-                p { class: "text-[11px] text-zinc-400", "处理中…" }
+                p { class: "{ui::T_text_11px} {ui::T_text_zinc_400}", "处理中…" }
             }
         },
         DrawerNotice::Ok => rsx! {
@@ -245,7 +245,7 @@ pub fn DrawerNoticeBar(notice: Signal<DrawerNotice>, on_clear: EventHandler<()>)
                 class: "px-4 py-2",
                 "data-testid": "ent-write-notice",
                 p {
-                    class: "text-[11px] text-emerald-300/80",
+                    class: "{ui::T_text_11px} text-emerald-300/80",
                     onclick: move |_| on_clear.call(()),
                     "已保存"
                 }
@@ -258,9 +258,9 @@ pub fn DrawerNoticeBar(notice: Signal<DrawerNotice>, on_clear: EventHandler<()>)
                     role: "alert",
                     class: "mx-3 my-2 rounded-xl border-red-500/30 bg-red-950/30 px-3 py-2",
                     "data-testid": "ent-write-error",
-                    p { class: "text-[11px] {ui::STATE_DANGER_TEXT}", "{m}" }
+                    p { class: "{ui::T_text_11px} {ui::STATE_DANGER_TEXT}", "{m}" }
                     button {
-                        class: "ml-2 text-[11px] text-red-300/70 hover:text-red-200",
+                        class: "ml-2 {ui::T_text_11px} text-red-300/70 hover:{ui::T_text_red_200}",
                         onclick: move |_| on_clear.call(()),
                         "✕"
                     }

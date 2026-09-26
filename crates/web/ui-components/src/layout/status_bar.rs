@@ -49,7 +49,7 @@ pub fn StatusBar(
 ) -> Element {
     rsx! {
         div {
-            class: "flex w-full items-center justify-between py-0.5 text-[11px] text-zinc-500",
+            class: "flex w-full items-center justify-between py-0.5 {crate::T_text_11px} {crate::T_text_zinc_500}",
             // 左下角：用户头像 + 额度占位
             div {
                 class: "flex items-center gap-1.5",
@@ -65,7 +65,7 @@ pub fn StatusBar(
                         }
                     },
                     None => rsx! {
-                        span { class: "text-zinc-500", "未登录" }
+                        span { class: "{crate::T_text_zinc_500}", "未登录" }
                     },
                 }
             }
@@ -73,20 +73,20 @@ pub fn StatusBar(
             div {
                 class: "flex items-center gap-2",
                 span {
-                    class: "text-zinc-500",
+                    class: "{crate::T_text_zinc_500}",
                     title: "CPU",
                     "data-testid": "status-cpu",
                     "12%"
                 }
-                span { class: "text-zinc-600", "·" }
+                span { class: "{crate::T_text_zinc_600}", "·" }
                 span {
-                    class: "text-zinc-500",
+                    class: "{crate::T_text_zinc_500}",
                     title: "内存",
                     "data-testid": "status-mem",
                     "34%"
                 }
                 button {
-                    class: "shrink-0 rounded px-1 text-[11px] text-zinc-500 transition-colors hover:text-zinc-300",
+                    class: "shrink-0 rounded px-1 {crate::T_text_11px} {crate::T_text_zinc_500} transition-colors hover:{crate::T_text_zinc_300}",
                     aria_label: "切换主题",
                     onclick: move |_| on_toggle_theme.call(()),
                     if is_light { "Dark" } else { "Light" }
