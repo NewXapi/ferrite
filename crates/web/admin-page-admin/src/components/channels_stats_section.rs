@@ -7,8 +7,8 @@
 
 use dioxus::prelude::*;
 
+use crate::components::groups_modal::StatCard;
 use crate::shared::SEC_STATS_CHANNELS;
-use crate::tab_page_groups::StatCard;
 
 /// 渠道概览统计区:总数 / 启用 / 停用 / 密钥 / 分组 五张卡。
 ///

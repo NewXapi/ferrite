@@ -7,10 +7,10 @@
 //! - `stats.lastDelayMs` 为 null 表示"从未探测/未装配",不是 0 延迟。
 //!
 //! 本文件用后端 handler 的真实字段名构造样例,断言页面消费的 DTO
-//! (`admin_page_admin::tab_page_system::ProxyReportResponse`)解码形状与后端一致,
+//! (`admin_page_admin::shared::ProxyReportResponse`)解码形状与后端一致,
 //! 防止前后端字段名漂移导致面板静默归零或解码失败。
 
-use admin_page_admin::tab_page_system::{
+use admin_page_admin::components::system_proxy_runtime::{
     NodeRuntimeStats, ProxyNodeReportRow, ProxyReportResponse,
 };
 

@@ -9,8 +9,8 @@
 //! 边框:本文件只持有三张卡的展开态并做薄组装;三张卡的业务逻辑分别在
 //! `cards.rs`(分组/别名)与 `channels.rs`(渠道)。
 
-use super::cards::{AliasesCard, GroupsCard};
-use super::channels::ChannelsCard;
+use crate::components::entities_cards::{AliasesCard, GroupsCard};
+use crate::components::entities_channels::ChannelsCard;
 use dioxus::prelude::*;
 
 /// 实体设置面板：三张可折叠实体卡的薄组装。

@@ -4,10 +4,8 @@
 
 use dioxus::prelude::*;
 
-use super::data::*;
-use super::drawer::DrawerHeader;
-use super::physics::{accent_color, node_title_from_store};
-use super::shared::{
+use crate::components::network_drawer::DrawerHeader;
+use crate::components::network_shared::{
     BTN_DELETE, BTN_DELETE_CHANNEL_TITLE, BTN_DELETE_GROUP_TITLE, BTN_SAVE, BTN_SAVE_CHANNEL,
     BTN_SAVE_DISPLAY, EXAMPLE_CHANNEL, FIELD_DISPLAY, LBL_ALIAS, LBL_DISPATCH, LBL_GROUP,
     MSG_ALIAS_ABSENT, MSG_ALIAS_DISPLAY_LOCKED, MSG_ALIAS_LOCKED, MSG_API_KEY_EDIT,
@@ -23,6 +21,8 @@ use crate::drawer_write::{
     DrawerNotice, DrawerNoticeBar, delete_channel, delete_group, find_channel_by_name,
     find_group_by_name, update_channel, update_group_display,
 };
+use crate::network_data::*;
+use crate::network_physics::{accent_color, node_title_from_store};
 use crate::state::EntityStore;
 
 /// 侧边抽屉：左键点节点后就地编辑该实体。

@@ -1,17 +1,17 @@
 use dioxus::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use super::data::*;
-use super::drawer::{DrawerHeader, DrawerTabs, ImportPanel};
-use super::inspector::NodeInspector;
-use super::physics::{display_edge_pairs, edges_read, physics_step};
-use super::shared::{
+use crate::components::network_drawer::{DrawerHeader, DrawerTabs, ImportPanel};
+use crate::components::network_inspector::NodeInspector;
+use crate::components::network_shared::{
     BTN_FIT, BTN_IMPORT, BTN_SETTINGS, LBL_ALIAS, LBL_CHANNELS, LBL_DISPATCH, LBL_GROUP,
     LBL_IMPORT_SUBTITLE, MSG_EMPTY, MSG_LOADING, MSG_LOADING_ARIA, MSG_WIRE_DELETE_HINT,
     SEC_HINT_FOCUS, SEC_HINT_IDLE, SEC_HINT_MOVING, SEC_HINT_WIRING, SEC_SETTINGS_STALE,
 };
+use crate::network_data::*;
+use crate::network_physics::{display_edge_pairs, edges_read, physics_step};
 use crate::state::EntityStore;
-use crate::tab_page_entities::EntitiesPanel;
+use crate::tab_page::entities::EntitiesPanel;
 use client::ApiClient;
 use ui::ScrollSpyNav;
 

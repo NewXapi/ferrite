@@ -11,13 +11,13 @@
 //! 本卡是 RENAMED 来的(原 `entities.rs` 的渠道部分):候补池/调度模型操作纯本地,
 //! 不落库;只有渠道本身的 CRUD 与启停会发请求。
 
-use super::shared::*;
 use crate::drawer_write::{
     DrawerNotice, DrawerNoticeBar, create_channel_import, delete_channel, find_channel_by_name,
     set_channel_status, update_channel,
 };
+use crate::network_data::bump_topo_refresh;
+use crate::shared::*;
 use crate::state::EntityStore;
-use crate::tab_page_network::bump_topo_refresh;
 use dioxus::prelude::*;
 use ui::dialog::Dialog;
 
@@ -171,7 +171,7 @@ pub fn ChannelsCard(open: bool, on_toggle: EventHandler<MouseEvent>) -> Element 
                     group: grp.join(","),
                     latency_ms: None,
                     candidates: vec![],
-                    dispatch: crate::tab_page_network::channel_models(&created.models),
+                    dispatch: crate::network_data::channel_models(&created.models),
                 });
                 // 落库成功后切到新行编辑态：否则 is_new 悬着，下一次保存
                 // 会再建一个重复渠道。

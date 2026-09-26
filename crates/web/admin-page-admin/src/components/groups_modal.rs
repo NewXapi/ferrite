@@ -9,7 +9,8 @@
 //! `GroupFormModal` 是**唯一自带网络请求的组件**(提交时直接调
 //! `create_group_api` / `update_group_api`),与 `list.rs` 的纯展示约定不同。
 
-use super::shared::{
+use crate::api::{create_group_api, update_group_api};
+use crate::shared::{
     BTN_BUILTIN, BTN_CANCEL, BTN_CREATE_GROUP, BTN_DELETE, BTN_DISABLE, BTN_EDIT, BTN_ENABLE,
     BTN_SAVE_CHANGES, FIELD_ALIAS, FIELD_GROUP_NAME, FIELD_RATIO, FIELD_REMARK, FIELD_WHITELIST,
     LBL_ACTUAL_COST, LBL_BUILTIN, LBL_CLOSE, LBL_DEFAULT, LBL_EXAMPLE_COST,
@@ -20,7 +21,6 @@ use super::shared::{
     OPT_RATIO_HALF, OPT_RATIO_HIGH, OPT_RATIO_MARKUP, OPT_RATIO_PRESETS, TAB_ALIAS, TAB_BASIC,
     TTL_EDIT, TTL_NEW, parse_whitelist_raw,
 };
-use crate::api::{create_group_api, update_group_api};
 use client::ApiClient;
 use contract::api::admin::{GroupDto, GroupUpsertRequest};
 use dioxus::prelude::*;
@@ -125,9 +125,9 @@ pub fn Badge(text: String, tone: &'static str) -> Element {
 /// - 对内(入):`group`(单条 `GroupDto`,提供 name / ratio / status / key)、
 ///   `is_default`(页面按 `name == "default"` 判定,决定默认标签与删除位占位)、
 ///   `on_edit` / `on_delete` / `on_toggle_status` / `on_ratio_drag`。
-/// - 对外(出):三个无参 `EventHandler` → 页面构造 `WriteOp::Delete` /
-///   `WriteOp::ToggleStatus` 或 `open_edit`;`on_ratio_drag(f64)` → 页面构造
-///   `WriteOp::SetRatio(v)`。写回后由页面就地更新本地列表,卡片随之重渲染。
+/// - 对外(出):三个无参 `EventHandler` → 页面构造 `WriteOpGroups::Delete` /
+///   `WriteOpGroups::ToggleStatus` 或 `open_edit`;`on_ratio_drag(f64)` → 页面构造
+///   `WriteOpGroups::SetRatio(v)`。写回后由页面就地更新本地列表,卡片随之重渲染。
 ///
 /// 状态块:`adjusting` / `local_ratio` 是本卡独有的临时交互状态(滑条是否处于
 /// 可拖预览态、预览值),不跨组件、不参与写库,故留在组件内 `use_signal`;

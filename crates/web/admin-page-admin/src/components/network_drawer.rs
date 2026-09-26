@@ -3,13 +3,13 @@
 
 use dioxus::prelude::*;
 
-use super::data::*;
-use super::shared::{
+use crate::components::network_shared::{
     BTN_CLOSE_TITLE, BTN_IMPORT, BTN_IMPORT_CHANNEL, BTN_SETTINGS, EXAMPLE_CHANNEL,
     LBL_API_KEY_MULTI, LBL_BASE_URL, LBL_CHANNEL_NAME_OPT, LBL_NODES, MSG_DEFAULT_CHANNEL_NAME,
     MSG_IMPORT_FAILED_PREFIX, MSG_IMPORT_KEY_REQUIRED,
 };
 use crate::drawer_write::{DrawerNotice, DrawerNoticeBar, create_channel_import};
+use crate::network_data::*;
 
 /// 抽屉头：标题 + 三个页签（节点/设置/导入）+ 关闭。
 ///

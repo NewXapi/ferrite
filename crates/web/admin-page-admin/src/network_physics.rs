@@ -5,7 +5,7 @@
 use dioxus::prelude::*;
 use std::collections::{HashMap, HashSet};
 
-use super::data::*;
+use crate::network_data::*;
 use crate::state::EntityStore;
 
 pub fn edges_read(edges: &Signal<HashSet<(NodeKey, NodeKey)>>) -> HashSet<(NodeKey, NodeKey)> {

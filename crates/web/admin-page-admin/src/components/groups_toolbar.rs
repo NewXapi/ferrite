@@ -13,7 +13,7 @@ use ui::SegmentedCapsule;
 
 use contract::api::admin::GroupDto;
 
-use super::shared::{
+use crate::shared::{
     BTN_BULK_CLEAR, BTN_BULK_DISABLE, BTN_BULK_ENABLE, BTN_NEW_GROUP, BTN_REFRESH, LBL_BULK_SELECT,
     MSG_BULK_SELECTED_PREFIX, MSG_BULK_SELECTED_SUFFIX, MSG_SEARCH_PLACEHOLDER, SEC_FILTER,
     SEC_FILTER_NOTE,

@@ -4,7 +4,10 @@
 pub mod aliases;
 pub mod channels;
 pub mod currency;
+pub mod entities;
 pub mod gateway;
+pub mod groups;
+pub mod network;
 pub mod redemptions;
 pub mod subscriptions;
 pub mod system;

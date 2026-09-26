@@ -9,8 +9,8 @@
 
 use dioxus::prelude::*;
 
+use crate::components::groups_modal::StatCard;
 use crate::shared::SEC_STATS_REDEMPTIONS;
-use crate::tab_page_groups::StatCard;
 
 /// 兑换码概览统计区。
 ///

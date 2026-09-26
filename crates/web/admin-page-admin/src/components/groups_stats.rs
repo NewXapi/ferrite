@@ -9,8 +9,8 @@
 
 use dioxus::prelude::*;
 
-use super::shared::SEC_STATS;
-use crate::tab_page_groups::StatCard;
+use crate::components::groups_modal::StatCard;
+use crate::shared::SEC_STATS;
 
 /// 分组概览统计区。
 ///

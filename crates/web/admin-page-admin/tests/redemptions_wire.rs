@@ -3,7 +3,7 @@
 //! 纯函数/DTO 断言,不依赖网络与 Dioxus runtime。
 
 use admin_page_admin::api::RedemptionView;
-use admin_page_admin::tab_page_redemptions::{RedRowFE, map_redemption_view};
+use admin_page_admin::shared::{RedRowFE, map_redemption_view};
 
 fn view() -> RedemptionView {
     RedemptionView {

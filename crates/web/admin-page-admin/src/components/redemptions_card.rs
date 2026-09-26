@@ -10,12 +10,12 @@
 
 use dioxus::prelude::*;
 
+use crate::components::groups_modal::Badge;
 use crate::shared::{
     BTN_COPIED, BTN_COPY, BTN_DISABLE, BTN_DISABLED, BTN_REDEEMED, LBL_AVAILABLE_QUOTA,
     LBL_CARD_ARIA_PREFIX, LBL_CREATED, LBL_FACE_VALUE_PREFIX, LBL_REDEEMED_AT, LBL_REDEEMED_BY,
     LBL_STATUS_DISABLED, LBL_STATUS_UNKNOWN, LBL_STATUS_UNUSED, LBL_STATUS_USED, RedRowFE,
 };
-use crate::tab_page_groups::Badge;
 
 /// 兑换码卡片。
 ///

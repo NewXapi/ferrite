@@ -4,7 +4,7 @@
 //! 纯展示组件:数据与写回回调由 page 注入,自身零 `use_signal`、不发网络请求;
 //! 卡片独有的交互(滑条拖拽、按钮组)全在 `modal.rs` 的 `GroupCard` 内。
 //!
-//! 删 / 启停 / 倍率三类卡片操作统一走 `on_write` 回传 `(key, WriteOp)`,
+//! 删 / 启停 / 倍率三类卡片操作统一走 `on_write` 回传 `(key, WriteOpGroups)`,
 //! 由页面分派到对应写工厂;编辑走 `on_edit` 回传 key。
 //!
 //! 边界:筛选计算、可用分组判定、拉取/写回都在 `page.rs`;卡片外壳与倍率滑条样式
@@ -14,9 +14,10 @@ use dioxus::prelude::*;
 
 use contract::api::admin::GroupDto;
 
-use super::modal::GroupCard;
-use super::shared::{
-    BTN_RETRY, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST, OPT_BADGE_LOADING, SEC_LIST, WriteOp,
+use crate::components::groups_modal::GroupCard;
+use crate::shared::{
+    BTN_RETRY, MSG_EMPTY, MSG_LOAD_FAILED, MSG_LOADING_LIST, OPT_BADGE_LOADING, SEC_LIST,
+    WriteOpGroups,
 };
 
 /// 分组列表(四态 + 卡片网格)。
@@ -26,15 +27,15 @@ use super::shared::{
 ///
 /// 【做什么】按 `err` / `loading` / `filtered` 渲染四态;每张卡把编辑 / 删除 / 启停 /
 /// 倍率四类操作包成对应回调。不负责筛选(`filtered` 由页面算好)、不负责拉数据、
-/// 不负责写回网络(只抛 `WriteOp`)、不负责卡片内部样式。
+/// 不负责写回网络(只抛 `WriteOpGroups`)、不负责卡片内部样式。
 ///
 /// 【交互逻辑】用户操作 → 组件行为 → 数据交互:
 /// - 点错误态「重试」→ `on_retry` 抛回页面,页面 `reload + 1` 触发重拉。
 /// - 点卡片「编辑」→ `on_edit(key)`,页面 `open_edit` 回填表单并置 `ModalState::Edit`,打开弹窗。
-/// - 点卡片「删除」→ `on_write((key, WriteOp::Delete))`,页面调 `delete_group_api` 并整页重拉。
-/// - 点卡片「启用/停用」→ `on_write((key, WriteOp::ToggleStatus(target)))`,target 由当前
+/// - 点卡片「删除」→ `on_write((key, WriteOpGroups::Delete))`,页面调 `delete_group_api` 并整页重拉。
+/// - 点卡片「启用/停用」→ `on_write((key, WriteOpGroups::ToggleStatus(target)))`,target 由当前
 ///   status 取反(1↔2),页面调 `set_group_status_api` 后就地改本地 `status`(不重拉)。
-/// - 拖动倍率滑条松手 → `on_write((key, WriteOp::SetRatio(v)))`,页面调
+/// - 拖动倍率滑条松手 → `on_write((key, WriteOpGroups::SetRatio(v)))`,页面调
 ///   `update_group_ratio_api` 后就地改本地 `ratio`。
 /// 数据交互:本组件自身**不发任何网络请求**;回调最终触发的写请求都在 `page.rs`。
 ///
@@ -61,7 +62,7 @@ pub fn GroupsList(
     loading: bool,
     err: Option<String>,
     on_edit: EventHandler<String>,
-    on_write: EventHandler<(String, WriteOp)>,
+    on_write: EventHandler<(String, WriteOpGroups)>,
     on_retry: EventHandler<()>,
 ) -> Element {
     // 分页：列表内部 UI 状态（不跨组件）；筛选后条数变小时 clamp 到最后一页，
@@ -120,12 +121,12 @@ pub fn GroupsList(
                             let on_toggle_status = move |_| {
                                 on_write.call((
                                     toggle_key.clone(),
-                                    WriteOp::ToggleStatus(toggle_target),
+                                    WriteOpGroups::ToggleStatus(toggle_target),
                                 ));
                             };
                             // 倍率滑条松手写回: 复用同一写工厂, 就地更新本地 ratio
                             let on_ratio_drag = move |v: f64| {
-                                on_write.call((ratio_key.clone(), WriteOp::SetRatio(v)));
+                                on_write.call((ratio_key.clone(), WriteOpGroups::SetRatio(v)));
                             };
                             rsx! {
                                 GroupCard {
@@ -134,7 +135,7 @@ pub fn GroupsList(
                                     is_default,
                                     on_edit: move |_| on_edit.call(edit_key.clone()),
                                     on_delete: move |_| {
-                                        on_write.call((delete_key.clone(), WriteOp::Delete))
+                                        on_write.call((delete_key.clone(), WriteOpGroups::Delete))
                                     },
                                     on_toggle_status,
                                     on_ratio_drag,

@@ -4,7 +4,7 @@
 //! (按值类型判断可编辑性)。DTO 解码形状由 `SystemOptionsPanel` 内的
 //! `list_options_api` 调用在运行期覆盖,这里只做函数级断言。
 
-use admin_page_admin::tab_page_system::{format_option_value, option_editable};
+use admin_page_admin::components::system_options::{format_option_value, option_editable};
 use serde_json::json;
 
 #[test]

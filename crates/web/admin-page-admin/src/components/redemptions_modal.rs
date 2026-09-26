@@ -10,12 +10,12 @@
 
 use dioxus::prelude::*;
 
+use crate::components::groups_modal::Modal;
 use crate::shared::{
     BTN_CANCEL_REDEMPTIONS, BTN_CLOSE_SAVED, BTN_SUBMIT_GENERATE, FIELD_COUNT, FIELD_QUOTA,
     LBL_BATCH, LBL_QUOTA_PRESETS, LBL_TOTAL_VALUE, MSG_CODES_WARNING, MSG_GENERATE_HINT,
     TTL_GENERATE, TTL_GENERATED_PREFIX, TTL_GENERATED_SUFFIX,
 };
-use crate::tab_page_groups::Modal;
 
 /// 批量生成兑换码弹窗(后端仅支持 面额 + 数量;无活动名/有效期字段)。
 ///

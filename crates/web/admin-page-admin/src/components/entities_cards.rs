@@ -6,13 +6,13 @@
 //! 不负责:渠道卡(`channels.rs`)、三卡展开态(`page.rs`)、网络层实现
 //! (`crate::drawer_write`)。
 
-use super::shared::*;
 use crate::drawer_write::{
     DrawerNotice, DrawerNoticeBar, create_group_write, delete_group, find_group_by_name,
     update_group_display,
 };
+use crate::network_data::bump_topo_refresh;
+use crate::shared::*;
 use crate::state::EntityStore;
-use crate::tab_page_network::bump_topo_refresh;
 use dioxus::prelude::*;
 use ui::dialog::Dialog;
 

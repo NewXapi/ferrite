@@ -3,7 +3,7 @@
 //! 不依赖网络/PG —— 只断言 `groups.rs` 暴露的纯函数行为,以及
 //! `GroupUpsertRequest` 序列化形状与后端 `UpdateGroupRequest` 对齐。
 
-use admin_page_admin::tab_page_groups::{parse_whitelist, parse_whitelist_raw};
+use admin_page_admin::shared::{parse_whitelist, parse_whitelist_raw};
 use contract::api::admin::{GroupDto, GroupUpsertRequest};
 use serde_json::json;
 

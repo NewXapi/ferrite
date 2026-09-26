@@ -9,7 +9,9 @@ use contract::api::admin::{ChannelDto, GroupDto};
 use crate::api::{ModelView, list_channels_api, list_groups_api, list_models_api};
 use crate::state::EntityStore;
 
-use super::shared::{MSG_LOAD_CHANNELS_FAILED, MSG_LOAD_GROUPS_FAILED, MSG_LOAD_MODELS_FAILED};
+use crate::components::network_shared::{
+    MSG_LOAD_CHANNELS_FAILED, MSG_LOAD_GROUPS_FAILED, MSG_LOAD_MODELS_FAILED,
+};
 
 /// 拓扑写路径成功后的画布刷新信号（#183 起画布由 `load_network_data`
 /// 真实数据驱动，store 行不再是事实源）。写函数（`crate::drawer_write`
@@ -729,4 +731,4 @@ pub enum Drag {
 // —— 共享文案已迁至 `tab-page-network/shared.rs` ——
 // LBL_GROUP / LBL_ALIAS / LBL_DISPATCH / LBL_NODES / BTN_IMPORT / BTN_SETTINGS /
 // BTN_FIT / FIELD_DISPLAY / EXAMPLE_CHANNEL 现定义在 `super::shared`,
-// 本文件不再重定义,调用方改为 `use super::shared::...`。
+// 本文件不再重定义,调用方改为 `use crate::components::network_shared::...`。

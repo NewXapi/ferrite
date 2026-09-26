@@ -9,6 +9,7 @@
 
 use dioxus::prelude::*;
 
+use crate::components::groups_modal::StatCard;
 use crate::shared::{
     BTN_REFRESH, BTN_RETRY, LBL_CONN_POOL, LBL_COUNT_ACTIVE_CHANNELS, LBL_COUNT_CHANNELS,
     LBL_COUNT_MODELS, LBL_COUNT_TOKENS, LBL_COUNT_USERS, LBL_CPU_LOAD, LBL_DB_STATUS, LBL_HOSTNAME,
@@ -17,7 +18,6 @@ use crate::shared::{
     SEC_COUNTS, SEC_ENV, SEC_ENV_NOTE, SEC_STATS, SystemInfoView, format_bytes, format_db_status,
     format_load, format_started_at, format_uptime,
 };
-use crate::tab_page_groups::StatCard;
 
 /// 系统概览区:概览统计 / 实体统计 / 运行环境明细(编号段 1-3)。
 ///

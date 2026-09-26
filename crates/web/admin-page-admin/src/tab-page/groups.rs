@@ -14,17 +14,17 @@ use dioxus::prelude::*;
 use client::ApiClient;
 use contract::api::admin::GroupDto;
 
-use super::list::GroupsList;
-use super::modal::GroupFormModal;
-use super::shared::{
+use crate::api::{delete_group_api, list_groups_api, set_group_status_api, update_group_ratio_api};
+use crate::components::groups_list::GroupsList;
+use crate::components::groups_modal::GroupFormModal;
+use crate::components::groups_stats::GroupsStatsSection;
+use crate::components::groups_toolbar::GroupsToolbar;
+use crate::shared::{
     LBL_STAT_AVG_RATIO, LBL_STAT_CUSTOM_RATIO, LBL_STAT_DISABLED, LBL_STAT_ENABLED, LBL_STAT_TOTAL,
     MSG_BULK_FAIL_SUFFIX, MSG_BULK_OK, MSG_BULK_OK_SUFFIX, MSG_BULK_PREFIX, MSG_BULK_TAIL,
     MSG_OP_FAILED, MSG_OP_OK, ModalState, OPT_ALL, OPT_DISABLED, OPT_ENABLED, SEC_PAGE_ARIA,
-    WriteOp, parse_whitelist,
+    WriteOpGroups, parse_whitelist,
 };
-use super::stats::GroupsStatsSection;
-use super::toolbar::GroupsToolbar;
-use crate::api::{delete_group_api, list_groups_api, set_group_status_api, update_group_ratio_api};
 
 /// 分组管理页。
 ///
@@ -204,21 +204,21 @@ pub fn GroupsPage() -> Element {
         let notice_sig = notice;
         let reload_sig = reload;
         let groups_sig = groups;
-        move |key: String, op: WriteOp| {
+        move |key: String, op: WriteOpGroups| {
             let (mut b, mut n, mut r, mut g) = (busy_sig, notice_sig, reload_sig, groups_sig);
             spawn(async move {
                 b.set(true);
                 n.set(None);
                 let client = ApiClient::shared().clone();
                 let res = match op {
-                    WriteOp::Delete => {
+                    WriteOpGroups::Delete => {
                         let r = delete_group_api(&client, &key).await;
                         r.map(|_| serde_json::json!(true))
                     }
-                    WriteOp::ToggleStatus(s) => set_group_status_api(&client, &key, s)
+                    WriteOpGroups::ToggleStatus(s) => set_group_status_api(&client, &key, s)
                         .await
                         .map(|_| serde_json::json!(true)),
-                    WriteOp::SetRatio(v) => update_group_ratio_api(&client, &key, v)
+                    WriteOpGroups::SetRatio(v) => update_group_ratio_api(&client, &key, v)
                         .await
                         .map(|_| serde_json::json!(true)),
                 };
@@ -226,11 +226,11 @@ pub fn GroupsPage() -> Element {
                     Ok(_) => {
                         n.set(Some(MSG_OP_OK.to_string()));
                         match op {
-                            WriteOp::Delete => {
+                            WriteOpGroups::Delete => {
                                 // 删除:行要消失,必须整页重拉
                                 r.set(r() + 1);
                             }
-                            WriteOp::ToggleStatus(s) => {
+                            WriteOpGroups::ToggleStatus(s) => {
                                 // 启停:就地更新本地 status, 不重拉, 无闪烁;
                                 // with_mut 原位改, 不整表 set, 避免与批量路径并发写互踩
                                 g.with_mut(|list| {
@@ -239,7 +239,7 @@ pub fn GroupsPage() -> Element {
                                     }
                                 });
                             }
-                            WriteOp::SetRatio(v) => {
+                            WriteOpGroups::SetRatio(v) => {
                                 // 倍率:就地更新本地 ratio, 不重拉, 卡片即时反映
                                 g.with_mut(|list| {
                                     if let Some(hit) = list.iter_mut().find(|x| x.key == key) {
@@ -326,10 +326,10 @@ pub fn GroupsPage() -> Element {
 
     // 卡片写回统一入口: 删除走 write_delete, 启停/倍率走 write_toggle
     // (两个闭包由同一工厂生成, 行为一致; 拆开保持调用语义清晰)。
-    let on_write = move |(key, op): (String, WriteOp)| match op {
-        WriteOp::Delete => write_delete(key, WriteOp::Delete),
-        WriteOp::SetRatio(v) => write_toggle(key, WriteOp::SetRatio(v)),
-        WriteOp::ToggleStatus(s) => write_toggle(key, WriteOp::ToggleStatus(s)),
+    let on_write = move |(key, op): (String, WriteOpGroups)| match op {
+        WriteOpGroups::Delete => write_delete(key, WriteOpGroups::Delete),
+        WriteOpGroups::SetRatio(v) => write_toggle(key, WriteOpGroups::SetRatio(v)),
+        WriteOpGroups::ToggleStatus(s) => write_toggle(key, WriteOpGroups::ToggleStatus(s)),
     };
 
     rsx! {

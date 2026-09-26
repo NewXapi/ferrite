@@ -15,8 +15,8 @@ use contract::api::admin::{ChannelUpsertRequest, GroupDto};
 use crate::api::{
     UpdateChannelBody, create_channel_api, fetch_channel_models_api, update_channel_api,
 };
+use crate::components::groups_modal::Modal;
 use crate::state::CHANNEL_TYPES;
-use crate::tab_page_groups::Modal;
 
 use crate::shared::{
     BTN_CANCEL_CHANNELS, BTN_CREATE_CHANNEL, BTN_SAVE_CHANGES, FIELD_API_KEY, FIELD_BASE_URL,
