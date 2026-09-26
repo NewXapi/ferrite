@@ -173,10 +173,8 @@ pub fn DialogContent(
             "data-state": "{state}",
             style: "pointer-events: {pointer_events};",
             onclick: move |_| {
-                if close_on_backdrop_click {
-                    if let Some(handler) = on_close.as_ref() {
-                        handler.call(());
-                    }
+                if close_on_backdrop_click && let Some(handler) = on_close.as_ref() {
+                    handler.call(());
                 }
             },
         }
